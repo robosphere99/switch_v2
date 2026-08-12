@@ -545,3 +545,17 @@ model WarrantyClaim {
   @@index([status])
   @@map("warranty_claims")
 }
+
+model ContactMessage {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(100)
+  email     String?  @db.VarChar(120)
+  phone     String?  @db.VarChar(20)
+  subject   String   @db.VarChar(150)
+  message   String   @db.Text
+  status    String   @default("new") @db.VarChar(20) // new | read | done
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([status])
+  @@map("contact_messages")
+}

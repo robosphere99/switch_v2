@@ -13,6 +13,7 @@ import { adminRouter } from "./admin.routes";
 import { shopRouter } from "./shop.routes";
 import { claimRouter } from "./claim.routes";
 import { warrantyRouter } from "./warranty.routes";
+import { publicRouter } from "./public.routes";
 
 export const apiRouter = Router();
 
@@ -30,3 +31,4 @@ apiRouter.use("/admin", adminRouter);
 apiRouter.use("/shop", shopRouter);
 apiRouter.use("/claim", claimRouter);
 apiRouter.use("/warranty", warrantyRouter);
+apiRouter.use("/public", publicRouter);

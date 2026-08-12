@@ -726,3 +726,24 @@ adminRouter.patch("/warranty/:id/status", async (req, res) => {
   });
   ok(res, { id: updated.id, status: updated.status });
 });
+
+// ---------- Contact / Feedback (public form se) ----------
+
+adminRouter.get("/contact", async (_req, res) => {
+  const msgs = await prisma.contactMessage.findMany({ orderBy: { createdAt: "desc" } });
+  ok(res, msgs);
+});
+
+adminRouter.patch("/contact/:id/status", async (req, res) => {
+  const id = Number(req.params.id);
+  const status = String(req.body?.status ?? "");
+  if (!["new", "read", "done"].includes(status)) throw new AppError("BAD_REQUEST", "Status new | read | done");
+  const updated = await prisma.contactMessage.update({ where: { id }, data: { status } });
+  ok(res, updated);
+});
+
+adminRouter.delete("/contact/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  await prisma.contactMessage.delete({ where: { id } });
+  ok(res, { deleted: true });
+});

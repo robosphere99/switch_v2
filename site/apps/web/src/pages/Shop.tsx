@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { forwardRef, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Link } from "react-router-dom";
 import { getProducts, type Product } from "../api/shop";
 import { useCartStore } from "../stores/cart";
@@ -26,9 +27,14 @@ function featureChips(p: Product): string[] {
   return chips;
 }
 
-function ProductCard({ p, onAdd }: { p: Product; onAdd: () => void }) {
+const ProductCard = forwardRef<HTMLDivElement, { p: Product; onAdd: () => void; highlighted?: boolean }>(
+  function ProductCard({ p, onAdd, highlighted }, ref) {
   return (
-    <div className="flex flex-col rounded-xl border border-brand/20 bg-night-800 p-6 transition hover:-translate-y-1 hover:border-brand">
+    <div
+      ref={ref}
+      className={`flex flex-col rounded-xl border bg-night-800 p-6 transition hover:-translate-y-1 ${highlighted ? "border-brand shadow-lg shadow-brand/30 ring-2 ring-brand/50" : "border-brand/20 hover:border-brand"}`}
+      style={highlighted ? { scrollMarginTop: 90 } : undefined}
+    >
       <div className="mb-3 text-4xl">{MODEL_ICON[p.modelCode] ?? "📦"}</div>
       <div className="mb-1 flex items-center justify-between gap-2">
         <h3 className="text-lg font-semibold">{p.name}</h3>
@@ -58,7 +64,8 @@ function ProductCard({ p, onAdd }: { p: Product; onAdd: () => void }) {
       </div>
     </div>
   );
-}
+  },
+);
 
 export function Shop() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -70,12 +77,24 @@ export function Shop() {
   const setQuantity = useCartStore((s) => s.setQuantity);
   const count = useCartStore((s) => s.count());
   const total = useCartStore((s) => s.total());
+  const [params] = useSearchParams();
+  const highlightId = params.get("product") ? Number(params.get("product")) : null;
+  const cardRefs = useRef<Record<number, HTMLDivElement | null>>({});
 
   useEffect(() => {
     getProducts()
       .then(setProducts)
       .catch(() => setError("Products load nahi hue — API chal raha hai kya?"));
   }, []);
+
+  // Chat se aaye ho (?product=) to us card pe scroll + highlight
+  useEffect(() => {
+    if (!highlightId) return;
+    const t = setTimeout(() => {
+      cardRefs.current[highlightId]?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 350);
+    return () => clearTimeout(t);
+  }, [highlightId, products]);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">
@@ -105,6 +124,8 @@ export function Shop() {
           <ProductCard
             key={p.id}
             p={p}
+            highlighted={highlightId === p.id}
+            ref={(el) => { cardRefs.current[p.id] = el; }}
             onAdd={() => {
               add({
                 productId: p.id,

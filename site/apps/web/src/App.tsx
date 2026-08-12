@@ -1,5 +1,6 @@
 import { Route, Routes } from "react-router-dom";
 import { Navbar } from "./components/Navbar";
+import { ChatWidget } from "./components/ChatWidget";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { useRealtime } from "./hooks/useRealtime";
 import { Dashboard } from "./pages/Dashboard";
@@ -24,6 +25,7 @@ export default function App() {
   return (
     <div className="min-h-screen">
       <Navbar />
+      <ChatWidget />
       <main>
         <Routes>
           <Route path="/" element={<Landing />} />

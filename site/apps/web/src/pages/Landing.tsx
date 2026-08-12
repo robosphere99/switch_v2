@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { getProducts, type Product } from "../api/shop";
+import { AboutUsSection, ContactUsSection, HowItWorksSection, LocateUsSection } from "../components/LandingSections";
 
 const FEATURES = [
   {
@@ -140,6 +141,18 @@ export function Landing() {
           ))}
         </div>
       </section>
+
+      {/* How it works */}
+      <HowItWorksSection />
+
+      {/* About us */}
+      <AboutUsSection />
+
+      {/* Locate us */}
+      <LocateUsSection />
+
+      {/* Contact / feedback */}
+      <ContactUsSection />
     </div>
   );
 }

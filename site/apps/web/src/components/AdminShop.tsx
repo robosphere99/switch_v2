@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { deleteContact, getAdminContact, updateContactStatus } from "../api/public";
 import {
   createAdminProduct,
   deleteAdminProduct,
@@ -329,6 +330,8 @@ export function AdminShop() {
       <SerialsSection />
       <div className="my-10 border-t border-brand/20" />
       <WarrantySection />
+      <div className="my-10 border-t border-brand/20" />
+      <ContactSection />
     </div>
   );
 }
@@ -392,6 +395,67 @@ function WarrantySection() {
                 {c.status === "approved" && (
                   <button onClick={() => setStatus(c, "resolved")} className="rounded bg-blue-600 px-3 py-1.5 font-semibold text-white hover:bg-blue-700">Mark Resolved</button>
                 )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------- Contact / Feedback ----------------
+
+function ContactSection() {
+  const queryClient = useQueryClient();
+  const { data: msgs, isLoading } = useQuery({
+    queryKey: ["admin-contact"],
+    queryFn: getAdminContact,
+    refetchInterval: 10_000,
+  });
+
+  async function setStatus(id: number, status: string) {
+    await updateContactStatus(id, status);
+    queryClient.invalidateQueries({ queryKey: ["admin-contact"] });
+  }
+
+  async function remove(id: number) {
+    if (!window.confirm("Message delete karna hai?")) return;
+    await deleteContact(id);
+    queryClient.invalidateQueries({ queryKey: ["admin-contact"] });
+  }
+
+  if (isLoading) return <p className="text-gray-400">Loading messages…</p>;
+
+  return (
+    <div>
+      <h2 className="mb-4 text-xl font-bold">Contact / Feedback ({msgs?.filter((m) => m.status === "new").length ?? 0} new)</h2>
+      {msgs?.length === 0 ? (
+        <p className="text-gray-500">Koi message nahi.</p>
+      ) : (
+        <div className="space-y-3">
+          {msgs?.map((m) => (
+            <div key={m.id} className="rounded-xl border border-brand/20 bg-night-800 p-4">
+              <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+                <div className="text-sm">
+                  <span className="font-bold text-white">{m.name}</span>
+                  {m.email && <span className="ml-2 text-gray-400">{m.email}</span>}
+                  {m.phone && <span className="ml-2 text-gray-500">{m.phone}</span>}
+                </div>
+                <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${m.status === "new" ? "bg-amber-500/20 text-amber-300" : m.status === "read" ? "bg-blue-500/20 text-blue-300" : "bg-green-500/20 text-green-300"}`}>
+                  {m.status}
+                </span>
+              </div>
+              <div className="text-xs text-gray-500">{m.subject} · {new Date(m.createdAt).toLocaleString()}</div>
+              <p className="mt-2 text-sm text-gray-300">{m.message}</p>
+              <div className="mt-3 flex gap-2 text-xs">
+                {m.status === "new" && (
+                  <button onClick={() => setStatus(m.id, "read")} className="rounded bg-blue-600 px-3 py-1.5 font-semibold text-white hover:bg-blue-700">Mark Read</button>
+                )}
+                {m.status !== "done" && (
+                  <button onClick={() => setStatus(m.id, "done")} className="rounded bg-green-600 px-3 py-1.5 font-semibold text-white hover:bg-green-700">Done</button>
+                )}
+                <button onClick={() => remove(m.id)} className="rounded bg-red-900/40 px-3 py-1.5 font-semibold text-red-300">Delete</button>
               </div>
             </div>
           ))}
