@@ -1,0 +1,48 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Env files
+.env
+.env.local
+.env.*.local
+
+# Node / build
+node_modules/
+dist/
+build/
+out/
+
+# PlatformIO (firmware build artifacts — source hi track hota hai)
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# Databases / runtime data
+*.db
+*.sqlite
+*.sqlite3
+
+# OS / IDE extras
+*.swp
+*~
+
+# Published firmware binaries (admin UI se upload hote hain — source se build hota hai)
+hardware/firmware/
+
+# Local dev artifacts
+.freebuff/
+*.db-shm
+*.db-wal
+hardware/Robosphere-Dev/.device_map.json
+
+# Python
+__pycache__/
+*.pyc
