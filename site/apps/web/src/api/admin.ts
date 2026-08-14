@@ -157,7 +157,13 @@ export interface EspBoard {
   otaRequestedAt: string | null;
   otaProgress: number | null;
   otaStatus: string | null;
-  home: { id: number; name: string; owner: { username: string } };
+  home: {
+    id: number;
+    name: string;
+    ownerId: number;
+    owner: { username: string };
+    apiKeys: { keyPrefix: string; label: string | null; createdAt: string }[];
+  };
   devices: { id: number; name: string; type: string; status: string; room: { name: string } | null }[];
 }
 
@@ -199,6 +205,12 @@ export interface FirmwareListResponse {
 
 export async function getEspDevices(): Promise<ApiResponse<EspListResponse>> {
   const { data } = await api.get<ApiResponse<EspListResponse>>("/admin/esp");
+  return data;
+}
+
+/** Admin support: ESP ke home ke liye fresh API key issue (support/help ke liye). */
+export async function issueEspKey(espId: number): Promise<ApiResponse<{ apiKey: string; keyPrefix: string }>> {
+  const { data } = await api.post<ApiResponse<{ apiKey: string; keyPrefix: string }>>(`/admin/esp/${espId}/key`);
   return data;
 }
 

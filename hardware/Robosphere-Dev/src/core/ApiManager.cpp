@@ -15,6 +15,27 @@ namespace ApiManager
 {
 
 // ==================================================
+// HTTPS support — server URL agar https:// hai toh secure
+// connection (WiFiClientSecure). Certificate bundle nahi hai
+// isliye setInsecure() — data TLS me encrypted jaata hai (MITM
+// risk kabhi-kabhi, par plain HTTP se kaafi behtar). Plain HTTP
+// URLs pe purana behaviour hi rehta hai.
+// ==================================================
+static WiFiClient plainClient;
+static WiFiClientSecure secureClient;
+static bool clientForUrl(const String &url, HTTPClient &http, bool secureOnly = false)
+{
+    bool useSecure = url.startsWith("https://") || (secureOnly && url.startsWith("https://"));
+    if (useSecure)
+    {
+        secureClient.setInsecure();
+        return http.begin(secureClient, url);
+    }
+    return http.begin(url);
+}
+
+
+// ==================================================
 // Debounced Batch Push Queue
 //
 // Problem: har relay toggle (web ya physical switch) turant ek
@@ -198,7 +219,7 @@ bool testConnection()
         "/api/device/read-all?api_key=" +
         PreferencesManager::getApiKey();
 
-    http.begin(url);
+    clientForUrl(url, http);
     http.setTimeout(500);
     http.setConnectTimeout(1500);
     int httpCode = http.GET();
@@ -238,7 +259,7 @@ bool downloadDevices()
         "/api/device/read-all?api_key=" +
         PreferencesManager::getApiKey();
 
-    http.begin(url);
+    clientForUrl(url, http);
     http.setTimeout(500);
     http.setConnectTimeout(1500);
     int httpCode = http.GET();
@@ -315,7 +336,7 @@ bool updateDevice(int deviceId, bool state)
         PreferencesManager::getServerURL() +
         "/api/device/update";
 
-    http.begin(url);
+    clientForUrl(url, http);
     http.setTimeout(500);
     http.setConnectTimeout(1500); 
 
@@ -377,7 +398,7 @@ bool downloadCommands()
 
     String url = serverURL + "/api/device/commands?api_key=" + apiKey;
 
-    http.begin(url);
+    clientForUrl(url, http);
     http.setTimeout(500);
     http.setConnectTimeout(1500);
     int httpCode = http.GET();
@@ -481,7 +502,7 @@ bool ackCommand(int commandId, int deviceId, bool ok)
 
     String url = PreferencesManager::getServerURL() + "/api/device/commands/ack";
 
-    http.begin(url);
+    clientForUrl(url, http);
     http.setTimeout(500);
     http.setConnectTimeout(1500);
 
@@ -562,7 +583,7 @@ bool heartbeat(String &otaUrl)
 
     HTTPClient http;
     http.setTimeout(API_TIMEOUT_MS);
-    http.begin(serverURL + "/api/device/heartbeat");
+    clientForUrl(serverURL + "/api/device/heartbeat", http);
     http.addHeader("Content-Type", "application/x-www-form-urlencoded");
 
     String body = "api_key=" + apiKey;

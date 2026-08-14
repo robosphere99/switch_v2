@@ -173,7 +173,19 @@ adminRouter.get("/devices", async (req, res) => {
   const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const devices = await prisma.device.findMany({
     include: {
-      home: { select: { id: true, name: true, owner: { select: { username: true } } } },
+      home: {
+        select: {
+          id: true,
+          name: true,
+          ownerId: true,
+          owner: { select: { username: true } },
+          apiKeys: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: { keyPrefix: true, label: true, createdAt: true },
+          },
+        },
+      },
       room: { select: { name: true } },
       _count: { select: { commands: true, logs: true } },
     },
@@ -269,7 +281,19 @@ adminRouter.get("/esp", async (_req, res) => {
       otaRequestedAt: true,
       otaProgress: true,
       otaStatus: true,
-      home: { select: { id: true, name: true, owner: { select: { username: true } } } },
+      home: {
+        select: {
+          id: true,
+          name: true,
+          ownerId: true,
+          owner: { select: { username: true } },
+          apiKeys: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: { keyPrefix: true, label: true, createdAt: true },
+          },
+        },
+      },
       devices: {
         select: {
           id: true,
@@ -304,6 +328,39 @@ adminRouter.get("/esp", async (_req, res) => {
     take: 100,
   });
   ok(res, { esps, unlinked, currentVersion: current?.version ?? null });
+});
+
+/**
+ * Admin support: ESP ke home ke liye fresh API key issue karo.
+ * Full key sirf isi response me milta hai (hash store hota hai) — admin
+ * copy karke user ko de sakta hai (portal/flasher me paste karne ke liye).
+ */
+adminRouter.post("/esp/:id/key", async (req, res) => {
+  const id = Number(req.params.id);
+  const esp = await prisma.espDevice.findUnique({
+    where: { id },
+    include: { home: { select: { id: true, ownerId: true } } },
+  });
+  if (!esp?.home) throw new AppError("NOT_FOUND", "ESP ya home nahi mila");
+  const crypto = await import("node:crypto");
+  const plain = `rs_${crypto.randomBytes(9).toString("base64url").replace(/-/g, "").slice(0, 16)}`;
+  const keyHash = crypto.createHash("sha256").update(plain).digest("hex");
+  const keyPrefix = plain.slice(0, 8);
+  await prisma.apiKey.create({
+    data: {
+      userId: esp.home.ownerId,
+      homeId: esp.home.id,
+      label: `admin-support-${Date.now()}`,
+      keyHash,
+      keyPrefix,
+    },
+  });
+  await audit(req.user!.sub, "admin.esp.key.issue", {
+    entity: "esp",
+    entityId: id,
+    meta: { homeId: esp.home.id },
+  });
+  ok(res, { apiKey: plain, keyPrefix });
 });
 
 /** Rename an ESP board (admin friendly name). */
@@ -606,6 +663,61 @@ adminRouter.post("/serials/generate", async (req, res) => {
 });
 
 // ---------- Manufacturing: Order Provision + Serial Test ----------
+
+/**
+ * Flasher: order ke liye ek naya serial banao aur order se link karo.
+ * Har board (quantity × item) ko apna unique serial chahiye — har call ek
+ * naya serial banata hai (registry me create + orderId set). Item ka
+ * serialCode pehla serial dikhata hai (ship/claim flow ke liye).
+ * Jab order ki total quantity ke serial ban chuke ho, "DONE" signal deta hai
+ * taaki flasher Next Board pe aage badhe.
+ */
+adminRouter.post("/orders/:id/serials/generate", async (req, res) => {
+  const id = Number(req.params.id);
+  const order = await prisma.order.findUnique({
+    where: { id },
+    include: { items: true },
+  });
+  if (!order) throw new AppError("NOT_FOUND", "Order not found", 404);
+
+  const item = order.items[0];
+  if (!item) throw new AppError("BAD_REQUEST", "Order me koi item nahi", 400);
+
+  // Is order se already linked serials ki count — total quantity ke against.
+  const made = await prisma.serialRegistry.count({ where: { orderId: order.id } });
+  const totalQty = order.items.reduce((sum, it) => sum + it.quantity, 0);
+  if (made >= totalQty) {
+    return ok(res, { done: true, serialCode: null, modelCode: null });
+  }
+
+  const product = await prisma.product.findUnique({ where: { id: item.productId } });
+  const modelCode = product?.modelCode ?? "4CH";
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+  let code = "";
+  for (let tries = 0; tries < 10; tries++) {
+    let rnd = "";
+    for (let i = 0; i < 6; i++) rnd += chars[Math.floor(Math.random() * chars.length)];
+    const candidate = `RS-${modelCode}-${rnd}`;
+    const dup = await prisma.serialRegistry.findUnique({ where: { serialCode: candidate } });
+    if (!dup) { code = candidate; break; }
+  }
+  if (!code) throw new AppError("CONFLICT", "Serial generate nahi ho paya — try again", 409);
+
+  await prisma.serialRegistry.create({
+    data: { serialCode: code, productId: item.productId, orderId: order.id, status: "reserved" },
+  });
+  // Item ka serialCode sirf tab set karo jab khali ho (pehla serial hi rehta hai)
+  if (!item.serialCode) {
+    await prisma.orderItem.update({ where: { id: item.id }, data: { serialCode: code } });
+  }
+  await audit(req.user!.sub, "admin.serial.generate.order", {
+    entity: "order",
+    entityId: order.id,
+    meta: { serialCode: code, orderNumber: order.orderNumber },
+  });
+  ok(res, { done: false, serialCode: code, modelCode }, 201);
+});
 
 /** Flasher GUI ke liye: order ki items + serials + WiFi (decrypted) — admin only. */
 adminRouter.get("/orders/:id/provision", async (req, res) => {

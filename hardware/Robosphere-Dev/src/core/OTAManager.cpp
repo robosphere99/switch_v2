@@ -2,6 +2,7 @@
 #include "core/OTAManager.h"
 
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 
@@ -167,9 +168,19 @@ static void reportProgress(int pct, const char *otaStatus)
     if (deviceId < 0)
         return;
 
+    static WiFiClient plainClient;
+    static WiFiClientSecure secureClient;
     HTTPClient http;
     http.setTimeout(2000);
-    http.begin(serverURL + "/api/device/ota-progress");
+    if (serverURL.startsWith("https://"))
+    {
+        secureClient.setInsecure();
+        http.begin(secureClient, serverURL + "/api/device/ota-progress");
+    }
+    else
+    {
+        http.begin(serverURL + "/api/device/ota-progress");
+    }
     http.addHeader("Content-Type", "application/x-www-form-urlencoded");
 
     String body = "api_key=" + apiKey;
@@ -202,7 +213,13 @@ bool startUpdate() {
 
   status = "Downloading";
 
-  WiFiClient client;
+  // HTTPS URL ke liye secure client (setInsecure — no cert bundle), warna plain
+  static WiFiClient plainOtaClient;
+  static WiFiClientSecure secureOtaClient;
+  bool useSecure = firmwareURL.startsWith("https://");
+  if (useSecure)
+    secureOtaClient.setInsecure();
+  WiFiClient &client = useSecure ? (WiFiClient &)secureOtaClient : (WiFiClient &)plainOtaClient;
 
   httpUpdate.onStart([]() {
     Serial.println("OTA Started");
