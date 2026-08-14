@@ -30,3 +30,14 @@ npm-debug.log*
 Thumbs.db
 .idea/
 .vscode/
+
+# ------------------------------------------------------------------
+# Prebuilt deploy artifacts — Plesk shared hosting pe build nahi
+# chal sakta (esbuild: Access denied on parent dirs), isliye API aur
+# web ke dist folders intentionally git me commit kiye jaate hain.
+# Update flow: build locally -> commit dist -> push -> Plesk pe Pull.
+# ------------------------------------------------------------------
+!apps/api/dist/
+!apps/api/dist/**
+!apps/web/dist/
+!apps/web/dist/**
