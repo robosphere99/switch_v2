@@ -5,6 +5,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { corsOrigins } from "./config/env";
 import { errorHandler } from "./middleware/errorHandler";
+import { firmwareDir, webDist } from "./lib/paths";
 import { apiRouter } from "./routes";
 import { installRouter } from "./routes/install.routes";
 import { isDbReady } from "./lib/dbState";
@@ -46,12 +47,10 @@ export function createApp() {
 
   // Serve published ESP32 firmware at /firmware/firmware.bin (OTA downloads).
   // Folder: <repo>/hardware/firmware — written by the admin firmware upload.
-  const firmwareDir = path.resolve(process.cwd(), "../../../hardware/firmware");
   app.use("/firmware", express.static(firmwareDir));
 
   // Production: built web app (Vite dist) ko bhi API hi serve karta hai —
   // Plesk pe ek hi Node.js app se sab chalta hai (dev me Vite proxy hota hai).
-  const webDist = path.resolve(process.cwd(), "../../apps/web/dist");
   if (fs.existsSync(path.join(webDist, "index.html"))) {
     app.use(express.static(webDist));
     // SPA fallback — API/firmware/socket paths JSON 404 dete hain.

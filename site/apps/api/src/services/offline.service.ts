@@ -22,6 +22,14 @@ export function stopOfflineWatcher(): void {
 }
 
 async function checkOfflineDevices(): Promise<void> {
+  try {
+    await checkOfflineDevicesInner();
+  } catch (err) {
+    console.error("[offline] tick error:", err instanceof Error ? err.message : err);
+  }
+}
+
+async function checkOfflineDevicesInner(): Promise<void> {
   const cutoff = new Date(Date.now() - OFFLINE_THRESHOLD_MS);
   const stale = await prisma.device.findMany({
     where: { lastSeen: { lt: cutoff } },

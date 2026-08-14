@@ -20,7 +20,6 @@ Run:           python flasher_gui.py
 import json
 import queue
 import re
-import subprocess
 import sys
 import threading
 import time
@@ -332,6 +331,57 @@ class FlasherApp:
             raise RuntimeError("COM port choose karo")
         return port
 
+    def _run_esptool(self, args):
+        """Call esptool in-process (PyInstaller exe me `python -m esptool` nahi chalta).
+
+        stdout/stderr capture karke GUI log me stream karta hai (progress % tak).
+        """
+        try:
+            import esptool
+        except ImportError:
+            raise RuntimeError("esptool bundled nahi hai — flasher .exe rebuild karo")
+
+        old_out, old_err = sys.stdout, sys.stderr
+
+        class _Tee:
+            def __init__(self, stream, log):
+                self.stream = stream
+                self.log = log
+                self.buf = ""
+
+            def write(self, s):
+                self.buf += s
+                while True:
+                    idx = -1
+                    for sep in ("\n", "\r"):
+                        i = self.buf.find(sep)
+                        if i != -1 and (idx == -1 or i < idx):
+                            idx = i
+                    if idx == -1:
+                        break
+                    line, self.buf = self.buf[:idx], self.buf[idx + 1:]
+                    if line.strip():
+                        self.log("  " + line.strip())
+                self.stream.write(s)
+
+            def flush(self):
+                self.stream.flush()
+
+        tee = _Tee(old_out, self._log)
+        sys.stdout, sys.stderr = tee, tee
+        try:
+            try:
+                esptool.main(args)
+            except SystemExit as e:
+                if e.code not in (0, None):
+                    raise RuntimeError(f"esptool failed (exit code {e.code})")
+            except RuntimeError:
+                raise
+            except Exception as e:
+                raise RuntimeError(f"esptool error: {e}")
+        finally:
+            sys.stdout, sys.stderr = old_out, old_err
+
     def do_flash(self):
         if self.busy:
             return
@@ -347,18 +397,9 @@ class FlasherApp:
                 with open(bin_path, "wb") as fh:
                     fh.write(r.content)
                 self._log(f"Downloaded {len(r.content) / 1e6:.2f} MB → {bin_path}", "ok")
-                cmd = [sys.executable, "-m", "esptool", "--port", port,
-                       "--baud", "460800", "write_flash", FLASH_ADDR, bin_path]
                 self._log("Flashing (esptool)…", "info")
-                proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                        text=True, bufsize=1)
-                for line in proc.stdout:
-                    line = line.rstrip()
-                    if line:
-                        self._log("  " + line)
-                proc.wait()
-                if proc.returncode != 0:
-                    raise RuntimeError("esptool flash failed — cable/board check karo")
+                self._run_esptool(["--port", port, "--baud", "460800",
+                                   "write_flash", FLASH_ADDR, bin_path])
                 self._log("Flash OK — board rebooting…", "ok")
                 time.sleep(3)
             except FileNotFoundError:

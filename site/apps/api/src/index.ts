@@ -2,7 +2,7 @@ import { createServer } from "http";
 import { createApp } from "./app";
 import { env } from "./config/env";
 import { prisma } from "./lib/prisma";
-import { logger } from "./lib/logger";
+import { logger, fileLog, logFilePath } from "./lib/logger";
 import { initSocket } from "./lib/socket";
 import { startScheduler } from "./services/scheduler.service";
 import { startOfflineWatcher } from "./services/offline.service";
@@ -27,18 +27,23 @@ async function dbHasSchema(): Promise<boolean> {
 // Production resilience: ek request ki galti se poora app crash na ho
 // (IIS app pool rapid-fail → 503). Log karke continue karte hain.
 process.on("unhandledRejection", (reason) => {
-  process.stderr.write(`[crashguard] unhandledRejection: ${reason instanceof Error ? reason.stack : String(reason)}
-`);
+  const line = `[crashguard] unhandledRejection: ${reason instanceof Error ? reason.stack : String(reason)}`;
+  process.stderr.write(line + "\n");
+  fileLog(line);
 });
 process.on("uncaughtException", (err) => {
-  process.stderr.write(`[crashguard] uncaughtException: ${err instanceof Error ? err.stack : String(err)}
-`);
+  const line = `[crashguard] uncaughtException: ${err instanceof Error ? err.stack : String(err)}`;
+  process.stderr.write(line + "\n");
+  fileLog(line);
 });
 
 // stderr pe boot progress — iisnode error page sirf stderr dikhata hai,
 // logger stdout pe jaata hai isliye yeh lines wahan visible hoti hain.
-const boot = (...args: unknown[]) => process.stderr.write(`[boot] ${args.join(" ")}
-`);
+const boot = (...args: unknown[]) => {
+  const line = `[boot] ${args.join(" ")}`;
+  process.stderr.write(line + "\n");
+  fileLog(line);
+};
 
 async function main() {
   // Plesk/IISNode ko readiness signal turant chahiye — server pehle listen
@@ -46,6 +51,7 @@ async function main() {
   // setup mode (503) + install wizard ko handle karta hai.
   boot("node", process.version, "| cwd =", process.cwd());
   boot("PORT env =", JSON.stringify(process.env.PORT ?? "(not set)"), "-> API_PORT =", env.API_PORT);
+  boot("log file =", logFilePath ?? "(disabled)");
   const app = createApp();
   boot("createApp done");
   const server = createServer(app);
@@ -87,6 +93,14 @@ async function main() {
       boot("fallback listener requested on 4000");
     }
   }
+
+  // Server pe koi error (pipe EACCES, port busy, etc.) to process ko kabhi
+  // mat marne do — log karke pool zinda rahega (IIS rapid-fail 503 se bachne ke liye).
+  server.on("error", (err) => {
+    const line = `[server] listen error: ${err instanceof Error ? err.stack || err.message : String(err)}`;
+    process.stderr.write(line + "\n");
+    fileLog(line);
+  });
 
   boot("main() setup complete — background DB init starting");
   void initDatabase();
@@ -135,6 +149,10 @@ async function initDatabase(): Promise<void> {
 }
 
 main().catch((err) => {
+  // process.exit kabhi nahi — pool stop ho jata hai to 503. Log karke
+  // zinda rehte hain; iisnode process ko tab tak rakhta hai jab tak zinda.
+  const line = `[fatal] main() failed: ${err instanceof Error ? err.stack || err.message : String(err)}`;
+  process.stderr.write(line + "\n");
+  fileLog(line);
   logger.error("Failed to start API", err instanceof Error ? err.stack : err);
-  process.exit(1);
 });

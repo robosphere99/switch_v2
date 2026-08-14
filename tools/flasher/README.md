@@ -60,3 +60,22 @@ finish                        — config complete + reboot
 - Board ke heartbeat me ab `serial` + `model` bhi jaata hai → server pe ESP row me serial dikhta hai (Admin → OTA/ESP tab).
 - Serial OTA update ke baad bhi **intact** rehta hai (NVS me saved, firmware reflash se nahi hota).
 - `esptool` PATH me hona chahiye (`pip install esptool` se milta hai).
+
+## Standalone .exe (bina Python ke)
+
+`dist/RoboSphere-Flasher.exe` (40 MB) — sab kuch bundled (Python + esptool + pyserial + requests). Kisi bhi Windows laptop pe double-click karo, Python install karne ki zaroorat nahi.
+
+### Rebuild karna ho to
+
+```bash
+pip install requests pyserial esptool pyinstaller
+python -m PyInstaller --noconfirm --onefile --windowed --name RoboSphere-Flasher \
+  --collect-all esptool \
+  --exclude PyQt5 --exclude PySide6 --exclude PyQt6 --exclude PySide2 \
+  --exclude matplotlib --exclude numpy \
+  flasher_gui.py
+```
+
+> `--collect-all esptool` zaroori hai (esptool ke saare submodules + hidden imports bundle karne ke liye), aur Qt/matplotlib exclude isliye kyunki esptool ke optional GUI subpackage ko PyInstaller mistakenly bundle kar leta hai.
+
+> Flash ab in-process esptool API se hota hai (`python -m esptool` subprocess exe me kaam nahi karta) — progress % GUI log me live stream hota hai.

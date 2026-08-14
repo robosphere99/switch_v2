@@ -34,8 +34,10 @@ out/
 *.swp
 *~
 
-# Published firmware binaries (admin UI se upload hote hain — source se build hota hai)
-hardware/firmware/
+# Published firmware binaries — server pe OTA ke liye chahiye (git pull se
+# hardware/firmware/*.bin aa jata hai), isliye .bin track hote hain.
+hardware/firmware/*
+!hardware/firmware/*.bin
 
 # Local dev artifacts
 .freebuff/

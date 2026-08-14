@@ -70,8 +70,8 @@ import { createServer } from "http";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
-import path4 from "node:path";
-import fs3 from "node:fs";
+import path6 from "node:path";
+import fs5 from "node:fs";
 
 // src/config/env.ts
 import dotenv from "dotenv";
@@ -150,18 +150,48 @@ var AppError = class extends Error {
 };
 
 // src/lib/logger.ts
+import * as fs from "fs";
+import * as path2 from "path";
+import * as os from "os";
+var logFilePath = (() => {
+  const candidates = [
+    path2.resolve(process.cwd(), "../logs"),
+    // site/apps/logs — iisnode yahi likhta hai (writable)
+    path2.resolve(process.cwd(), "logs"),
+    // site/apps/api/logs
+    path2.join(os.tmpdir(), "robosphere-logs")
+  ];
+  for (const dir of candidates) {
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+      fs.accessSync(dir, fs.constants.W_OK);
+      return path2.join(dir, "app.log");
+    } catch {
+      continue;
+    }
+  }
+  return null;
+})();
+function fileLog(line) {
+  if (!logFilePath) return;
+  try {
+    fs.appendFileSync(logFilePath, line.endsWith("\n") ? line : line + "\n");
+  } catch {
+  }
+}
 var ORDER = { debug: 0, info: 1, warn: 2, error: 3 };
 function log(level, msg, meta) {
   if (ORDER[level] < ORDER[env.LOG_LEVEL]) return;
   const line = `[${(/* @__PURE__ */ new Date()).toISOString()}] [${level.toUpperCase()}] ${msg}`;
   if (meta !== void 0) {
     const suffix = typeof meta === "string" ? meta : JSON.stringify(meta);
+    fileLog(`${line} ${suffix}`);
     if (level === "error") console.error(line, suffix);
     else console.log(line, suffix);
-  } else if (level === "error") {
-    console.error(line);
   } else {
-    console.log(line);
+    fileLog(line);
+    if (level === "error") console.error(line);
+    else console.log(line);
   }
 }
 var logger = {
@@ -182,6 +212,23 @@ var errorHandler = (err, _req, res, _next) => {
   logger.error("Unhandled error", err instanceof Error ? err.stack : err);
   return fail(res, "INTERNAL_ERROR", "Internal server error", 500);
 };
+
+// src/lib/paths.ts
+import * as fs2 from "fs";
+import * as path3 from "path";
+function findRepoRoot(start) {
+  let dir = path3.resolve(start);
+  for (let i = 0; i < 8; i++) {
+    if (fs2.existsSync(path3.join(dir, "hardware"))) return dir;
+    const parent = path3.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
+}
+var repoRoot = findRepoRoot(process.cwd());
+var firmwareDir = repoRoot ? path3.join(repoRoot, "hardware", "firmware") : path3.resolve(process.cwd(), "../../../hardware/firmware");
+var webDist = repoRoot ? path3.join(repoRoot, "site", "apps", "web", "dist") : path3.resolve(process.cwd(), "../../apps/web/dist");
 
 // src/routes/index.ts
 import { Router as Router16 } from "express";
@@ -2108,8 +2155,8 @@ assistantRouter.get("/chats/:chatId/messages", requireAuth, validateParams(chatP
 // src/routes/admin.routes.ts
 import { Router as Router11 } from "express";
 import multer from "multer";
-import path2 from "node:path";
-import fs from "node:fs";
+import path4 from "node:path";
+import fs3 from "node:fs";
 init_prisma();
 
 // src/services/shop.service.ts
@@ -2479,9 +2526,8 @@ adminRouter.get("/audit", async (req, res) => {
   });
   ok(res, logs2);
 });
-var firmwareDir = path2.resolve(process.cwd(), "../../../hardware/firmware");
 try {
-  fs.mkdirSync(firmwareDir, { recursive: true });
+  fs3.mkdirSync(firmwareDir, { recursive: true });
 } catch (err) {
   console.warn(`[firmware] cannot create ${firmwareDir}:`, err instanceof Error ? err.message : err);
 }
@@ -2579,11 +2625,11 @@ adminRouter.post("/firmware", upload.single("firmware"), async (req, res) => {
   const filename = modelCode ? `firmware-${modelCode.toLowerCase()}.bin` : "firmware.bin";
   const url = `/firmware/${filename}`;
   if (modelCode && filename !== "firmware.bin") {
-    const uploaded = path2.join(firmwareDir, "firmware.bin");
-    const target = path2.join(firmwareDir, filename);
-    if (fs.existsSync(uploaded) && uploaded !== target) {
-      if (fs.existsSync(target)) fs.unlinkSync(target);
-      fs.renameSync(uploaded, target);
+    const uploaded = path4.join(firmwareDir, "firmware.bin");
+    const target = path4.join(firmwareDir, filename);
+    if (fs3.existsSync(uploaded) && uploaded !== target) {
+      if (fs3.existsSync(target)) fs3.unlinkSync(target);
+      fs3.renameSync(uploaded, target);
     }
   }
   await prisma.$transaction([
@@ -3495,8 +3541,8 @@ apiRouter.use("/public", publicRouter);
 // src/routes/install.routes.ts
 import { Router as Router17 } from "express";
 import mysql from "mysql2/promise";
-import fs2 from "node:fs";
-import path3 from "node:path";
+import fs4 from "node:fs";
+import path5 from "node:path";
 import bcrypt2 from "bcryptjs";
 init_prisma();
 
@@ -3620,6 +3666,13 @@ function startOfflineWatcher() {
   console.log("[offline] watcher started (every 60s)");
 }
 async function checkOfflineDevices() {
+  try {
+    await checkOfflineDevicesInner();
+  } catch (err) {
+    console.error("[offline] tick error:", err instanceof Error ? err.message : err);
+  }
+}
+async function checkOfflineDevicesInner() {
   const cutoff = new Date(Date.now() - OFFLINE_THRESHOLD_MS);
   const stale = await prisma.device.findMany({
     where: { lastSeen: { lt: cutoff } },
@@ -3661,7 +3714,7 @@ async function checkOfflineDevices() {
 }
 
 // src/routes/install.routes.ts
-var SCHEMA_SQL = path3.resolve(process.cwd(), "prisma/schema.sql");
+var SCHEMA_SQL = path5.resolve(process.cwd(), "prisma/schema.sql");
 var installRouter = Router17();
 var DEFAULT_PRODUCTS = [
   { name: "2CH WiFi Relay Module", modelCode: "2CH", relayCount: 2, price: "599", description: "Two-channel WiFi relay board for lights and small appliances. 10A per channel, ESP32 based, works with the RoboSphere app and voice assistant.", features: { channels: 2, wifi: true, ota: true, voice: true } },
@@ -3799,14 +3852,14 @@ installRouter.post("/", async (req, res) => {
   } finally {
     await server.end().catch(() => void 0);
   }
-  if (!fs2.existsSync(SCHEMA_SQL)) {
+  if (!fs4.existsSync(SCHEMA_SQL)) {
     throw new AppError(
       "SCHEMA_MISSING",
       "prisma/schema.sql nahi mila \u2014 install package incomplete hai",
       500
     );
   }
-  const schemaSql = fs2.readFileSync(SCHEMA_SQL, "utf-8");
+  const schemaSql = fs4.readFileSync(SCHEMA_SQL, "utf-8");
   let conn;
   try {
     conn = await mysql.createConnection({
@@ -3916,13 +3969,11 @@ function createApp() {
     });
   });
   app.use("/api", apiRouter);
-  const firmwareDir2 = path4.resolve(process.cwd(), "../../../hardware/firmware");
-  app.use("/firmware", express.static(firmwareDir2));
-  const webDist = path4.resolve(process.cwd(), "../../apps/web/dist");
-  if (fs3.existsSync(path4.join(webDist, "index.html"))) {
+  app.use("/firmware", express.static(firmwareDir));
+  if (fs5.existsSync(path6.join(webDist, "index.html"))) {
     app.use(express.static(webDist));
     app.get(/^\/(?!api|firmware|socket\.io).*/, (_req, res) => {
-      res.sendFile(path4.join(webDist, "index.html"));
+      res.sendFile(path6.join(webDist, "index.html"));
     });
   }
   app.use((_req, res) => {
@@ -3950,18 +4001,24 @@ async function dbHasSchema() {
   }
 }
 process.on("unhandledRejection", (reason) => {
-  process.stderr.write(`[crashguard] unhandledRejection: ${reason instanceof Error ? reason.stack : String(reason)}
-`);
+  const line = `[crashguard] unhandledRejection: ${reason instanceof Error ? reason.stack : String(reason)}`;
+  process.stderr.write(line + "\n");
+  fileLog(line);
 });
 process.on("uncaughtException", (err) => {
-  process.stderr.write(`[crashguard] uncaughtException: ${err instanceof Error ? err.stack : String(err)}
-`);
+  const line = `[crashguard] uncaughtException: ${err instanceof Error ? err.stack : String(err)}`;
+  process.stderr.write(line + "\n");
+  fileLog(line);
 });
-var boot = (...args) => process.stderr.write(`[boot] ${args.join(" ")}
-`);
+var boot = (...args) => {
+  const line = `[boot] ${args.join(" ")}`;
+  process.stderr.write(line + "\n");
+  fileLog(line);
+};
 async function main() {
   boot("node", process.version, "| cwd =", process.cwd());
   boot("PORT env =", JSON.stringify(process.env.PORT ?? "(not set)"), "-> API_PORT =", env.API_PORT);
+  boot("log file =", logFilePath ?? "(disabled)");
   const app = createApp();
   boot("createApp done");
   const server = createServer(app);
@@ -3991,6 +4048,11 @@ async function main() {
       boot("fallback listener requested on 4000");
     }
   }
+  server.on("error", (err) => {
+    const line = `[server] listen error: ${err instanceof Error ? err.stack || err.message : String(err)}`;
+    process.stderr.write(line + "\n");
+    fileLog(line);
+  });
   boot("main() setup complete \u2014 background DB init starting");
   void initDatabase();
 }
@@ -4033,6 +4095,8 @@ async function initDatabase() {
   }
 }
 main().catch((err) => {
+  const line = `[fatal] main() failed: ${err instanceof Error ? err.stack || err.message : String(err)}`;
+  process.stderr.write(line + "\n");
+  fileLog(line);
   logger.error("Failed to start API", err instanceof Error ? err.stack : err);
-  process.exit(1);
 });

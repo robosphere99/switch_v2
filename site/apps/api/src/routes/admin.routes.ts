@@ -10,6 +10,7 @@ import { audit } from "../services/audit.service";
 import { generateSerials, updateOrderStatus } from "../services/shop.service";
 import { decryptSecret } from "../lib/crypto";
 import { resolveFirmware } from "../services/firmware.service";
+import { firmwareDir } from "../lib/paths";
 
 export const adminRouter = Router();
 
@@ -231,7 +232,7 @@ adminRouter.get("/audit", async (req, res) => {
 // ============================================================
 
 // Published firmware lives in <repo>/hardware/firmware, served at /firmware.
-const firmwareDir = path.resolve(process.cwd(), "../../../hardware/firmware");
+// Plesk pe cwd site/apps hota hai — repo root wala path paths.ts se aata hai.
 // Server (Plesk) pe write permission na ho to app ko crash mat hone do —
 // upload waqt friendly error dikhega.
 try {
