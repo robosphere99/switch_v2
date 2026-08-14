@@ -11,6 +11,7 @@ import { generateSerials, updateOrderStatus } from "../services/shop.service";
 import { decryptSecret } from "../lib/crypto";
 import { resolveFirmware } from "../services/firmware.service";
 import { firmwareDir } from "../lib/paths";
+import { logFilePath } from "../lib/logger";
 
 export const adminRouter = Router();
 
@@ -240,6 +241,20 @@ adminRouter.get("/audit", async (req, res) => {
 });
 
 // ============================================================
+// ---------- Diagnostics: app log (crash 503 ka asli reason yahan milega) ----------
+
+/** Admin ko app.log ke aakhri N lines dikhao — crashguard / boot lines yahan hain. */
+adminRouter.get("/logs", async (_req, res) => {
+  const n = Math.min(Number(_req.query.lines ?? 300) || 300, 1000);
+  if (!logFilePath || !fs.existsSync(logFilePath)) {
+    return ok(res, { path: logFilePath ?? null, lines: [], note: "log file nahi mili — naya build chahiye" });
+  }
+  const raw = fs.readFileSync(logFilePath, "utf8");
+  const lines = raw.split(/\r?\n/).filter(Boolean).slice(-n);
+  const crashes = lines.filter((l) => /crashguard|unhandled|error|fail|exception/i.test(l)).slice(-40);
+  ok(res, { path: logFilePath, totalLines: lines.length, lines, crashes });
+});
+
 // ESP / OTA — connected ESPs (IPs, firmware) + firmware publish + push
 // ============================================================
 
