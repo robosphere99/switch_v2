@@ -523,9 +523,11 @@ async function remove(req, res) {
   ok(res, { message: "Home deleted" });
 }
 
+// ../../packages/shared/src/index.ts
+var HOME_MEMBER_ROLES = ["owner", "admin", "member", "viewer"];
+
 // src/middleware/requireRole.ts
 init_prisma();
-import { HOME_MEMBER_ROLES } from "@robosphere/shared";
 var ROLE_INDEX = Object.fromEntries(HOME_MEMBER_ROLES.map((r, i) => [r, i]));
 function requireHomeMember(minRole = "member") {
   return async (req, _res, next) => {
