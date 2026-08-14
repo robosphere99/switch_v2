@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/snapshots
+!.yarn/versions
+
+# Builds
+dist/
+build/
+*.tsbuildinfo
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Prisma
+apps/api/prisma/*.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# ------------------------------------------------------------------
+# Prebuilt deploy artifacts — Plesk shared hosting pe build nahi
+# chal sakta (esbuild: Access denied on parent dirs), isliye API aur
+# web ke dist folders intentionally git me commit kiye jaate hain.
+# Update flow: build locally -> commit dist -> push -> Plesk pe Pull.
+# ------------------------------------------------------------------
+!apps/api/dist/
+!apps/api/dist/**
+!apps/web/dist/
+!apps/web/dist/**

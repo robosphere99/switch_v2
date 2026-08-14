@@ -1,0 +1,573 @@
+// RoboSphere v2 — Prisma schema (MySQL)
+// The multi-tenant model: devices belong to HOMES, users access via home_members.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Enums ----------
+
+enum UserRole {
+  user
+  system_admin
+}
+
+enum UserStatus {
+  active
+  suspended
+}
+
+enum HomeStatus {
+  active
+  suspended
+}
+
+enum HomeMemberRole {
+  owner
+  admin
+  member
+  viewer
+}
+
+enum InvitationStatus {
+  pending
+  accepted
+  expired
+  revoked
+}
+
+enum DeviceType {
+  bulb
+  fan
+  ac
+  tv
+  plug
+  dimmer
+  custom
+}
+
+enum DeviceStatus {
+  on
+  off
+}
+
+enum CommandStatus {
+  pending
+  executed
+  failed
+  cancelled
+}
+
+enum ScheduleType {
+  once
+  daily
+  weekly
+  cron
+}
+
+enum NotificationType {
+  info
+  warning
+  error
+}
+
+enum OrderStatus {
+  pending
+  paid
+  shipped
+  delivered
+  cancelled
+}
+
+enum PaymentMethod {
+  cod
+  upi
+  manual
+}
+
+enum SerialStatus {
+  available
+  reserved
+  shipped
+  delivered
+  claimed
+}
+
+enum WarrantyClaimStatus {
+  submitted
+  approved
+  rejected
+  resolved
+}
+
+// ---------- Models ----------
+
+model User {
+  id          Int        @id @default(autoincrement())
+  username    String     @unique @db.VarChar(50)
+  email       String     @unique @db.VarChar(100)
+  password    String     @db.VarChar(255)
+  role        UserRole   @default(user)
+  status      UserStatus @default(active)
+  createdAt   DateTime   @default(now()) @map("created_at")
+  lastLoginAt DateTime?  @map("last_login_at")
+
+  ownedHomes     Home[]            @relation("HomeOwner")
+  memberships    HomeMember[]
+  createdDevices Device[]          @relation("DeviceCreator")
+  apiKeys        ApiKey[]
+  schedules      Schedule[]
+  refreshTokens  RefreshToken[]
+  auditLogs      AuditLog[]
+  notifications  Notification[]
+  deviceLogs     DeviceLog[]       @relation("DeviceLogActor")
+  deviceCommands DeviceCommand[]   @relation("DeviceCommandActor")
+  assistantChats AssistantChat[]
+  orders         Order[]
+  claimedSerials SerialRegistry[]
+  warrantyClaims WarrantyClaim[]
+  contactMessages ContactMessage[]
+
+  @@map("users")
+}
+
+model AssistantChat {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  homeId    Int
+  title     String   @db.VarChar(100)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user     User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  home     Home               @relation(fields: [homeId], references: [id], onDelete: Cascade)
+  messages AssistantMessage[]
+
+  @@index([userId])
+  @@map("assistant_chats")
+}
+
+model AssistantMessage {
+  id        Int      @id @default(autoincrement())
+  chatId    Int
+  role      String   @db.VarChar(20) // user | assistant
+  content   String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+
+  chat AssistantChat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  @@index([chatId])
+  @@map("assistant_messages")
+}
+
+model Home {
+  id         Int        @id @default(autoincrement())
+  name       String     @db.VarChar(100)
+  ownerId    Int
+  status     HomeStatus @default(active)
+  maxDevices Int        @default(20)
+  maxMembers Int        @default(10)
+  createdAt  DateTime   @default(now()) @map("created_at")
+
+  owner       User           @relation("HomeOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  members     HomeMember[]
+  invitations Invitation[]
+  rooms       Room[]
+  devices     Device[]
+  espDevices  EspDevice[]
+  apiKeys        ApiKey[]
+  auditLogs      AuditLog[]
+  assistantChats AssistantChat[]
+  claimedSerials SerialRegistry[]
+
+  @@index([ownerId])
+  @@map("homes")
+}
+
+model HomeMember {
+  id       Int            @id @default(autoincrement())
+  homeId   Int
+  userId   Int
+  role     HomeMemberRole @default(member)
+  joinedAt DateTime       @default(now()) @map("joined_at")
+
+  home Home @relation(fields: [homeId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([homeId, userId])
+  @@index([userId])
+  @@map("home_members")
+}
+
+model Invitation {
+  id         Int              @id @default(autoincrement())
+  homeId     Int
+  email      String           @db.VarChar(100)
+  inviteCode String           @unique @db.VarChar(12)
+  role       HomeMemberRole   @default(member)
+  status     InvitationStatus @default(pending)
+  expiresAt  DateTime
+  createdAt  DateTime         @default(now()) @map("created_at")
+  acceptedAt DateTime?        @map("accepted_at")
+
+  home Home @relation(fields: [homeId], references: [id], onDelete: Cascade)
+
+  @@index([homeId])
+  @@index([status])
+  @@map("invitations")
+}
+
+model Room {
+  id        Int      @id @default(autoincrement())
+  homeId    Int
+  name      String   @db.VarChar(100)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  home    Home     @relation(fields: [homeId], references: [id], onDelete: Cascade)
+  devices Device[]
+
+  @@unique([homeId, name])
+  @@map("rooms")
+}
+
+model Device {
+  id              Int          @id @default(autoincrement())
+  homeId          Int
+  roomId          Int?
+  name            String       @db.VarChar(100)
+  type            DeviceType
+  status          DeviceStatus @default(off)
+  customValue     String?      @db.VarChar(255) @map("custom_value")
+  serialNumber    String?      @unique @db.VarChar(64) @map("serial_number")
+  firmwareVersion String?      @db.VarChar(32) @map("firmware_version")
+  ipAddress       String?      @db.VarChar(45) @map("ip_address")
+  lastSeen        DateTime?    @map("last_seen")
+  offline         Boolean      @default(false)
+  otaPendingVersion String?    @db.VarChar(32) @map("ota_pending_version")
+  otaRequestedAt    DateTime?  @map("ota_requested_at")
+  otaProgress       Int?       @map("ota_progress")
+  otaStatus         String?    @db.VarChar(32) @map("ota_status")
+  espId           Int?
+  createdBy       Int
+  createdAt       DateTime     @default(now()) @map("created_at")
+  lastUpdated     DateTime     @updatedAt @map("last_updated")
+
+  home           Home                  @relation(fields: [homeId], references: [id], onDelete: Cascade)
+  room           Room?                 @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  esp            EspDevice?            @relation(fields: [espId], references: [id], onDelete: SetNull)
+  creator        User                  @relation("DeviceCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  configurations DeviceConfiguration[]
+  logs           DeviceLog[]
+  commands       DeviceCommand[]
+  schedules      Schedule[]
+
+  @@index([homeId])
+  @@index([roomId])
+  @@map("devices")
+}
+
+model EspDevice {
+  id                 Int       @id @default(autoincrement())
+  homeId             Int
+  macAddress         String    @unique @db.VarChar(32)
+  name               String?   @db.VarChar(64)
+  ssid               String?   @db.VarChar(64)
+  serialCode         String?   @db.VarChar(32) @map("serial_code")
+  modelCode          String?   @db.VarChar(16) @map("model_code")
+  ipAddress          String?   @db.VarChar(45) @map("ip_address")
+  firmwareVersion    String?   @db.VarChar(32) @map("firmware_version")
+  lastSeen           DateTime? @map("last_seen")
+  offline            Boolean   @default(false)
+  otaPendingVersion  String?   @db.VarChar(32) @map("ota_pending_version")
+  otaRequestedAt     DateTime? @map("ota_requested_at")
+  otaProgress        Int?      @map("ota_progress")
+  otaStatus          String?   @db.VarChar(32) @map("ota_status")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  devices Device[]
+  home    Home      @relation(fields: [homeId], references: [id], onDelete: Cascade)
+
+  @@index([homeId])
+  @@map("esp_devices")
+}
+
+model DeviceConfiguration {
+  id          Int     @id @default(autoincrement())
+  deviceId    Int
+  configName  String  @db.VarChar(255) @map("config_name")
+  configValue String? @db.Text @map("config_value")
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@unique([deviceId, configName])
+  @@map("device_configurations")
+}
+
+model DeviceLog {
+  id         Int      @id @default(autoincrement())
+  deviceId   Int
+  actorId    Int?
+  logType    String   @db.VarChar(255) @map("log_type")
+  logMessage String   @db.Text @map("log_message")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  device Device  @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  actor  User?   @relation("DeviceLogActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([deviceId])
+  @@map("device_logs")
+}
+
+model DeviceCommand {
+  id         Int           @id @default(autoincrement())
+  deviceId   Int
+  actorId    Int?
+  command    String        @db.VarChar(255)
+  status     CommandStatus @default(pending)
+  createdAt  DateTime      @default(now()) @map("created_at")
+  executedAt DateTime?     @map("executed_at")
+
+  device Device  @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  actor  User?   @relation("DeviceCommandActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([deviceId, status])
+  @@map("device_commands")
+}
+
+model Schedule {
+  id        Int          @id @default(autoincrement())
+  deviceId  Int
+  createdBy Int
+  action    DeviceStatus
+  type      ScheduleType
+  runAt     DateTime?    @map("run_at")
+  cron      String?      @db.VarChar(100)
+  enabled   Boolean      @default(true)
+  nextRun   DateTime?    @map("next_run")
+  lastRun   DateTime?    @map("last_run")
+  createdAt DateTime     @default(now()) @map("created_at")
+
+  device  Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  creator User   @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+
+  @@index([deviceId])
+  @@index([enabled, nextRun])
+  @@map("schedules")
+}
+
+model ApiKey {
+  id         Int       @id @default(autoincrement())
+  userId     Int
+  homeId     Int?
+  label      String?   @db.VarChar(100)
+  keyHash    String    @unique @db.VarChar(64) @map("key_hash")
+  keyPrefix  String    @db.VarChar(8) @map("key_prefix")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  expiresAt  DateTime? @map("expires_at")
+  lastUsedAt DateTime? @map("last_used_at")
+
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  home Home? @relation(fields: [homeId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([homeId])
+  @@map("api_keys")
+}
+
+model RefreshToken {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  tokenHash String    @unique @db.VarChar(64) @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  revokedAt DateTime? @map("revoked_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model Notification {
+  id        Int              @id @default(autoincrement())
+  userId    Int
+  type      NotificationType @default(info)
+  title     String           @db.VarChar(255)
+  body      String?          @db.Text
+  readAt    DateTime?        @map("read_at")
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  actorId   Int?
+  homeId    Int?
+  action    String   @db.VarChar(100)
+  entity    String?  @db.VarChar(100)
+  entityId  Int?
+  meta      Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  home  Home? @relation(fields: [homeId], references: [id], onDelete: SetNull)
+
+  @@index([homeId])
+  @@index([actorId])
+  @@map("audit_logs")
+}
+
+model FirmwareVersion {
+  id           Int      @id @default(autoincrement())
+  version      String   @db.VarChar(32)
+  url          String   @db.VarChar(255)
+  releaseNotes String?  @db.Text @map("release_notes")
+  modelCode    String   @default("") @db.VarChar(16) @map("model_code") // "" = universal, else 2CH/4CH/8CH/DIM-3S...
+  isCurrent    Boolean  @default(false) @map("is_current")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@unique([version, modelCode])
+  @@map("firmware_versions")
+}
+
+// ---------- Shop / Commerce ----------
+
+model Product {
+  id         Int      @id @default(autoincrement())
+  name       String   @db.VarChar(100)
+  modelCode  String   @unique @db.VarChar(32)
+  relayCount Int      @default(4)
+  price      Decimal  @db.Decimal(10, 2)
+  description String? @db.Text
+  features   Json?
+  imageUrl   String?  @db.VarChar(255)
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  orderItems OrderItem[]
+  serials    SerialRegistry[]
+
+  @@map("products")
+}
+
+model Order {
+  id              Int           @id @default(autoincrement())
+  orderNumber     String        @unique @db.VarChar(32)
+  userId          Int
+  status          OrderStatus   @default(pending)
+  paymentMethod   PaymentMethod @default(manual)
+  paymentStatus   String        @default("unpaid") @db.VarChar(20)
+  paymentRef      String?       @db.VarChar(64) @map("payment_ref") // razorpay payment id
+  razorpayOrderId String?       @db.VarChar(64) @map("razorpay_order_id") // razorpay order id
+  paidAt          DateTime?     @map("paid_at")
+  totalAmount     Decimal       @db.Decimal(10, 2)
+  shippingName    String        @db.VarChar(100)
+  shippingPhone   String        @db.VarChar(20)
+  shippingAddress String        @db.VarChar(255)
+  wifiSsid        String?       @db.VarChar(64)
+  wifiPasswordEnc String?       @db.Text @map("wifi_password_enc")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  user   User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  items  OrderItem[]
+  serials SerialRegistry[]
+
+  @@index([userId])
+  @@map("orders")
+}
+
+model OrderItem {
+  id          Int      @id @default(autoincrement())
+  orderId     Int
+  productId   Int
+  productName String   @db.VarChar(100)
+  price       Decimal  @db.Decimal(10, 2)
+  quantity    Int      @default(1)
+  serialCode  String?  @db.VarChar(32)
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+  @@map("order_items")
+}
+
+model SerialRegistry {
+  id         Int          @id @default(autoincrement())
+  serialCode String       @unique @db.VarChar(32)
+  productId  Int
+  orderId    Int?
+  userId     Int?
+  homeId     Int?
+  status     SerialStatus @default(available)
+  createdAt  DateTime     @default(now()) @map("created_at")
+  claimedAt  DateTime?    @map("claimed_at")
+  testedAt   DateTime?    @map("tested_at")
+  warrantyExpiresAt DateTime? @map("warranty_expires_at")
+  warrantyStatus    String     @default("active") @db.VarChar(20) @map("warranty_status") // active | claimed | closed
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  order   Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  home    Home?   @relation(fields: [homeId], references: [id], onDelete: SetNull)
+
+  @@index([productId])
+  @@index([status])
+  @@index([orderId])
+  @@map("serial_registry")
+}
+
+model WarrantyClaim {
+  id          Int                @id @default(autoincrement())
+  serialCode  String             @db.VarChar(32)
+  deviceId    Int?
+  userId      Int
+  reason      String             @db.VarChar(255)
+  description String?            @db.Text
+  status      WarrantyClaimStatus @default(submitted)
+  adminNotes  String?            @db.Text @map("admin_notes")
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId])
+  @@index([serialCode])
+  @@index([status])
+  @@map("warranty_claims")
+}
+
+model ContactMessage {
+  id        Int      @id @default(autoincrement())
+  userId    Int?
+  name      String   @db.VarChar(100)
+  email     String?  @db.VarChar(120)
+  phone     String?  @db.VarChar(20)
+  subject   String   @db.VarChar(150)
+  message   String   @db.Text
+  status    String   @default("new") @db.VarChar(20) // new | read | done
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([userId])
+  @@map("contact_messages")
+}
+
+model AppMeta {
+  key       String   @id @db.VarChar(64)
+  value     String   @db.VarChar(255)
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("app_meta")
+}

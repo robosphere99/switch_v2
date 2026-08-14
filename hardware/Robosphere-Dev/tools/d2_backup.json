@@ -1,0 +1,14 @@
+{
+  "wifi_ssid": "Robo_lab",
+  "wifi_pass": "Robosphere",
+  "server_url": "https://robosphere.bhartitechnical.com/api/",
+  "api_key": "87c6c6fc50fc052843c782f080583726",
+  "admin_user": "admin",
+  "admin_pass": "admin",
+  "mapping": [
+    4,
+    2,
+    1,
+    3
+  ]
+}

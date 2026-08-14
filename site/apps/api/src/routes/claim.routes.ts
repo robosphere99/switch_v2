@@ -1,0 +1,108 @@
+import { Router } from "express";
+import { requireAuth } from "../middleware/auth";
+import { prisma } from "../lib/prisma";
+import { AppError, ok } from "../lib/response";
+import { audit } from "../services/audit.service";
+
+export const claimRouter = Router();
+
+claimRouter.use(requireAuth);
+
+const TYPE_BY_MODEL: Record<string, "bulb" | "fan" | "ac" | "tv" | "plug" | "dimmer" | "custom"> = {
+  "2CH": "custom",
+  "4CH": "custom",
+  "5CH": "custom",
+  "6CH": "custom",
+  "8CH": "custom",
+  "4CH-IR": "custom",
+  "FAN-DIM": "dimmer",
+  "DIM-3S": "dimmer",
+  "DIM-4S": "dimmer",
+};
+
+/** Look up how many homes the user can claim into (owner or admin). */
+async function claimableHomes(userId: number) {
+  return prisma.homeMember.findMany({
+    where: {
+      userId,
+      role: { in: ["owner", "admin"] },
+      home: { status: "active" },
+    },
+    include: { home: { select: { id: true, name: true } } },
+  });
+}
+
+claimRouter.get("/homes", async (req, res) => {
+  const homes = await claimableHomes(req.user!.sub);
+  ok(res, homes.map((h) => h.home));
+});
+
+/** POST /api/claim  { serialCode, homeId } */
+claimRouter.post("/", async (req, res) => {
+  const serialCode = String(req.body?.serialCode ?? "").trim().toUpperCase();
+  const homeId = Number(req.body?.homeId);
+  if (!serialCode) throw new AppError("BAD_REQUEST", "Serial code is required");
+  if (!Number.isInteger(homeId) || homeId < 1) {
+    throw new AppError("BAD_REQUEST", "A valid home is required");
+  }
+
+  const serial = await prisma.serialRegistry.findUnique({
+    where: { serialCode },
+    include: { product: true },
+  });
+  if (!serial) throw new AppError("NOT_FOUND", "Unknown serial code — check the sticker on the box");
+
+  if (serial.status === "claimed") {
+    throw new AppError("CONFLICT", `This device was already activated by ${serial.userId ? "another user" : "someone"}`);
+  }
+  if (!["delivered", "shipped"].includes(serial.status)) {
+    throw new AppError("CONFLICT", `This device is not yet ready to activate (status: ${serial.status})`);
+  }
+
+  // User must be owner/admin of the target home.
+  const membership = await prisma.homeMember.findUnique({
+    where: { homeId_userId: { homeId, userId: req.user!.sub } },
+  });
+  if (!membership || !["owner", "admin"].includes(membership.role)) {
+    throw new AppError("FORBIDDEN", "You are not the owner or admin of that home");
+  }
+
+  const type = TYPE_BY_MODEL[serial.product.modelCode] ?? "custom";
+  const deviceName = `${serial.product.name} · ${serial.serialCode}`;
+
+  const device = await prisma.$transaction(async (tx) => {
+    await tx.serialRegistry.update({
+      where: { id: serial.id },
+      data: {
+        status: "claimed",
+        userId: req.user!.sub,
+        homeId,
+        claimedAt: new Date(),
+        warrantyExpiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+      },
+    });
+    return tx.device.create({
+      data: {
+        homeId,
+        name: deviceName,
+        type,
+        status: "off",
+        serialNumber: serial.serialCode,
+        createdBy: req.user!.sub,
+      },
+    });
+  });
+
+  await audit(req.user!.sub, "shop.device.claim", {
+    entity: "device",
+    entityId: device.id,
+    meta: { serialCode, homeId, model: serial.product.modelCode },
+  });
+
+  ok(res, {
+    claimed: true,
+    device: { id: device.id, name: device.name, type },
+    serialCode,
+    homeId,
+  }, 201);
+});

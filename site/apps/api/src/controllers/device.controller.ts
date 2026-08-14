@@ -1,0 +1,53 @@
+import type { Request, Response } from "express";
+import { ok } from "../lib/response";
+import * as deviceService from "../services/device.service";
+
+export async function list(req: Request, res: Response) {
+  const devices = await deviceService.listDevices(Number(req.params.homeId));
+  ok(res, devices);
+}
+
+export async function create(req: Request, res: Response) {
+  const device = await deviceService.createDevice({
+    homeId: Number(req.params.homeId),
+    createdBy: req.user!.sub,
+    name: req.body.name,
+    type: req.body.type,
+    roomId: req.body.roomId,
+    serialNumber: req.body.serialNumber,
+  });
+  ok(res, device, 201);
+}
+
+export async function setStatus(req: Request, res: Response) {
+  const device = await deviceService.setDeviceStatus({
+    homeId: Number(req.params.homeId),
+    deviceId: Number(req.params.deviceId),
+    actorId: req.user!.sub,
+    status: req.body.status,
+  });
+  ok(res, device);
+}
+
+export async function update(req: Request, res: Response) {
+  const device = await deviceService.updateDevice(
+    Number(req.params.homeId),
+    Number(req.params.deviceId),
+    { name: req.body.name, roomId: req.body.roomId },
+  );
+  ok(res, device);
+}
+
+export async function logs(req: Request, res: Response) {
+  const logs = await deviceService.getDeviceLogs(
+    Number(req.params.homeId),
+    Number(req.params.deviceId),
+    Number(req.query.limit ?? 50),
+  );
+  ok(res, logs);
+}
+
+export async function remove(req: Request, res: Response) {
+  await deviceService.deleteDevice(Number(req.params.homeId), Number(req.params.deviceId));
+  ok(res, { message: "Device deleted" });
+}

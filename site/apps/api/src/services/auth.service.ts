@@ -1,0 +1,189 @@
+import bcrypt from "bcryptjs";
+import crypto from "node:crypto";
+import jwt, { type SignOptions } from "jsonwebtoken";
+import { Prisma, type User } from "@prisma/client";
+import type { AuthUser, LoginResponse } from "@robosphere/shared";
+import { env } from "../config/env";
+import { prisma } from "../lib/prisma";
+import { AppError } from "../lib/response";
+
+function toAuthUser(user: User): AuthUser {
+  return { id: user.id, username: user.username, email: user.email, role: user.role };
+}
+
+function hashToken(token: string): string {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+// jti (random nonce) guarantees unique tokens even when issued in the same second.
+function signAccessToken(user: User): string {
+  return jwt.sign(
+    { sub: user.id, username: user.username, email: user.email, role: user.role, jti: crypto.randomUUID() },
+    env.JWT_ACCESS_SECRET,
+    { expiresIn: env.JWT_ACCESS_EXPIRES as SignOptions["expiresIn"] },
+  );
+}
+
+function signRefreshToken(user: User): string {
+  return jwt.sign({ sub: user.id, jti: crypto.randomUUID() }, env.JWT_REFRESH_SECRET, {
+    expiresIn: env.JWT_REFRESH_EXPIRES as SignOptions["expiresIn"],
+  });
+}
+
+/**
+ * Sign up a new user.
+ * On success the user automatically becomes the OWNER of a new Home
+ * (the v2 model: devices belong to homes, not individuals).
+ */
+export async function signup(input: {
+  username: string;
+  email: string;
+  password: string;
+  homeName?: string;
+}): Promise<LoginResponse> {
+  const existing = await prisma.user.findFirst({
+    where: { OR: [{ username: input.username }, { email: input.email }] },
+  });
+  if (existing) {
+    throw new AppError("EMAIL_OR_USERNAME_TAKEN", "Username or email already exists", 409);
+  }
+
+  const password = await bcrypt.hash(input.password, 10);
+
+  const user = await prisma.$transaction(async (tx) => {
+    const created = await tx.user.create({
+      data: {
+        username: input.username,
+        email: input.email,
+        password,
+      },
+    });
+
+    // Auto-create the user's first home (they become the owner).
+    await tx.home.create({
+      data: {
+        name: input.homeName?.trim() || `${input.username}'s Home`,
+        ownerId: created.id,
+        members: {
+          create: { userId: created.id, role: "owner" },
+        },
+      },
+    });
+
+    return created;
+  });
+
+  return issueTokens(user);
+}
+
+/** Update profile fields (username/email) and/or password. */
+export async function updateProfile(
+  userId: number,
+  input: {
+    username?: string;
+    email?: string;
+    currentPassword?: string;
+    newPassword?: string;
+  },
+): Promise<AuthUser> {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw new AppError("USER_NOT_FOUND", "User not found", 404);
+
+  const data: Prisma.UserUpdateInput = {};
+
+  if (input.username && input.username !== user.username) {
+    const taken = await prisma.user.findUnique({ where: { username: input.username } });
+    if (taken) throw new AppError("USERNAME_TAKEN", "Username already taken", 409);
+    data.username = input.username;
+  }
+
+  if (input.email && input.email !== user.email) {
+    const taken = await prisma.user.findUnique({ where: { email: input.email } });
+    if (taken) throw new AppError("EMAIL_TAKEN", "Email already taken", 409);
+    data.email = input.email;
+  }
+
+  if (input.newPassword) {
+    if (!input.currentPassword) {
+      throw new AppError("CURRENT_PASSWORD_REQUIRED", "Current password required to set a new one", 400);
+    }
+    if (!(await bcrypt.compare(input.currentPassword, user.password))) {
+      throw new AppError("WRONG_PASSWORD", "Current password is incorrect", 401);
+    }
+    data.password = await bcrypt.hash(input.newPassword, 10);
+  }
+
+  const updated = await prisma.user.update({ where: { id: userId }, data });
+  return toAuthUser(updated);
+}
+
+/** Login with username OR email + password. */
+export async function login(usernameEmail: string, password: string): Promise<LoginResponse> {
+  const user = await prisma.user.findFirst({
+    where: { OR: [{ username: usernameEmail }, { email: usernameEmail }] },
+  });
+
+  if (!user || !(await bcrypt.compare(password, user.password))) {
+    throw new AppError("INVALID_CREDENTIALS", "Invalid username/email or password", 401);
+  }
+
+  if (user.status !== "active") {
+    throw new AppError("ACCOUNT_SUSPENDED", "Account is suspended", 403);
+  }
+
+  await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
+  return issueTokens(user);
+}
+
+/** Issue a fresh access + refresh token pair, persisting the refresh token hash. */
+async function issueTokens(user: User): Promise<LoginResponse> {
+  const refreshToken = signRefreshToken(user);
+  await prisma.refreshToken.create({
+    data: {
+      userId: user.id,
+      tokenHash: hashToken(refreshToken),
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    },
+  });
+
+  return {
+    accessToken: signAccessToken(user),
+    refreshToken,
+    user: toAuthUser(user),
+  };
+}
+
+/** Rotate a refresh token into a new token pair. */
+export async function refresh(refreshToken: string): Promise<LoginResponse> {
+  let payload: { sub: number };
+  try {
+    payload = jwt.verify(refreshToken, env.JWT_REFRESH_SECRET) as unknown as { sub: number };
+  } catch {
+    throw new AppError("INVALID_REFRESH_TOKEN", "Invalid or expired refresh token", 401);
+  }
+
+  const stored = await prisma.refreshToken.findUnique({
+    where: { tokenHash: hashToken(refreshToken) },
+  });
+  if (!stored || stored.revokedAt) {
+    throw new AppError("INVALID_REFRESH_TOKEN", "Refresh token has been revoked", 401);
+  }
+
+  // Revoke the old token, issue a new pair (rotation).
+  await prisma.refreshToken.update({ where: { id: stored.id }, data: { revokedAt: new Date() } });
+
+  const user = await prisma.user.findUnique({ where: { id: payload.sub } });
+  if (!user) throw new AppError("USER_NOT_FOUND", "User no longer exists", 401);
+
+  return issueTokens(user);
+}
+
+/** Revoke a refresh token (logout). */
+export async function logout(refreshToken: string): Promise<void> {
+  const stored = await prisma.refreshToken.findUnique({
+    where: { tokenHash: hashToken(refreshToken) },
+  });
+  if (stored) {
+    await prisma.refreshToken.update({ where: { id: stored.id }, data: { revokedAt: new Date() } });
+  }
+}

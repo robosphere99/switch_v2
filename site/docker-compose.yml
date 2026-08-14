@@ -1,0 +1,42 @@
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: robosphere-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: switch_v2
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Uncomment once the Dockerfiles are tuned:
+  # api:
+  #   build: ./apps/api
+  #   container_name: robosphere-api
+  #   restart: unless-stopped
+  #   environment:
+  #     DATABASE_URL: mysql://root:root@mysql:3306/switch_v2
+  #   ports:
+  #     - "4000:4000"
+  #   depends_on:
+  #     mysql:
+  #       condition: service_healthy
+
+  # web:
+  #   build: ./apps/web
+  #   container_name: robosphere-web
+  #   restart: unless-stopped
+  #   ports:
+  #     - "5173:80"
+  #   depends_on:
+  #     - api
+
+volumes:
+  mysql_data:
