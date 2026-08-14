@@ -495,10 +495,23 @@ class FlasherApp:
                 with open(bin_path, "wb") as fh:
                     fh.write(got.content)
                 self._log(f"Downloaded {len(got.content) / 1e6:.2f} MB → {bin_path}", "ok")
-                self._log("Flashing (esptool)…", "info")
-                self._run_esptool(["--port", port, "--baud", "460800",
-                                   "write_flash", FLASH_ADDR, bin_path])
-                self._log("Flash OK — board rebooting…", "ok")
+                # 460800 fast — par kuch boards/cables ispe mid-flash reset karte hain
+                # ("No more data to read"). Fail pe 115200 (stable) pe ek retry.
+                for attempt, baud in enumerate((460800, 115200)):
+                    if attempt > 0:
+                        self._log(f"  Retry at {baud} baud (stable)…", "warn")
+                        time.sleep(2)
+                    self._log(f"Flashing (esptool @ {baud})…", "info")
+                    try:
+                        self._run_esptool(["--port", port, "--baud", str(baud),
+                                           "write_flash", FLASH_ADDR, bin_path])
+                        self._log("Flash OK — board rebooting…", "ok")
+                        break
+                    except Exception as e:
+                        if attempt == 0:
+                            self._log(f"Flash @{baud} fail: {e} — 115200 retry…", "warn")
+                            continue
+                        raise
                 time.sleep(3)
             except FileNotFoundError:
                 self._log("esptool nahi mila — `pip install esptool` karo", "err")

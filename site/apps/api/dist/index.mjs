@@ -2958,14 +2958,10 @@ adminRouter.get("/orders/:id/provision", async (req, res) => {
   if (!order) throw new AppError("NOT_FOUND", "Order not found");
   const items = await Promise.all(
     order.items.map(async (it) => {
-      let modelCode = null;
-      if (it.serialCode) {
-        const reg = await prisma.serialRegistry.findUnique({
-          where: { serialCode: it.serialCode },
-          include: { product: { select: { modelCode: true } } }
-        });
-        modelCode = reg?.product.modelCode ?? null;
-      }
+      const prod = await prisma.product.findUnique({
+        where: { id: it.productId },
+        select: { modelCode: true }
+      });
       return {
         id: it.id,
         productId: it.productId,
@@ -2973,7 +2969,7 @@ adminRouter.get("/orders/:id/provision", async (req, res) => {
         price: Number(it.price),
         quantity: it.quantity,
         serialCode: it.serialCode,
-        modelCode
+        modelCode: prod?.modelCode ?? null
       };
     })
   );
