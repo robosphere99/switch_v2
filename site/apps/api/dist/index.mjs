@@ -2538,6 +2538,16 @@ adminRouter.get("/audit", async (req, res) => {
   });
   ok(res, logs2);
 });
+adminRouter.get("/logs", async (_req, res) => {
+  const n = Math.min(Number(_req.query.lines ?? 300) || 300, 1e3);
+  if (!logFilePath || !fs3.existsSync(logFilePath)) {
+    return ok(res, { path: logFilePath ?? null, lines: [], note: "log file nahi mili \u2014 naya build chahiye" });
+  }
+  const raw = fs3.readFileSync(logFilePath, "utf8");
+  const lines = raw.split(/\r?\n/).filter(Boolean).slice(-n);
+  const crashes = lines.filter((l) => /crashguard|unhandled|error|fail|exception/i.test(l)).slice(-40);
+  ok(res, { path: logFilePath, totalLines: lines.length, lines, crashes });
+});
 try {
   fs3.mkdirSync(firmwareDir, { recursive: true });
 } catch (err) {
