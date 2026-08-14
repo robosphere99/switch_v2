@@ -242,3 +242,9 @@ export async function pushOtaAll(): Promise<ApiResponse<{ count: number; version
   const { data } = await api.post<ApiResponse<{ count: number; version: string }>>("/admin/devices/push-ota-all");
   return data;
 }
+
+/** Admin ESP board ka friendly naam badle (PATCH /admin/esp/:id). */
+export async function renameEsp(id: number, name: string): Promise<ApiResponse<{ id: number; name: string }>> {
+  const { data } = await api.patch<ApiResponse<{ id: number; name: string }>>(`/admin/esp/${id}`, { name });
+  return data;
+}

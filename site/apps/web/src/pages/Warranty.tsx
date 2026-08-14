@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { CopyText } from "../components/CopyText";
 import {
   fileWarrantyClaim,
   getMyWarranty,
@@ -90,7 +91,7 @@ export function Warranty() {
               <div>
                 <div className="font-bold text-white">{s.product?.name ?? s.productName}</div>
                 <div className="text-xs text-gray-500">
-                  <code className="text-brand-light">{s.serialCode}</code> · {s.product?.modelCode ?? s.modelCode}
+                  <CopyText text={s.serialCode} className="text-brand-light" title="Hold to copy serial">{s.serialCode}</CopyText> · {s.product?.modelCode ?? s.modelCode}
                 </div>
               </div>
               <div className="text-right">

@@ -5,7 +5,7 @@
 //==================================================
 
 constexpr char FIRMWARE_NAME[]    = "Robosphere IoT";
-constexpr char FIRMWARE_VERSION[] = "1.0.6";
+constexpr char FIRMWARE_VERSION[] = "1.0.9";
 
 // Per-model build: platformio envs ise override karte hain (-DMODEL_CODE="8CH" etc.)
 #ifndef MODEL_CODE
@@ -104,7 +104,7 @@ constexpr bool ENABLE_DEBUG = true;
 
 #define PREF_STATUS_LED_DEVICE_ID   "ledMap"
 
-#define OTA_CHECK_URL      "http://192.168.0.100/onlineswitch/hardware/firmware/version.json"
+#define OTA_CHECK_URL      ""  // legacy boot check — OTA ab server-push heartbeat se aata hai
 
 #define OTA_TIMEOUT        15000
 

@@ -299,6 +299,20 @@ adminRouter.get("/esp", async (_req, res) => {
   ok(res, { esps, unlinked, currentVersion: current?.version ?? null });
 });
 
+/** Rename an ESP board (admin friendly name). */
+adminRouter.patch("/esp/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  const name = String(req.body?.name ?? "").trim().slice(0, 60);
+  if (!name) throw new AppError("BAD_REQUEST", "Name required");
+  const esp = await prisma.espDevice.update({ where: { id }, data: { name } });
+  await audit(req.user!.sub, "admin.esp.rename", {
+    entity: "esp",
+    entityId: id,
+    meta: { name },
+  });
+  ok(res, esp);
+});
+
 /** Firmware version history. */
 adminRouter.get("/firmware", async (_req, res) => {
   const versions = await prisma.firmwareVersion.findMany({ orderBy: { createdAt: "desc" } });
@@ -588,14 +602,25 @@ adminRouter.post("/serials/generate", async (req, res) => {
 
 /** Flasher GUI ke liye: order ki items + serials + WiFi (decrypted) — admin only. */
 adminRouter.get("/orders/:id/provision", async (req, res) => {
-  const id = Number(req.params.id);
-  const order = await prisma.order.findUnique({
-    where: { id },
-    include: {
-      items: true,
-      user: { select: { id: true, username: true, email: true } },
-    },
-  });
+  const include = {
+    items: true,
+    user: { select: { id: true, username: true, email: true } },
+  };
+  const raw = String(req.params.id).trim();
+  // Numeric ID ho to direct, warna order NUMBER se (flasher me order number
+  // ya uska suffix paste karne par bhi kaam kare).
+  let order = /^\d+$/.test(raw)
+    ? await prisma.order.findUnique({ where: { id: Number(raw) }, include })
+    : null;
+  if (!order && raw) {
+    const matches = await prisma.order.findMany({
+      where: { orderNumber: { contains: raw.toUpperCase() } },
+      orderBy: { id: "desc" },
+      take: 1,
+      include,
+    });
+    order = matches[0] ?? null;
+  }
   if (!order) throw new AppError("NOT_FOUND", "Order not found");
 
   const items = await Promise.all(
@@ -730,7 +755,10 @@ adminRouter.patch("/warranty/:id/status", async (req, res) => {
 // ---------- Contact / Feedback (public form se) ----------
 
 adminRouter.get("/contact", async (_req, res) => {
-  const msgs = await prisma.contactMessage.findMany({ orderBy: { createdAt: "desc" } });
+  const msgs = await prisma.contactMessage.findMany({
+    orderBy: { createdAt: "desc" },
+    include: { user: { select: { id: true, username: true, email: true, role: true } } },
+  });
   ok(res, msgs);
 });
 

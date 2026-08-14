@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Route, Routes } from "react-router-dom";
 import { Navbar } from "./components/Navbar";
 import { ChatWidget } from "./components/ChatWidget";
@@ -19,9 +20,34 @@ import { Orders } from "./pages/Orders";
 import { Activate } from "./pages/Activate";
 import { PrintSerials } from "./pages/PrintSerials";
 import { Warranty } from "./pages/Warranty";
+import { Support } from "./pages/Support";
+import { Install } from "./pages/Install";
+import { getInstallStatus } from "./api/install";
 
 export default function App() {
   useRealtime();
+
+  // First-run gate: DB/tables nahi hain to pura app ki jagah install wizard.
+  const [installState, setInstallState] = useState<"checking" | "installed" | "setup">("checking");
+
+  useEffect(() => {
+    getInstallStatus()
+      .then((s) => setInstallState(s.installed ? "installed" : "setup"))
+      .catch(() => setInstallState("installed")); // API down ho to site normal dikhao
+  }, []);
+
+  if (installState === "checking") {
+    return (
+      <div className="flex min-h-screen items-center justify-center text-gray-400">
+        Checking installation...
+      </div>
+    );
+  }
+
+  if (installState === "setup") {
+    return <Install />;
+  }
+
   return (
     <div className="min-h-screen">
       <Navbar />
@@ -45,6 +71,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <Orders />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/support"
+            element={
+              <ProtectedRoute>
+                <Support />
               </ProtectedRoute>
             }
           />

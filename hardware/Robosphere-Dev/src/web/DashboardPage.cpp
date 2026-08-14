@@ -58,14 +58,18 @@ String DashboardPage(
         }
     }
 
-    // Fallback AP (WiFi fail) — user ko batana hai ki device AP mode mein
-    // hai aur khud reconnect kar raha hai. Setup AP pe setup notice rehta hai.
+    // Offline/local mode — user ko clear batana hai ki switch aur yeh panel
+    // se control hamesha chalta hai (WiFi/cloud down ho tab bhi).
     if (WiFi.status() != WL_CONNECTED)
     {
         html += "<div class='info'><b>⚠️ Mode</b><span class='ap-badge'>AP Mode";
         if (!setupAccessPoint)
             html += " — auto-reconnect active";
         html += "</span></div>";
+
+        html += R"rawliteral(
+<div class="offline-banner">📴 WiFi OFF — Local Mode: switch aur is panel se ON/OFF chalta hai, cloud sync baad me ho jayega</div>
+)rawliteral";
     }
 
     html += "<div class='info'><b>Server</b><span>";

@@ -421,6 +421,19 @@ button:disabled { opacity: .5; cursor: not-allowed; transform: none; box-shadow:
   box-shadow: 0 3px 10px rgba(37,99,235,.3);
 }
 
+/* Offline/local mode banner — dashboard pe jab WiFi down ho */
+.offline-banner {
+  background: rgba(245, 158, 11, .14);
+  border: 1px dashed rgba(245, 158, 11, .55);
+  color: #fbbf24;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+}
+
 /* AP mode badge — dashboard pe jab device fallback AP mein ho */
 .ap-badge {
   color: #f59e0b !important;

@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { CopyText } from "./CopyText";
 import { deleteContact, getAdminContact, updateContactStatus } from "../api/public";
 import {
   createAdminProduct,
@@ -168,7 +169,9 @@ function OrdersSection() {
           <div key={o.id} className="rounded-xl border border-brand/20 bg-night-800 p-5">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <div>
-                <span className="font-bold">#{o.orderNumber}</span>
+                <CopyText text={o.orderNumber} className="font-bold" title="Hold to copy order #">
+                  #{o.orderNumber}
+                </CopyText>
                 <span className="ml-2 text-sm text-gray-500">{o.user?.username} ({o.user?.email})</span>
               </div>
               <span className={`rounded-full px-3 py-1 text-xs font-bold ${ORDER_BADGE[o.status] ?? ""}`}>{o.status}</span>
@@ -176,7 +179,7 @@ function OrdersSection() {
             <div className="mb-3 text-sm text-gray-300">
               {o.items.map((i) => (
                 <div key={i.id} className="flex justify-between">
-                  <span>{i.productName} × {i.quantity} {i.serialCode && <code className="text-xs text-brand-light">({i.serialCode})</code>}</span>
+                  <span>{i.productName} × {i.quantity} {i.serialCode && <CopyText text={i.serialCode} className="text-xs text-brand-light" title="Hold to copy serial">({i.serialCode})</CopyText>}</span>
                   <span>₹{(Number(i.price) * i.quantity).toLocaleString("en-IN")}</span>
                 </div>
               ))}
@@ -303,7 +306,7 @@ function SerialsSection() {
           <tbody>
             {serials?.map((s: SerialRow) => (
               <tr key={s.id} className="border-t border-night-700">
-                <td className="px-3 py-2 font-mono text-xs text-brand-light">{s.serialCode}</td>
+                <td className="px-3 py-2 font-mono text-xs text-brand-light"><CopyText text={s.serialCode} title="Hold to copy serial">{s.serialCode}</CopyText></td>
                 <td className="px-3 py-2">{s.product.modelCode}</td>
                 <td className="px-3 py-2"><span className={`rounded-full px-2 py-0.5 text-xs font-bold ${SERIAL_BADGE[s.status] ?? ""}`}>{s.status}</span></td>
                 <td className="px-3 py-2 text-xs text-gray-400">{s.orderId ? `#${s.orderId}` : "—"}</td>
@@ -372,7 +375,7 @@ function WarrantySection() {
             <div key={c.id} className="rounded-xl border border-brand/20 bg-night-800 p-5">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <code className="font-mono text-sm text-brand-light">{c.serialCode}</code>
+                  <CopyText text={c.serialCode} className="font-mono text-sm text-brand-light" title="Hold to copy serial">{c.serialCode}</CopyText>
                   <span className="ml-3 text-sm text-gray-400">{c.serial?.product?.name ?? ""}</span>
                 </div>
                 <span className={`rounded-full px-3 py-1 text-xs font-bold ${CLAIM_BADGE_ADMIN[c.status] ?? ""}`}>{c.status}</span>
@@ -439,6 +442,13 @@ function ContactSection() {
               <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
                 <div className="text-sm">
                   <span className="font-bold text-white">{m.name}</span>
+                  {m.user ? (
+                    <span className="ml-2 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-400" title={`Account: ${m.user.email ?? ""}`}>
+                      👤 {m.user.username}
+                    </span>
+                  ) : (
+                    <span className="ml-2 rounded bg-gray-700/50 px-1.5 py-0.5 text-[10px] text-gray-400">Public</span>
+                  )}
                   {m.email && <span className="ml-2 text-gray-400">{m.email}</span>}
                   {m.phone && <span className="ml-2 text-gray-500">{m.phone}</span>}
                 </div>

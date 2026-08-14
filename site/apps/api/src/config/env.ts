@@ -6,10 +6,25 @@ import { z } from "zod";
 dotenv.config();
 dotenv.config({ path: path.resolve(process.cwd(), "../../.env") });
 
+// Database — granular DB_* vars se DATABASE_URL build hota hai (hosting pe
+// user sirf DB_HOST/DB_USER/DB_PASS/DB_NAME type karta hai). Explicit
+// DATABASE_URL diya ho to woh precedence leta hai.
+function buildDatabaseUrl(): string {
+  if (process.env.DATABASE_URL) return process.env.DATABASE_URL;
+  const host = process.env.DB_HOST ?? "localhost";
+  const port = process.env.DB_PORT ?? "3306";
+  const user = process.env.DB_USER ?? "root";
+  const pass = process.env.DB_PASS ?? "";
+  const name = process.env.DB_NAME ?? "switch_v2";
+  return `mysql://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}:${port}/${name}`;
+}
+
 const envSchema = z.object({
-  DATABASE_URL: z
-    .string()
-    .default("mysql://root:root@localhost:3306/switch_v2"),
+  // Empty DATABASE_URL diya ho to ignore karke DB_* vars use hote hain
+  DATABASE_URL: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() ? v : undefined),
+    z.string().default(buildDatabaseUrl),
+  ),
   JWT_ACCESS_SECRET: z.string().default("dev-access-secret"),
   JWT_REFRESH_SECRET: z.string().default("dev-refresh-secret"),
   JWT_ACCESS_EXPIRES: z.string().default("15m"),
@@ -23,6 +38,12 @@ const envSchema = z.object({
   RAZORPAY_KEY_ID: z.string().optional().default(""),
   RAZORPAY_KEY_SECRET: z.string().optional().default(""),
   UPI_ID: z.string().optional().default("robosphere@upi"),
+  // First-run admin (install route) — hosting pe yahan se set hota hai
+  ADMIN_USERNAME: z.string().default("admin"),
+  ADMIN_EMAIL: z.string().default("admin@robosphere.local"),
+  ADMIN_PASSWORD: z.string().default("admin123"),
+  // Install ko lock karne ke liye (installed flag ke saath match karta hai)
+  INSTALL_TOKEN: z.string().optional().default(""),
 });
 
 const parsed = envSchema.safeParse(process.env);

@@ -131,6 +131,7 @@ model User {
   orders         Order[]
   claimedSerials SerialRegistry[]
   warrantyClaims WarrantyClaim[]
+  contactMessages ContactMessage[]
 
   @@map("users")
 }
@@ -548,6 +549,7 @@ model WarrantyClaim {
 
 model ContactMessage {
   id        Int      @id @default(autoincrement())
+  userId    Int?
   name      String   @db.VarChar(100)
   email     String?  @db.VarChar(120)
   phone     String?  @db.VarChar(20)
@@ -555,7 +557,17 @@ model ContactMessage {
   message   String   @db.Text
   status    String   @default("new") @db.VarChar(20) // new | read | done
   createdAt DateTime @default(now()) @map("created_at")
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([status])
+  @@index([userId])
   @@map("contact_messages")
+}
+
+model AppMeta {
+  key       String   @id @db.VarChar(64)
+  value     String   @db.VarChar(255)
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("app_meta")
 }

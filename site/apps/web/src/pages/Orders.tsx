@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { CopyText } from "../components/CopyText";
 import {
   demoPay,
   getMyOrders,
@@ -118,7 +119,9 @@ export function Orders() {
               <div key={o.id} className="rounded-xl border border-brand/20 bg-night-800 p-6">
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <span className="text-lg font-bold">#{o.orderNumber}</span>
+                    <CopyText text={o.orderNumber} className="text-lg font-bold" title="Hold to copy order #">
+                      #{o.orderNumber}
+                    </CopyText>
                     <span className="ml-3 text-sm text-gray-500">{new Date(o.createdAt).toLocaleString()}</span>
                   </div>
                   <span className={`rounded-full px-3 py-1 text-xs font-semibold ${badge.cls}`}>{badge.label}</span>
@@ -158,7 +161,9 @@ export function Orders() {
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-xs text-gray-500">Serial:</span>
                     {serials.map((s) => (
-                      <code key={s} className="rounded bg-night-700 px-2 py-1 text-xs text-brand-light">{s}</code>
+                      <CopyText key={s} text={s} className="rounded bg-night-700 px-2 py-1 text-xs text-brand-light" title="Hold to copy serial">
+                        {s}
+                      </CopyText>
                     ))}
                     {o.status === "delivered" && (
                       <Link

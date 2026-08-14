@@ -81,6 +81,14 @@ bool checkUpdate() {
   if (checkURL.isEmpty())
     checkURL = OTA_CHECK_URL;
 
+  if (checkURL.isEmpty()) {
+    // Koi OTA check URL configured nahi — server-push (heartbeat) hi kaafi hai.
+    // Boot pe bekar HTTP attempt na karo.
+    status = "Server-push only";
+    state = OTA_IDLE;
+    return false;
+  }
+
   HTTPClient http;
 
   http.setTimeout(OTA_TIMEOUT);

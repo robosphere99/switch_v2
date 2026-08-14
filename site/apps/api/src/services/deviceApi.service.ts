@@ -142,7 +142,9 @@ export async function heartbeat(
       create: {
         homeId,
         macAddress: macKey,
-        name: ssid || `ESP-${macKey.replace(/:/g, "").slice(-6).toUpperCase()}`,
+        name: ssid
+          ? `${ssid} · ${(serial || macKey.replace(/:/g, "").slice(-6).toUpperCase())}`
+          : `ESP-${macKey.replace(/:/g, "").slice(-6).toUpperCase()}`,
         ssid,
         serialCode: serial,
         modelCode: model,
@@ -196,6 +198,7 @@ export async function heartbeat(
   // Relay state sync — the ESP's physical relays are the source of truth.
   // Saare states wale device ids bhi is ESP ke under link ho jaate hain.
   let synced = 0;
+  let statesParsed = false;
   const controlledIds: number[] = [device.id];
   if (input.states && input.states.trim()) {
     let states: Array<{ id: number; status: DeviceStatus; value?: string }> = [];
@@ -205,6 +208,7 @@ export async function heartbeat(
     } catch {
       states = [];
     }
+    if (states.length > 0) statesParsed = true;
     for (const st of states) {
       if (!st || typeof st.id !== "number" || (st.status !== "on" && st.status !== "off")) {
         continue;
@@ -234,6 +238,16 @@ export async function heartbeat(
       where: { homeId, id: { in: [...new Set(controlledIds)] } },
       data: { espId: esp.id },
     });
+
+    // Stale links cleanup — purane devices jo ab is board ke mapping me NAHI hain
+    // (home badla / re-provision kiya) unka espId hata do. States successful parse
+    // hua ho tabhi — warna ek bad heartbeat saare links na uda de.
+    if (statesParsed) {
+      await prisma.device.updateMany({
+        where: { espId: esp.id, id: { notIn: [...new Set(controlledIds)] } },
+        data: { espId: null },
+      });
+    }
   }
 
   // OTA: pending push sirf tab jab ESP already current version pe na ho.

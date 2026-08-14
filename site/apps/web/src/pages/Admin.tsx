@@ -21,6 +21,7 @@ import {
   pushOta,
   pushOtaAll,
   probeEsp,
+  renameEsp,
   type AdminHomeDetail,
   type EspBoard,
 } from "../api/admin";
@@ -111,6 +112,10 @@ export function Admin() {
   });
   const pushAllM = useMutation({
     mutationFn: pushOtaAll,
+    onSuccess: invalidate,
+  });
+  const renameM = useMutation({
+    mutationFn: ({ id, name }: { id: number; name: string }) => renameEsp(id, name),
     onSuccess: invalidate,
   });
 
@@ -680,7 +685,24 @@ export function Admin() {
                     esp.data.data.esps.map((espRow) => (
                       <tr key={espRow.id} className="border-b border-gray-800 align-top">
                         <td className="py-2 pr-3">
-                          <div className="font-medium">{espRow.name ?? "ESP"}</div>
+                          <div className="flex items-center gap-2 font-medium">
+                            {espRow.name ?? "ESP"}
+                            <button
+                              title="Board ka naam badlo"
+                              onClick={() => {
+                                const cur = espRow.name ?? "ESP";
+                                const next = window.prompt("ESP board ka naam:", cur);
+                                if (next && next.trim() && next.trim() !== cur) {
+                                  renameM.mutate({ id: espRow.id, name: next.trim() }, {
+                                    onSuccess: (r) => r.success && setOtaMsg(`Board renamed → ${r.data.name}`),
+                                  });
+                                }
+                              }}
+                              className="rounded border border-gray-600 px-1.5 py-0.5 text-[10px] text-gray-400 hover:border-brand/40 hover:text-brand-light"
+                            >
+                              ✏️
+                            </button>
+                          </div>
                           <div className="font-mono text-[10px] text-gray-500">{espRow.macAddress}</div>
                           <div className="mt-0.5 flex items-center gap-1 text-[10px] text-gray-400">
                             <span>📶</span>

@@ -40,6 +40,32 @@ export interface ContactMessageRow {
   message: string;
   status: "new" | "read" | "done";
   createdAt: string;
+  user?: { id: number; username: string; email: string | null; role: string } | null;
+}
+
+export interface SupportTicket {
+  id: number;
+  subject: string;
+  message: string;
+  status: string;
+  createdAt: string;
+}
+
+/** Logged-in user apni support tickets. */
+export async function getMySupportTickets(): Promise<SupportTicket[]> {
+  const { data } = await api.get("/public/support/my");
+  return data.data;
+}
+
+/** Logged-in user apne account se support/feedback bheje (userId attach hota hai). */
+export async function submitSupport(payload: {
+  subject: string;
+  message: string;
+  phone?: string;
+  orderNumber?: string;
+}): Promise<{ id: number; status: string }> {
+  const { data } = await api.post("/public/support", payload);
+  return data.data;
 }
 
 export async function getAdminContact(): Promise<ContactMessageRow[]> {

@@ -51,6 +51,20 @@ def find_com_ports():
         return []
 
 
+def detect_lan_ip():
+    """Machine ka LAN IP — ESP server URL default ke liye (boards isi IP pe
+    heartbeat bhejte hain). No actual traffic — sirf route lookup."""
+    try:
+        import socket
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.connect(("192.168.1.1", 80))
+        ip = sock.getsockname()[0]
+        sock.close()
+        return ip
+    except Exception:
+        return "192.168.1.100"
+
+
 class FlasherApp:
     def __init__(self, root: tk.Tk):
         self.root = root
@@ -99,38 +113,44 @@ class FlasherApp:
         ttk.Label(row, text="ESP Server URL (board ko dikhe)")\
             .grid(row=1, column=0, sticky="w", pady=(6, 0))
         self.e_esp_server = ttk.Entry(row, width=34)
-        self.e_esp_server.insert(0, "http://192.168.1.100:4000")
+        self.e_esp_server.insert(0, f"http://{detect_lan_ip()}:4000")
         self.e_esp_server.grid(row=1, column=1, padx=4, pady=(6, 0))
 
-        # Row 1 — order + device
-        row = ttk.LabelFrame(f, text="2 · Order / Device", padding=8)
+        # Row 1 — order + device (wide fields — lamba order number ab pura dikhta hai)
+        row = ttk.LabelFrame(f, text="2 · Order / Device", padding=10)
         row.pack(fill="x", **pad)
-        ttk.Label(row, text="Order #").grid(row=0, column=0, sticky="w")
-        self.e_order = ttk.Entry(row, width=10)
-        self.e_order.grid(row=0, column=1, padx=4)
+        row.columnconfigure(1, weight=1)
+        row.columnconfigure(5, weight=1)
+
+        ttk.Label(row, text="Order #").grid(row=0, column=0, sticky="w", pady=2)
+        self.e_order = ttk.Entry(row, width=28)
+        self.e_order.grid(row=0, column=1, padx=4, pady=2, sticky="ew")
         self.b_fetch = ttk.Button(row, text="Fetch Order", command=self.do_fetch)
-        self.b_fetch.grid(row=0, column=2, padx=4)
-        ttk.Label(row, text="Serial code").grid(row=0, column=3, sticky="w")
-        self.e_serial = ttk.Entry(row, width=18)
-        self.e_serial.grid(row=0, column=4, padx=4)
+        self.b_fetch.grid(row=0, column=2, padx=4, pady=2)
+        self.l_orderinfo = ttk.Label(row, text="", foreground="#7ee787")
+        self.l_orderinfo.grid(row=0, column=3, columnspan=4, padx=8, sticky="w")
+
+        ttk.Label(row, text="Serial code").grid(row=1, column=0, sticky="w", pady=2)
+        self.e_serial = ttk.Entry(row, width=22)
+        self.e_serial.grid(row=1, column=1, padx=4, pady=2, sticky="ew")
         self.b_gen = ttk.Button(row, text="Generate", command=self.gen_serial)
-        self.b_gen.grid(row=0, column=5, padx=4)
-        ttk.Label(row, text="Model").grid(row=0, column=6, sticky="w")
+        self.b_gen.grid(row=1, column=2, padx=4, pady=2)
+        ttk.Label(row, text="Model").grid(row=1, column=3, sticky="w", pady=2, padx=(12, 0))
         self.cb_model = ttk.Combobox(row, values=MODELS, width=8, state="readonly")
         self.cb_model.set("4CH")
-        self.cb_model.grid(row=0, column=7, padx=4)
+        self.cb_model.grid(row=1, column=4, padx=4, pady=2)
 
-        ttk.Label(row, text="WiFi SSID").grid(row=1, column=0, sticky="w", pady=(6, 0))
-        self.e_ssid = ttk.Entry(row, width=18)
-        self.e_ssid.grid(row=1, column=1, padx=4, pady=(6, 0))
-        ttk.Label(row, text="WiFi pass").grid(row=1, column=2, sticky="w", pady=(6, 0))
-        self.e_wpass = ttk.Entry(row, width=18)
-        self.e_wpass.grid(row=1, column=3, padx=4, pady=(6, 0))
-        ttk.Label(row, text="API key").grid(row=1, column=4, sticky="w", pady=(6, 0))
-        self.e_apikey = ttk.Entry(row, width=24)
-        self.e_apikey.grid(row=1, column=5, columnspan=2, padx=4, pady=(6, 0))
+        ttk.Label(row, text="WiFi SSID").grid(row=2, column=0, sticky="w", pady=2)
+        self.e_ssid = ttk.Entry(row, width=16)
+        self.e_ssid.grid(row=2, column=1, padx=4, pady=2, sticky="ew")
+        ttk.Label(row, text="WiFi pass").grid(row=2, column=2, sticky="w", pady=2)
+        self.e_wpass = ttk.Entry(row, width=16)
+        self.e_wpass.grid(row=2, column=3, padx=4, pady=2)
+        ttk.Label(row, text="API key").grid(row=2, column=4, sticky="w", pady=2)
+        self.e_apikey = ttk.Entry(row, width=26)
+        self.e_apikey.grid(row=2, column=5, columnspan=2, padx=4, pady=2, sticky="ew")
         self.l_item = ttk.Label(row, text="", foreground="#7ee787")
-        self.l_item.grid(row=1, column=7, padx=4, pady=(6, 0))
+        self.l_item.grid(row=2, column=6, padx=4, pady=2)
 
         # Row 2 — port + actions
         row = ttk.LabelFrame(f, text="3 · Flash & Provision", padding=8)
@@ -250,8 +270,8 @@ class FlasherApp:
         if self.busy:
             return
         oid = self.e_order.get().strip()
-        if not oid.isdigit():
-            messagebox.showwarning("Order", "Order number (ID) daalo")
+        if not oid:
+            messagebox.showwarning("Order", "Order number ya ID daalo (e.g. 7 ya AR5HUN5K)")
             return
         self.set_busy(True)
         def work():
@@ -262,6 +282,8 @@ class FlasherApp:
                     raise RuntimeError("Order me koi item nahi")
                 self.order_items = list(items)
                 self._fill_item(items[0], data)
+                self.root.after(0, lambda d=data, n=len(items): self.l_orderinfo.config(
+                    text=f"#{d['orderNumber']} · buyer {d['user']['username']} · {n} item(s) · {d['status']}"))
                 self._log(f"Order #{data['orderNumber']} fetched — {len(items)} item(s), buyer {data['user']['username']}", "ok")
                 if data.get("wifiSsid"):
                     self._log(f"WiFi from order: {data['wifiSsid']} (password encrypted stored — abhi flasher ko mila)", "info")
@@ -298,8 +320,10 @@ class FlasherApp:
         self.order_items.pop(0)
         if self.order_items:
             self._fill_item(self.order_items[0], {})
+            self.root.after(0, lambda: self.l_orderinfo.config(text=f"item {len(self.order_items) + 1} → {self.order_items[0].get('productName', '')}"))
             self._log(f"Next item → {self.order_items[0].get('productName', '')}", "info")
         else:
+            self.root.after(0, lambda: self.l_orderinfo.config(text="✔ order complete — naya order fetch karo"))
             self._log("Order ke saare items ho gaye. Naya order fetch karo.", "ok")
 
     def _com(self):

@@ -63,6 +63,32 @@ static unsigned long apRetryDue = 0;
 
 namespace WiFiManager {
 
+// Dual-mode softAP — station connect/reconnect ke dauran bhi AP ON rakhta
+// hai (192.168.4.1). ensureDualAP() jaisa hi, par WiFi connected hona
+// zaroori nahi — isliye offline/local control hamesha reachable rehta hai.
+static void startDualSoftAP()
+{
+    String apName = PreferencesManager::getAPName();
+    String apPass = PreferencesManager::getAPPassword();
+
+    if (apName.isEmpty())
+        apName = DEFAULT_AP_SSID;
+
+    if (apPass.isEmpty())
+        apPass = DEFAULT_AP_PASSWORD;
+
+    WiFi.mode(WIFI_AP_STA);
+    WiFi.softAP(apName.c_str(), apPass.c_str());
+
+    dualApActive = true;
+
+    Serial.print("AP SSID : ");
+    Serial.println(apName);
+
+    Serial.print("AP IP : ");
+    Serial.println(WiFi.softAPIP());
+}
+
 // WiFi.begin() start karo aur turant return — blocking wait nahi.
 static void beginConnect()
 {
@@ -80,7 +106,19 @@ static void beginConnect()
     WiFi.disconnect(true);
     delay(200);
 
-    WiFi.mode(WIFI_STA);
+    // AP keep ON: reconnect ke dauran bhi AP ON (WIFI_AP_STA) rakho —
+    // WiFi gir jaye toh bhi local panel 192.168.4.1 pe hamesha reachable,
+    // switch/panel se ON-OFF chalta rehta hai (cloud sync background me).
+    if (PreferencesManager::getAPKeepEnabled())
+    {
+        if (!dualApActive)
+            startDualSoftAP();
+    }
+    else
+    {
+        WiFi.mode(WIFI_STA);
+    }
+
     WiFi.begin(ssid.c_str(), password.c_str());
 
     // Modem sleep off — default power-save mein idle gap ke baad pehli
@@ -224,6 +262,9 @@ void update()
             Logger::wifi("AP mode — WiFi rechecking...");
             WiFi.softAPdisconnect(true);
             accessPointMode = false;
+            // AP band kiya hai — ab station reconnect me apkeep on ho toh
+            // dual AP dobara start ho (stale flag galat AP-off na rakhe)
+            dualApActive = false;
             apRetryDue = millis() + AP_RETRY_INTERVAL_MS;
             beginConnect();
         }
@@ -333,27 +374,9 @@ void ensureDualAP()
     if (WiFi.status() != WL_CONNECTED)
         return;
 
-    String apName = PreferencesManager::getAPName();
-    String apPass = PreferencesManager::getAPPassword();
-
-    if (apName.isEmpty())
-        apName = DEFAULT_AP_SSID;
-
-    if (apPass.isEmpty())
-        apPass = DEFAULT_AP_PASSWORD;
-
     Logger::wifi("Dual mode: keeping AP active");
 
-    WiFi.mode(WIFI_AP_STA);
-    WiFi.softAP(apName.c_str(), apPass.c_str());
-
-    dualApActive = true;
-
-    Serial.print("AP SSID : ");
-    Serial.println(apName);
-
-    Serial.print("AP IP : ");
-    Serial.println(WiFi.softAPIP());
+    startDualSoftAP();
 }
 
 bool isDualMode()

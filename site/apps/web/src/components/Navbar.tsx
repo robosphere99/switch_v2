@@ -41,6 +41,9 @@ export function Navbar() {
             <Link to="/warranty" className="text-gray-300 hover:text-brand-light">
               🛡️ Warranty
             </Link>
+            <Link to="/support" className="text-gray-300 hover:text-brand-light">
+              🛠️ Support
+            </Link>
             <Link to="/members" className="text-gray-300 hover:text-brand-light">
               Family
             </Link>

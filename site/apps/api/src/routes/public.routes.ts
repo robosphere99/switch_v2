@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma";
 import { ok } from "../lib/response";
+import { requireAuth } from "../middleware/auth";
+import { audit } from "../services/audit.service";
 
 export const publicRouter = Router();
 
@@ -187,6 +189,52 @@ publicRouter.post("/contact", async (req, res) => {
 
   const created = await prisma.contactMessage.create({
     data: { name, email, phone, subject, message },
+  });
+  ok(res, { id: created.id, status: created.status }, 201);
+});
+
+/** Logged-in user apni support tickets. */
+publicRouter.get("/support/my", requireAuth, async (req, res) => {
+  const msgs = await prisma.contactMessage.findMany({
+    where: { userId: req.user!.sub },
+    orderBy: { createdAt: "desc" },
+    take: 30,
+  });
+  ok(res, msgs);
+});
+
+// ---------------------------------------------------------------------------
+// Authenticated support — logged-in users apne account se hi contact karein
+// ---------------------------------------------------------------------------
+
+publicRouter.post("/support", requireAuth, async (req, res) => {
+  const subject = String(req.body?.subject ?? "Support").trim().slice(0, 150);
+  const message = String(req.body?.message ?? "").trim();
+  const phone = String(req.body?.phone ?? "").trim().slice(0, 20) || null;
+  const orderNumber = String(req.body?.orderNumber ?? "").trim().slice(0, 50) || null;
+
+  if (!message) return ok(res, { error: "Message required" }, 400);
+  if (message.length > 4000) return ok(res, { error: "Message 4000 chars se kam rakho" }, 400);
+
+  const user = await prisma.user.findUnique({
+    where: { id: req.user!.sub },
+    select: { id: true, username: true, email: true },
+  });
+
+  const created = await prisma.contactMessage.create({
+    data: {
+      userId: user?.id ?? req.user!.sub,
+      name: user?.username ?? "User",
+      email: user?.email ?? null,
+      phone,
+      subject: orderNumber ? `${subject} (Order ${orderNumber})` : subject,
+      message,
+    },
+  });
+  await audit(req.user!.sub, "user.support.contact", {
+    entity: "contactMessage",
+    entityId: created.id,
+    meta: { subject },
   });
   ok(res, { id: created.id, status: created.status }, 201);
 });
