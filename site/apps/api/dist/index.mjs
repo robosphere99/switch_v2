@@ -2480,7 +2480,11 @@ adminRouter.get("/audit", async (req, res) => {
   ok(res, logs2);
 });
 var firmwareDir = path2.resolve(process.cwd(), "../../../hardware/firmware");
-fs.mkdirSync(firmwareDir, { recursive: true });
+try {
+  fs.mkdirSync(firmwareDir, { recursive: true });
+} catch (err) {
+  console.warn(`[firmware] cannot create ${firmwareDir}:`, err instanceof Error ? err.message : err);
+}
 var upload = multer({
   storage: multer.diskStorage({
     destination: (_req, _file, cb) => cb(null, firmwareDir),
@@ -3945,6 +3949,14 @@ async function dbHasSchema() {
     return false;
   }
 }
+process.on("unhandledRejection", (reason) => {
+  process.stderr.write(`[crashguard] unhandledRejection: ${reason instanceof Error ? reason.stack : String(reason)}
+`);
+});
+process.on("uncaughtException", (err) => {
+  process.stderr.write(`[crashguard] uncaughtException: ${err instanceof Error ? err.stack : String(err)}
+`);
+});
 var boot = (...args) => process.stderr.write(`[boot] ${args.join(" ")}
 `);
 async function main() {

@@ -24,6 +24,17 @@ async function dbHasSchema(): Promise<boolean> {
   }
 }
 
+// Production resilience: ek request ki galti se poora app crash na ho
+// (IIS app pool rapid-fail → 503). Log karke continue karte hain.
+process.on("unhandledRejection", (reason) => {
+  process.stderr.write(`[crashguard] unhandledRejection: ${reason instanceof Error ? reason.stack : String(reason)}
+`);
+});
+process.on("uncaughtException", (err) => {
+  process.stderr.write(`[crashguard] uncaughtException: ${err instanceof Error ? err.stack : String(err)}
+`);
+});
+
 // stderr pe boot progress — iisnode error page sirf stderr dikhata hai,
 // logger stdout pe jaata hai isliye yeh lines wahan visible hoti hain.
 const boot = (...args: unknown[]) => process.stderr.write(`[boot] ${args.join(" ")}

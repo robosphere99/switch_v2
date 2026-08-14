@@ -232,7 +232,13 @@ adminRouter.get("/audit", async (req, res) => {
 
 // Published firmware lives in <repo>/hardware/firmware, served at /firmware.
 const firmwareDir = path.resolve(process.cwd(), "../../../hardware/firmware");
-fs.mkdirSync(firmwareDir, { recursive: true });
+// Server (Plesk) pe write permission na ho to app ko crash mat hone do —
+// upload waqt friendly error dikhega.
+try {
+  fs.mkdirSync(firmwareDir, { recursive: true });
+} catch (err) {
+  console.warn(`[firmware] cannot create ${firmwareDir}:`, err instanceof Error ? err.message : err);
+}
 
 const upload = multer({
   storage: multer.diskStorage({
