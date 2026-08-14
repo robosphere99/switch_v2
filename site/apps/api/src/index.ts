@@ -6,7 +6,7 @@ import { logger } from "./lib/logger";
 import { initSocket } from "./lib/socket";
 import { startScheduler } from "./services/scheduler.service";
 import { startOfflineWatcher } from "./services/offline.service";
-import { setDbReady } from "./lib/dbState";
+import { setDbReady, isDbReady } from "./lib/dbState";
 
 // Tables exist ya nahi — information_schema se check (empty DB pe crash
 // nahi karta). Bas DB reachable hona kaafi nahi: tables nahi hain to
@@ -25,8 +25,25 @@ async function dbHasSchema(): Promise<boolean> {
 }
 
 async function main() {
-  // First-run: DB ya tables nahi hain to crash mat karo — setup mode me
-  // server chalta hai aur /api/install se installation hoti hai.
+  // Plesk/IISNode ko readiness signal turant chahiye — server pehle listen
+  // karta hai, DB init background me hota hai. app.ts ka isDbReady() gate
+  // setup mode (503) + install wizard ko handle karta hai.
+  const app = createApp();
+  const server = createServer(app);
+
+  // Realtime (Socket.IO) — device updates, notifications, assistant replies.
+  initSocket(server);
+
+  server.listen(env.API_PORT, env.API_HOST, () => {
+    logger.info(`🚀 API listening on http://${env.API_HOST}:${env.API_PORT}`);
+    logger.info(`   Health check: http://localhost:${env.API_PORT}/api/health`);
+    logger.info(`   Realtime (Socket.IO): ws://${env.API_HOST}:${env.API_PORT}`);
+  });
+
+  void initDatabase();
+}
+
+async function initDatabase(): Promise<void> {
   let dbReady = false;
   try {
     await prisma.$connect();
@@ -44,14 +61,12 @@ async function main() {
     );
     logger.debug(err instanceof Error ? err.message : String(err));
   }
-  setDbReady(dbReady);
 
-  const app = createApp();
-  const server = createServer(app);
-
-  // Realtime (Socket.IO) — device updates, notifications, assistant replies.
-  initSocket(server);
-
+  // Install route bhi setDbReady(true) karta hai — yahan kabhi ready ko
+  // false-override nahi karte agar kisi aur ne pehle hi ready kar diya ho.
+  if (dbReady || !isDbReady()) {
+    setDbReady(dbReady);
+  }
   if (dbReady) {
     try {
       startScheduler();
@@ -64,12 +79,6 @@ async function main() {
       logger.warn("Offline watcher start skipped/failed", err instanceof Error ? err.message : String(err));
     }
   }
-
-  server.listen(env.API_PORT, env.API_HOST, () => {
-    logger.info(`🚀 API listening on http://${env.API_HOST}:${env.API_PORT}`);
-    logger.info(`   Health check: http://localhost:${env.API_PORT}/api/health`);
-    logger.info(`   Realtime (Socket.IO): ws://${env.API_HOST}:${env.API_PORT}`);
-  });
 }
 
 main().catch((err) => {
