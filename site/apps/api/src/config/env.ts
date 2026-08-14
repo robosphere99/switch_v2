@@ -29,7 +29,9 @@ const envSchema = z.object({
   JWT_REFRESH_SECRET: z.string().default("dev-refresh-secret"),
   JWT_ACCESS_EXPIRES: z.string().default("15m"),
   JWT_REFRESH_EXPIRES: z.string().default("7d"),
-  API_PORT: z.coerce.number().default(4000),
+  // Plesk/Paas PORT env var ko respect karta hai (Plesk nginx app ko assigned
+  // port pe proxy karta hai); nahi diya to 4000.
+  API_PORT: z.coerce.number().default(Number(process.env.PORT) || 4000),
   API_HOST: z.string().default("0.0.0.0"),
   CORS_ORIGINS: z.string().default("http://localhost:5173"),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
