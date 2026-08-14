@@ -744,14 +744,12 @@ adminRouter.get("/orders/:id/provision", async (req, res) => {
 
   const items = await Promise.all(
     order.items.map(async (it) => {
-      let modelCode = null;
-      if (it.serialCode) {
-        const reg = await prisma.serialRegistry.findUnique({
-          where: { serialCode: it.serialCode },
-          include: { product: { select: { modelCode: true } } },
-        });
-        modelCode = reg?.product.modelCode ?? null;
-      }
+      // Model hamesha product se (serial se nahi) — taaki serial generate
+      // hone se pehle bhi flasher ko sahi model mile (2CH/4CH/8CH/DIM...).
+      const prod = await prisma.product.findUnique({
+        where: { id: it.productId },
+        select: { modelCode: true },
+      });
       return {
         id: it.id,
         productId: it.productId,
@@ -759,7 +757,7 @@ adminRouter.get("/orders/:id/provision", async (req, res) => {
         price: Number(it.price),
         quantity: it.quantity,
         serialCode: it.serialCode,
-        modelCode,
+        modelCode: prod?.modelCode ?? null,
       };
     }),
   );
