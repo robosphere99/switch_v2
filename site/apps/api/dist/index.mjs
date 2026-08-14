@@ -3945,12 +3945,19 @@ async function dbHasSchema() {
     return false;
   }
 }
+var boot = (...args) => process.stderr.write(`[boot] ${args.join(" ")}
+`);
 async function main() {
+  boot("node", process.version, "| cwd =", process.cwd());
+  boot("PORT env =", JSON.stringify(process.env.PORT ?? "(not set)"), "-> API_PORT =", env.API_PORT);
   const app = createApp();
+  boot("createApp done");
   const server = createServer(app);
   initSocket(server);
-  logger.info(`[startup] PORT env = ${process.env.PORT ?? "(not set)"} \u2192 API_PORT = ${env.API_PORT}`);
+  boot("socket init done");
   server.listen(env.API_PORT, env.API_HOST, () => {
+    const addr = server.address();
+    boot("LISTENING on", typeof addr === "object" && addr ? `${addr.address}:${addr.port}` : String(addr));
     logger.info(`\u{1F680} API listening on http://${env.API_HOST}:${env.API_PORT}`);
     logger.info(`   Health check: http://localhost:${env.API_PORT}/api/health`);
     logger.info(`   Realtime (Socket.IO): ws://${env.API_HOST}:${env.API_PORT}`);
@@ -3958,16 +3965,21 @@ async function main() {
   if (env.API_PORT !== 4e3) {
     const fallback = createServer(app);
     fallback.on("error", (err) => {
+      boot("fallback 4000 listener error:", err instanceof Error ? err.message : String(err));
       logger.warn("Fallback 4000 listener failed", err instanceof Error ? err.message : String(err));
     });
     fallback.listen(4e3, env.API_HOST);
+    boot("fallback listener requested on 4000");
   }
+  boot("main() setup complete \u2014 background DB init starting");
   void initDatabase();
 }
 async function initDatabase() {
   let dbReady = false;
+  boot("db probe: connecting...");
   try {
     await prisma.$connect();
+    boot("db probe: connected");
     if (await dbHasSchema()) {
       dbReady = true;
       logger.info("\u2705 Database connected (schema ready)");
@@ -3977,11 +3989,13 @@ async function initDatabase() {
       );
     }
   } catch (err) {
+    boot("db probe: NOT reachable \u2014", err instanceof Error ? err.message : String(err));
     logger.warn(
       "\u26A0\uFE0F Database not reachable \u2014 setup mode. Visit /api/install/status and run installation."
     );
     logger.debug(err instanceof Error ? err.message : String(err));
   }
+  boot("db probe: schema ready =", dbReady);
   if (dbReady || !isDbReady()) {
     setDbReady(dbReady);
   }
