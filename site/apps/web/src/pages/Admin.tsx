@@ -22,6 +22,7 @@ import {
   pushOtaAll,
   probeEsp,
   renameEsp,
+  issueEspKey,
   type AdminHomeDetail,
   type EspBoard,
 } from "../api/admin";
@@ -117,6 +118,20 @@ export function Admin() {
   const renameM = useMutation({
     mutationFn: ({ id, name }: { id: number; name: string }) => renameEsp(id, name),
     onSuccess: invalidate,
+  });
+  const issueKeyM = useMutation({
+    mutationFn: (espId: number) => issueEspKey(espId),
+    onSuccess: (r) => {
+      invalidate();
+      if (!r.success) return;
+      const key = r.data.apiKey ?? "";
+      navigator.clipboard?.writeText(key).then(() => true).catch(() => false);
+      const nl = String.fromCharCode(10);
+      window.prompt(
+        ["Naya API key (copy kar ke user ko de do):", key, "", "Sirf is baar dikhega — hash store hota hai."].join(nl),
+        key,
+      );
+    },
   });
 
   // ESP reachability probe — IP click se pehle quick HTTP check.
@@ -721,7 +736,22 @@ export function Admin() {
                             </div>
                           )}
                         </td>
-                        <td className="py-2 pr-3 text-gray-400">{espRow.home.name}</td>
+                        <td className="py-2 pr-3">
+                          <div className="text-gray-300">{espRow.home.name}</div>
+                          <div className="mt-0.5 flex items-center gap-1.5">
+                            <span className="font-mono text-[10px] text-gray-500" title="API key prefix (full key sirf issue ke waqt dikhta hai)">
+                              🔑 {espRow.home.apiKeys?.[0]?.keyPrefix ?? "no key"}
+                            </span>
+                            <button
+                              onClick={() => issueKeyM.mutate(espRow.id)}
+                              disabled={issueKeyM.isPending}
+                              title="Fresh API key issue — user ko support ke liye de sakte ho"
+                              className="rounded border border-gray-600 px-1.5 py-0.5 text-[10px] text-gray-400 hover:border-brand/40 hover:text-brand-light disabled:opacity-50"
+                            >
+                              {issueKeyM.isPending ? "…" : "🔑 New"}
+                            </button>
+                          </div>
+                        </td>
                         <td className="py-2 pr-3">
                           <div className="flex flex-wrap gap-1">
                             {espRow.devices.length === 0 && (

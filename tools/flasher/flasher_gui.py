@@ -17,7 +17,9 @@ Requirements:  pip install requests pyserial   (+ esptool for flashing)
 Run:           python flasher_gui.py
 """
 
+import io
 import json
+import os
 import queue
 import re
 import sys
@@ -68,15 +70,22 @@ class FlasherApp:
     def __init__(self, root: tk.Tk):
         self.root = root
         root.title(f"RoboSphere Factory Flasher v{APP_VERSION}")
-        root.geometry("980x720")
-        root.configure(bg="#0f0f1e")
+        # Screen ke hisaab se default size (chhote laptop pe bhi sab dikhe)
+        sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
+        root.geometry(f"{min(1180, sw - 40)}x{min(800, sh - 100)}")
+        root.minsize(980, 640)
+        root.configure(bg="#0d1117")
 
         self.token = None
         self.ser = None
         self.busy = False
         self.log_q = queue.Queue()
-        self.order_items = []  # pending batch queue
+        self.order_items = []  # pending batch queue (quantity expanded — 1 entry = 1 board)
         self.cur_serial = ""
+        self.cur_order_id = None     # loaded order ka numeric id
+        self.cur_order_no = ""       # display ke liye
+        self.provision_data = {}     # fetched order ka data (WiFi + apiKey)
+        self.generated_serials = []  # is order me pehle se generate serials
 
         self._build_ui()
         self._log("RoboSphere Factory Flasher ready.")
@@ -87,16 +96,51 @@ class FlasherApp:
     # ---------------- UI ----------------
 
     def _build_ui(self):
-        pad = {"padx": 6, "pady": 3}
+        # ---- Dark theme (clam — full color control) ----
+        BG, PANEL, BORDER = "#0d1117", "#161b22", "#30363d"
+        FG, MUT, BLUE, GREEN = "#e6edf3", "#8b949e", "#1f6feb", "#238636"
+        style = ttk.Style()
+        style.theme_use("clam")
+        style.configure(".", background=BG, foreground=FG, fieldbackground=PANEL,
+                        bordercolor=BORDER, lightcolor=BORDER, darkcolor=BORDER,
+                        focuscolor=BLUE)
+        style.configure("TFrame", background=BG)
+        style.configure("TLabel", background=BG, foreground=FG)
+        style.configure("Muted.TLabel", background=BG, foreground=MUT)
+        style.configure("TLabelframe", background=BG, foreground=FG, bordercolor=BORDER,
+                        lightcolor=BORDER, darkcolor=BORDER)
+        style.configure("TLabelframe.Label", background=BG, foreground=BLUE,
+                        font=("Segoe UI", 10, "bold"))
+        style.configure("TEntry", fieldbackground="#010409", foreground=FG, insertcolor=FG,
+                        bordercolor=BORDER, padding=5)
+        style.configure("TCombobox", fieldbackground="#010409", foreground=FG, background=PANEL,
+                        arrowcolor=FG, bordercolor=BORDER, padding=5)
+        style.map("TCombobox", fieldbackground=[("readonly", "#010409")],
+                  foreground=[("readonly", FG)], background=[("readonly", PANEL)])
+        style.configure("TButton", background=PANEL, foreground=FG, bordercolor=BORDER,
+                        padding=(12, 6))
+        style.map("TButton", background=[("active", BLUE), ("disabled", "#21262d")],
+                  foreground=[("disabled", MUT)])
+        style.configure("Primary.TButton", background=GREEN, foreground="#ffffff",
+                        padding=(14, 7), font=("Segoe UI", 9, "bold"))
+        style.map("Primary.TButton", background=[("active", "#2ea043"), ("disabled", "#21262d")])
+
+        pad = {"padx": 6, "pady": 4}
         f = ttk.Frame(self.root, padding=10)
-        f.pack(fill="both", expand=True)
+        f.grid(row=0, column=0, sticky="nsew")
+        self.root.columnconfigure(0, weight=1)
+        self.root.rowconfigure(0, weight=1)
+        f.columnconfigure(0, weight=1)
 
         # Row 0 — connection
-        row = ttk.LabelFrame(f, text="1 · Server Connection", padding=8)
-        row.pack(fill="x", **pad)
+        row = ttk.LabelFrame(f, text=" 1 · Server Connection ", padding=8)
+        row.grid(row=0, column=0, sticky="ew", **pad)
+        row.columnconfigure(1, weight=3)
+        row.columnconfigure(3, weight=1)
+        row.columnconfigure(5, weight=1)
         ttk.Label(row, text="Site URL").grid(row=0, column=0, sticky="w")
         self.e_server = ttk.Entry(row, width=34)
-        self.e_server.insert(0, "http://localhost:4000")
+        self.e_server.insert(0, "https://onlineswitch.bhartitechnical.com")
         self.e_server.grid(row=0, column=1, padx=4)
         ttk.Label(row, text="Admin user").grid(row=0, column=2, sticky="w")
         self.e_user = ttk.Entry(row, width=14)
@@ -105,7 +149,7 @@ class FlasherApp:
         ttk.Label(row, text="Password").grid(row=0, column=4, sticky="w")
         self.e_pass = ttk.Entry(row, width=14, show="*")
         self.e_pass.grid(row=0, column=5, padx=4)
-        self.b_login = ttk.Button(row, text="Login", command=self.do_login)
+        self.b_login = ttk.Button(row, text="Login", style="Primary.TButton", command=self.do_login)
         self.b_login.grid(row=0, column=6, padx=4)
         self.l_login = ttk.Label(row, text="Not logged in", foreground="orange")
         self.l_login.grid(row=0, column=7, padx=8)
@@ -116,10 +160,10 @@ class FlasherApp:
         self.e_esp_server.grid(row=1, column=1, padx=4, pady=(6, 0))
 
         # Row 1 — order + device (wide fields — lamba order number ab pura dikhta hai)
-        row = ttk.LabelFrame(f, text="2 · Order / Device", padding=10)
-        row.pack(fill="x", **pad)
-        row.columnconfigure(1, weight=1)
-        row.columnconfigure(5, weight=1)
+        row = ttk.LabelFrame(f, text=" 2 · Order / Device ", padding=10)
+        row.grid(row=1, column=0, sticky="ew", **pad)
+        row.columnconfigure(1, weight=2)
+        row.columnconfigure(5, weight=2)
 
         ttk.Label(row, text="Order #").grid(row=0, column=0, sticky="w", pady=2)
         self.e_order = ttk.Entry(row, width=28)
@@ -152,8 +196,8 @@ class FlasherApp:
         self.l_item.grid(row=2, column=6, padx=4, pady=2)
 
         # Row 2 — port + actions
-        row = ttk.LabelFrame(f, text="3 · Flash & Provision", padding=8)
-        row.pack(fill="x", **pad)
+        row = ttk.LabelFrame(f, text=" 3 · Flash & Provision ", padding=8)
+        row.grid(row=2, column=0, sticky="ew", **pad)
         ttk.Label(row, text="COM port").grid(row=0, column=0, sticky="w")
         self.cb_port = ttk.Combobox(row, width=12)
         self.refresh_ports()
@@ -172,20 +216,21 @@ class FlasherApp:
         self.l_prog = ttk.Label(row, text="Idle", foreground="orange")
         self.l_prog.grid(row=0, column=7, padx=8)
 
-        # Row 3 — log
-        row = ttk.LabelFrame(f, text="Log", padding=8)
-        row.pack(fill="both", expand=True, **pad)
-        self.log = scrolledtext.ScrolledText(row, height=16, bg="#0b0b16", fg="#d0d7de",
-                                             insertbackground="#d0d7de", font=("Consolas", 10))
+        # Row 3 — log (resize pe expand)
+        row = ttk.LabelFrame(f, text=" Log ", padding=8)
+        row.grid(row=3, column=0, sticky="nsew", **pad)
+        f.rowconfigure(3, weight=1)
+        self.log = scrolledtext.ScrolledText(row, height=12, bg="#010409", fg="#e6edf3",
+                                             insertbackground="#e6edf3", relief="flat",
+                                             font=("Consolas", 10))
         self.log.pack(fill="both", expand=True)
         self.log.tag_configure("ok", foreground="#7ee787")
         self.log.tag_configure("err", foreground="#ff7b72")
         self.log.tag_configure("warn", foreground="#d29922")
         self.log.tag_configure("info", foreground="#58a6ff")
 
-        status = ttk.Label(f, text="• 1) Flash  →  2) Provision + Relay test  →  3) Mark tested  →  Next board",
-                           foreground="#8b949e")
-        status.pack(fill="x", padx=6, pady=(0, 2))
+        ttk.Label(f, text="Flow: 1) Flash  →  2) Provision + Relay test  →  3) Mark tested  →  Next board",
+                  style="Muted.TLabel").grid(row=4, column=0, sticky="w", padx=8, pady=(0, 2))
 
     # ---------------- helpers ----------------
 
@@ -238,13 +283,23 @@ class FlasherApp:
             return
         url = self.e_server.get().rstrip("/")
         self.set_busy(True)
+        # Browser jaisa UA — kuch hosting/WAF non-browser POST block kar sakta hai.
+        HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"}
         def work():
             try:
                 r = requests.post(url + "/api/auth/login", json={
                     "usernameEmail": self.e_user.get(),
                     "password": self.e_pass.get(),
-                }, timeout=10)
-                body = r.json()
+                }, headers=HEADERS, timeout=15)
+                try:
+                    body = r.json()
+                except Exception as je:
+                    # Response JSON nahi — asli cheez dikhao (status, type, body preview)
+                    preview = (r.text or "")[:200].replace(chr(10), " ").replace(chr(13), "")
+                    raise RuntimeError(
+                        f"server ne JSON nahi bheja (status {r.status_code}, "
+                        f"type={r.headers.get('content-type', '?')}) body: {preview}"
+                    )
                 if not body.get("success"):
                     raise RuntimeError((body.get("error") or {}).get("message", "Login failed"))
                 self.token = body["data"]["accessToken"]
@@ -257,13 +312,32 @@ class FlasherApp:
         threading.Thread(target=work, daemon=True).start()
 
     def gen_serial(self):
-        model = self.cb_model.get()
-        chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-        import random
-        code = "RS-" + model + "-" + "".join(random.choice(chars) for _ in range(6))
-        self.e_serial.delete(0, "end")
-        self.e_serial.insert(0, code)
-        self._log(f"Generated serial: {code}", "info")
+        if self.busy:
+            return
+        if not self.cur_order_id:
+            messagebox.showwarning("Order", "Pehle order fetch karo — serial order se linked hota hai")
+            return
+        self._log("Serial generate ho raha hai (server)…", "info")
+        threading.Thread(target=self._gen_serial_worker, daemon=True).start()
+
+    def _gen_serial_worker(self):
+        # Server-side serial — registry me create + order se link.
+        # Har call naya serial (quantity-aware), sab ban jane pe done=true.
+        try:
+            data = self.api("POST", f"/api/admin/orders/{self.cur_order_id}/serials/generate")
+            if data.get("done"):
+                self._log("Order ke saare serials generate ho chuke — Next Board dabao ya naya order fetch karo", "ok")
+                return
+            code = data.get("serialCode") or ""
+            if not code:
+                raise RuntimeError("server ne serial wapas nahi bheja")
+            self.generated_serials.append(code)
+            self.root.after(0, lambda c=code: (self.e_serial.delete(0, "end"),
+                                               self.e_serial.insert(0, c),
+                                               self.l_prog.config(text="Serial ✓", foreground="#7ee787")))
+            self._log(f"Serial: {code}", "ok")
+        except Exception as e:
+            self._log(f"Serial generate FAIL: {e}", "err")
 
     def do_fetch(self):
         if self.busy:
@@ -279,11 +353,21 @@ class FlasherApp:
                 items = data.get("items") or []
                 if not items:
                     raise RuntimeError("Order me koi item nahi")
-                self.order_items = list(items)
-                self._fill_item(items[0], data)
-                self.root.after(0, lambda d=data, n=len(items): self.l_orderinfo.config(
-                    text=f"#{d['orderNumber']} · buyer {d['user']['username']} · {n} item(s) · {d['status']}"))
-                self._log(f"Order #{data['orderNumber']} fetched — {len(items)} item(s), buyer {data['user']['username']}", "ok")
+                # Quantity expand — har physical board apna queue entry
+                self.order_items = []
+                for it in items:
+                    qty = int(it.get("quantity") or 1)
+                    for _ in range(qty):
+                        self.order_items.append(dict(it, quantity=1))
+                self.provision_data = data
+                self.cur_order_id = data.get("orderId")
+                self.cur_order_no = data.get("orderNumber") or ""
+                self.generated_serials = []
+                boards = len(self.order_items)
+                self._fill_item(self.order_items[0])
+                self.root.after(0, lambda d=data, n=boards: self.l_orderinfo.config(
+                    text=f"#{d['orderNumber']} · buyer {d['user']['username']} · {n} board(s) · {d['status']}"))
+                self._log(f"Order #{data['orderNumber']} fetched — {boards} board(s), buyer {data['user']['username']}", "ok")
                 if data.get("wifiSsid"):
                     self._log(f"WiFi from order: {data['wifiSsid']} (password encrypted stored — abhi flasher ko mila)", "info")
             except Exception as e:
@@ -292,7 +376,8 @@ class FlasherApp:
                 self.root.after(0, lambda: self.set_busy(False))
         threading.Thread(target=work, daemon=True).start()
 
-    def _fill_item(self, item, data):
+    def _fill_item(self, item):
+        data = self.provision_data or {}
         self.e_serial.delete(0, "end")
         if item.get("serialCode"):
             self.e_serial.insert(0, item["serialCode"])
@@ -308,7 +393,14 @@ class FlasherApp:
         if data.get("apiKey"):
             self.e_apikey.insert(0, data["apiKey"])
         self.cur_serial = item.get("serialCode") or ""
-        self.l_item.config(text=f"▶ {item.get('productName', '')} × {item.get('quantity', 1)}")
+        # Har naye board ke liye fresh serial server se (order-linked).
+        # Item serialCode pehla serial hi dikhata hai — jo pehle generate ho
+        # chuka wo dobara use na ho isliye generated_serials me track karte hain.
+        already_used = self.cur_serial in self.generated_serials
+        if (not self.cur_serial or already_used) and self.cur_order_id:
+            self._log("Naya board — server se serial generate ho raha hai…", "info")
+            threading.Thread(target=self._gen_serial_worker, daemon=True).start()
+        self.l_item.config(text=f"▶ {item.get('productName', '')}")
 
     def do_next(self):
         if self.busy:
@@ -318,12 +410,14 @@ class FlasherApp:
             return
         self.order_items.pop(0)
         if self.order_items:
-            self._fill_item(self.order_items[0], {})
-            self.root.after(0, lambda: self.l_orderinfo.config(text=f"item {len(self.order_items) + 1} → {self.order_items[0].get('productName', '')}"))
-            self._log(f"Next item → {self.order_items[0].get('productName', '')}", "info")
+            self._fill_item(self.order_items[0])
+            left = len(self.order_items)
+            self.root.after(0, lambda n=left, it=self.order_items[0]: self.l_orderinfo.config(
+                text=f"#{self.cur_order_no} · {n} board(s) baki → {it.get('productName', '')}"))
+            self._log(f"Next board → {self.order_items[0].get('productName', '')} ({left} baki)", "info")
         else:
             self.root.after(0, lambda: self.l_orderinfo.config(text="✔ order complete — naya order fetch karo"))
-            self._log("Order ke saare items ho gaye. Naya order fetch karo.", "ok")
+            self._log("Order ke saare boards ho gaye. Naya order fetch karo.", "ok")
 
     def _com(self):
         port = self.cb_port.get().strip()
@@ -334,41 +428,26 @@ class FlasherApp:
     def _run_esptool(self, args):
         """Call esptool in-process (PyInstaller exe me `python -m esptool` nahi chalta).
 
-        stdout/stderr capture karke GUI log me stream karta hai (progress % tak).
+        Windowed exe me sys.stdout/stderr = None hote hain — esptool import ke
+        waqt ise console-like stream chahiye, warna CLI parsing exit-code 2 se
+        fail karta hai. Isliye import se PEHLE real stream (NUL) laga dete hain,
+        phir StringIO me capture karke GUI log me dikhate hain.
         """
+        ANSI_RE = re.compile(r"\[[0-9;]*[A-Za-z]")
+
+        old_out, old_err = sys.stdout, sys.stderr
+        if old_out is None or old_err is None:
+            # Windowed exe — NUL pe real stream (import ke waqt esptool ko chahiye)
+            real = open(os.devnull, "w")
+            sys.stdout, sys.stderr = real, real
         try:
             import esptool
         except ImportError:
+            sys.stdout, sys.stderr = old_out, old_err
             raise RuntimeError("esptool bundled nahi hai — flasher .exe rebuild karo")
 
-        old_out, old_err = sys.stdout, sys.stderr
-
-        class _Tee:
-            def __init__(self, stream, log):
-                self.stream = stream
-                self.log = log
-                self.buf = ""
-
-            def write(self, s):
-                self.buf += s
-                while True:
-                    idx = -1
-                    for sep in ("\n", "\r"):
-                        i = self.buf.find(sep)
-                        if i != -1 and (idx == -1 or i < idx):
-                            idx = i
-                    if idx == -1:
-                        break
-                    line, self.buf = self.buf[:idx], self.buf[idx + 1:]
-                    if line.strip():
-                        self.log("  " + line.strip())
-                self.stream.write(s)
-
-            def flush(self):
-                self.stream.flush()
-
-        tee = _Tee(old_out, self._log)
-        sys.stdout, sys.stderr = tee, tee
+        cap_out, cap_err = io.StringIO(), io.StringIO()
+        sys.stdout, sys.stderr = cap_out, cap_err
         try:
             try:
                 esptool.main(args)
@@ -381,6 +460,11 @@ class FlasherApp:
                 raise RuntimeError(f"esptool error: {e}")
         finally:
             sys.stdout, sys.stderr = old_out, old_err
+            out = cap_out.getvalue() + cap_err.getvalue()
+            for line in out.splitlines():
+                line = ANSI_RE.sub("", line).strip()
+                if line:
+                    self._log("  " + line)
 
     def do_flash(self):
         if self.busy:
@@ -389,14 +473,28 @@ class FlasherApp:
         def work():
             try:
                 port = self._com()
-                self._log("Downloading firmware.bin from server…", "info")
-                url = self.e_server.get().rstrip("/") + "/firmware/firmware.bin"
-                r = requests.get(url, timeout=60)
-                r.raise_for_status()
+                # Model-specific file pehle try karo (firmware-4ch.bin), fallback firmware.bin
+                model = self.cb_model.get().strip().lower()
+                candidates = [f"firmware-{model}.bin"] if model else []
+                candidates.append("firmware.bin")
+                base = self.e_server.get().rstrip("/") + "/firmware/"
+                got = None
+                for nm in candidates:
+                    self._log(f"Downloading {nm} from server…", "info")
+                    r = requests.get(base + nm, timeout=60)
+                    if r.status_code == 200:
+                        got = r
+                        break
+                    self._log(f"  {nm} -> {r.status_code}, agla try…", "warn")
+                if got is None:
+                    raise RuntimeError(
+                        "firmware download fail — server pe koi .bin nahi mila (" +
+                        ", ".join(candidates) + ")"
+                    )
                 bin_path = "firmware.bin"
                 with open(bin_path, "wb") as fh:
-                    fh.write(r.content)
-                self._log(f"Downloaded {len(r.content) / 1e6:.2f} MB → {bin_path}", "ok")
+                    fh.write(got.content)
+                self._log(f"Downloaded {len(got.content) / 1e6:.2f} MB → {bin_path}", "ok")
                 self._log("Flashing (esptool)…", "info")
                 self._run_esptool(["--port", port, "--baud", "460800",
                                    "write_flash", FLASH_ADDR, bin_path])
