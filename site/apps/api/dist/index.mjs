@@ -3955,21 +3955,29 @@ async function main() {
   const server = createServer(app);
   initSocket(server);
   boot("socket init done");
-  server.listen(env.API_PORT, env.API_HOST, () => {
+  const rawPort = process.env.PORT;
+  const listenTarget = rawPort && !/^\d+$/.test(rawPort.trim()) ? rawPort.trim() : env.API_PORT;
+  boot("listen target:", JSON.stringify(listenTarget));
+  const onListening = () => {
     const addr = server.address();
     boot("LISTENING on", typeof addr === "object" && addr ? `${addr.address}:${addr.port}` : String(addr));
-    logger.info(`\u{1F680} API listening on http://${env.API_HOST}:${env.API_PORT}`);
-    logger.info(`   Health check: http://localhost:${env.API_PORT}/api/health`);
+    logger.info(`\u{1F680} API listening on ${JSON.stringify(listenTarget)}`);
+    logger.info(`   Health check: /api/health`);
     logger.info(`   Realtime (Socket.IO): ws://${env.API_HOST}:${env.API_PORT}`);
-  });
-  if (env.API_PORT !== 4e3) {
-    const fallback = createServer(app);
-    fallback.on("error", (err) => {
-      boot("fallback 4000 listener error:", err instanceof Error ? err.message : String(err));
-      logger.warn("Fallback 4000 listener failed", err instanceof Error ? err.message : String(err));
-    });
-    fallback.listen(4e3, env.API_HOST);
-    boot("fallback listener requested on 4000");
+  };
+  if (typeof listenTarget === "string") {
+    server.listen(listenTarget, onListening);
+  } else {
+    server.listen(listenTarget, env.API_HOST, onListening);
+    if (env.API_PORT !== 4e3) {
+      const fallback = createServer(app);
+      fallback.on("error", (err) => {
+        boot("fallback 4000 listener error:", err instanceof Error ? err.message : String(err));
+        logger.warn("Fallback 4000 listener failed", err instanceof Error ? err.message : String(err));
+      });
+      fallback.listen(4e3, env.API_HOST);
+      boot("fallback listener requested on 4000");
+    }
   }
   boot("main() setup complete \u2014 background DB init starting");
   void initDatabase();
