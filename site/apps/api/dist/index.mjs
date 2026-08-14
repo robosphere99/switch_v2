@@ -3949,11 +3949,19 @@ async function main() {
   const app = createApp();
   const server = createServer(app);
   initSocket(server);
+  logger.info(`[startup] PORT env = ${process.env.PORT ?? "(not set)"} \u2192 API_PORT = ${env.API_PORT}`);
   server.listen(env.API_PORT, env.API_HOST, () => {
     logger.info(`\u{1F680} API listening on http://${env.API_HOST}:${env.API_PORT}`);
     logger.info(`   Health check: http://localhost:${env.API_PORT}/api/health`);
     logger.info(`   Realtime (Socket.IO): ws://${env.API_HOST}:${env.API_PORT}`);
   });
+  if (env.API_PORT !== 4e3) {
+    const fallback = createServer(app);
+    fallback.on("error", (err) => {
+      logger.warn("Fallback 4000 listener failed", err instanceof Error ? err.message : String(err));
+    });
+    fallback.listen(4e3, env.API_HOST);
+  }
   void initDatabase();
 }
 async function initDatabase() {

@@ -34,11 +34,25 @@ async function main() {
   // Realtime (Socket.IO) — device updates, notifications, assistant replies.
   initSocket(server);
 
+  // Plesk/iisnode app ko process.env.PORT pe expect karta hai. Kabhi kabhi
+  // PORT env aata hi nahi (tab default 4000) — dono cases cover karne ke liye
+  // primary port + 4000 fallback dono pe listen karte hain.
+  logger.info(`[startup] PORT env = ${process.env.PORT ?? "(not set)"} → API_PORT = ${env.API_PORT}`);
+
   server.listen(env.API_PORT, env.API_HOST, () => {
     logger.info(`🚀 API listening on http://${env.API_HOST}:${env.API_PORT}`);
     logger.info(`   Health check: http://localhost:${env.API_PORT}/api/health`);
     logger.info(`   Realtime (Socket.IO): ws://${env.API_HOST}:${env.API_PORT}`);
   });
+
+  if (env.API_PORT !== 4000) {
+    // Fallback listener — agar Plesk 4000 pe expect kare (PORT env nahi mila)
+    const fallback = createServer(app);
+    fallback.on("error", (err) => {
+      logger.warn("Fallback 4000 listener failed", err instanceof Error ? err.message : String(err));
+    });
+    fallback.listen(4000, env.API_HOST);
+  }
 
   void initDatabase();
 }
