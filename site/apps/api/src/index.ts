@@ -8,14 +8,36 @@ import { startScheduler } from "./services/scheduler.service";
 import { startOfflineWatcher } from "./services/offline.service";
 import { setDbReady } from "./lib/dbState";
 
+// Tables exist ya nahi — information_schema se check (empty DB pe crash
+// nahi karta). Bas DB reachable hona kaafi nahi: tables nahi hain to
+// setup mode me rehna hai, warna startup queries crash karti hain.
+async function dbHasSchema(): Promise<boolean> {
+  try {
+    const rows = await prisma.$queryRaw<{ c: bigint }[]>`
+      SELECT COUNT(*) AS c FROM information_schema.tables
+      WHERE table_schema = DATABASE() AND table_name = 'users'
+    `;
+    return Number(rows[0]?.c ?? 0) > 0;
+  } catch (err) {
+    logger.warn("Schema probe failed", err instanceof Error ? err.message : String(err));
+    return false;
+  }
+}
+
 async function main() {
   // First-run: DB ya tables nahi hain to crash mat karo — setup mode me
   // server chalta hai aur /api/install se installation hoti hai.
   let dbReady = false;
   try {
     await prisma.$connect();
-    dbReady = true;
-    logger.info("✅ Database connected");
+    if (await dbHasSchema()) {
+      dbReady = true;
+      logger.info("✅ Database connected (schema ready)");
+    } else {
+      logger.warn(
+        "⚠️ Database reachable par installed nahi — setup mode. /api/install se installation karo.",
+      );
+    }
   } catch (err) {
     logger.warn(
       "⚠️ Database not reachable — setup mode. Visit /api/install/status and run installation.",

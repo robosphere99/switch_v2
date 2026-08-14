@@ -2,16 +2,19 @@ import { Router } from "express";
 import mysql from "mysql2/promise";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import bcrypt from "bcryptjs";
 import { env } from "../config/env";
 import { resetPrismaClient } from "../lib/prisma";
 import { setDbReady, isDbReady } from "../lib/dbState";
 import { ok } from "../lib/response";
 import { AppError } from "../lib/response";
+import { logger } from "../lib/logger";
+import { startScheduler } from "../services/scheduler.service";
+import { startOfflineWatcher } from "../services/offline.service";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const SCHEMA_SQL = path.resolve(__dirname, "../../prisma/schema.sql");
+// cwd = application root (apps/api) — dev (tsx) aur Plesk bundle dono me
+// yahi hota hai. __dirname bundle me dist/ ho jata hai isliye use nahi karte.
+const SCHEMA_SQL = path.resolve(process.cwd(), "prisma/schema.sql");
 
 export const installRouter = Router();
 
@@ -270,6 +273,20 @@ installRouter.post("/", async (req, res) => {
   });
 
   setDbReady(true);
+
+  // Services jo normal mode me chalti hain — install ke turant baad start
+  // karo taaki restart ka intezaar na karna pade (fresh install me index.ts
+  // ne setup mode ki wajah se skip kar diya tha).
+  try {
+    startScheduler();
+  } catch (err) {
+    logger.warn("Scheduler start skipped/failed", err instanceof Error ? err.message : String(err));
+  }
+  try {
+    startOfflineWatcher();
+  } catch (err) {
+    logger.warn("Offline watcher start skipped/failed", err instanceof Error ? err.message : String(err));
+  }
 
   ok(res, {
     installed: true,

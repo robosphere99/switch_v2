@@ -3493,7 +3493,6 @@ import { Router as Router17 } from "express";
 import mysql from "mysql2/promise";
 import fs2 from "node:fs";
 import path3 from "node:path";
-import { fileURLToPath } from "node:url";
 import bcrypt2 from "bcryptjs";
 init_prisma();
 
@@ -3506,9 +3505,159 @@ function isDbReady() {
   return ready;
 }
 
+// src/services/scheduler.service.ts
+init_prisma();
+var timer = null;
+var running = false;
+var CHECK_INTERVAL_MS = 1e4;
+function startScheduler() {
+  if (timer) return;
+  timer = setInterval(runDueSchedules, CHECK_INTERVAL_MS);
+  void runDueSchedules();
+  console.log("[scheduler] started (every 10s)");
+}
+async function runDueSchedules() {
+  if (running) return;
+  running = true;
+  try {
+    const now = /* @__PURE__ */ new Date();
+    const due = await prisma.schedule.findMany({
+      where: { enabled: true, nextRun: { lte: now } },
+      include: { device: true },
+      take: 100
+    });
+    for (const sched of due) {
+      try {
+        await fireSchedule(sched.id);
+      } catch (err) {
+        console.error(`[scheduler] failed to fire schedule ${sched.id}:`, err);
+      }
+    }
+  } catch (err) {
+    console.error("[scheduler] tick error:", err);
+  } finally {
+    running = false;
+  }
+}
+async function fireSchedule(scheduleId) {
+  const sched = await prisma.schedule.findUnique({
+    where: { id: scheduleId },
+    include: { device: true }
+  });
+  if (!sched || !sched.enabled) return;
+  const firedAt = /* @__PURE__ */ new Date();
+  await prisma.$transaction([
+    prisma.device.update({
+      where: { id: sched.device.id },
+      data: { status: sched.action }
+    }),
+    prisma.deviceCommand.create({
+      data: {
+        deviceId: sched.device.id,
+        actorId: null,
+        command: `set_status:${sched.action}`
+      }
+    }),
+    prisma.deviceLog.create({
+      data: {
+        deviceId: sched.device.id,
+        actorId: null,
+        logType: "schedule",
+        logMessage: `Scheduled turn ${sched.action} (schedule #${sched.id})`
+      }
+    })
+  ]);
+  const nextRun = computeNextRun({
+    type: sched.type,
+    runAt: sched.runAt,
+    cron: sched.cron,
+    from: firedAt
+  });
+  await prisma.schedule.update({
+    where: { id: sched.id },
+    data: {
+      lastRun: firedAt,
+      nextRun,
+      enabled: sched.type === "once" ? false : sched.enabled
+    }
+  });
+  await audit(null, "schedule.fire", {
+    homeId: sched.device.homeId,
+    entity: "schedule",
+    entityId: sched.id,
+    meta: { deviceId: sched.device.id, deviceName: sched.device.name, action: sched.action }
+  });
+  emitToHome(sched.device.homeId, "device:updated", {
+    id: sched.device.id,
+    status: sched.action,
+    via: "schedule"
+  });
+  if (sched.createdBy) {
+    await createNotification(sched.createdBy, {
+      type: "info",
+      title: `\u23F0 Schedule fired: ${sched.device.name} ${sched.action.toUpperCase()}`,
+      body: `Schedule #${sched.id} ne ${sched.device.name} ko ${sched.action} kiya.`
+    });
+  }
+  console.log(
+    `[scheduler] fired schedule #${sched.id}: ${sched.device.name} -> ${sched.action} (next: ${nextRun?.toISOString() ?? "never"})`
+  );
+}
+
+// src/services/offline.service.ts
+init_prisma();
+var timer2 = null;
+var OFFLINE_THRESHOLD_MS = 12e4;
+var CHECK_INTERVAL_MS2 = 6e4;
+function startOfflineWatcher() {
+  if (timer2) return;
+  timer2 = setInterval(checkOfflineDevices, CHECK_INTERVAL_MS2);
+  void checkOfflineDevices();
+  console.log("[offline] watcher started (every 60s)");
+}
+async function checkOfflineDevices() {
+  const cutoff = new Date(Date.now() - OFFLINE_THRESHOLD_MS);
+  const stale = await prisma.device.findMany({
+    where: { lastSeen: { lt: cutoff } },
+    include: { home: { include: { members: { where: { role: { in: ["owner", "admin"] } } } } } },
+    take: 50
+  });
+  for (const device of stale) {
+    const wasOnline = device.lastSeen !== null && !device.offline;
+    if (!wasOnline) continue;
+    await prisma.device.update({ where: { id: device.id }, data: { offline: true } });
+    emitToHome(device.homeId, "device:updated", { id: device.id, offline: true });
+    const targetIds = device.home.members.map((m) => m.userId);
+    for (const userId of targetIds) {
+      await createNotification(userId, {
+        type: "warning",
+        title: `\u{1F4E1} ${device.name} offline`,
+        body: `${device.name} ne 2+ min se sync nahi kiya. WiFi/device check karo.`
+      });
+    }
+    console.log(`[offline] ${device.name} (${device.id}) marked offline`);
+  }
+  const backOnline = await prisma.device.findMany({
+    where: { offline: true, lastSeen: { gte: cutoff } },
+    include: { home: { include: { members: { where: { role: { in: ["owner", "admin"] } } } } } },
+    take: 50
+  });
+  for (const device of backOnline) {
+    await prisma.device.update({ where: { id: device.id }, data: { offline: false } });
+    emitToHome(device.homeId, "device:updated", { id: device.id, offline: false });
+    for (const userId of device.home.members.map((m) => m.userId)) {
+      await createNotification(userId, {
+        type: "info",
+        title: `\u2705 ${device.name} online`,
+        body: `${device.name} wapas connected ho gaya.`
+      });
+    }
+    console.log(`[offline] ${device.name} (${device.id}) back online`);
+  }
+}
+
 // src/routes/install.routes.ts
-var __dirname = path3.dirname(fileURLToPath(import.meta.url));
-var SCHEMA_SQL = path3.resolve(__dirname, "../../prisma/schema.sql");
+var SCHEMA_SQL = path3.resolve(process.cwd(), "prisma/schema.sql");
 var installRouter = Router17();
 var DEFAULT_PRODUCTS = [
   { name: "2CH WiFi Relay Module", modelCode: "2CH", relayCount: 2, price: "599", description: "Two-channel WiFi relay board for lights and small appliances. 10A per channel, ESP32 based, works with the RoboSphere app and voice assistant.", features: { channels: 2, wifi: true, ota: true, voice: true } },
@@ -3718,6 +3867,16 @@ installRouter.post("/", async (req, res) => {
     });
   });
   setDbReady(true);
+  try {
+    startScheduler();
+  } catch (err) {
+    logger.warn("Scheduler start skipped/failed", err instanceof Error ? err.message : String(err));
+  }
+  try {
+    startOfflineWatcher();
+  } catch (err) {
+    logger.warn("Offline watcher start skipped/failed", err instanceof Error ? err.message : String(err));
+  }
   ok(res, {
     installed: true,
     database: parts.name,
@@ -3774,165 +3933,30 @@ function createApp() {
 
 // src/index.ts
 init_prisma();
-
-// src/services/scheduler.service.ts
-init_prisma();
-var timer = null;
-var running = false;
-var CHECK_INTERVAL_MS = 1e4;
-function startScheduler() {
-  if (timer) return;
-  timer = setInterval(runDueSchedules, CHECK_INTERVAL_MS);
-  void runDueSchedules();
-  console.log("[scheduler] started (every 10s)");
-}
-async function runDueSchedules() {
-  if (running) return;
-  running = true;
+async function dbHasSchema() {
   try {
-    const now = /* @__PURE__ */ new Date();
-    const due = await prisma.schedule.findMany({
-      where: { enabled: true, nextRun: { lte: now } },
-      include: { device: true },
-      take: 100
-    });
-    for (const sched of due) {
-      try {
-        await fireSchedule(sched.id);
-      } catch (err) {
-        console.error(`[scheduler] failed to fire schedule ${sched.id}:`, err);
-      }
-    }
+    const rows = await prisma.$queryRaw`
+      SELECT COUNT(*) AS c FROM information_schema.tables
+      WHERE table_schema = DATABASE() AND table_name = 'users'
+    `;
+    return Number(rows[0]?.c ?? 0) > 0;
   } catch (err) {
-    console.error("[scheduler] tick error:", err);
-  } finally {
-    running = false;
+    logger.warn("Schema probe failed", err instanceof Error ? err.message : String(err));
+    return false;
   }
 }
-async function fireSchedule(scheduleId) {
-  const sched = await prisma.schedule.findUnique({
-    where: { id: scheduleId },
-    include: { device: true }
-  });
-  if (!sched || !sched.enabled) return;
-  const firedAt = /* @__PURE__ */ new Date();
-  await prisma.$transaction([
-    prisma.device.update({
-      where: { id: sched.device.id },
-      data: { status: sched.action }
-    }),
-    prisma.deviceCommand.create({
-      data: {
-        deviceId: sched.device.id,
-        actorId: null,
-        command: `set_status:${sched.action}`
-      }
-    }),
-    prisma.deviceLog.create({
-      data: {
-        deviceId: sched.device.id,
-        actorId: null,
-        logType: "schedule",
-        logMessage: `Scheduled turn ${sched.action} (schedule #${sched.id})`
-      }
-    })
-  ]);
-  const nextRun = computeNextRun({
-    type: sched.type,
-    runAt: sched.runAt,
-    cron: sched.cron,
-    from: firedAt
-  });
-  await prisma.schedule.update({
-    where: { id: sched.id },
-    data: {
-      lastRun: firedAt,
-      nextRun,
-      enabled: sched.type === "once" ? false : sched.enabled
-    }
-  });
-  await audit(null, "schedule.fire", {
-    homeId: sched.device.homeId,
-    entity: "schedule",
-    entityId: sched.id,
-    meta: { deviceId: sched.device.id, deviceName: sched.device.name, action: sched.action }
-  });
-  emitToHome(sched.device.homeId, "device:updated", {
-    id: sched.device.id,
-    status: sched.action,
-    via: "schedule"
-  });
-  if (sched.createdBy) {
-    await createNotification(sched.createdBy, {
-      type: "info",
-      title: `\u23F0 Schedule fired: ${sched.device.name} ${sched.action.toUpperCase()}`,
-      body: `Schedule #${sched.id} ne ${sched.device.name} ko ${sched.action} kiya.`
-    });
-  }
-  console.log(
-    `[scheduler] fired schedule #${sched.id}: ${sched.device.name} -> ${sched.action} (next: ${nextRun?.toISOString() ?? "never"})`
-  );
-}
-
-// src/services/offline.service.ts
-init_prisma();
-var timer2 = null;
-var OFFLINE_THRESHOLD_MS = 12e4;
-var CHECK_INTERVAL_MS2 = 6e4;
-function startOfflineWatcher() {
-  if (timer2) return;
-  timer2 = setInterval(checkOfflineDevices, CHECK_INTERVAL_MS2);
-  void checkOfflineDevices();
-  console.log("[offline] watcher started (every 60s)");
-}
-async function checkOfflineDevices() {
-  const cutoff = new Date(Date.now() - OFFLINE_THRESHOLD_MS);
-  const stale = await prisma.device.findMany({
-    where: { lastSeen: { lt: cutoff } },
-    include: { home: { include: { members: { where: { role: { in: ["owner", "admin"] } } } } } },
-    take: 50
-  });
-  for (const device of stale) {
-    const wasOnline = device.lastSeen !== null && !device.offline;
-    if (!wasOnline) continue;
-    await prisma.device.update({ where: { id: device.id }, data: { offline: true } });
-    emitToHome(device.homeId, "device:updated", { id: device.id, offline: true });
-    const targetIds = device.home.members.map((m) => m.userId);
-    for (const userId of targetIds) {
-      await createNotification(userId, {
-        type: "warning",
-        title: `\u{1F4E1} ${device.name} offline`,
-        body: `${device.name} ne 2+ min se sync nahi kiya. WiFi/device check karo.`
-      });
-    }
-    console.log(`[offline] ${device.name} (${device.id}) marked offline`);
-  }
-  const backOnline = await prisma.device.findMany({
-    where: { offline: true, lastSeen: { gte: cutoff } },
-    include: { home: { include: { members: { where: { role: { in: ["owner", "admin"] } } } } } },
-    take: 50
-  });
-  for (const device of backOnline) {
-    await prisma.device.update({ where: { id: device.id }, data: { offline: false } });
-    emitToHome(device.homeId, "device:updated", { id: device.id, offline: false });
-    for (const userId of device.home.members.map((m) => m.userId)) {
-      await createNotification(userId, {
-        type: "info",
-        title: `\u2705 ${device.name} online`,
-        body: `${device.name} wapas connected ho gaya.`
-      });
-    }
-    console.log(`[offline] ${device.name} (${device.id}) back online`);
-  }
-}
-
-// src/index.ts
 async function main() {
   let dbReady = false;
   try {
     await prisma.$connect();
-    dbReady = true;
-    logger.info("\u2705 Database connected");
+    if (await dbHasSchema()) {
+      dbReady = true;
+      logger.info("\u2705 Database connected (schema ready)");
+    } else {
+      logger.warn(
+        "\u26A0\uFE0F Database reachable par installed nahi \u2014 setup mode. /api/install se installation karo."
+      );
+    }
   } catch (err) {
     logger.warn(
       "\u26A0\uFE0F Database not reachable \u2014 setup mode. Visit /api/install/status and run installation."
