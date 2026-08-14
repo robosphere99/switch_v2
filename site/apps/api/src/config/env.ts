@@ -55,5 +55,10 @@ if (!parsed.success) {
 
 export const env = parsed.data;
 
+// Prisma schema env("DATABASE_URL") use karta hai — granular DB_* vars se
+// built URL ko process.env me bhi set karna zaroori hai, warna PrismaClient
+// instantiation pe "Environment variable not found" error deta hai.
+if (!process.env.DATABASE_URL) process.env.DATABASE_URL = env.DATABASE_URL;
+
 /** Allowed CORS origins for the web app. */
 export const corsOrigins = env.CORS_ORIGINS.split(",").map((s) => s.trim());

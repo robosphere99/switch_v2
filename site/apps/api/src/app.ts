@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import path from "node:path";
+import fs from "node:fs";
 import { corsOrigins } from "./config/env";
 import { errorHandler } from "./middleware/errorHandler";
 import { apiRouter } from "./routes";
@@ -47,6 +48,17 @@ export function createApp() {
   // Folder: <repo>/hardware/firmware — written by the admin firmware upload.
   const firmwareDir = path.resolve(process.cwd(), "../../../hardware/firmware");
   app.use("/firmware", express.static(firmwareDir));
+
+  // Production: built web app (Vite dist) ko bhi API hi serve karta hai —
+  // Plesk pe ek hi Node.js app se sab chalta hai (dev me Vite proxy hota hai).
+  const webDist = path.resolve(process.cwd(), "../../apps/web/dist");
+  if (fs.existsSync(path.join(webDist, "index.html"))) {
+    app.use(express.static(webDist));
+    // SPA fallback — API/firmware/socket paths JSON 404 dete hain.
+    app.get(/^\/(?!api|firmware|socket\.io).*/, (_req, res) => {
+      res.sendFile(path.join(webDist, "index.html"));
+    });
+  }
 
   app.use((_req, res) => {
     res.status(404).json({
