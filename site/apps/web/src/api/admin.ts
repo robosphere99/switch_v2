@@ -260,3 +260,16 @@ export async function renameEsp(id: number, name: string): Promise<ApiResponse<{
   const { data } = await api.patch<ApiResponse<{ id: number; name: string }>>(`/admin/esp/${id}`, { name });
   return data;
 }
+
+/** Server app.log + crashguard lines — 503 crash ka asli reason yahan dikhta hai. */
+export interface AdminLogsResponse {
+  path: string | null;
+  totalLines: number;
+  lines: string[];
+  crashes: string[];
+}
+
+export async function getAdminLogs(): Promise<ApiResponse<AdminLogsResponse>> {
+  const { data } = await api.get<ApiResponse<AdminLogsResponse>>("/admin/logs");
+  return data;
+}

@@ -25,12 +25,13 @@ import {
   issueEspKey,
   type AdminHomeDetail,
   type EspBoard,
+  getAdminLogs,
 } from "../api/admin";
 import { Modal } from "../components/Modal";
 import { AdminShop } from "../components/AdminShop";
 import { getSocket } from "../lib/socket";
 
-type Tab = "overview" | "users" | "homes" | "devices" | "keys" | "audit" | "ota" | "shop";
+type Tab = "overview" | "users" | "homes" | "devices" | "keys" | "audit" | "ota" | "shop" | "logs";
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: "overview", label: "📊 Overview" },
@@ -41,6 +42,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: "shop", label: "🛒 Shop / Orders" },
   { id: "keys", label: "🔑 API Keys" },
   { id: "audit", label: "📜 Audit Log" },
+  { id: "logs", label: "🪵 Logs" },
 ];
 
 function Badge({ children, color }: { children: React.ReactNode; color: string }) {
@@ -65,6 +67,12 @@ export function Admin() {
   const stats = useQuery({ queryKey: ["admin-stats"], queryFn: getStats, refetchInterval: 15_000 });
   const users = useQuery({ queryKey: ["admin-users", q], queryFn: () => listUsers(q || undefined), refetchInterval: 15_000 });
   const homes = useQuery({ queryKey: ["admin-homes", q], queryFn: () => listAllHomes(q || undefined), refetchInterval: 15_000 });
+  const logs = useQuery({
+    queryKey: ["admin-logs"],
+    queryFn: getAdminLogs,
+    enabled: tab === "logs",
+    refetchInterval: tab === "logs" ? 10_000 : false,
+  });
   const devices = useQuery({ queryKey: ["admin-devices", q], queryFn: () => listAllDevices(q || undefined), refetchInterval: 10_000 });
   const keys = useQuery({ queryKey: ["admin-keys"], queryFn: listAllApiKeys, refetchInterval: 30_000 });
   const audit = useQuery({ queryKey: ["admin-audit"], queryFn: () => listAuditLogs(), refetchInterval: 15_000 });
@@ -952,6 +960,54 @@ export function Admin() {
             {viewHome.devices.length === 0 && <p className="text-sm text-gray-500">No devices.</p>}
           </div>
         </Modal>
+      )}
+
+      {tab === "logs" && (
+        <div className="rounded-xl border border-gray-700 bg-night-800 p-5">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-semibold">
+              🪵 System Logs{" "}
+              <span className="text-sm font-normal text-gray-500">
+                {logs.data?.success ? `${logs.data.data.totalLines} lines` : "…"}
+              </span>
+            </h2>
+            <div className="flex items-center gap-3 text-xs text-gray-500">
+              {logs.data?.success && logs.data.data.path && (
+                <span className="max-w-[420px] truncate" title={logs.data.data.path}>
+                  {logs.data.data.path}
+                </span>
+              )}
+              <button
+                onClick={() => queryClient.invalidateQueries({ queryKey: ["admin-logs"] })}
+                className="rounded-lg border border-gray-600 px-3 py-1 text-xs font-semibold hover:bg-gray-700"
+              >
+                🔄 Refresh
+              </button>
+            </div>
+          </div>
+
+          {logs.data?.success && logs.data.data.crashes.length > 0 && (
+            <div className="mb-3 rounded-lg border border-red-500/40 bg-red-950/40 p-3">
+              <p className="mb-1 text-xs font-bold uppercase text-red-400">
+                ⚠️ Crash / Error lines ({logs.data.data.crashes.length})
+              </p>
+              <pre className="max-h-40 overflow-auto whitespace-pre-wrap text-xs text-red-300">
+                {logs.data.data.crashes.join(String.fromCharCode(10))}
+              </pre>
+            </div>
+          )}
+
+          <div className="rounded-lg border border-gray-700 bg-black/60 p-3">
+            <pre className="h-[60vh] overflow-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-emerald-300">
+              {logs.data?.success ? logs.data.data.lines.join(String.fromCharCode(10)) : "Loading…"}
+            </pre>
+          </div>
+          {logs.isError && (
+            <p className="mt-2 text-sm text-red-400">
+              Log load failed: {logs.error instanceof Error ? logs.error.message : String(logs.error)}
+            </p>
+          )}
+        </div>
       )}
 
       {tab === "shop" && <AdminShop />}
