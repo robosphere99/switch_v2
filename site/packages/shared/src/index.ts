@@ -171,6 +171,7 @@ export interface AuthUser {
   username: string;
   email: string;
   role: UserRole;
+  themePref: string | null;
 }
 
 export interface AccessTokenPayload {

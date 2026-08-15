@@ -20,7 +20,8 @@ import {
 import { useEffect, useState } from "react";
 import { Moon, Sun } from "lucide-react";
 import { useAuthStore } from "../stores/auth";
-import { onThemeChange, resolvedDark, toggleTheme } from "../lib/theme";
+import { onThemeChange, resolvedDark } from "../lib/theme";
+import { changeTheme } from "../lib/themeAccount";
 import { NotificationBell } from "./NotificationBell";
 import { Logo } from "./Logo";
 
@@ -91,7 +92,7 @@ export function Navbar() {
               </Link>
             )}
             <button
-              onClick={() => setDark(toggleTheme())}
+              onClick={() => { changeTheme(resolvedDark() ? "light" : "dark"); setDark(resolvedDark()); }}
               className="rounded-lg border border-gray-300 p-1.5 text-gray-600 transition hover:border-brand hover:text-brand"
               title={dark ? "Light mode" : "Dark mode"}
             >
@@ -115,7 +116,7 @@ export function Navbar() {
               Shop
             </Link>
             <button
-              onClick={() => setDark(toggleTheme())}
+              onClick={() => { changeTheme(resolvedDark() ? "light" : "dark"); setDark(resolvedDark()); }}
               className="rounded-lg border border-gray-300 p-1.5 text-gray-600 transition hover:border-brand hover:text-brand"
               title={dark ? "Light mode" : "Dark mode"}
             >

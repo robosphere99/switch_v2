@@ -74,6 +74,17 @@ async function runLightMigrations(): Promise<void> {
       `);
       logger.info("✅ Migration: support_messages table created");
     }
+    // 4) users.theme_pref — theme preference account pe save (cross-device sync).
+    const tp = await prisma.$queryRaw<{ c: bigint }[]>`
+      SELECT COUNT(*) AS c FROM information_schema.columns
+      WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'theme_pref'
+    `;
+    if (Number(tp[0]?.c ?? 0) === 0) {
+      await prisma.$executeRawUnsafe(
+        "ALTER TABLE `users` ADD COLUMN `theme_pref` VARCHAR(16) NULL",
+      );
+      logger.info("✅ Migration: users.theme_pref column added");
+    }
   } catch (err) {
     logger.warn("Light migration (esp serial unique) skip/fail", err instanceof Error ? err.message : String(err));
   }
