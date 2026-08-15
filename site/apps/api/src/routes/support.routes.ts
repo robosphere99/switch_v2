@@ -195,6 +195,8 @@ supportRouter.post("/messages", requireAuth, validateBody(userSendSchema), async
 /** Admin: unread support messages count (admin badge). */
 supportRouter.get("/admin/unread-count", requireAuth, async (req, res) => {
   if (req.user!.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
+  // Defensive: agar Prisma client purana generate hua ho (model missing) to crash mat karo.
+  if (!prisma.supportMessage) return ok(res, { unread: 0 });
   const unread = await prisma.supportMessage.count({ where: { readByAdmin: false } });
   ok(res, { unread });
 });
