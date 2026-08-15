@@ -46,6 +46,8 @@ type Tab = "overview" | "users" | "homes" | "devices" | "ota" | "shop" | "keys" 
 
 const TABS: Array<{ id: Tab; label: string; icon: LucideIcon }> = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
+  // Support inbox admin ka #1 kaam hai — Overview ke turant baad prominent position pe
+  { id: "support", label: "Support", icon: MessageSquare },
   { id: "users", label: "Users", icon: Users },
   { id: "homes", label: "Homes", icon: Home },
   { id: "devices", label: "Devices", icon: Lightbulb },
@@ -54,7 +56,6 @@ const TABS: Array<{ id: Tab; label: string; icon: LucideIcon }> = [
   { id: "keys", label: "API Keys", icon: KeyRound },
   { id: "audit", label: "Audit Log", icon: ScrollText },
   { id: "logs", label: "Logs", icon: FileText },
-  { id: "support", label: "Support", icon: MessageSquare },
   { id: "settings", label: "Settings", icon: Settings },
 ];
 
