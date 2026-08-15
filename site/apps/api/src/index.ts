@@ -12,6 +12,8 @@ import { setDbReady } from "./lib/dbState";
 // Tables exist ya nahi — information_schema se check (empty DB pe crash
 // nahi karta). Bas DB reachable hona kaafi nahi: tables nahi hain to
 // setup mode me rehna hai, warna startup queries crash karti hain.
+import { execFileSync } from "node:child_process";
+
 /** Lightweight boot-time migrations — naye installs ke liye schema.sql me hai,
  *  purane (already-installed) DBs ke liye yahan idempotent patches chalao.
  *  Fail hone pe app crash mat karo — bas log karo (agle boot pe dobara try). */
@@ -300,6 +302,62 @@ async function main() {
   void initDatabase();
 }
 
+const HEAL_LAST_KEY = "prisma_selfheal_last";
+
+/**
+ * Plesk/iisnode quirk: deploy ke waqt npx prisma generate file system ko
+ * update karta hai, par chal raha process purana client load kar chuka hota
+ * hai (restart generate se pehle ho jata hai). Naye models (deviceAccess,
+ * deviceUsage) runtime me missing → 500. Yahan: generate fir se chalao + ek
+ * baar reboot (10 min guard — loop nahi).
+ */
+async function selfHealPrismaClient(): Promise<void> {
+  const p = prisma as unknown as Record<string, unknown>;
+  if (p.deviceAccess && p.deviceUsage) return;
+  fileLog("[boot] prisma client stale (deviceAccess/deviceUsage missing) — self-heal try");
+
+  const last = await prisma.appMeta
+    .findUnique({ where: { key: HEAL_LAST_KEY } })
+    .catch(() => null);
+  if (last && Date.now() - new Date(last.value).getTime() < 10 * 60 * 1000) {
+    fileLog("[boot] self-heal 10 min pehle try hua — skip (degraded mode, koi loop nahi)");
+    return;
+  }
+
+  let ok = false;
+  for (const args of [
+    ["npx.cmd", "--no-install", "prisma", "generate"],
+    ["npx.cmd", "prisma", "generate"],
+  ]) {
+    try {
+      execFileSync(args[0], args.slice(1), {
+        cwd: process.cwd(),
+        stdio: "pipe",
+        timeout: 180_000,
+        windowsHide: true,
+      });
+      ok = true;
+      break;
+    } catch (err) {
+      fileLog(`[boot] prisma generate try fail: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+  if (!ok) {
+    fileLog("[boot] prisma generate FAILED — degraded mode (restrictions off, site chalega)");
+    return;
+  }
+
+  await prisma.appMeta
+    .upsert({
+      where: { key: HEAL_LAST_KEY },
+      create: { key: HEAL_LAST_KEY, value: new Date().toISOString() },
+      update: { value: new Date().toISOString() },
+    })
+    .catch(() => undefined);
+  fileLog("[boot] prisma generate OK — reboot karke fresh client load karo");
+  setImmediate(() => process.exit(0));
+}
+
 async function initDatabase(): Promise<void> {
   let dbReady = false;
   boot("db probe: connecting...");
@@ -310,6 +368,8 @@ async function initDatabase(): Promise<void> {
       dbReady = true;
       logger.info("✅ Database connected (schema ready)");
       await runLightMigrations();
+      // Client sync check — stale ho to regenerate + reboot (Plesk quirk)
+      await selfHealPrismaClient();
     } else {
       logger.warn(
         "⚠️ Database reachable par installed nahi — setup mode. /api/install se installation karo.",
