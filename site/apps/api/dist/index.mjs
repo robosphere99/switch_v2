@@ -689,14 +689,27 @@ async function createNotification(userId, input) {
   emitToUser(userId, "notification:new", notification);
   return notification;
 }
+var SCHEDULE_TITLE_RE = /Schedule fired/i;
+function normalizeCategory(category, title) {
+  if (category === "system" && SCHEDULE_TITLE_RE.test(title ?? "")) return "schedule";
+  return category;
+}
 async function listNotifications(userId, args = {}) {
   const page = Math.max(1, Math.floor(args.page ?? 1));
   const pageSize = Math.min(50, Math.max(1, Math.floor(args.pageSize ?? 20)));
   const where = { userId };
-  if (args.category && args.category !== "all") where.category = args.category;
+  if (args.category && args.category !== "all") {
+    if (args.category === "schedule") {
+      where.OR = [{ category: "schedule" }, { category: "system", title: { contains: "Schedule fired" } }];
+    } else if (args.category === "system") {
+      where.OR = [{ category: "system", NOT: { title: { contains: "Schedule fired" } } }];
+    } else {
+      where.category = args.category;
+    }
+  }
   if (args.type && args.type !== "all") where.type = args.type;
   if (args.unread) where.readAt = null;
-  const [items, total] = await Promise.all([
+  const [raw, total] = await Promise.all([
     prisma.notification.findMany({
       where,
       orderBy: { createdAt: "desc" },
@@ -705,6 +718,7 @@ async function listNotifications(userId, args = {}) {
     }),
     prisma.notification.count({ where })
   ]);
+  const items = raw.map((n) => ({ ...n, category: normalizeCategory(n.category, n.title) }));
   return { items, total, page, pageSize, totalPages: Math.max(1, Math.ceil(total / pageSize)) };
 }
 async function remove2(userId, notificationId) {
@@ -4704,21 +4718,38 @@ var msgSelect = {
   attachmentData: true,
   readByUser: true,
   readByAdmin: true,
+  deletedAt: true,
   createdAt: true
 };
+async function firstAdminId() {
+  const admin = await prisma.user.findFirst({
+    where: { role: "system_admin" },
+    select: { id: true },
+    orderBy: { id: "asc" }
+  });
+  return admin?.id ?? null;
+}
+async function isMuted(viewerId, peerUserId) {
+  if (!prisma.supportChatSettings) return false;
+  const s = await prisma.supportChatSettings.findUnique({
+    where: { userId_peerUserId: { userId: viewerId, peerUserId } },
+    select: { mutedAt: true }
+  }).catch(() => null);
+  return !!s?.mutedAt;
+}
 supportRouter.get("/admin/messages", requireAuth, async (req, res) => {
   const userId = Number(req.query.userId);
   if (!Number.isInteger(userId) || userId <= 0) throw new AppError("VALIDATION_ERROR", "userId required", 400);
   const msgs = await supportModel().findMany({
-    where: { userId },
+    where: { userId, deletedAt: null },
     select: msgSelect,
     orderBy: { createdAt: "asc" },
     take: 200
   });
-  const unread = await supportModel().count({ where: { userId, readByAdmin: false } });
+  const unread = await supportModel().count({ where: { userId, readByAdmin: false, deletedAt: null } });
   if (unread > 0) {
     await supportModel().updateMany({
-      where: { userId, readByAdmin: false },
+      where: { userId, readByAdmin: false, deletedAt: null },
       data: { readByAdmin: true }
     });
   }
@@ -4752,12 +4783,14 @@ supportRouter.post("/admin/messages", requireAuth, validateBody(adminSendSchema)
       readByAdmin: true
     }
   });
-  await createNotification(userId, {
-    category: "support",
-    type: "info",
-    title: "\u{1F6E0}\uFE0F Support ne message bheja",
-    body: JSON.stringify({ u: req.user.sub, t: message.slice(0, 200) })
-  });
+  if (!await isMuted(userId, req.user.sub)) {
+    await createNotification(userId, {
+      category: "support",
+      type: "info",
+      title: "\u{1F6E0}\uFE0F Support ne message bheja",
+      body: JSON.stringify({ u: req.user.sub, t: message.slice(0, 200) })
+    });
+  }
   emitToUser(userId, "support:new", { senderRole: "admin", message: created });
   ok(res, created, 201);
 });
@@ -4765,16 +4798,16 @@ supportRouter.get("/messages", requireAuth, async (req, res) => {
   const userId = req.user.sub;
   const [messages, unreadCount2] = await Promise.all([
     supportModel().findMany({
-      where: { userId },
+      where: { userId, deletedAt: null },
       select: msgSelect,
       orderBy: { createdAt: "asc" },
       take: 200
     }),
-    supportModel().count({ where: { userId, readByUser: false } })
+    supportModel().count({ where: { userId, readByUser: false, deletedAt: null } })
   ]);
   if (unreadCount2 > 0) {
     await supportModel().updateMany({
-      where: { userId, readByUser: false },
+      where: { userId, readByUser: false, deletedAt: null },
       data: { readByUser: true }
     });
   }
@@ -4810,12 +4843,14 @@ supportRouter.post("/messages", requireAuth, validateBody(userSendSchema), async
     orderBy: { id: "asc" }
   });
   if (admin) {
-    await createNotification(admin.id, {
-      category: "support",
-      type: "info",
-      title: "\u{1F4E8} User ne support me reply kiya",
-      body: JSON.stringify({ u: req.user.sub, t: (req.body.message || "").slice(0, 200) })
-    });
+    if (!await isMuted(admin.id, req.user.sub)) {
+      await createNotification(admin.id, {
+        category: "support",
+        type: "info",
+        title: "\u{1F4E8} User ne support me reply kiya",
+        body: JSON.stringify({ u: req.user.sub, t: (req.body.message || "").slice(0, 200) })
+      });
+    }
     emitToUser(admin.id, "support:new", { senderRole: "user", message: created });
   }
   ok(res, created, 201);
@@ -4837,6 +4872,7 @@ supportRouter.get("/admin/conversations", requireAuth, async (req, res) => {
       message: true,
       attachmentName: true,
       readByAdmin: true,
+      deletedAt: true,
       createdAt: true
     },
     orderBy: { createdAt: "desc" },
@@ -4845,7 +4881,7 @@ supportRouter.get("/admin/conversations", requireAuth, async (req, res) => {
   const byUser = /* @__PURE__ */ new Map();
   for (const m of recent) {
     const cur = byUser.get(m.userId);
-    const preview = m.message?.trim() ? m.message : m.attachmentName ? `\u{1F4CE} ${m.attachmentName}` : "(attachment)";
+    const preview = m.deletedAt ? "\u{1F6AB} (deleted)" : m.message?.trim() ? m.message : m.attachmentName ? `\u{1F4CE} ${m.attachmentName}` : "(attachment)";
     if (!cur) {
       byUser.set(m.userId, {
         lastPreview: preview,
@@ -4979,6 +5015,79 @@ supportRouter.get("/admin/context", requireAuth, async (req, res) => {
     esps,
     orders
   });
+});
+supportRouter.get("/settings", requireAuth, async (req, res) => {
+  if (!prisma.supportChatSettings) return ok(res, { settings: [] });
+  const settings = await prisma.supportChatSettings.findMany({
+    where: { userId: req.user.sub },
+    select: { peerUserId: true, mutedAt: true, pinnedAt: true }
+  });
+  ok(res, { settings });
+});
+supportRouter.put("/settings/:peerUserId", requireAuth, async (req, res) => {
+  if (!prisma.supportChatSettings) throw new AppError("INTERNAL", "Chat settings unavailable \u2014 prisma client stale", 500);
+  let peerUserId = Number(req.params.peerUserId);
+  if (req.user.role !== "system_admin") {
+    peerUserId = await firstAdminId() ?? 0;
+  }
+  if (!Number.isInteger(peerUserId) || peerUserId <= 0) {
+    throw new AppError("VALIDATION_ERROR", "peerUserId required", 400);
+  }
+  const { muted, pinned } = req.body;
+  if (muted === void 0 && pinned === void 0) {
+    throw new AppError("VALIDATION_ERROR", "muted ya pinned required", 400);
+  }
+  const data = {};
+  if (typeof muted === "boolean") data.mutedAt = muted ? /* @__PURE__ */ new Date() : null;
+  if (typeof pinned === "boolean") data.pinnedAt = pinned ? /* @__PURE__ */ new Date() : null;
+  const setting = await prisma.supportChatSettings.upsert({
+    where: { userId_peerUserId: { userId: req.user.sub, peerUserId } },
+    create: {
+      userId: req.user.sub,
+      peerUserId,
+      mutedAt: data.mutedAt ?? null,
+      pinnedAt: data.pinnedAt ?? null
+    },
+    update: data
+  });
+  ok(res, setting);
+});
+supportRouter.delete("/messages/:id", requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const msg = await supportModel().findUnique({ where: { id } });
+  if (!msg) throw new AppError("NOT_FOUND", "Message not found", 404);
+  if (msg.userId !== req.user.sub || msg.senderRole !== "user") {
+    throw new AppError("FORBIDDEN", "Sirf apna message delete kar sakte ho", 403);
+  }
+  await supportModel().update({ where: { id }, data: { deletedAt: /* @__PURE__ */ new Date() } });
+  ok(res, { deleted: true });
+});
+supportRouter.delete("/admin/messages/:id", requireAuth, async (req, res) => {
+  if (req.user.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
+  const id = Number(req.params.id);
+  const msg = await supportModel().findUnique({ where: { id } });
+  if (!msg) throw new AppError("NOT_FOUND", "Message not found", 404);
+  await supportModel().update({ where: { id }, data: { deletedAt: /* @__PURE__ */ new Date() } });
+  ok(res, { deleted: true });
+});
+supportRouter.delete("/messages", requireAuth, async (req, res) => {
+  const r = await supportModel().updateMany({
+    where: { userId: req.user.sub, deletedAt: null },
+    data: { deletedAt: /* @__PURE__ */ new Date() }
+  });
+  ok(res, { cleared: r.count });
+});
+supportRouter.delete("/admin/messages", requireAuth, async (req, res) => {
+  if (req.user.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
+  const userId = Number(req.query.peerUserId);
+  if (!Number.isInteger(userId) || userId <= 0) {
+    throw new AppError("VALIDATION_ERROR", "peerUserId required", 400);
+  }
+  const r = await supportModel().updateMany({
+    where: { userId, deletedAt: null },
+    data: { deletedAt: /* @__PURE__ */ new Date() }
+  });
+  ok(res, { cleared: r.count });
 });
 
 // src/routes/index.ts
@@ -5477,7 +5586,8 @@ async function schemaDiag() {
     const models = {
       deviceAccess: typeof prisma.deviceAccess === "object",
       deviceUsage: typeof prisma.deviceUsage === "object",
-      homeMemberRestricted: typeof prisma.homeMember === "object"
+      homeMemberRestricted: typeof prisma.homeMember === "object",
+      supportChatSettings: typeof prisma.supportChatSettings === "object"
     };
     const table = async (t) => {
       const r = await prisma.$queryRaw`
@@ -5693,6 +5803,13 @@ async function runSafetyCheck() {
 // src/index.ts
 import { execFileSync } from "node:child_process";
 async function runLightMigrations() {
+  const migration = async (label, fn) => {
+    try {
+      await fn();
+    } catch (err) {
+      logger.warn(`Migration skip/fail (${label})`, err instanceof Error ? err.message : String(err));
+    }
+  };
   try {
     await prisma.$executeRawUnsafe(
       `UPDATE esp_devices e
@@ -5728,11 +5845,9 @@ async function runLightMigrations() {
     const fixed = await prisma.$executeRawUnsafe(`
       UPDATE notifications
       SET category = 'schedule'
-      WHERE category = 'system' AND title LIKE '\u23F0 Schedule fired:%'
+      WHERE category = 'system' AND (title LIKE '\u23F0 Schedule fired:%' OR title LIKE '%Schedule fired:%')
     `);
-    if (Number(fixed) > 0) {
-      logger.info(`\u2705 Backfill: ${fixed} schedule notification(s) category \u2192 schedule`);
-    }
+    logger.info(`\u2705 Backfill: ${fixed} schedule notification(s) category \u2192 schedule`);
     const sm = await prisma.$queryRaw`
       SELECT COUNT(*) AS c FROM information_schema.tables
       WHERE table_schema = DATABASE() AND table_name = 'support_messages'
@@ -5776,13 +5891,42 @@ async function runLightMigrations() {
       );
       logger.info("\u2705 Migration: support_messages.attachment_* columns added");
     }
-    const migration = async (label, fn) => {
-      try {
-        await fn();
-      } catch (err) {
-        logger.warn(`Migration skip/fail (${label})`, err instanceof Error ? err.message : String(err));
+    await migration("support_messages.deleted_at", async () => {
+      const dl = await prisma.$queryRaw`
+        SELECT COUNT(*) AS c FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'support_messages' AND column_name = 'deleted_at'
+      `;
+      if (Number(dl[0]?.c ?? 0) === 0) {
+        await prisma.$executeRawUnsafe(
+          "ALTER TABLE `support_messages` ADD COLUMN `deleted_at` DATETIME(3) NULL"
+        );
+        logger.info("\u2705 Migration: support_messages.deleted_at added");
       }
-    };
+    });
+    await migration("support_chat_settings table", async () => {
+      const cs = await prisma.$queryRaw`
+        SELECT COUNT(*) AS c FROM information_schema.tables
+        WHERE table_schema = DATABASE() AND table_name = 'support_chat_settings'
+      `;
+      if (Number(cs[0]?.c ?? 0) === 0) {
+        await prisma.$executeRawUnsafe(`
+          CREATE TABLE support_chat_settings (
+            id INT NOT NULL AUTO_INCREMENT,
+            userId INT NOT NULL,
+            peer_user_id INT NOT NULL,
+            muted_at DATETIME(3) NULL,
+            pinned_at DATETIME(3) NULL,
+            created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+            updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+            PRIMARY KEY (id),
+            UNIQUE INDEX support_chat_settings_userId_peerUserId_key (userId, peer_user_id),
+            INDEX support_chat_settings_userId_idx (userId),
+            CONSTRAINT support_chat_settings_userId_fkey FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        `);
+        logger.info("\u2705 Migration: support_chat_settings table created");
+      }
+    });
     await migration("home_members restricted", async () => {
       const rm = await prisma.$queryRaw`
         SELECT COUNT(*) AS c FROM information_schema.columns
@@ -5934,8 +6078,8 @@ async function main() {
 var HEAL_LAST_KEY = "prisma_selfheal_last";
 async function selfHealPrismaClient() {
   const p = prisma;
-  if (p.deviceAccess && p.deviceUsage) return;
-  fileLog("[boot] prisma client stale (deviceAccess/deviceUsage missing) \u2014 self-heal try");
+  if (p.deviceAccess && p.deviceUsage && p.supportChatSettings) return;
+  fileLog("[boot] prisma client stale (deviceAccess/deviceUsage/supportChatSettings missing) \u2014 self-heal try");
   const last = await prisma.appMeta.findUnique({ where: { key: HEAL_LAST_KEY } }).catch(() => null);
   if (last && Date.now() - new Date(last.value).getTime() < 10 * 60 * 1e3) {
     fileLog("[boot] self-heal 10 min pehle try hua \u2014 skip (degraded mode, koi loop nahi)");
