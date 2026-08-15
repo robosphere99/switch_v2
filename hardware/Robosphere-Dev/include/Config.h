@@ -4,7 +4,7 @@
 // Firmware Information
 //==================================================
 
-constexpr char FIRMWARE_NAME[]    = "Robosphere IoT";
+constexpr char FIRMWARE_NAME[]    = "SwitchNest IoT";
 constexpr char FIRMWARE_VERSION[] = "1.0.10";
 
 // Per-model build: platformio envs ise override karte hain (-DMODEL_CODE="8CH" etc.)
@@ -22,7 +22,7 @@ constexpr char HARDWARE_VERSION[] = "1.0";
 // Access Point Configuration
 //==================================================
 
-constexpr char DEFAULT_AP_SSID[]     = "Robosphere-IoT";
+constexpr char DEFAULT_AP_SSID[]     = "SwitchNest-IoT";
 constexpr char DEFAULT_AP_PASSWORD[] = "12345678";
 
 //==================================================

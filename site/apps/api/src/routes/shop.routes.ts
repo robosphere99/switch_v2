@@ -114,7 +114,7 @@ shopRouter.post("/orders/:id/pay", requireAuth, async (req, res) => {
     });
     ok(res, { mode: "razorpay", razorpayOrderId: rp.id, amount: Number(order.totalAmount), keyId: process.env.RAZORPAY_KEY_ID ?? "" });
   } else {
-    const upiIntent = `upi://pay?pa=robosphere@okaxis&pn=RoboSphere&am=${Number(order.totalAmount).toFixed(2)}&tn=Order%20${order.orderNumber}`;
+    const upiIntent = `upi://pay?pa=switchnest@okaxis&pn=SwitchNest&am=${Number(order.totalAmount).toFixed(2)}&tn=Order%20${order.orderNumber}`;
     await audit(req.user!.sub, "shop.payment.initiate", {
       entity: "order", entityId: id, meta: { mode: "demo", upiIntent, total: Number(order.totalAmount) },
     });

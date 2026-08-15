@@ -321,7 +321,7 @@ void setup() {
 
       // ArduinoOTA — WiFi pe firmware upload (PlatformIO: pio run -t upload --upload-port <IP>)
       // Password = admin password (web login wala) — isliye OTA bhi utna hi protected hai
-      ArduinoOTA.setHostname("Robosphere-IoT");
+      ArduinoOTA.setHostname("SwitchNest-IoT");
 
       String otaPass = PreferencesManager::getAdminPassword();
 

@@ -11,7 +11,7 @@ void begin(long baudRate)
 
     Serial.println();
     Serial.println("======================================");
-    Serial.println("      Robosphere IoT Firmware");
+    Serial.println("      SwitchNest IoT Firmware");
     Serial.println("======================================");
 }
 

@@ -157,7 +157,7 @@ export async function heartbeat(
         // Unique + searchable naam: serial (product code) pehle, SSID baad me.
         // Serial na ho to MAC-tail se unique `ESP-XXXXXX` fallback.
         name: attachSerial
-          ? `${attachSerial} · ${ssid ?? "Robosphere"}`
+          ? `${attachSerial} · ${ssid ?? "SwitchNest"}`
           : ssid
             ? `${ssid} · ESP-${macTail}`
             : `ESP-${macTail}`,

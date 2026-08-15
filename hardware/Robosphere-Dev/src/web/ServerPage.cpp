@@ -14,7 +14,7 @@ String ServerPage(
     html += R"rawliteral(
 <div class="card">
 <h2>Server Settings</h2>
-<p class="hint">Robosphere ka backend server — yahan se devices sync hoti hain aur relay states push hoti hain. Pehle Test Connection se check karo, phir Save karo.</p>
+<p class="hint">SwitchNest ka backend server — yahan se devices sync hoti hain aur relay states push hoti hain. Pehle Test Connection se check karo, phir Save karo.</p>
 
 <form action="/server/save" method="POST">
 
@@ -22,7 +22,7 @@ String ServerPage(
 <input type="text" name="server_url" value=")rawliteral";
     html += serverURL;
     html += R"rawliteral(" placeholder="https://your-server.com/api/">
-<p class="hint">Example: https://robosphere.bhartitechnical.com/api/</p>
+<p class="hint">Example: https://onlineswitch.bhartitechnical.com/api/</p>
 
 <label>API Key</label>
 <input type="text" name="api_key" value=")rawliteral";

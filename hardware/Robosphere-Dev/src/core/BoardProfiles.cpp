@@ -3,7 +3,7 @@
 const BoardProfile board1R =
 {
     BOARD_1R,
-    "Robosphere 1R Dim",
+    "SwitchNest 1R Dim",
     1,
 
     {19},
@@ -20,7 +20,7 @@ const BoardProfile board1R =
 const BoardProfile board2R =
 {
     BOARD_2R,
-    "Robosphere 2R",
+    "SwitchNest 2R",
     2,
 
     {19,21},
@@ -37,7 +37,7 @@ const BoardProfile board2R =
 const BoardProfile board4R =
 {
     BOARD_4R,
-    "Robosphere 4R",
+    "SwitchNest 4R",
     4,
 
     {19,21,22,23},
@@ -54,7 +54,7 @@ const BoardProfile board4R =
 const BoardProfile board6R =
 {
     BOARD_6R,
-    "Robosphere 6R",
+    "SwitchNest 6R",
     0,
     {},
     {},
@@ -68,7 +68,7 @@ const BoardProfile board6R =
 const BoardProfile board8R =
 {
     BOARD_8R,
-    "Robosphere 8R",
+    "SwitchNest 8R",
     8,
 
     {19,21,22,23,25,26,27,14},

@@ -11,7 +11,7 @@ export const logFilePath: string | null = (() => {
   const candidates = [
     path.resolve(process.cwd(), "../logs"), // site/apps/logs — iisnode yahi likhta hai (writable)
     path.resolve(process.cwd(), "logs"),    // site/apps/api/logs
-    path.join(os.tmpdir(), "robosphere-logs"),
+    path.join(os.tmpdir(), "switchnest-logs"),
   ];
   for (const dir of candidates) {
     try {

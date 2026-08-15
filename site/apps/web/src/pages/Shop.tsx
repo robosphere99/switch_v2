@@ -102,7 +102,7 @@ export function Shop() {
         <div>
           <h1 className="text-3xl font-bold">
             <span className="bg-gradient-to-r from-brand-light to-brand bg-clip-text text-transparent">
-              🛒 RoboSphere Shop
+              🛒 SwitchNest Shop
             </span>
           </h1>
           <p className="mt-1 text-sm text-gray-500">

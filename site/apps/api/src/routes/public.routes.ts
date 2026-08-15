@@ -33,9 +33,9 @@ const CHIPS = [
 
 const FAQ: Array<{ test: RegExp; reply: string; chips?: string[] }> = [
   {
-    test: /what is robosphere|yeh (kya|site) hai|kya hai ye|about (robosphere|site|company)|introduce|platform (kya|about)/i,
+    test: /what is switchnest|yeh (kya|site) hai|kya hai ye|about (switchnest|site|company)|introduce|platform (kya|about)/i,
     reply:
-      "RoboSphere ek smart-home IoT platform hai — WiFi relay boards (2CH se 8CH), dimmers aur fan regulators bechte hain. Board kharido → serial code se activate karo → app se ghar ke lights/fans/appliances ko kisi bhi jagah se control karo. Naya firmware bhi WiFi se hi (OTA) update hota hai — kabhi USB nahi chahiye.",
+      "SwitchNest ek smart-home IoT platform hai — WiFi relay boards (2CH se 8CH), dimmers aur fan regulators bechte hain. Board kharido → serial code se activate karo → app se ghar ke lights/fans/appliances ko kisi bhi jagah se control karo. Naya firmware bhi WiFi se hi (OTA) update hota hai — kabhi USB nahi chahiye.",
   },
   {
     test: /how (does )?(it|this|site) (work|kaam)|kaise kaam|kaise chalta|process|flow|kya kaam/i,
@@ -45,7 +45,7 @@ const FAQ: Array<{ test: RegExp; reply: string; chips?: string[] }> = [
   {
     test: /wifi|wireless|set up|setup|config|network|connect (karo|karna)|internet/i,
     reply:
-      "WiFi setup 2 tarike se: (1) Order ke waqt WiFi name + password de do — board factory me hi pre-configured flash hoke aayega, (2) Ya phir board first-boot pe apna khud ka WiFi (Robosphere-IoT) kholta hai — phone se connect karke WiFi + server details daal do. Board phir khud connect ho jata hai. WiFi change ho jaye to captive portal se fresh setup ho jata hai.",
+      "WiFi setup 2 tarike se: (1) Order ke waqt WiFi name + password de do — board factory me hi pre-configured flash hoke aayega, (2) Ya phir board first-boot pe apna khud ka WiFi (SwitchNest-IoT) kholta hai — phone se connect karke WiFi + server details daal do. Board phir khud connect ho jata hai. WiFi change ho jaye to captive portal se fresh setup ho jata hai.",
   },
   {
     test: /ota|update|firmware|upgrade|naya version|software/i,
@@ -75,12 +75,12 @@ const FAQ: Array<{ test: RegExp; reply: string; chips?: string[] }> = [
   {
     test: /contact|phone|call|email|support|help|baat|number/i,
     reply:
-      "Contact section me form bharke message bhej sakte ho — humara team reply karta hai. Email: support@robosphere.in · Phone/WhatsApp: +91 98765 43210 · Address: RoboSphere Labs, Noida, UP. Feedback bhi welcome hai!",
+      "Contact section me form bharke message bhej sakte ho — humara team reply karta hai. Email: support@switchnest.in · Phone/WhatsApp: +91 98765 43210 · Address: SwitchNest Labs, Noida, UP. Feedback bhi welcome hai!",
   },
   {
     test: /hello|hi|hey|namaste|namaskar|hii|hola|salaam/i,
     reply:
-      "Namaste! 🙏 Main RoboSphere ka assistant hoon. Batao aapko kya chahiye — kitne lights/fans control karne hain, dimmer chahiye, IR remote se control karna hai, ya site ke baare me kuch poochna hai?",
+      "Namaste! 🙏 Main SwitchNest ka assistant hoon. Batao aapko kya chahiye — kitne lights/fans control karne hain, dimmer chahiye, IR remote se control karna hai, ya site ke baare me kuch poochna hai?",
   },
 ];
 

@@ -11,7 +11,7 @@ interface Msg {
 
 const WELCOME: Msg = {
   role: "bot",
-  text: "Namaste! 🙏 Main RoboSphere ka assistant hoon. Batao aapko kya chahiye — main sahi board suggest karta hoon aur site ka har sawaal jawab deta hoon.",
+  text: "Namaste! 🙏 Main SwitchNest ka assistant hoon. Batao aapko kya chahiye — main sahi board suggest karta hoon aur site ka har sawaal jawab deta hoon.",
   chips: [
     "Kis board ki zaroorat hai?",
     "Site kaise kaam karti hai?",
@@ -58,8 +58,8 @@ export function ChatWidget() {
           setUnread(false);
         }}
         className="fixed bottom-5 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-r from-brand to-brand-light text-2xl shadow-lg shadow-brand/40 transition hover:scale-110"
-        aria-label="RoboSphere assistant"
-        title="RoboSphere AI assistant"
+        aria-label="SwitchNest assistant"
+        title="SwitchNest AI assistant"
       >
         {open ? "✕" : "🤖"}
         {!open && unread && (
@@ -76,7 +76,7 @@ export function ChatWidget() {
               🤖
             </span>
             <div>
-              <div className="text-sm font-bold text-night-950">RoboSphere Assistant</div>
+              <div className="text-sm font-bold text-night-950">SwitchNest Assistant</div>
               <div className="text-[11px] text-green-400">● Online — turant reply</div>
             </div>
           </div>

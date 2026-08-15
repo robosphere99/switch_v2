@@ -1029,7 +1029,7 @@ adminRouter.get("/esp/:id/probe", async (req, res) => {
     const r = await fetch(url, {
       signal: controller.signal,
       redirect: "follow",
-      headers: { "User-Agent": "RoboSphere-Admin/1.0" },
+      headers: { "User-Agent": "SwitchNest-Admin/1.0" },
     });
     return ok(res, { reachable: true, latencyMs: Date.now() - started, statusCode: r.status });
   } catch {

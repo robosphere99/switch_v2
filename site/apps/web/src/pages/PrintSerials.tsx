@@ -31,7 +31,7 @@ function Sticker({ row, productName, origin }: { row: SerialRow; productName: st
     <div className="sticker">
       <div className="sticker-brand">
         <span className="sticker-logo">🚀</span>
-        <span className="sticker-name">RoboSphere</span>
+        <span className="sticker-name">SwitchNest</span>
       </div>
       <div className="sticker-model">{productName}</div>
       <div className="sticker-body">
@@ -42,7 +42,7 @@ function Sticker({ row, productName, origin }: { row: SerialRow; productName: st
           <div className="sticker-qr sticker-qr-empty">QR</div>
         )}
       </div>
-      <div className="sticker-foot">Scan to activate · RoboSphere IoT</div>
+      <div className="sticker-foot">Scan to activate · SwitchNest IoT</div>
     </div>
   );
 }
@@ -91,7 +91,7 @@ export function PrintSerials() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, productId]);
 
-  const productName = (id: number) => products.find((p) => p.id === id)?.name ?? "RoboSphere Board";
+  const productName = (id: number) => products.find((p) => p.id === id)?.name ?? "SwitchNest Board";
 
   return (
     <div className="print-root mx-auto max-w-5xl px-4 py-8">

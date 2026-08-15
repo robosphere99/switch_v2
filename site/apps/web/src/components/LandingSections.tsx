@@ -25,9 +25,9 @@ const STEPS = [
 ];
 
 const CONTACT_INFO = [
-  { icon: "📧", label: "Email", value: "support@robosphere.in" },
+  { icon: "📧", label: "Email", value: "support@switchnest.in" },
   { icon: "📱", label: "Phone / WhatsApp", value: "+91 98765 43210" },
-  { icon: "📍", label: "Address", value: "RoboSphere Labs, Sector 62, Noida, Uttar Pradesh 201309" },
+  { icon: "📍", label: "Address", value: "SwitchNest Labs, Sector 62, Noida, Uttar Pradesh 201309" },
   { icon: "🕐", label: "Hours", value: "Mon–Sat · 9:00 AM – 7:00 PM" },
 ];
 
@@ -65,12 +65,12 @@ export function AboutUsSection() {
         <div>
           <h2 className="mb-6 text-4xl font-bold">
             <span className="bg-gradient-to-r from-brand-light to-brand bg-clip-text text-transparent">
-              About RoboSphere
+              About SwitchNest
             </span>
           </h2>
           <div className="space-y-4 text-gray-600">
             <p>
-              RoboSphere ek Indian smart-home company hai — hum aam ghar ke liye
+              SwitchNest ek Indian smart-home company hai — hum aam ghar ke liye
               <span className="text-brand"> practical, affordable WiFi boards</span> banate hain.
               Na complex wiring, na costly subscription — bas board kharido, serial se activate karo, control karo.
             </p>
@@ -143,7 +143,7 @@ export function LocateUsSection() {
         </div>
         <div className="overflow-hidden rounded-xl border border-brand/20">
           <iframe
-            title="RoboSphere location map"
+            title="SwitchNest location map"
             src="https://www.google.com/maps?q=Sector%2062%2C%20Noida%2C%20Uttar%20Pradesh&output=embed"
             className="h-full min-h-[320px] w-full border-0"
             loading="lazy"

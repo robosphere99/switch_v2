@@ -1308,7 +1308,7 @@ export function Admin() {
                   const url = URL.createObjectURL(blob);
                   const a = document.createElement("a");
                   a.href = url;
-                  a.download = "robosphere-app.log.txt";
+                  a.download = "switchnest-app.log.txt";
                   a.click();
                   URL.revokeObjectURL(url);
                 }}

@@ -90,7 +90,7 @@ export function Install() {
       <div className="w-full max-w-xl rounded-2xl border border-brand/20 bg-night-800 p-10 shadow-2xl">
         <div className="mb-1 flex items-center gap-3">
           <span className="text-4xl">⚡</span>
-          <h1 className="text-2xl font-bold">RoboSphere — Setup</h1>
+          <h1 className="text-2xl font-bold">SwitchNest — Setup</h1>
         </div>
         <p className="mb-6 text-sm text-gray-500">
           Pehli baar chala rahe ho? Bas database aur admin details do — tables, admin account aur
@@ -174,7 +174,7 @@ export function Install() {
             disabled={busy}
             className="w-full rounded-xl bg-brand px-6 py-3 font-bold text-white transition hover:brightness-110 disabled:opacity-50"
           >
-            {busy ? "Installing… (tables + admin + flag)" : "🚀 Install RoboSphere"}
+            {busy ? "Installing… (tables + admin + flag)" : "🚀 Install SwitchNest"}
           </button>
         </form>
       </div>
