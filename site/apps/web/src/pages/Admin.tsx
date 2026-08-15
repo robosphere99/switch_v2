@@ -1330,11 +1330,23 @@ export function Admin() {
           {logs.data?.success && logs.data.data.crashes.length > 0 && (
             <div className="mb-3 rounded-lg border border-red-500/40 bg-red-950/40 p-3">
               <p className="mb-1 text-xs font-bold uppercase text-red-400">
-                ⚠️ Crash / Error lines ({logs.data.data.crashes.length})
+                ⚠️ Crash / Error lines ({logs.data.data.crashes.length} unique)
               </p>
-              <pre className="max-h-40 overflow-auto whitespace-pre-wrap text-xs text-red-600">
-                {logs.data.data.crashes.join(String.fromCharCode(10))}
-              </pre>
+              <div className="max-h-40 space-y-1 overflow-auto">
+                {logs.data.data.crashes.map((c, i) => (
+                  <div key={i} className="flex items-start gap-2 rounded bg-black/40 px-2 py-1">
+                    <span
+                      className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                        c.count > 1 ? "bg-red-500/25 text-red-300" : "bg-gray-500/25 text-gray-400"
+                      }`}
+                      title={`${c.count} baar repeat hua`}
+                    >
+                      ×{c.count}
+                    </span>
+                    <pre className="whitespace-pre-wrap text-xs leading-relaxed text-red-400">{c.line}</pre>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 

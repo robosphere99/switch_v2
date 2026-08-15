@@ -283,7 +283,7 @@ export interface AdminLogsResponse {
   path: string | null;
   totalLines: number;
   lines: string[];
-  crashes: string[];
+  crashes: Array<{ line: string; count: number }>;
   iisnodeLogs: Array<{ name: string; path: string; size: number; lines: string[] }>;
 }
 
