@@ -1,10 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link } from "react-router-dom";
-import { listNotifications, markRead, markAllRead, unreadCount } from "../api/notifications";
+import { Link, useNavigate } from "react-router-dom";
+import { listNotifications, markRead, markAllRead, unreadCount, type Notification } from "../api/notifications";
+import { useAuthStore } from "../stores/auth";
+import { parseNotificationBody } from "../lib/notificationBody";
 
 export function NotificationBell() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const user = useAuthStore((s) => s.user);
+  const isAdmin = user?.role === "system_admin";
   const [open, setOpen] = useState(false);
 
   const unread = useQuery({
@@ -38,6 +43,20 @@ export function NotificationBell() {
 
   const typeColor = (type: string) =>
     type === "warning" ? "border-amber-500/50 bg-amber-500/10" : type === "error" ? "border-red-500/50 bg-red-500/10" : "border-brand/30 bg-night-900";
+
+  /** Support notification → usi user ka chat kholo (admin) ya apna support page. */
+  const handleOpen = (n: Notification) => {
+    if (!n.readAt) readOne.mutate(n.id);
+    const parsed = parseNotificationBody(n.body);
+    setOpen(false);
+    if (n.category === "support") {
+      if (isAdmin && parsed.targetUserId) {
+        navigate(`/admin?tab=support&user=${parsed.targetUserId}`);
+      } else {
+        navigate("/support");
+      }
+    }
+  };
 
   return (
     <div className="relative">
@@ -75,21 +94,33 @@ export function NotificationBell() {
               {list.length === 0 ? (
                 <p className="px-4 py-6 text-center text-sm text-gray-500">No notifications yet</p>
               ) : (
-                list.map((n) => (
-                  <div
-                    key={n.id}
-                    className={`cursor-pointer border-l-2 px-4 py-3 transition hover:bg-night-700 ${typeColor(n.type)} ${n.readAt ? "opacity-60" : ""}`}
-                    onClick={() => {
-                      if (!n.readAt) readOne.mutate(n.id);
-                    }}
-                  >
-                    <p className="text-sm font-medium text-gray-700">{n.title}</p>
-                    {n.body && <p className="mt-0.5 text-xs text-gray-500">{n.body}</p>}
-                    <p className="mt-1 text-[10px] text-gray-500">
-                      {new Date(n.createdAt).toLocaleString([], { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })}
-                    </p>
-                  </div>
-                ))
+                list.map((n) => {
+                  const parsed = parseNotificationBody(n.body);
+                  const clickable = n.category === "support";
+                  return (
+                    <div
+                      key={n.id}
+                      className={`border-l-2 px-4 py-3 transition hover:bg-night-700 ${typeColor(n.type)} ${n.readAt ? "opacity-60" : ""} ${
+                        clickable ? "cursor-pointer" : ""
+                      }`}
+                      onClick={() => {
+                        if (clickable) {
+                          handleOpen(n);
+                        } else if (!n.readAt) {
+                          readOne.mutate(n.id);
+                        }
+                      }}
+                      title={clickable ? (isAdmin ? "Chat kholo aur reply do" : "Support kholo") : "Notification"}
+                    >
+                      <p className="text-sm font-medium text-gray-700">{n.title}</p>
+                      {parsed.text && <p className="mt-0.5 text-xs text-gray-500">{parsed.text}</p>}
+                      <p className="mt-1 text-[10px] text-gray-500">
+                        {new Date(n.createdAt).toLocaleString([], { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })}
+                        {clickable && <span className="ml-1.5 text-brand">· open →</span>}
+                      </p>
+                    </div>
+                  );
+                })
               )}
             </div>
           </div>

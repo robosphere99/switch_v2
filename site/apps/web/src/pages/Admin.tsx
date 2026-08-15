@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FileText, Home, KeyRound, LayoutDashboard, Lightbulb, MessageSquare, RadioTower, ScrollText, ShoppingCart, Users, type LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   getStats,
   globalSearch,
@@ -36,10 +37,11 @@ import {
 } from "../api/admin";
 import { Modal } from "../components/Modal";
 import { AdminShop } from "../components/AdminShop";
+import { AdminSupport } from "../components/AdminSupport";
 import { SupportChatModal } from "../components/SupportChatModal";
 import { getSocket } from "../lib/socket";
 
-type Tab = "overview" | "users" | "homes" | "devices" | "keys" | "audit" | "ota" | "shop" | "logs";
+type Tab = "overview" | "users" | "homes" | "devices" | "ota" | "shop" | "keys" | "audit" | "logs" | "support";
 
 const TABS: Array<{ id: Tab; label: string; icon: LucideIcon }> = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
@@ -51,6 +53,7 @@ const TABS: Array<{ id: Tab; label: string; icon: LucideIcon }> = [
   { id: "keys", label: "API Keys", icon: KeyRound },
   { id: "audit", label: "Audit Log", icon: ScrollText },
   { id: "logs", label: "Logs", icon: FileText },
+  { id: "support", label: "Support", icon: MessageSquare },
 ];
 
 function Badge({ children, color }: { children: React.ReactNode; color: string }) {
@@ -72,6 +75,22 @@ export function Admin() {
   const [findQ, setFindQ] = useState("");
   const [findIdx, setFindIdx] = useState(0);
   const [chatUser, setChatUser] = useState<{ id: number; username: string } | null>(null);
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  // Support inbox — notification deep-link se khulta hai (/admin?tab=support&user=<id>)
+  const [supportUserId, setSupportUserId] = useState<number | null>(() => {
+    const n = Number(searchParams.get("user"));
+    return Number.isInteger(n) && n > 0 ? n : null;
+  });
+  useEffect(() => {
+    if (searchParams.get("tab") === "support") setTab("support");
+    const n = Number(searchParams.get("user"));
+    setSupportUserId(Number.isInteger(n) && n > 0 ? n : null);
+  }, [searchParams]);
+  const selectSupportUser = (id: number | null) => {
+    setSupportUserId(id);
+    navigate(id != null ? `/admin?tab=support&user=${id}` : "/admin?tab=support", { replace: true });
+  };
   const [gsDebounced, setGsDebounced] = useState("");
   useEffect(() => {
     const t = setTimeout(() => setGsDebounced(gsQ.trim()), 250);
@@ -1474,6 +1493,10 @@ export function Admin() {
             </div>
           )}
         </Modal>
+      )}
+
+      {tab === "support" && (
+        <AdminSupport selectedUserId={supportUserId} onSelectUser={selectSupportUser} />
       )}
 
       {chatUser && (
