@@ -294,15 +294,45 @@ export async function heartbeat(
 
 /** Pending commands for the key's home — polled by the ESP32. */
 export async function pendingCommands(key: ApiKey) {
+  const commands = await findPendingCommands(key);
+  await markHomeAlive(key);
+  return commands;
+}
+
+async function findPendingCommands(key: ApiKey) {
   const homeId = homeScope(key);
-  const commands = await prisma.deviceCommand.findMany({
+  return prisma.deviceCommand.findMany({
     where: { device: { homeId }, status: "pending" },
     orderBy: { createdAt: "asc" },
     take: 20,
   });
+}
+
+async function markHomeAlive(key: ApiKey) {
+  const homeId = homeScope(key);
   await prisma.device
     .updateMany({ where: { homeId }, data: { lastSeen: new Date() } })
     .catch(() => undefined);
+}
+
+/**
+ * Long-poll: command aate hi turant return (ESP32 near-instant relay toggle),
+ * warna `holdMs` tak halke interval pe DB check karta hai. lastSeen sirf ek
+ * baar (response ke waqt) update hota hai — har check pe nahi.
+ */
+export async function pendingCommandsLongPoll(
+  key: ApiKey,
+  holdMs: number,
+  signal?: AbortSignal,
+) {
+  const deadline = Date.now() + holdMs;
+  let commands = await findPendingCommands(key);
+  while (commands.length === 0 && Date.now() < deadline) {
+    if (signal?.aborted) break;
+    await new Promise((r) => setTimeout(r, 300));
+    commands = await findPendingCommands(key);
+  }
+  await markHomeAlive(key);
   return commands;
 }
 
