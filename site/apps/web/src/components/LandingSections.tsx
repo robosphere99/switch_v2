@@ -35,7 +35,7 @@ export function HowItWorksSection() {
   return (
     <section className="mx-auto max-w-6xl px-4 pb-24">
       <h2 className="mb-3 text-center text-4xl font-bold">
-        <span className="bg-gradient-to-r from-brand-light to-brand bg-clip-text text-transparent">
+        <span className="text-brand">
           How It Works
         </span>
       </h2>
@@ -45,7 +45,7 @@ export function HowItWorksSection() {
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
         {STEPS.map((s, i) => (
           <div key={s.title} className="relative rounded-xl border border-brand/20 bg-night-800 p-6">
-            <div className="absolute -top-3 left-6 rounded-full bg-gradient-to-r from-brand to-brand-light px-2.5 py-0.5 text-xs font-bold text-white">
+            <div className="absolute -top-3 left-6 rounded-full bg-brand px-2.5 py-0.5 text-xs font-bold text-white">
               Step {i + 1}
             </div>
             <div className="mb-3 mt-2 text-4xl">{s.icon}</div>
@@ -64,7 +64,7 @@ export function AboutUsSection() {
       <div className="mx-auto grid max-w-6xl items-center gap-12 px-4 lg:grid-cols-2">
         <div>
           <h2 className="mb-6 text-4xl font-bold">
-            <span className="bg-gradient-to-r from-brand-light to-brand bg-clip-text text-transparent">
+            <span className="text-brand">
               About SwitchNest
             </span>
           </h2>
@@ -121,7 +121,7 @@ export function LocateUsSection() {
   return (
     <section className="mx-auto max-w-6xl px-4 py-24">
       <h2 className="mb-12 text-center text-4xl font-bold">
-        <span className="bg-gradient-to-r from-brand-light to-brand bg-clip-text text-transparent">
+        <span className="text-brand">
           Locate Us
         </span>
       </h2>
@@ -180,7 +180,7 @@ export function ContactUsSection() {
       <div className="mx-auto grid max-w-6xl gap-12 px-4 lg:grid-cols-2">
         <div>
           <h2 className="mb-4 text-4xl font-bold">
-            <span className="bg-gradient-to-r from-brand-light to-brand bg-clip-text text-transparent">
+            <span className="text-brand">
               Contact / Feedback
             </span>
           </h2>
@@ -267,7 +267,7 @@ export function ContactUsSection() {
           <button
             type="submit"
             disabled={busy}
-            className="rounded-lg bg-gradient-to-r from-brand to-brand-light px-6 py-2.5 font-semibold text-white disabled:opacity-50"
+            className="rounded-lg bg-brand px-6 py-2.5 font-semibold text-white disabled:opacity-50"
           >
             {busy ? "Sending…" : "📨 Send Message"}
           </button>

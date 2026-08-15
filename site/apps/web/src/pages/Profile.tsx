@@ -107,7 +107,7 @@ export function Profile() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full rounded-lg bg-gradient-to-r from-brand to-brand-light py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+          className="w-full rounded-lg bg-brand py-2.5 text-sm font-semibold text-white disabled:opacity-60"
         >
           {loading ? "Saving…" : "💾 Save Changes"}
         </button>

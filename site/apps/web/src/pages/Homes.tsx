@@ -73,7 +73,7 @@ export function Homes() {
         <button
           onClick={() => create.mutate()}
           disabled={!newName || create.isPending}
-          className="rounded-lg bg-gradient-to-r from-brand to-brand-light px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+          className="rounded-lg bg-brand px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
         >
           Create Home
         </button>
@@ -148,7 +148,7 @@ export function Homes() {
           <button
             onClick={() => rename.mutate()}
             disabled={!renaming.name || rename.isPending}
-            className="w-full rounded-lg bg-gradient-to-r from-brand to-brand-light py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+            className="w-full rounded-lg bg-brand py-2.5 text-sm font-semibold text-white disabled:opacity-50"
           >
             Save
           </button>
@@ -179,7 +179,7 @@ export function Homes() {
           <button
             onClick={() => transfer.mutate()}
             disabled={!transferTarget || transfer.isPending}
-            className="w-full rounded-lg bg-gradient-to-r from-brand to-brand-light py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+            className="w-full rounded-lg bg-brand py-2.5 text-sm font-semibold text-white disabled:opacity-50"
           >
             Transfer Ownership
           </button>

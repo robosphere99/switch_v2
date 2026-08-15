@@ -53,7 +53,7 @@ export function DeviceCard({
     <div
       className={`flex flex-col gap-3 rounded-xl border p-5 transition ${
         on
-          ? "border-brand bg-gradient-to-br from-brand/20 to-brand-light/10 shadow-lg shadow-brand/20"
+          ? "border-brand bg-brand/10 shadow-lg shadow-brand/20"
           : "border-gray-200 bg-night-800"
       }`}
     >

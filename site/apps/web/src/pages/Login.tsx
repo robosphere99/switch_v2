@@ -74,7 +74,7 @@ export function Login() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full rounded-lg bg-gradient-to-r from-brand to-brand-light py-3 font-semibold text-white disabled:opacity-60"
+          className="w-full rounded-lg bg-brand py-3 font-semibold text-white disabled:opacity-60"
         >
           {loading ? "Logging in…" : "Login"}
         </button>

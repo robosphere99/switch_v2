@@ -65,7 +65,7 @@ export function Warranty() {
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
       <h1 className="mb-2 text-3xl font-bold">
-        <span className="bg-gradient-to-r from-brand-light to-brand bg-clip-text text-transparent">🛡️ Warranty</span>
+        <span className="text-brand">🛡️ Warranty</span>
       </h1>
       <p className="mb-6 text-sm text-gray-500">
         Serial claim ke din se <span className="text-brand">1 saal</span> ki warranty. Koi device kharab ho to
@@ -151,7 +151,7 @@ export function Warranty() {
         <button
           type="submit"
           disabled={busy || !form.serialCode}
-          className="rounded-lg bg-gradient-to-r from-brand to-brand-light px-6 py-2.5 font-semibold text-white disabled:opacity-50"
+          className="rounded-lg bg-brand px-6 py-2.5 font-semibold text-white disabled:opacity-50"
         >
           {busy ? "Filing…" : "📨 File Warranty Claim"}
         </button>

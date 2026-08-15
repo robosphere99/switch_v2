@@ -856,7 +856,7 @@ export function Admin() {
                 <button
                   type="submit"
                   disabled={publishFw.isPending}
-                  className="rounded-lg bg-gradient-to-r from-brand to-brand-light px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                  className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
                 >
                   {publishFw.isPending ? "Uploading…" : "📤 Publish Firmware"}
                 </button>

@@ -103,7 +103,7 @@ export function PrintSerials() {
           border-radius: 8px; padding: 6px 10px; font-size: 14px;
         }
         .print-toolbar .btn {
-          background: linear-gradient(90deg,#3b82f6,#06b6d4); color: #fff;
+          background: #2563eb; color: #fff;
           border: 0; border-radius: 8px; padding: 8px 16px; font-weight: 600; cursor: pointer;
         }
         .print-toolbar .btn-secondary {

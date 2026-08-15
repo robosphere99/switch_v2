@@ -79,7 +79,7 @@ export function Landing() {
       <section className="flex min-h-[70vh] flex-col items-center justify-center px-4 text-center">
         <div className="mb-6"><Logo size="lg" /></div>
         <h1 className="max-w-3xl text-5xl font-bold leading-tight">
-          <span className="bg-gradient-to-r from-brand-light to-brand bg-clip-text text-transparent">
+          <span className="text-brand">
             Welcome to SwitchNest
           </span>
         </h1>
@@ -90,13 +90,13 @@ export function Landing() {
         <div className="mt-10 flex gap-4">
           <Link
             to="/signup"
-            className="rounded-lg bg-gradient-to-r from-brand to-brand-light px-8 py-3 font-semibold text-white shadow-lg shadow-brand/30 transition hover:-translate-y-0.5"
+            className="rounded-lg bg-brand px-8 py-3 font-semibold text-white shadow-lg shadow-brand/30 transition hover:-translate-y-0.5"
           >
             Create Your Home
           </Link>
           <Link
             to="/shop"
-            className="rounded-lg border-2 border-brand-light px-8 py-3 font-semibold text-brand hover:bg-brand-light hover:text-white"
+            className="rounded-lg border-2 border-brand px-8 py-3 font-semibold text-brand hover:bg-brand hover:text-white"
           >
             <ShoppingCart className="mr-1.5 inline h-4 w-4" />
             Shop Boards
@@ -109,7 +109,7 @@ export function Landing() {
         <section className="mx-auto max-w-6xl px-4 pb-24">
           <div className="mb-8 flex items-end justify-between">
             <h2 className="text-4xl font-bold">
-              <span className="bg-gradient-to-r from-brand-light to-brand bg-clip-text text-transparent">
+              <span className="text-brand">
                 Shop Hardware
               </span>
             </h2>
@@ -128,7 +128,7 @@ export function Landing() {
       {/* Features */}
       <section className="mx-auto max-w-6xl px-4 pb-24">
         <h2 className="mb-12 text-center text-4xl font-bold">
-          <span className="bg-gradient-to-r from-brand-light to-brand bg-clip-text text-transparent">
+          <span className="text-brand">
             Why SwitchNest?
           </span>
         </h2>

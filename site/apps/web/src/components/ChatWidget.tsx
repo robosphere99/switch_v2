@@ -57,7 +57,7 @@ export function ChatWidget() {
           setOpen((o) => !o);
           setUnread(false);
         }}
-        className="fixed bottom-5 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-r from-brand to-brand-light text-2xl shadow-lg shadow-brand/40 transition hover:scale-110"
+        className="fixed bottom-5 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-brand text-2xl shadow-lg shadow-brand/40 transition hover:scale-110"
         aria-label="SwitchNest assistant"
         title="SwitchNest AI assistant"
       >
@@ -72,7 +72,7 @@ export function ChatWidget() {
         <div className="fixed bottom-24 right-5 z-50 flex h-[480px] w-[360px] max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden rounded-2xl border border-brand/30 bg-night-800 shadow-2xl shadow-black/50">
           {/* Header */}
           <div className="flex items-center gap-3 border-b border-brand/20 bg-night-900/60 px-4 py-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-r from-brand to-brand-light text-lg">
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-brand text-lg">
               🤖
             </span>
             <div>
@@ -88,7 +88,7 @@ export function ChatWidget() {
                 <div
                   className={
                     m.role === "user"
-                      ? "max-w-[85%] rounded-2xl rounded-br-sm bg-gradient-to-r from-brand to-brand-light px-3 py-2 text-sm text-white"
+                      ? "max-w-[85%] rounded-2xl rounded-br-sm bg-brand px-3 py-2 text-sm text-white"
                       : "max-w-[85%] rounded-2xl rounded-bl-sm border border-brand/20 bg-night-700 px-3 py-2 text-sm text-gray-700"
                   }
                 >
@@ -155,7 +155,7 @@ export function ChatWidget() {
               <button
                 onClick={() => send(input)}
                 disabled={busy || !input.trim()}
-                className="rounded-lg bg-gradient-to-r from-brand to-brand-light px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
+                className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
               >
                 ➤
               </button>
