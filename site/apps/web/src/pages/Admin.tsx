@@ -31,6 +31,7 @@ import {
   adminSetDeviceStatus,
   clearDeviceCommands,
   getEspHistory,
+  findAnything,
 } from "../api/admin";
 import { Modal } from "../components/Modal";
 import { AdminShop } from "../components/AdminShop";
@@ -65,6 +66,9 @@ export function Admin() {
   const [gsQ, setGsQ] = useState("");
   const [gsOpen, setGsOpen] = useState(false);
   const [gsIdx, setGsIdx] = useState(0);
+  const [findOpen, setFindOpen] = useState(false);
+  const [findQ, setFindQ] = useState("");
+  const [findIdx, setFindIdx] = useState(0);
   const [gsDebounced, setGsDebounced] = useState("");
   useEffect(() => {
     const t = setTimeout(() => setGsDebounced(gsQ.trim()), 250);
@@ -95,6 +99,32 @@ export function Admin() {
 
   // Query/close hone pe selection reset
   useEffect(() => setGsIdx(0), [gsDebounced, gsOpen]);
+
+  const findRes = useQuery({
+    queryKey: ["admin-find", findQ],
+    queryFn: () => findAnything(findQ),
+    enabled: findOpen && findQ.trim().length >= 2,
+  });
+
+  // Support lookup flat results — keyboard navigation ke liye.
+  const flatFind = useMemo(() => {
+    if (!findRes.data?.success) return [];
+    const r = findRes.data.data;
+    const sections: Array<{ label: string; icon: string; items: unknown[]; tab: Tab }> = [
+      { label: "Users", icon: "👤", items: r.users, tab: "users" },
+      { label: "Orders", icon: "🛒", items: r.orders, tab: "shop" },
+      { label: "Serials", icon: "🔑", items: r.serials, tab: "shop" },
+      { label: "ESP Boards", icon: "🛰️", items: r.boards, tab: "ota" },
+      { label: "Devices", icon: "💡", items: r.devices, tab: "devices" },
+      { label: "Support msgs", icon: "✉️", items: r.messages, tab: "logs" },
+      { label: "Warranty claims", icon: "🛡️", items: r.claims, tab: "shop" },
+    ];
+    return sections.flatMap((sec) =>
+      sec.items.map((item) => ({ label: sec.label, icon: sec.icon, tab: sec.tab, item })),
+    );
+  }, [findRes.data]);
+
+  useEffect(() => setFindIdx(0), [findQ, findOpen]);
   const [copied, setCopied] = useState(false);
   const [selectedDevice, setSelectedDevice] = useState<number | null>(null);
   const [viewHome, setViewHome] = useState<AdminHomeDetail | null>(null);
@@ -260,6 +290,17 @@ export function Admin() {
           <h1 className="mb-1 text-3xl font-bold">🛡️ Admin Panel</h1>
           <p className="text-sm text-gray-400">Platform-wide management (system admin only).</p>
         </div>
+        <button
+          onClick={() => {
+            setFindOpen(true);
+            setFindQ("");
+            setFindIdx(0);
+          }}
+          className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm font-semibold text-amber-400 hover:bg-amber-500/20"
+          title="Customer support: phone / order / serial / MAC se turant user context"
+        >
+          🆘 Find anything
+        </button>
         <div className="relative">
           <input
             value={gsQ}
@@ -1325,6 +1366,84 @@ export function Admin() {
       )}
 
       {tab === "shop" && <AdminShop />}
+
+      {findOpen && (
+        <Modal title="🆘 Support lookup — find by anything" onClose={() => setFindOpen(false)}>
+          <input
+            autoFocus
+            value={findQ}
+            onChange={(e) => setFindQ(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowDown") {
+                e.preventDefault();
+                if (flatFind.length > 0) setFindIdx((i) => Math.min(i + 1, flatFind.length - 1));
+              } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                if (flatFind.length > 0) setFindIdx((i) => Math.max(i - 1, 0));
+              } else if (e.key === "Enter") {
+                e.preventDefault();
+                if (flatFind.length > 0) {
+                  const row = flatFind[Math.min(findIdx, flatFind.length - 1)];
+                  setTab(row.tab);
+                  setQ(findQ.trim());
+                }
+                setFindOpen(false);
+              } else if (e.key === "Escape") {
+                setFindOpen(false);
+              }
+            }}
+            placeholder="📞 Phone / 🛒 order ID / 🔑 serial / 🖥️ MAC / naam / email…"
+            className="mb-2 w-full rounded-lg border border-brand/20 bg-night-900 px-3 py-2.5 text-sm outline-none focus:border-brand"
+          />
+          <p className="mb-3 text-[11px] text-gray-500">
+            Phone (orders + support msgs), order ID, serial, MAC — kuch bhi type karo, user/device context turant khulega. ↑↓ select · ↵ open · esc close
+          </p>
+          {findRes.isLoading && <p className="text-sm text-gray-500">Searching…</p>}
+          {findRes.isError && <p className="text-sm text-red-400">Kuch galat hua — dobara try karo.</p>}
+          {findRes.data?.success && flatFind.length === 0 && (
+            <p className="text-sm text-gray-500">Kuch nahi mila. 😕</p>
+          )}
+          {findRes.data?.success && flatFind.length > 0 && (
+            <div className="flex max-h-[55vh] flex-col gap-1 overflow-y-auto pr-1">
+              {flatFind.map((row, i) => {
+                const prev = i > 0 ? flatFind[i - 1] : null;
+                const showHeader = !prev || prev.label !== row.label;
+                const count = flatFind.filter((x) => x.label === row.label).length;
+                const item = row.item as Record<string, unknown>;
+                const active = findIdx === i;
+                return (
+                  <div key={`${row.label}-${String(item.id)}`}>
+                    {showHeader && (
+                      <div className="px-1 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                        {row.icon} {row.label} ({count})
+                      </div>
+                    )}
+                    <button
+                      onMouseEnter={() => setFindIdx(i)}
+                      onClick={() => {
+                        setTab(row.tab);
+                        setQ(findQ.trim());
+                        setFindOpen(false);
+                      }}
+                      ref={active ? (el) => { if (el) el.scrollIntoView({ block: "nearest" }); } : undefined}
+                      className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition ${
+                        active
+                          ? "bg-brand/20 text-brand-light"
+                          : "text-gray-200 hover:bg-night-800 hover:text-brand-light"
+                      }`}
+                    >
+                      <span className="truncate font-medium">{findTitle(row.label, item)}</span>
+                      <span className="ml-auto truncate text-[10px] text-gray-500">
+                        {findSubtitle(row.label, item)}
+                      </span>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Modal>
+      )}
     </div>
   );
 }
@@ -1534,6 +1653,77 @@ function subtitleFor(section: string, item: unknown): string {
       return `${it.paymentStatus ?? ""}`;
     case "Serials":
       return `${it.product?.name ?? ""} · ${it.status ?? ""}`;
+    default:
+      return "";
+  }
+}
+
+/** Support lookup — result title. */
+function findTitle(section: string, item: unknown): string {
+  const it = item as {
+    username?: string;
+    orderNumber?: string;
+    shippingName?: string;
+    serialCode?: string;
+    name?: string;
+    subject?: string;
+    reason?: string;
+    macAddress?: string;
+  };
+  switch (section) {
+    case "Users":
+      return it.username ?? "";
+    case "Orders":
+      return it.orderNumber ?? "";
+    case "Serials":
+      return it.serialCode ?? "";
+    case "ESP Boards":
+      return `${it.name ?? it.macAddress ?? ""} · ${it.serialCode ?? ""}`;
+    case "Devices":
+      return it.name ?? "";
+    case "Support msgs":
+      return it.subject ?? "";
+    case "Warranty claims":
+      return `${it.serialCode ?? ""} — ${it.reason ?? ""}`;
+    default:
+      return "";
+  }
+}
+
+/** Support lookup — result subtitle (context). */
+function findSubtitle(section: string, item: unknown): string {
+  const it = item as {
+    email?: string | null;
+    role?: string;
+    status?: string;
+    shippingPhone?: string;
+    shippingName?: string;
+    user?: { username?: string } | null;
+    product?: { name?: string } | null;
+    order?: { orderNumber?: string } | null;
+    home?: { name?: string; owner?: { username?: string } | null } | null;
+    offline?: boolean;
+    modelCode?: string | null;
+    phone?: string | null;
+    type?: string;
+    warrantyStatus?: string;
+    name?: string;
+  };
+  switch (section) {
+    case "Users":
+      return `${it.email ?? ""} · ${it.role ?? ""}`;
+    case "Orders":
+      return `${it.shippingName ?? ""} ${it.shippingPhone ?? ""} · ${it.user?.username ?? ""}`;
+    case "Serials":
+      return `${it.product?.name ?? ""} · ${it.status ?? ""} · ${it.user?.username ?? ""}`;
+    case "ESP Boards":
+      return `${it.modelCode ?? ""} · ${it.offline ? "offline" : "online"} · ${it.home?.owner?.username ?? ""}`;
+    case "Devices":
+      return `${it.type ?? ""} · ${it.home?.name ?? ""} · ${it.home?.owner?.username ?? ""}`;
+    case "Support msgs":
+      return `${it.phone ?? it.email ?? ""} · ${it.status ?? ""}`;
+    case "Warranty claims":
+      return `${it.warrantyStatus ?? ""} · ${it.user?.username ?? ""}`;
     default:
       return "";
   }

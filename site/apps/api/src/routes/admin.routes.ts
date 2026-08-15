@@ -349,6 +349,125 @@ adminRouter.delete("/api-keys/:id", async (req, res) => {
 
 // ---------- Audit log ----------
 
+/** Customer support 'find by anything' — phone / order / serial / MAC / naam se turant context. */
+adminRouter.get("/find", async (req, res) => {
+  const q = String(req.query.q ?? "").trim();
+  if (q.length < 2) {
+    return ok(res, { q, users: [], orders: [], serials: [], boards: [], devices: [], messages: [], claims: [] });
+  }
+  const contains = { contains: q };
+  const phone = q.replace(/\D/g, "");
+
+  const users = await prisma.user.findMany({
+    where: { OR: [{ username: contains }, { email: contains }] },
+    select: {
+      id: true,
+      username: true,
+      email: true,
+      role: true,
+      status: true,
+      createdAt: true,
+      _count: { select: { ownedHomes: true, createdDevices: true, orders: true } },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 10,
+  });
+
+  const orders = await prisma.order.findMany({
+    where: { OR: [{ orderNumber: contains }, { shippingPhone: contains }, { shippingName: contains }] },
+    select: {
+      id: true,
+      orderNumber: true,
+      status: true,
+      shippingName: true,
+      shippingPhone: true,
+      totalAmount: true,
+      createdAt: true,
+      userId: true,
+      user: { select: { username: true, email: true } },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 10,
+  });
+
+  const serials = await prisma.serialRegistry.findMany({
+    where: { serialCode: contains },
+    select: {
+      id: true,
+      serialCode: true,
+      status: true,
+      warrantyStatus: true,
+      warrantyExpiresAt: true,
+      orderId: true,
+      userId: true,
+      homeId: true,
+      product: { select: { name: true, modelCode: true } },
+      order: { select: { orderNumber: true } },
+      user: { select: { id: true, username: true, email: true } },
+      home: { select: { id: true, name: true } },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 10,
+  });
+
+  const boards = await prisma.espDevice.findMany({
+    where: { OR: [{ macAddress: contains }, { serialCode: contains }, { name: contains }] },
+    select: {
+      id: true,
+      name: true,
+      macAddress: true,
+      serialCode: true,
+      modelCode: true,
+      offline: true,
+      lastSeen: true,
+      firmwareVersion: true,
+      homeId: true,
+      home: { select: { id: true, name: true, owner: { select: { id: true, username: true, email: true } } } },
+    },
+    orderBy: { id: "desc" },
+    take: 10,
+  });
+
+  const devices = await prisma.device.findMany({
+    where: { OR: [{ name: contains }, { serialNumber: contains }] },
+    select: {
+      id: true,
+      name: true,
+      type: true,
+      status: true,
+      serialNumber: true,
+      offline: true,
+      home: { select: { id: true, name: true, owner: { select: { id: true, username: true, email: true } } } },
+    },
+    orderBy: { id: "desc" },
+    take: 10,
+  });
+
+  const messages = await prisma.contactMessage.findMany({
+    where: { OR: [{ phone: phone ? { contains: phone } : contains }, { email: contains }, { name: contains }] },
+    select: { id: true, name: true, phone: true, email: true, subject: true, status: true, createdAt: true, userId: true },
+    orderBy: { createdAt: "desc" },
+    take: 10,
+  });
+
+  const claims = await prisma.warrantyClaim.findMany({
+    where: { OR: [{ serialCode: contains }] },
+    select: {
+      id: true,
+      serialCode: true,
+      reason: true,
+      status: true,
+      createdAt: true,
+      userId: true,
+      user: { select: { id: true, username: true, email: true } },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 10,
+  });
+
+  ok(res, { q, users, orders, serials, boards, devices, messages, claims });
+});
+
 adminRouter.get("/audit", async (req, res) => {
   const action = String(req.query.action ?? "");
   const where = action ? { action } : undefined;
