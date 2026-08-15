@@ -274,3 +274,60 @@ export async function getAdminLogs(): Promise<ApiResponse<AdminLogsResponse>> {
   const { data } = await api.get<ApiResponse<AdminLogsResponse>>("/admin/logs");
   return data;
 }
+
+/** ---------- Device support (customer service) ---------- */
+
+export interface AdminDeviceSupport {
+  id: number;
+  name: string;
+  type: string;
+  status: string;
+  serialNumber: string | null;
+  firmwareVersion: string | null;
+  ipAddress: string | null;
+  lastSeen: string | null;
+  online: boolean;
+  offline: boolean | null;
+  createdAt: string;
+  home: {
+    id: number;
+    name: string;
+    owner: { id: number; username: string; email: string };
+    apiKeys: Array<{ keyPrefix: string; label: string | null; createdAt: string }>;
+  };
+  room: { name: string } | null;
+  esp: {
+    id: number;
+    macAddress: string;
+    name: string | null;
+    ssid: string | null;
+    serialCode: string | null;
+    modelCode: string | null;
+    ipAddress: string | null;
+    firmwareVersion: string | null;
+    lastSeen: string | null;
+    offline: boolean;
+    otaPendingVersion: string | null;
+    otaProgress: number | null;
+    otaStatus: string | null;
+  } | null;
+  logs: Array<{ id: number; logType: string; logMessage: string; createdAt: string; actor: { username: string } | null }>;
+  commands: Array<{ id: number; command: string; status: string; createdAt: string; executedAt: string | null }>;
+}
+
+export async function getDeviceSupport(id: number): Promise<ApiResponse<AdminDeviceSupport>> {
+  const { data } = await api.get<ApiResponse<AdminDeviceSupport>>(`/admin/devices/${id}/support`);
+  return data;
+}
+
+/** Admin se device ON/OFF (support ke liye) — command enqueue karta hai, board next poll pe apply karega. */
+export async function adminSetDeviceStatus(id: number, status: "on" | "off"): Promise<ApiResponse<{ id: number; status: string }>> {
+  const { data } = await api.post<ApiResponse<{ id: number; status: string }>>(`/admin/devices/${id}/status`, { status });
+  return data;
+}
+
+/** Fix: stuck pending commands clear karo. */
+export async function clearDeviceCommands(id: number): Promise<ApiResponse<{ cleared: number }>> {
+  const { data } = await api.post<ApiResponse<{ cleared: number }>>(`/admin/devices/${id}/clear-commands`);
+  return data;
+}
