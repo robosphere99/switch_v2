@@ -8,6 +8,7 @@ import { prisma } from "../lib/prisma";
 import { AppError, ok } from "../lib/response";
 import { audit } from "../services/audit.service";
 import { createNotification } from "../services/notification.service";
+import { emitToHome } from "../lib/socket";
 import { generateSerials, updateOrderStatus } from "../services/shop.service";
 import { decryptSecret } from "../lib/crypto";
 import { resolveFirmware } from "../services/firmware.service";
@@ -561,13 +562,48 @@ adminRouter.patch("/esp/:id", async (req, res) => {
   if (dup) {
     throw new AppError("DUPLICATE_NAME", `Naam "${name}" already kisi aur board pe hai — har board ka unique naam chahiye`, 409);
   }
+  const before = await prisma.espDevice.findUnique({ where: { id } });
+  if (!before) throw new AppError("NOT_FOUND", "Board nahi mila", 404);
   const esp = await prisma.espDevice.update({ where: { id }, data: { name } });
   await audit(req.user!.sub, "admin.esp.rename", {
     entity: "esp",
     entityId: id,
-    meta: { name },
+    meta: { from: before.name ?? null, to: name },
   });
+  // Admin rename bhi user ko notify karta hai (support action).
+  const home = await prisma.home.findUnique({
+    where: { id: esp.homeId },
+    include: { members: { where: { role: { in: ["owner", "admin"] } }, select: { userId: true } } },
+  });
+  if (home) {
+    const oldName = before.name ?? before.serialCode ?? `ESP-${before.macAddress.slice(-6).toUpperCase()}`;
+    for (const m of home.members) {
+      await createNotification(m.userId, {
+        category: "support",
+        type: "info",
+        title: `🛰️ Support ne board renamed kiya: ${oldName} → ${name}`,
+        body: `Support team ne board ka naam "${oldName}" se "${name}" kar diya.`,
+      });
+    }
+    emitToHome(esp.homeId, "esp:updated", { id, name });
+  }
   ok(res, esp);
+});
+
+/** Board ki rename history (user + admin dono ke renames) — tracking/security. */
+adminRouter.get("/esp/:id/history", async (req, res) => {
+  const id = Number(req.params.id);
+  const logs = await prisma.auditLog.findMany({
+    where: {
+      entity: "esp",
+      entityId: id,
+      action: { in: ["user.esp.rename", "admin.esp.rename"] },
+    },
+    include: { actor: { select: { id: true, username: true } } },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+  });
+  ok(res, logs);
 });
 
 /** Firmware version history. */

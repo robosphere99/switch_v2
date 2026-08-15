@@ -3,6 +3,7 @@ import { prisma } from "../lib/prisma";
 import { AppError } from "../lib/response";
 import { emitToHome } from "../lib/socket";
 import { audit } from "./audit.service";
+import { createNotification } from "./notification.service";
 
 export async function listDevices(homeId: number) {
   return prisma.device.findMany({
@@ -138,8 +139,27 @@ export async function renameEsp(homeId: number, espId: number, name: string, act
     homeId,
     entity: "esp",
     entityId: espId,
-    meta: { name },
+    meta: { from: esp.name ?? null, to: name },
   });
+
+  // Board rename → home ke members ko notification (realtime bhi).
+  const actor = await prisma.user.findUnique({ where: { id: actorId }, select: { username: true } });
+  const home = await prisma.home.findUnique({
+    where: { id: homeId },
+    include: { members: { where: { role: { in: ["owner", "admin"] } }, select: { userId: true } } },
+  });
+  if (home) {
+    const oldName = esp.name ?? esp.serialCode ?? `ESP-${esp.macAddress.slice(-6).toUpperCase()}`;
+    for (const m of home.members) {
+      await createNotification(m.userId, {
+        category: "device",
+        type: "info",
+        title: `🛰️ Board renamed: ${oldName} → ${name}`,
+        body: `${actor?.username ?? "Kisi ne"} ne board ka naam "${oldName}" se "${name}" kar diya.`,
+      });
+    }
+    emitToHome(homeId, "esp:updated", { id: espId, name });
+  }
   return updated;
 }
 
