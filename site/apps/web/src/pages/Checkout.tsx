@@ -45,7 +45,7 @@ export function Checkout() {
       <div className="mx-auto max-w-2xl px-4 py-16 text-center">
         <div className="mb-4 text-5xl">🛒</div>
         <h1 className="mb-2 text-2xl font-bold">Cart khali hai</h1>
-        <p className="mb-6 text-gray-400">Pehle kuch products add karo.</p>
+        <p className="mb-6 text-gray-500">Pehle kuch products add karo.</p>
         <Link to="/shop" className="rounded-lg bg-gradient-to-r from-brand to-brand-light px-6 py-3 font-semibold text-white">
           Shop kholo
         </Link>
@@ -65,7 +65,7 @@ export function Checkout() {
           <h2 className="mb-3 text-lg font-semibold">Order Summary</h2>
           <div className="space-y-2 text-sm">
             {items.map((i) => (
-              <div key={i.productId} className="flex justify-between text-gray-300">
+              <div key={i.productId} className="flex justify-between text-gray-600">
                 <span>
                   {i.name} <span className="text-gray-500">× {i.quantity}</span>
                 </span>
@@ -84,7 +84,7 @@ export function Checkout() {
           <h2 className="mb-4 text-lg font-semibold">Shipping Details</h2>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-sm text-gray-400">Full name *</label>
+              <label className="mb-1 block text-sm text-gray-500">Full name *</label>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -93,7 +93,7 @@ export function Checkout() {
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm text-gray-400">Phone *</label>
+              <label className="mb-1 block text-sm text-gray-500">Phone *</label>
               <input
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
@@ -103,7 +103,7 @@ export function Checkout() {
             </div>
           </div>
           <div className="mt-4">
-            <label className="mb-1 block text-sm text-gray-400">Shipping address *</label>
+            <label className="mb-1 block text-sm text-gray-500">Shipping address *</label>
             <textarea
               value={address}
               onChange={(e) => setAddress(e.target.value)}
@@ -119,7 +119,7 @@ export function Checkout() {
           <label className="flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold">WiFi Pre-Provisioning <span className="text-xs font-normal text-gray-500">(optional)</span></h2>
-              <p className="text-sm text-gray-400">
+              <p className="text-sm text-gray-500">
                 Board factory se hi aapke WiFi se connected aayega. Device bhi khud config mode me aa jata hai agar WiFi badle.
               </p>
             </div>
@@ -133,7 +133,7 @@ export function Checkout() {
           {wifiEnabled && (
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <div>
-                <label className="mb-1 block text-sm text-gray-400">WiFi name (SSID)</label>
+                <label className="mb-1 block text-sm text-gray-500">WiFi name (SSID)</label>
                 <input
                   value={ssid}
                   onChange={(e) => setSsid(e.target.value)}
@@ -142,7 +142,7 @@ export function Checkout() {
                 />
               </div>
               <div>
-                <label className="mb-1 block text-sm text-gray-400">WiFi password</label>
+                <label className="mb-1 block text-sm text-gray-500">WiFi password</label>
                 <input
                   type="password"
                   value={wifiPass}
@@ -171,7 +171,7 @@ export function Checkout() {
               />
               <div>
                 <div className="font-semibold">💵 Cash on Delivery</div>
-                <div className="text-xs text-gray-400">Delivery par pay karo</div>
+                <div className="text-xs text-gray-500">Delivery par pay karo</div>
               </div>
             </label>
             <label
@@ -187,13 +187,13 @@ export function Checkout() {
               />
               <div>
                 <div className="font-semibold">📱 UPI / Bank Transfer</div>
-                <div className="text-xs text-gray-400">Order ke baad details milengi</div>
+                <div className="text-xs text-gray-500">Order ke baad details milengi</div>
               </div>
             </label>
           </div>
         </section>
 
-        {error && <div className="rounded bg-red-900/40 p-3 text-sm text-red-300">{error}</div>}
+        {error && <div className="rounded bg-red-900/40 p-3 text-sm text-red-600">{error}</div>}
 
         <button
           type="submit"

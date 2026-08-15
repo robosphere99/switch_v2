@@ -4,8 +4,8 @@
 
 @layer base {
   body {
-    @apply bg-night-900 text-white font-sans antialiased;
-    background: linear-gradient(135deg, #0f0f1e 0%, #1a1a2e 100%);
+    @apply bg-night-900 text-night-950 font-sans antialiased;
+    background: linear-gradient(135deg, #f1f5f9 0%, #e8eef6 100%);
     min-height: 100vh;
   }
 }

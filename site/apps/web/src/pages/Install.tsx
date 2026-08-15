@@ -2,9 +2,9 @@ import { useEffect, useState } from "react";
 import { getInstallStatus, runInstall, type InstallStatus } from "../api/install";
 
 const inputCls =
-  "w-full rounded-lg border border-brand/20 bg-night-900 px-4 py-3 text-white outline-none focus:border-brand";
+  "w-full rounded-lg border border-brand/20 bg-night-900 px-4 py-3 text-night-950 outline-none focus:border-brand";
 
-const labelCls = "mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-400";
+const labelCls = "mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500";
 
 /**
  * First-run installation wizard — jab DB/tables nahi hain to app ke bajaye
@@ -76,7 +76,7 @@ export function Install() {
         <div className="w-full max-w-md rounded-2xl border border-brand/20 bg-night-800 p-10 text-center shadow-2xl">
           <div className="mb-3 text-5xl">✅</div>
           <h1 className="mb-2 text-2xl font-bold">Installation Complete!</h1>
-          <p className="text-sm text-gray-400">
+          <p className="text-sm text-gray-500">
             Database ready, admin ban gaya, installed flag lag gaya. Site ab normal chal raha hai —
             reload ho raha hai...
           </p>
@@ -92,7 +92,7 @@ export function Install() {
           <span className="text-4xl">⚡</span>
           <h1 className="text-2xl font-bold">RoboSphere — Setup</h1>
         </div>
-        <p className="mb-6 text-sm text-gray-400">
+        <p className="mb-6 text-sm text-gray-500">
           Pehli baar chala rahe ho? Bas database aur admin details do — tables, admin account aur
           installed flag sab khud ban jayega.
         </p>
@@ -106,7 +106,7 @@ export function Install() {
 
         <form onSubmit={handleInstall} className="space-y-6">
           <div>
-            <h2 className="mb-3 text-lg font-bold text-white">1 · Database</h2>
+            <h2 className="mb-3 text-lg font-bold text-night-950">1 · Database</h2>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className={labelCls}>Host</label>
@@ -138,7 +138,7 @@ export function Install() {
           </div>
 
           <div>
-            <h2 className="mb-3 text-lg font-bold text-white">2 · Admin Account</h2>
+            <h2 className="mb-3 text-lg font-bold text-night-950">2 · Admin Account</h2>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className={labelCls}>Username</label>

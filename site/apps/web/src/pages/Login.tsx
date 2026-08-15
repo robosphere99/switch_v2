@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { Lock } from "lucide-react";
 import { login } from "../api/auth";
 import { useAuthStore } from "../stores/auth";
+import { Logo } from "../components/Logo";
 
 export function Login() {
   const [usernameEmail, setUsernameEmail] = useState("");
@@ -36,23 +38,29 @@ export function Login() {
         onSubmit={handleSubmit}
         className="w-full max-w-md rounded-2xl border border-brand/20 bg-night-800 p-10 shadow-2xl"
       >
-        <h1 className="mb-8 text-center text-2xl font-bold">🔓 Login</h1>
+        <div className="mb-8 flex flex-col items-center gap-3">
+          <Logo size="lg" />
+          <h1 className="flex items-center gap-2 text-2xl font-bold">
+            <Lock className="h-5 w-5 text-brand" />
+            Sign in to your home
+          </h1>
+        </div>
 
         {error && (
           <p className="mb-4 rounded bg-red-500/10 px-4 py-2 text-sm text-red-400">{error}</p>
         )}
 
-        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-400">
+        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
           Username or Email
         </label>
         <input
           value={usernameEmail}
           onChange={(e) => setUsernameEmail(e.target.value)}
           required
-          className="mb-4 w-full rounded-lg border border-brand/20 bg-night-900 px-4 py-3 text-white outline-none focus:border-brand"
+          className="mb-4 w-full rounded-lg border border-brand/20 bg-night-900 px-4 py-3 text-night-950 outline-none focus:border-brand"
         />
 
-        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-400">
+        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
           Password
         </label>
         <input
@@ -60,7 +68,7 @@ export function Login() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
-          className="mb-6 w-full rounded-lg border border-brand/20 bg-night-900 px-4 py-3 text-white outline-none focus:border-brand"
+          className="mb-6 w-full rounded-lg border border-brand/20 bg-night-900 px-4 py-3 text-night-950 outline-none focus:border-brand"
         />
 
         <button
@@ -71,9 +79,9 @@ export function Login() {
           {loading ? "Logging in…" : "Login"}
         </button>
 
-        <p className="mt-6 text-center text-sm text-gray-400">
+        <p className="mt-6 text-center text-sm text-gray-500">
           No account?{" "}
-          <Link to="/signup" className="text-brand-light hover:underline">
+          <Link to="/signup" className="text-brand hover:underline">
             Create your home
           </Link>
         </p>

@@ -148,7 +148,7 @@ export function ScheduleSection({
       </p>
 
       {canManage && (
-        <div className="mb-5 rounded-lg border border-gray-700 bg-night-900 p-4">
+        <div className="mb-5 rounded-lg border border-gray-200 bg-night-900 p-4">
           <div className="mb-3 grid gap-3 sm:grid-cols-2">
             <select
               value={form.deviceId}
@@ -206,7 +206,7 @@ export function ScheduleSection({
                       setForm({ ...form, runAt: toLocalInputValue(q.date()) });
                       setShowCustom(false);
                     }}
-                    className="rounded-full border border-gray-600 bg-night-900 px-3 py-1 text-xs font-medium text-gray-300 transition hover:border-brand/40 hover:text-white"
+                    className="rounded-full border border-gray-300 bg-night-900 px-3 py-1 text-xs font-medium text-gray-600 transition hover:border-brand/40 hover:text-night-950"
                   >
                     {q.label}
                   </button>
@@ -216,8 +216,8 @@ export function ScheduleSection({
                   onClick={() => setShowCustom((v) => !v)}
                   className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
                     showCustom
-                      ? "border-brand bg-brand/15 text-brand-light"
-                      : "border-gray-600 bg-night-900 text-gray-300 hover:border-brand/40 hover:text-white"
+                      ? "border-brand bg-brand/15 text-brand"
+                      : "border-gray-300 bg-night-900 text-gray-600 hover:border-brand/40 hover:text-night-950"
                   }`}
                 >
                   📅 Custom
@@ -229,16 +229,16 @@ export function ScheduleSection({
                   type="datetime-local"
                   value={form.runAt}
                   onChange={(e) => setForm({ ...form, runAt: e.target.value })}
-                  className="mb-2 w-full rounded-lg border border-brand/20 bg-night-900 px-3 py-2 text-sm text-gray-300 outline-none focus:border-brand"
+                  className="mb-2 w-full rounded-lg border border-brand/20 bg-night-900 px-3 py-2 text-sm text-gray-600 outline-none focus:border-brand"
                 />
               )}
 
               {form.runAt ? (
-                <p className="text-xs text-gray-400">
+                <p className="text-xs text-gray-500">
                   🕐 Selected:{" "}
-                  <span className="text-brand-light">{formatFriendly(new Date(form.runAt))}</span>
+                  <span className="text-brand">{formatFriendly(new Date(form.runAt))}</span>
                   {pastOnce && (
-                    <span className="ml-2 text-amber-400">
+                    <span className="ml-2 text-amber-600">
                       — time is in the past, pick a future time
                     </span>
                   )}
@@ -277,7 +277,7 @@ export function ScheduleSection({
             <div
               key={s.id}
               className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border px-4 py-3 ${
-                s.enabled ? "border-brand/30 bg-night-900" : "border-gray-800 bg-night-900 opacity-60"
+                s.enabled ? "border-brand/30 bg-night-900" : "border-gray-200 bg-night-900 opacity-60"
               }`}
             >
               <div className="min-w-0">
@@ -292,15 +292,15 @@ export function ScheduleSection({
                   >
                     {s.action === "on" ? "ON" : "OFF"}
                   </span>
-                  <span className="ml-1 rounded bg-gray-700 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-gray-300">
+                  <span className="ml-1 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-gray-600">
                     {TYPE_LABELS[s.type] ?? s.type}
                   </span>
                   {s.type === "cron" && (
-                    <code className="ml-1 text-[10px] text-gray-400">{s.cron}</code>
+                    <code className="ml-1 text-[10px] text-gray-500">{s.cron}</code>
                   )}
                 </p>
-                <p className="mt-0.5 text-xs text-gray-400">
-                  Next run: <span className="text-brand-light">{formatDate(s.nextRun)}</span>
+                <p className="mt-0.5 text-xs text-gray-500">
+                  Next run: <span className="text-brand">{formatDate(s.nextRun)}</span>
                   {s.lastRun ? (
                     <span className="text-gray-500"> · Last: {formatDate(s.lastRun)}</span>
                   ) : null}
@@ -312,7 +312,7 @@ export function ScheduleSection({
                   className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
                     s.enabled
                       ? "bg-green-500/15 text-green-400 hover:bg-green-500/25"
-                      : "bg-gray-700 text-gray-300 hover:bg-gray-600"
+                      : "bg-gray-100 text-gray-600 hover:bg-gray-200"
                   }`}
                 >
                   {s.enabled ? "● Enabled" : "○ Disabled"}
@@ -321,7 +321,7 @@ export function ScheduleSection({
                   onClick={() => {
                     if (confirm("Delete this schedule?")) remove.mutate(s.id);
                   }}
-                  className="rounded-full bg-gray-700 px-2.5 py-1 text-xs text-gray-300 hover:bg-red-500/20 hover:text-red-400"
+                  className="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-600 hover:bg-red-500/20 hover:text-red-400"
                 >
                   ✕
                 </button>

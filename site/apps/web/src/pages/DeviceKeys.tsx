@@ -49,9 +49,9 @@ export function DeviceKeys() {
   return (
     <div className="mx-auto max-w-4xl px-4 py-8">
       <h1 className="mb-2 text-3xl font-bold">🔑 Device Keys</h1>
-      <p className="mb-8 text-sm text-gray-400">
+      <p className="mb-8 text-sm text-gray-500">
         These keys let your ESP32 hardware talk to the API. Keys are scoped to one home and are
-        shown <span className="text-amber-400">only once</span> at creation — save them safely.
+        shown <span className="text-amber-600">only once</span> at creation — save them safely.
       </p>
 
       {error && (
@@ -120,7 +120,7 @@ export function DeviceKeys() {
       </div>
 
       {/* List */}
-      <div className="rounded-xl border border-gray-700 bg-night-800 p-5">
+      <div className="rounded-xl border border-gray-200 bg-night-800 p-5">
         <h2 className="mb-4 font-semibold">
           Your keys <span className="text-sm font-normal text-gray-500">({keys.data?.success ? keys.data.data.length : "…"})</span>
         </h2>
@@ -132,11 +132,11 @@ export function DeviceKeys() {
             keys.data.data.map((k) => (
               <div
                 key={k.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-700 bg-night-900 px-4 py-2.5 text-sm"
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 bg-night-900 px-4 py-2.5 text-sm"
               >
                 <div>
-                  <span className="font-mono text-xs text-brand-light">{k.keyPrefix}…</span>
-                  {k.label && <span className="ml-2 text-gray-300">{k.label}</span>}
+                  <span className="font-mono text-xs text-brand">{k.keyPrefix}…</span>
+                  {k.label && <span className="ml-2 text-gray-600">{k.label}</span>}
                   <div className="mt-0.5 text-[11px] text-gray-500">
                     created {new Date(k.createdAt).toLocaleDateString()}
                     {k.expiresAt && ` · expires ${new Date(k.expiresAt).toLocaleDateString()}`}
@@ -149,7 +149,7 @@ export function DeviceKeys() {
                       revoke.mutate(k.id);
                     }
                   }}
-                  className="text-xs text-red-400 hover:text-red-300"
+                  className="text-xs text-red-400 hover:text-red-600"
                 >
                   Revoke
                 </button>

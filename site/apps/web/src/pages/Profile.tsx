@@ -60,17 +60,17 @@ export function Profile() {
         onSubmit={handleSubmit}
         className="rounded-2xl border border-brand/20 bg-night-800 p-8"
       >
-        <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-gray-400">
+        <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-gray-500">
           Account details
         </h2>
-        <label className="mb-1 block text-xs font-semibold uppercase text-gray-400">Username</label>
+        <label className="mb-1 block text-xs font-semibold uppercase text-gray-500">Username</label>
         <input
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           required
           className="mb-4 w-full rounded-lg border border-brand/20 bg-night-900 px-3 py-2.5 text-sm outline-none focus:border-brand"
         />
-        <label className="mb-1 block text-xs font-semibold uppercase text-gray-400">Email</label>
+        <label className="mb-1 block text-xs font-semibold uppercase text-gray-500">Email</label>
         <input
           type="email"
           value={email}
@@ -79,10 +79,10 @@ export function Profile() {
           className="mb-6 w-full rounded-lg border border-brand/20 bg-night-900 px-3 py-2.5 text-sm outline-none focus:border-brand"
         />
 
-        <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-gray-400">
+        <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-gray-500">
           Change password
         </h2>
-        <label className="mb-1 block text-xs font-semibold uppercase text-gray-400">
+        <label className="mb-1 block text-xs font-semibold uppercase text-gray-500">
           Current password
         </label>
         <input
@@ -92,7 +92,7 @@ export function Profile() {
           placeholder="Required only when setting a new password"
           className="mb-4 w-full rounded-lg border border-brand/20 bg-night-900 px-3 py-2.5 text-sm outline-none focus:border-brand"
         />
-        <label className="mb-1 block text-xs font-semibold uppercase text-gray-400">
+        <label className="mb-1 block text-xs font-semibold uppercase text-gray-500">
           New password
         </label>
         <input

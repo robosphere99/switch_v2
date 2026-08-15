@@ -43,7 +43,7 @@ export function NotificationBell() {
     <div className="relative">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="relative rounded-lg p-2 text-gray-300 hover:bg-night-700 hover:text-brand-light"
+        className="relative rounded-lg p-2 text-gray-600 hover:bg-night-700 hover:text-brand"
         title="Notifications"
       >
         🔔
@@ -57,15 +57,15 @@ export function NotificationBell() {
       {open && (
         <>
           <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 z-40 mt-2 w-80 overflow-hidden rounded-xl border border-gray-700 bg-night-800 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-gray-700 px-4 py-2.5">
-              <Link to="/notifications" onClick={() => setOpen(false)} className="text-sm font-semibold hover:text-brand-light">
+          <div className="absolute right-0 z-40 mt-2 w-80 overflow-hidden rounded-xl border border-gray-200 bg-night-800 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-200 px-4 py-2.5">
+              <Link to="/notifications" onClick={() => setOpen(false)} className="text-sm font-semibold hover:text-brand">
                 Notifications <span className="text-[10px] font-normal text-gray-500">· View all →</span>
               </Link>
               {count > 0 && (
                 <button
                   onClick={() => readAll.mutate()}
-                  className="text-xs text-brand-light hover:underline"
+                  className="text-xs text-brand hover:underline"
                 >
                   Mark all read
                 </button>
@@ -83,8 +83,8 @@ export function NotificationBell() {
                       if (!n.readAt) readOne.mutate(n.id);
                     }}
                   >
-                    <p className="text-sm font-medium text-gray-200">{n.title}</p>
-                    {n.body && <p className="mt-0.5 text-xs text-gray-400">{n.body}</p>}
+                    <p className="text-sm font-medium text-gray-700">{n.title}</p>
+                    {n.body && <p className="mt-0.5 text-xs text-gray-500">{n.body}</p>}
                     <p className="mt-1 text-[10px] text-gray-500">
                       {new Date(n.createdAt).toLocaleString([], { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })}
                     </p>

@@ -40,7 +40,7 @@ export default function App() {
 
   if (installState === "checking") {
     return (
-      <div className="flex min-h-screen items-center justify-center text-gray-400">
+      <div className="flex min-h-screen items-center justify-center text-gray-500">
         Checking installation...
       </div>
     );

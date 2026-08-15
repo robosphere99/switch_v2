@@ -76,7 +76,7 @@ export function ChatWidget() {
               🤖
             </span>
             <div>
-              <div className="text-sm font-bold text-white">RoboSphere Assistant</div>
+              <div className="text-sm font-bold text-night-950">RoboSphere Assistant</div>
               <div className="text-[11px] text-green-400">● Online — turant reply</div>
             </div>
           </div>
@@ -89,7 +89,7 @@ export function ChatWidget() {
                   className={
                     m.role === "user"
                       ? "max-w-[85%] rounded-2xl rounded-br-sm bg-gradient-to-r from-brand to-brand-light px-3 py-2 text-sm text-white"
-                      : "max-w-[85%] rounded-2xl rounded-bl-sm border border-brand/20 bg-night-700 px-3 py-2 text-sm text-gray-200"
+                      : "max-w-[85%] rounded-2xl rounded-bl-sm border border-brand/20 bg-night-700 px-3 py-2 text-sm text-gray-700"
                   }
                 >
                   <div className="whitespace-pre-wrap">{m.text}</div>
@@ -106,10 +106,10 @@ export function ChatWidget() {
                     className="block rounded-xl border border-brand/25 bg-night-700 p-3 transition hover:border-brand"
                   >
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-semibold text-white">{p.name}</span>
-                      <span className="text-sm font-bold text-brand-light">₹{Number(p.price).toLocaleString("en-IN")}</span>
+                      <span className="text-sm font-semibold text-night-950">{p.name}</span>
+                      <span className="text-sm font-bold text-brand">₹{Number(p.price).toLocaleString("en-IN")}</span>
                     </div>
-                    <div className="mt-1 text-[11px] text-gray-400">
+                    <div className="mt-1 text-[11px] text-gray-500">
                       {p.modelCode} · {p.reason}
                     </div>
                   </Link>
@@ -119,7 +119,7 @@ export function ChatWidget() {
 
             {busy && (
               <div className="flex justify-start">
-                <div className="rounded-2xl rounded-bl-sm border border-brand/20 bg-night-700 px-3 py-2 text-sm text-gray-400">
+                <div className="rounded-2xl rounded-bl-sm border border-brand/20 bg-night-700 px-3 py-2 text-sm text-gray-500">
                   typing…
                 </div>
               </div>
@@ -132,7 +132,7 @@ export function ChatWidget() {
                   <button
                     key={c}
                     onClick={() => send(c)}
-                    className="rounded-full border border-brand/30 bg-night-700 px-3 py-1 text-[11px] text-brand-light transition hover:bg-brand hover:text-white"
+                    className="rounded-full border border-brand/30 bg-night-700 px-3 py-1 text-[11px] text-brand transition hover:bg-brand hover:text-white"
                   >
                     {c}
                   </button>
@@ -150,7 +150,7 @@ export function ChatWidget() {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && send(input)}
                 placeholder="Message… (Hindi/English dono)"
-                className="flex-1 rounded-lg border border-brand/30 bg-night-700 px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-brand"
+                className="flex-1 rounded-lg border border-brand/30 bg-night-700 px-3 py-2 text-sm text-night-950 placeholder-gray-500 focus:outline-none focus:border-brand"
               />
               <button
                 onClick={() => send(input)}

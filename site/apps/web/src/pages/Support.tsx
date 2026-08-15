@@ -13,9 +13,9 @@ const SUBJECTS = [
 ];
 
 const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
-  new: { label: "🆕 New", cls: "bg-blue-500/20 text-blue-300" },
-  read: { label: "📖 Read", cls: "bg-amber-500/20 text-amber-300" },
-  done: { label: "✅ Done", cls: "bg-green-500/20 text-green-300" },
+  new: { label: "🆕 New", cls: "bg-blue-500/20 text-blue-700" },
+  read: { label: "📖 Read", cls: "bg-amber-500/20 text-amber-600" },
+  done: { label: "✅ Done", cls: "bg-green-500/20 text-green-700" },
 };
 
 export function Support() {
@@ -57,20 +57,20 @@ export function Support() {
     }
   };
 
-  if (loading) return <div className="p-10 text-center text-gray-400">Loading…</div>;
+  if (loading) return <div className="p-10 text-center text-gray-500">Loading…</div>;
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
       <h1 className="mb-2 text-3xl font-bold">
         <span className="bg-gradient-to-r from-brand-light to-brand bg-clip-text text-transparent">🛠️ Support</span>
       </h1>
-      <p className="mb-6 text-sm text-gray-400">
+      <p className="mb-6 text-sm text-gray-500">
         Aapke account se seedha humari team ko message — order, warranty, OTA setup, kuch bhi. Ticket number ke saath
         track ho jata hai.
       </p>
 
       {msg && (
-        <div className={`mb-6 rounded-lg border p-4 text-sm ${msg.ok ? "border-green-500/40 bg-green-900/30 text-green-300" : "border-red-500/40 bg-red-900/30 text-red-300"}`}>
+        <div className={`mb-6 rounded-lg border p-4 text-sm ${msg.ok ? "border-green-500/40 bg-green-900/30 text-green-700" : "border-red-500/40 bg-red-900/30 text-red-600"}`}>
           {msg.text}
         </div>
       )}
@@ -80,7 +80,7 @@ export function Support() {
         <form onSubmit={submit} className="rounded-xl border border-white/10 bg-white/5 p-6">
           <h2 className="mb-4 text-lg font-semibold">📩 New Ticket</h2>
 
-          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-400">Subject</label>
+          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Subject</label>
           <select
             value={form.subject}
             onChange={(e) => setForm({ ...form, subject: e.target.value })}
@@ -91,7 +91,7 @@ export function Support() {
             ))}
           </select>
 
-          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-400">Order (optional)</label>
+          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Order (optional)</label>
           <select
             value={form.orderNumber}
             onChange={(e) => setForm({ ...form, orderNumber: e.target.value })}
@@ -103,7 +103,7 @@ export function Support() {
             ))}
           </select>
 
-          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-400">Phone (optional)</label>
+          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Phone (optional)</label>
           <input
             value={form.phone}
             onChange={(e) => setForm({ ...form, phone: e.target.value })}
@@ -111,7 +111,7 @@ export function Support() {
             className="mb-4 w-full rounded-lg border border-white/10 bg-gray-900 px-3 py-2 text-sm"
           />
 
-          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-400">Message *</label>
+          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Message *</label>
           <textarea
             value={form.message}
             onChange={(e) => setForm({ ...form, message: e.target.value })}
@@ -134,9 +134,9 @@ export function Support() {
         <div className="space-y-4">
           <div className="rounded-xl border border-white/10 bg-white/5 p-6 text-sm">
             <h2 className="mb-3 text-lg font-semibold">📞 Seedha baat karo</h2>
-            <div className="space-y-2 text-gray-300">
-              <p>📧 <span className="text-brand-light">support@robosphere.in</span></p>
-              <p>📱 WhatsApp: <span className="text-brand-light">+91 98765 43210</span></p>
+            <div className="space-y-2 text-gray-600">
+              <p>📧 <span className="text-brand">support@robosphere.in</span></p>
+              <p>📱 WhatsApp: <span className="text-brand">+91 98765 43210</span></p>
               <p>📍 RoboSphere Labs, Sector 62, Noida, UP 201309</p>
               <p>🕐 Mon–Sat · 9:00 AM – 7:00 PM</p>
             </div>
@@ -144,22 +144,22 @@ export function Support() {
 
           <div className="rounded-xl border border-white/10 bg-white/5 p-6 text-sm">
             <h2 className="mb-3 text-lg font-semibold">❓ Quick FAQ</h2>
-            <div className="space-y-3 text-gray-300">
+            <div className="space-y-3 text-gray-600">
               <div>
-                <p className="font-semibold text-white">Board WiFi se connect nahi ho raha?</p>
-                <p className="text-gray-400">Board ke web panel me jao (AP mode me Robosphere-IoT WiFi) → WiFi page se SSID + password daalo.</p>
+                <p className="font-semibold text-night-950">Board WiFi se connect nahi ho raha?</p>
+                <p className="text-gray-500">Board ke web panel me jao (AP mode me Robosphere-IoT WiFi) → WiFi page se SSID + password daalo.</p>
               </div>
               <div>
-                <p className="font-semibold text-white">Serial activate kaise karein?</p>
-                <p className="text-gray-400">Box ke sticker ka QR scan karo ya /activate pe serial daalo → home choose → Activate.</p>
+                <p className="font-semibold text-night-950">Serial activate kaise karein?</p>
+                <p className="text-gray-500">Box ke sticker ka QR scan karo ya /activate pe serial daalo → home choose → Activate.</p>
               </div>
               <div>
-                <p className="font-semibold text-white">Firmware update kaise hota hai?</p>
-                <p className="text-gray-400">Bilkul khud — hum naya version publish karte hain, board WiFi pe OTA se update ho jata hai. Koi USB nahi.</p>
+                <p className="font-semibold text-night-950">Firmware update kaise hota hai?</p>
+                <p className="text-gray-500">Bilkul khud — hum naya version publish karte hain, board WiFi pe OTA se update ho jata hai. Koi USB nahi.</p>
               </div>
               <div>
-                <p className="font-semibold text-white">Warranty kaise milegi?</p>
-                <p className="text-gray-400">Serial claim karte hi 1 saal warranty start. 🛡️ Warranty page se claim karo.</p>
+                <p className="font-semibold text-night-950">Warranty kaise milegi?</p>
+                <p className="text-gray-500">Serial claim karte hi 1 saal warranty start. 🛡️ Warranty page se claim karo.</p>
               </div>
             </div>
           </div>
@@ -176,12 +176,12 @@ export function Support() {
             {tickets.map((t) => (
               <div key={t.id} className="rounded-xl border border-white/10 bg-white/5 p-4">
                 <div className="mb-1 flex items-center justify-between gap-2">
-                  <span className="text-sm font-semibold text-white">#{t.id} · {t.subject}</span>
+                  <span className="text-sm font-semibold text-night-950">#{t.id} · {t.subject}</span>
                   <span className={`rounded-full px-2 py-0.5 text-xs ${STATUS_BADGE[t.status]?.cls ?? ""}`}>
                     {STATUS_BADGE[t.status]?.label ?? t.status}
                   </span>
                 </div>
-                <p className="text-sm text-gray-400">{t.message}</p>
+                <p className="text-sm text-gray-500">{t.message}</p>
                 <p className="mt-1 text-xs text-gray-500">{new Date(t.createdAt).toLocaleString()}</p>
               </div>
             ))}

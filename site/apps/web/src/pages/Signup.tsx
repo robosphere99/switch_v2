@@ -44,17 +44,17 @@ export function Signup() {
           <p className="mb-4 rounded bg-red-500/10 px-4 py-2 text-sm text-red-400">{error}</p>
         )}
 
-        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-400">
+        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
           Username
         </label>
         <input
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           required
-          className="mb-4 w-full rounded-lg border border-brand/20 bg-night-900 px-4 py-3 text-white outline-none focus:border-brand"
+          className="mb-4 w-full rounded-lg border border-brand/20 bg-night-900 px-4 py-3 text-night-950 outline-none focus:border-brand"
         />
 
-        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-400">
+        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
           Email
         </label>
         <input
@@ -62,10 +62,10 @@ export function Signup() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
-          className="mb-4 w-full rounded-lg border border-brand/20 bg-night-900 px-4 py-3 text-white outline-none focus:border-brand"
+          className="mb-4 w-full rounded-lg border border-brand/20 bg-night-900 px-4 py-3 text-night-950 outline-none focus:border-brand"
         />
 
-        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-400">
+        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
           Password
         </label>
         <input
@@ -74,17 +74,17 @@ export function Signup() {
           onChange={(e) => setPassword(e.target.value)}
           required
           minLength={6}
-          className="mb-4 w-full rounded-lg border border-brand/20 bg-night-900 px-4 py-3 text-white outline-none focus:border-brand"
+          className="mb-4 w-full rounded-lg border border-brand/20 bg-night-900 px-4 py-3 text-night-950 outline-none focus:border-brand"
         />
 
-        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-400">
+        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
           Home Name (optional)
         </label>
         <input
           value={homeName}
           onChange={(e) => setHomeName(e.target.value)}
           placeholder="e.g. Sharma Family Home"
-          className="mb-6 w-full rounded-lg border border-brand/20 bg-night-900 px-4 py-3 text-white outline-none focus:border-brand"
+          className="mb-6 w-full rounded-lg border border-brand/20 bg-night-900 px-4 py-3 text-night-950 outline-none focus:border-brand"
         />
 
         <button
@@ -95,9 +95,9 @@ export function Signup() {
           {loading ? "Creating…" : "Sign Up"}
         </button>
 
-        <p className="mt-6 text-center text-sm text-gray-400">
+        <p className="mt-6 text-center text-sm text-gray-500">
           Already have an account?{" "}
-          <Link to="/login" className="text-brand-light hover:underline">
+          <Link to="/login" className="text-brand hover:underline">
             Login
           </Link>
         </p>
