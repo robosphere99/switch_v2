@@ -37,6 +37,24 @@ process.on("uncaughtException", (err) => {
   fileLog(line);
 });
 
+
+// --- Diagnostics: heartbeat + exit reason (503 cycle diagnosis) ---
+// Har 10s alive line — agar heartbeats ruk jaayein bina exit line ke,
+// process ko bahar se maara gaya (native crash / pool recycle).
+setInterval(() => {
+  fileLog(
+    `[hb] alive uptime=${Math.round(process.uptime())}s pid=${process.pid} rss=${Math.round(
+      process.memoryUsage().rss / 1048576,
+    )}MB`,
+  );
+}, 10_000);
+
+process.on("beforeExit", (code) => {
+  fileLog(`[hb] beforeExit code=${code} uptime=${Math.round(process.uptime())}s`);
+});
+process.on("exit", (code) => {
+  fileLog(`[hb] exit code=${code} uptime=${Math.round(process.uptime())}s`);
+});
 // stderr pe boot progress — iisnode error page sirf stderr dikhata hai,
 // logger stdout pe jaata hai isliye yeh lines wahan visible hoti hain.
 const boot = (...args: unknown[]) => {

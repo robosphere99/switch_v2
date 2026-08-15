@@ -1,6 +1,7 @@
 import { prisma } from "../lib/prisma";
 import { emitToHome } from "../lib/socket";
 import { createNotification } from "./notification.service";
+import { fileLog } from "../lib/logger";
 
 let timer: NodeJS.Timeout | null = null;
 const OFFLINE_THRESHOLD_MS = 120_000; // 2 min without sync = offline
@@ -12,6 +13,7 @@ export function startOfflineWatcher(): void {
   timer = setInterval(checkOfflineDevices, CHECK_INTERVAL_MS);
   void checkOfflineDevices();
   console.log("[offline] watcher started (every 60s)");
+  fileLog("[offline] watcher started (every 60s)");
 }
 
 export function stopOfflineWatcher(): void {
@@ -22,10 +24,14 @@ export function stopOfflineWatcher(): void {
 }
 
 async function checkOfflineDevices(): Promise<void> {
+  fileLog(`[offline] tick ${new Date().toISOString()} start`);
   try {
     await checkOfflineDevicesInner();
   } catch (err) {
     console.error("[offline] tick error:", err instanceof Error ? err.message : err);
+    fileLog(`[offline] tick ERROR: ${err instanceof Error ? err.message : String(err)}`);
+  } finally {
+    fileLog(`[offline] tick ${new Date().toISOString()} done`);
   }
 }
 

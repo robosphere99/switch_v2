@@ -9,6 +9,7 @@ import { firmwareDir, webDist } from "./lib/paths";
 import { apiRouter } from "./routes";
 import { installRouter } from "./routes/install.routes";
 import { isDbReady } from "./lib/dbState";
+import { fileLog } from "./lib/logger";
 
 export function createApp() {
   const app = express();
@@ -23,6 +24,22 @@ export function createApp() {
   app.use(express.json({ limit: "1mb" }));
   // ESP32 posts form-encoded data (application/x-www-form-urlencoded).
   app.use(express.urlencoded({ extended: true }));
+
+  // Production crash diagnosis: har request log file me (start + end).
+  // Koi request process ko maare to last logged line hi culprit hai.
+  app.use((req, res, next) => {
+    const start = Date.now();
+    fileLog(`[req] ${new Date().toISOString()} START ${req.method} ${req.originalUrl}`);
+    res.on("finish", () => {
+      fileLog(`[req] ${new Date().toISOString()} END ${req.method} ${req.originalUrl} -> ${res.statusCode} (${Date.now() - start}ms)`);
+    });
+    res.on("close", () => {
+      if (!res.writableEnded) {
+        fileLog(`[req] ${new Date().toISOString()} ABORT ${req.method} ${req.originalUrl} (${Date.now() - start}ms) - connection closed before response`);
+      }
+    });
+    next();
+  });
 
   app.get("/api/health", (_req, res) => {
     res.json({ success: true, data: { status: "ok", ts: new Date().toISOString() } });
