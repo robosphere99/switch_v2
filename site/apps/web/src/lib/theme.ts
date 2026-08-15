@@ -7,10 +7,10 @@ function systemPrefersDark(): boolean {
   return window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ?? false;
 }
 
-/** Saved preference — default light (kuch save na ho to light). */
+/** Saved preference — first visit pe OS ki setting follow karta hai (system). */
 export function getThemeMode(): ThemeMode {
   const saved = localStorage.getItem(STORAGE_KEY);
-  return saved === "light" || saved === "dark" || saved === "system" ? saved : "light";
+  return saved === "light" || saved === "dark" || saved === "system" ? saved : "system";
 }
 
 /** Abhi screen pe kya dikh raha hai — system mode me OS preference resolve karta hai. */
