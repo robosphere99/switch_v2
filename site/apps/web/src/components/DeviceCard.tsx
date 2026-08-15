@@ -1,4 +1,5 @@
 import type { Device, DeviceType } from "@robosphere/shared";
+import { isNewerVersion } from "../api/devices";
 
 const ICONS: Record<DeviceType, string> = {
   bulb: "💡",
@@ -28,6 +29,8 @@ export function DeviceCard({
   onDelete,
   onLogs,
   onRenameBoard,
+  onOta,
+  latestVersion,
   disabled,
 }: {
   device: Device;
@@ -38,6 +41,9 @@ export function DeviceCard({
   onDelete: (device: Device) => void;
   onLogs: (device: Device) => void;
   onRenameBoard?: (esp: NonNullable<Device["esp"]>) => void;
+  /** Is device ke board ke model ka latest published firmware (update badge ke liye). */
+  latestVersion?: string | null;
+  onOta?: (device: Device) => void;
   disabled?: boolean;
 }) {
   const on = device.status === "on";
@@ -85,7 +91,22 @@ export function DeviceCard({
               🛰️ {device.esp.name ?? "ESP Board"}
               {device.esp.serialCode ? ` · ${device.esp.serialCode}` : ""}
               {device.esp.modelCode ? ` · ${device.esp.modelCode}` : ""}
+              {device.esp.firmwareVersion ? ` · FW v${device.esp.firmwareVersion}` : ""}
             </span>
+            {isNewerVersion(latestVersion, device.esp.firmwareVersion) && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 font-bold text-amber-400">
+                ⬆ v{latestVersion}
+                {canManage && onOta && (
+                  <button
+                    onClick={() => onOta(device)}
+                    className="ml-0.5 rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-bold text-amber-300 hover:bg-amber-500/30"
+                    title="Board ka firmware update karo (OTA)"
+                  >
+                    Update
+                  </button>
+                )}
+              </span>
+            )}
             {canManage && onRenameBoard && (
               <button
                 onClick={() => onRenameBoard(device.esp!)}

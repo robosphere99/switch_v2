@@ -703,11 +703,12 @@ async function markAllRead(userId) {
 }
 
 // src/services/device.service.ts
+init_firmware_service();
 async function listDevices(homeId) {
   return prisma.device.findMany({
     where: { homeId },
     include: {
-      esp: { select: { id: true, name: true, serialCode: true, modelCode: true, offline: true, lastSeen: true } }
+      esp: { select: { id: true, name: true, serialCode: true, modelCode: true, firmwareVersion: true, offline: true, lastSeen: true } }
     },
     orderBy: { createdAt: "desc" }
   });
@@ -879,6 +880,56 @@ async function listMyBoards(userId) {
     boards: byHome.get(h.id) ?? []
   }));
 }
+async function requestOta(homeId, deviceId, actorId) {
+  const device = await prisma.device.findFirst({ where: { id: deviceId, homeId } });
+  if (!device) throw new AppError("DEVICE_NOT_FOUND", "Device is home me nahi mila", 404);
+  const esp = device.espId ? await prisma.espDevice.findUnique({ where: { id: device.espId } }) : null;
+  const current = await resolveFirmware(esp?.modelCode);
+  if (!current) {
+    throw new AppError("NO_FIRMWARE", "Abhi koi current firmware published nahi hai", 400);
+  }
+  await prisma.device.update({
+    where: { id: deviceId },
+    data: { otaPendingVersion: current.version, otaRequestedAt: /* @__PURE__ */ new Date() }
+  });
+  let espId = null;
+  if (esp) {
+    espId = esp.id;
+    await prisma.espDevice.update({
+      where: { id: esp.id },
+      data: { otaPendingVersion: current.version, otaRequestedAt: /* @__PURE__ */ new Date() }
+    });
+  }
+  await audit(actorId, "user.ota.push", {
+    homeId,
+    entity: "device",
+    entityId: deviceId,
+    meta: { version: current.version, model: esp?.modelCode ?? null }
+  });
+  const actor = await prisma.user.findUnique({ where: { id: actorId }, select: { username: true } });
+  const home = await prisma.home.findUnique({
+    where: { id: homeId },
+    include: { members: { where: { role: { in: ["owner", "admin"] } }, select: { userId: true } } }
+  });
+  if (home) {
+    for (const m of home.members) {
+      await createNotification(m.userId, {
+        category: "device",
+        type: "info",
+        title: `\u{1F4F2} "${device.name}" pe firmware update push kiya`,
+        body: `${actor?.username ?? "Kisi ne"} ne board ke liye v${current.version} request kiya \u2014 agle heartbeat pe install hoga.`
+      });
+    }
+  }
+  emitToHome(homeId, "device:updated", { id: deviceId });
+  return {
+    deviceId,
+    espId,
+    version: current.version,
+    model: current.modelCode || "universal",
+    message: "OTA update pushed \u2014 device agle heartbeat pe update ho jayega"
+  };
+}
 
 // src/controllers/device.controller.ts
 async function list2(req, res) {
@@ -936,6 +987,14 @@ async function renameEsp2(req, res) {
 }
 async function listMyBoards2(req, res) {
   const data = await listMyBoards(req.user.sub);
+  ok(res, data);
+}
+async function requestOta2(req, res) {
+  const data = await requestOta(
+    Number(req.params.homeId),
+    Number(req.params.deviceId),
+    req.user.sub
+  );
   ok(res, data);
 }
 
@@ -1301,6 +1360,13 @@ deviceRouter.delete(
   validateParams(deviceParams),
   requireHomeMember("admin"),
   remove3
+);
+deviceRouter.post(
+  "/:homeId/devices/:deviceId/ota",
+  requireAuth,
+  validateParams(deviceParams),
+  requireHomeMember("admin"),
+  requestOta2
 );
 deviceRouter.patch(
   "/:homeId/esp/:espId",
@@ -4220,6 +4286,7 @@ publicRouter.post("/support", requireAuth, async (req, res) => {
 });
 
 // src/routes/index.ts
+init_prisma();
 var apiRouter = Router16();
 apiRouter.use("/auth", authRouter);
 apiRouter.use("/homes", homeRouter);
@@ -4236,6 +4303,14 @@ apiRouter.use("/shop", shopRouter);
 apiRouter.use("/claim", claimRouter);
 apiRouter.use("/warranty", warrantyRouter);
 apiRouter.use("/public", publicRouter);
+apiRouter.get("/firmware/current", requireAuth, async (_req, res) => {
+  const versions = await prisma.firmwareVersion.findMany({
+    where: { isCurrent: true },
+    select: { modelCode: true, version: true, releaseNotes: true },
+    orderBy: { modelCode: "asc" }
+  });
+  ok(res, versions);
+});
 
 // src/routes/install.routes.ts
 import { Router as Router17 } from "express";

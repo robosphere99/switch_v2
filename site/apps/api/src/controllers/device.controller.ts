@@ -68,3 +68,19 @@ export async function listMyBoards(req: Request, res: Response) {
   const data = await deviceService.listMyBoards(req.user!.sub);
   ok(res, data);
 }
+
+/** User board pe firmware OTA push kare. */
+export async function requestOta(req: Request, res: Response) {
+  const data = await deviceService.requestOta(
+    Number(req.params.homeId),
+    Number(req.params.deviceId),
+    req.user!.sub,
+  );
+  ok(res, data);
+}
+
+/** Current published firmware versions — update badge ke liye. */
+export async function listCurrentFirmware(_req: Request, res: Response) {
+  const versions = await deviceService.listCurrentFirmware();
+  ok(res, versions);
+}

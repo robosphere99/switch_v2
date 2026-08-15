@@ -74,6 +74,14 @@ deviceRouter.delete(
 );
 
 /** User apne home ke ESP board ka naam rename karo (unique naam rule). */
+deviceRouter.post(
+  "/:homeId/devices/:deviceId/ota",
+  requireAuth,
+  validateParams(deviceParams),
+  requireHomeMember("admin"),
+  deviceController.requestOta,
+);
+
 deviceRouter.patch(
   "/:homeId/esp/:espId",
   requireAuth,

@@ -4,12 +4,13 @@ import { AppError } from "../lib/response";
 import { emitToHome } from "../lib/socket";
 import { audit } from "./audit.service";
 import { createNotification } from "./notification.service";
+import { resolveFirmware } from "./firmware.service";
 
 export async function listDevices(homeId: number) {
   return prisma.device.findMany({
     where: { homeId },
     include: {
-      esp: { select: { id: true, name: true, serialCode: true, modelCode: true, offline: true, lastSeen: true } },
+      esp: { select: { id: true, name: true, serialCode: true, modelCode: true, firmwareVersion: true, offline: true, lastSeen: true } },
     },
     orderBy: { createdAt: "desc" },
   });
@@ -230,4 +231,71 @@ export async function listMyBoards(userId: number) {
     role: h.members[0]?.role ?? "member",
     boards: byHome.get(h.id) ?? [],
   }));
+}
+
+/** User apne board pe firmware update push kare (OTA). */
+export async function requestOta(homeId: number, deviceId: number, actorId: number) {
+  const device = await prisma.device.findFirst({ where: { id: deviceId, homeId } });
+  if (!device) throw new AppError("DEVICE_NOT_FOUND", "Device is home me nahi mila", 404);
+
+  const esp = device.espId ? await prisma.espDevice.findUnique({ where: { id: device.espId } }) : null;
+  const current = await resolveFirmware(esp?.modelCode);
+  if (!current) {
+    throw new AppError("NO_FIRMWARE", "Abhi koi current firmware published nahi hai", 400);
+  }
+
+  await prisma.device.update({
+    where: { id: deviceId },
+    data: { otaPendingVersion: current.version, otaRequestedAt: new Date() },
+  });
+  let espId: number | null = null;
+  if (esp) {
+    espId = esp.id;
+    await prisma.espDevice.update({
+      where: { id: esp.id },
+      data: { otaPendingVersion: current.version, otaRequestedAt: new Date() },
+    });
+  }
+
+  await audit(actorId, "user.ota.push", {
+    homeId,
+    entity: "device",
+    entityId: deviceId,
+    meta: { version: current.version, model: esp?.modelCode ?? null },
+  });
+
+  // Home ke owner/admin ko pata chale (jisne kiya usse bhi — confirmation).
+  const actor = await prisma.user.findUnique({ where: { id: actorId }, select: { username: true } });
+  const home = await prisma.home.findUnique({
+    where: { id: homeId },
+    include: { members: { where: { role: { in: ["owner", "admin"] } }, select: { userId: true } } },
+  });
+  if (home) {
+    for (const m of home.members) {
+      await createNotification(m.userId, {
+        category: "device",
+        type: "info",
+        title: `📲 "${device.name}" pe firmware update push kiya`,
+        body: `${actor?.username ?? "Kisi ne"} ne board ke liye v${current.version} request kiya — agle heartbeat pe install hoga.`,
+      });
+    }
+  }
+  emitToHome(homeId, "device:updated", { id: deviceId });
+
+  return {
+    deviceId,
+    espId,
+    version: current.version,
+    model: current.modelCode || "universal",
+    message: "OTA update pushed — device agle heartbeat pe update ho jayega",
+  };
+}
+
+/** Saare current published firmware versions (modelCode -> version) — "update available" badge ke liye. */
+export async function listCurrentFirmware() {
+  return prisma.firmwareVersion.findMany({
+    where: { isCurrent: true },
+    select: { modelCode: true, version: true, releaseNotes: true },
+    orderBy: { modelCode: "asc" },
+  });
 }

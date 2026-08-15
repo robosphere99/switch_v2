@@ -96,6 +96,7 @@ export interface Device {
     name: string | null;
     serialCode: string | null;
     modelCode: string | null;
+    firmwareVersion: string | null;
     offline: boolean;
     lastSeen: string | null;
   } | null;
