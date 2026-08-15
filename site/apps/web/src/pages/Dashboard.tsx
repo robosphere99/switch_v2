@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import type { Device, DeviceType } from "@robosphere/shared";
-import { listDevices, setDeviceStatus, createDevice, updateDevice, deleteDevice, getDeviceLogs } from "../api/devices";
+import { listDevices, setDeviceStatus, createDevice, updateDevice, deleteDevice, getDeviceLogs, renameEsp } from "../api/devices";
 import { listHomes, getHomeDetail } from "../api/homes";
 import { createRoom, deleteRoom } from "../api/rooms";
 import { DeviceCard } from "../components/DeviceCard";
@@ -102,6 +102,17 @@ export function Dashboard() {
   const removeDevice = useMutation({
     mutationFn: (deviceId: number) => deleteDevice(homeId!, deviceId),
     onSuccess: invalidate,
+  });
+
+  const renameBoard = useMutation({
+    mutationFn: ({ espId, name }: { espId: number; name: string }) => renameEsp(homeId!, espId, name),
+    onSuccess: invalidate,
+    onError: (err) => {
+      const msg =
+        (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ??
+        "Naam change nahi ho paya";
+      alert(msg);
+    },
   });
 
   const logsQuery = useQuery({
@@ -317,6 +328,10 @@ export function Dashboard() {
                       setEditRoom(d.roomId ? String(d.roomId) : "");
                     }}
                     onLogs={(d) => setLogsFor(d)}
+                    onRenameBoard={(esp) => {
+                      const name = window.prompt("ESP board ka naam (unique hona chahiye):", esp.name ?? "");
+                      if (name && name.trim()) renameBoard.mutate({ espId: esp.id, name: name.trim() });
+                    }}
                     onDelete={(d) => {
                       if (confirm(`Delete "${d.name}"? This cannot be undone.`)) {
                         removeDevice.mutate(d.id);

@@ -987,6 +987,26 @@ import { z as z5 } from "zod";
 
 // src/services/device.service.ts
 init_prisma();
+
+// src/services/audit.service.ts
+init_prisma();
+async function audit(actorId, action, opts = {}) {
+  try {
+    const data = {
+      actorId,
+      homeId: opts.homeId ?? null,
+      action,
+      entity: opts.entity ?? null,
+      entityId: opts.entityId ?? null
+    };
+    if (opts.meta) data.meta = opts.meta;
+    await prisma.auditLog.create({ data });
+  } catch (err) {
+    console.error("[audit] failed to write audit log:", err);
+  }
+}
+
+// src/services/device.service.ts
 async function listDevices(homeId) {
   return prisma.device.findMany({
     where: { homeId },
@@ -1071,6 +1091,24 @@ async function deleteDevice(homeId, deviceId) {
   if (!device) throw new AppError("DEVICE_NOT_FOUND", "Device not found in this home", 404);
   await prisma.device.delete({ where: { id: deviceId } });
 }
+async function renameEsp(homeId, espId, name, actorId) {
+  if (!name) throw new AppError("BAD_REQUEST", "Board ka naam required hai", 400);
+  if (name.length > 60) throw new AppError("BAD_REQUEST", "Naam 60 chars se chhota rakho", 400);
+  const esp = await prisma.espDevice.findFirst({ where: { id: espId, homeId } });
+  if (!esp) throw new AppError("NOT_FOUND", "Board is home me nahi mila", 404);
+  const dup = await prisma.espDevice.findFirst({ where: { name, id: { not: espId } }, select: { id: true } });
+  if (dup) {
+    throw new AppError("DUPLICATE_NAME", `Naam "${name}" already kisi aur board pe hai \u2014 unique naam chahiye`, 409);
+  }
+  const updated = await prisma.espDevice.update({ where: { id: espId }, data: { name } });
+  await audit(actorId, "user.esp.rename", {
+    homeId,
+    entity: "esp",
+    entityId: espId,
+    meta: { name }
+  });
+  return updated;
+}
 
 // src/controllers/device.controller.ts
 async function list3(req, res) {
@@ -1117,6 +1155,15 @@ async function remove4(req, res) {
   await deleteDevice(Number(req.params.homeId), Number(req.params.deviceId));
   ok(res, { message: "Device deleted" });
 }
+async function renameEsp2(req, res) {
+  const board = await renameEsp(
+    Number(req.params.homeId),
+    Number(req.params.espId),
+    String(req.body?.name ?? "").trim().slice(0, 60),
+    req.user.sub
+  );
+  ok(res, board);
+}
 
 // src/routes/device.routes.ts
 var deviceRouter = Router4();
@@ -1132,6 +1179,7 @@ var createSchema2 = z5.object({
   serialNumber: z5.string().min(1).max(64).optional()
 });
 var statusSchema = z5.object({ status: z5.enum(["on", "off"]) });
+var espNameSchema = z5.object({ name: z5.string().min(1).max(60) });
 var updateSchema = z5.object({
   name: z5.string().min(1).max(100).optional(),
   roomId: z5.coerce.number().int().positive().nullable().optional()
@@ -1180,6 +1228,14 @@ deviceRouter.delete(
   validateParams(deviceParams),
   requireHomeMember("admin"),
   remove4
+);
+deviceRouter.patch(
+  "/:homeId/esp/:espId",
+  requireAuth,
+  validateParams(idParams3),
+  requireHomeMember("admin"),
+  validateBody(espNameSchema),
+  renameEsp2
 );
 
 // src/routes/deviceApi.routes.ts
@@ -1929,26 +1985,6 @@ init_prisma();
 
 // src/services/assistant.service.ts
 init_prisma();
-
-// src/services/audit.service.ts
-init_prisma();
-async function audit(actorId, action, opts = {}) {
-  try {
-    const data = {
-      actorId,
-      homeId: opts.homeId ?? null,
-      action,
-      entity: opts.entity ?? null,
-      entityId: opts.entityId ?? null
-    };
-    if (opts.meta) data.meta = opts.meta;
-    await prisma.auditLog.create({ data });
-  } catch (err) {
-    console.error("[audit] failed to write audit log:", err);
-  }
-}
-
-// src/services/assistant.service.ts
 var ON_PATTERNS = [
   /\b(turn\s+)?on\b/,
   /\bstart\b/,

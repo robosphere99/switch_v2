@@ -21,6 +21,7 @@ const createSchema = z.object({
 });
 
 const statusSchema = z.object({ status: z.enum(["on", "off"]) });
+const espNameSchema = z.object({ name: z.string().min(1).max(60) });
 const updateSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   roomId: z.coerce.number().int().positive().nullable().optional(),
@@ -70,4 +71,14 @@ deviceRouter.delete(
   validateParams(deviceParams),
   requireHomeMember("admin"),
   deviceController.remove,
+);
+
+/** User apne home ke ESP board ka naam rename karo (unique naam rule). */
+deviceRouter.patch(
+  "/:homeId/esp/:espId",
+  requireAuth,
+  validateParams(idParams),
+  requireHomeMember("admin"),
+  validateBody(espNameSchema),
+  deviceController.renameEsp,
 );

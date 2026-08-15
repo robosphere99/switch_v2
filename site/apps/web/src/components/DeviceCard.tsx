@@ -27,6 +27,7 @@ export function DeviceCard({
   onEdit,
   onDelete,
   onLogs,
+  onRenameBoard,
   disabled,
 }: {
   device: Device;
@@ -36,6 +37,7 @@ export function DeviceCard({
   onEdit: (device: Device) => void;
   onDelete: (device: Device) => void;
   onLogs: (device: Device) => void;
+  onRenameBoard?: (esp: NonNullable<Device["esp"]>) => void;
   disabled?: boolean;
 }) {
   const on = device.status === "on";
@@ -78,10 +80,21 @@ export function DeviceCard({
           {device.ipAddress ? ` · ${device.ipAddress}` : ""}
         </p>
         {device.esp && (
-          <p className="mt-1 text-[11px] text-gray-500">
-            🛰️ {device.esp.name ?? "ESP Board"}
-            {device.esp.serialCode ? ` · ${device.esp.serialCode}` : ""}
-            {device.esp.modelCode ? ` · ${device.esp.modelCode}` : ""}
+          <p className="mt-1 flex items-center gap-1.5 text-[11px] text-gray-500">
+            <span>
+              🛰️ {device.esp.name ?? "ESP Board"}
+              {device.esp.serialCode ? ` · ${device.esp.serialCode}` : ""}
+              {device.esp.modelCode ? ` · ${device.esp.modelCode}` : ""}
+            </span>
+            {canManage && onRenameBoard && (
+              <button
+                onClick={() => onRenameBoard(device.esp!)}
+                className="rounded px-1 text-gray-500 transition hover:bg-night-700 hover:text-brand-light"
+                title="Board ka naam badlo"
+              >
+                ✏️
+              </button>
+            )}
           </p>
         )}
       </div>

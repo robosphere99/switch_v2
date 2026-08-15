@@ -2,6 +2,7 @@ import type { DeviceStatus, DeviceType } from "@robosphere/shared";
 import { prisma } from "../lib/prisma";
 import { AppError } from "../lib/response";
 import { emitToHome } from "../lib/socket";
+import { audit } from "./audit.service";
 
 export async function listDevices(homeId: number) {
   return prisma.device.findMany({
@@ -119,4 +120,25 @@ export async function deleteDevice(homeId: number, deviceId: number) {
   const device = await prisma.device.findFirst({ where: { id: deviceId, homeId } });
   if (!device) throw new AppError("DEVICE_NOT_FOUND", "Device not found in this home", 404);
   await prisma.device.delete({ where: { id: deviceId } });
+}
+
+
+/** User apne home ke ESP board ka naam rename karo — unique naam rule (admin jaisa). */
+export async function renameEsp(homeId: number, espId: number, name: string, actorId: number) {
+  if (!name) throw new AppError("BAD_REQUEST", "Board ka naam required hai", 400);
+  if (name.length > 60) throw new AppError("BAD_REQUEST", "Naam 60 chars se chhota rakho", 400);
+  const esp = await prisma.espDevice.findFirst({ where: { id: espId, homeId } });
+  if (!esp) throw new AppError("NOT_FOUND", "Board is home me nahi mila", 404);
+  const dup = await prisma.espDevice.findFirst({ where: { name, id: { not: espId } }, select: { id: true } });
+  if (dup) {
+    throw new AppError("DUPLICATE_NAME", `Naam "${name}" already kisi aur board pe hai — unique naam chahiye`, 409);
+  }
+  const updated = await prisma.espDevice.update({ where: { id: espId }, data: { name } });
+  await audit(actorId, "user.esp.rename", {
+    homeId,
+    entity: "esp",
+    entityId: espId,
+    meta: { name },
+  });
+  return updated;
 }
