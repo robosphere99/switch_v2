@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { listMyBoards, renameEsp, setDeviceStatus, type MyBoard } from "../api/devices";
+import { Switch } from "../components/Switch";
 
 const TYPE_ICONS: Record<string, string> = {
   bulb: "💡",
@@ -221,8 +222,9 @@ export function MyBoards() {
                                 </span>
                               )}
                             </span>
-                            <button
-                              onClick={() =>
+                            <Switch
+                              checked={on}
+                              onChange={() =>
                                 toggle.mutate({
                                   homeId: g.homeId,
                                   deviceId: d.id,
@@ -230,14 +232,8 @@ export function MyBoards() {
                                 })
                               }
                               disabled={toggle.isPending}
-                              className={`rounded-full px-4 py-1.5 text-xs font-bold transition ${
-                                on
-                                  ? "bg-emerald-500 text-white hover:bg-emerald-400"
-                                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                              }`}
-                            >
-                              {on ? "ON" : "OFF"}
-                            </button>
+                              label={`${d.name} ${on ? "band karo" : "chalu karo"}`}
+                            />
                           </div>
                         );
                       })}
