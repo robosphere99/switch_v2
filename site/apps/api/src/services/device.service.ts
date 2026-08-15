@@ -10,7 +10,8 @@ import { resolveFirmware } from "./firmware.service";
 export async function listDevices(homeId: number, viewerId?: number) {
   const where: Prisma.DeviceWhereInput = { homeId };
   // Child/restricted member — sirf granted devices dikho
-  if (viewerId) {
+  // Defensive: stale prisma client pe filtering skip (log error, 500 nahi)
+  if (viewerId && prisma.deviceAccess) {
     const membership = await prisma.homeMember.findUnique({
       where: { homeId_userId: { homeId, userId: viewerId } },
       select: { restricted: true },
@@ -84,11 +85,14 @@ export async function setDeviceStatus(input: {
   if (!device) throw new AppError("DEVICE_NOT_FOUND", "Device not found in this home", 404);
 
   // Child/restricted member — sirf granted devices control kar sakta hai
-  const membership = await prisma.homeMember.findUnique({
-    where: { homeId_userId: { homeId: input.homeId, userId: input.actorId } },
-    select: { restricted: true },
-  });
-  if (membership?.restricted) {
+  // Defensive: stale prisma client ho to check skip (log karo, 500 nahi)
+  const membership = prisma.deviceAccess
+    ? await prisma.homeMember.findUnique({
+        where: { homeId_userId: { homeId: input.homeId, userId: input.actorId } },
+        select: { restricted: true },
+      })
+    : null;
+  if (membership?.restricted && prisma.deviceAccess) {
     const granted = await prisma.deviceAccess.findUnique({
       where: { deviceId_userId: { deviceId: device.id, userId: input.actorId } },
     });

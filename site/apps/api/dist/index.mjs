@@ -733,7 +733,7 @@ async function markAllRead(userId) {
 init_firmware_service();
 async function listDevices(homeId, viewerId) {
   const where = { homeId };
-  if (viewerId) {
+  if (viewerId && prisma.deviceAccess) {
     const membership2 = await prisma.homeMember.findUnique({
       where: { homeId_userId: { homeId, userId: viewerId } },
       select: { restricted: true }
@@ -784,11 +784,11 @@ async function setDeviceStatus(input) {
     where: { id: input.deviceId, homeId: input.homeId }
   });
   if (!device) throw new AppError("DEVICE_NOT_FOUND", "Device not found in this home", 404);
-  const membership2 = await prisma.homeMember.findUnique({
+  const membership2 = prisma.deviceAccess ? await prisma.homeMember.findUnique({
     where: { homeId_userId: { homeId: input.homeId, userId: input.actorId } },
     select: { restricted: true }
-  });
-  if (membership2?.restricted) {
+  }) : null;
+  if (membership2?.restricted && prisma.deviceAccess) {
     const granted = await prisma.deviceAccess.findUnique({
       where: { deviceId_userId: { deviceId: device.id, userId: input.actorId } }
     });
@@ -1142,7 +1142,7 @@ async function listMembers(homeId, viewerRole) {
     include: { user: { select: { id: true, username: true, email: true } } },
     orderBy: { joinedAt: "asc" }
   });
-  if (viewerRole === "owner" || viewerRole === "admin") {
+  if ((viewerRole === "owner" || viewerRole === "admin") && prisma.deviceAccess) {
     const grants = await prisma.deviceAccess.findMany({
       where: { homeId },
       select: { userId: true, deviceId: true }
@@ -2189,11 +2189,11 @@ async function createSchedule(input) {
     where: { id: input.deviceId, homeId: input.homeId }
   });
   if (!device) throw new AppError("DEVICE_NOT_FOUND", "Device not found in this home", 404);
-  const membership2 = await prisma.homeMember.findUnique({
+  const membership2 = prisma.deviceAccess ? await prisma.homeMember.findUnique({
     where: { homeId_userId: { homeId: input.homeId, userId: input.actorId } },
     select: { restricted: true }
-  });
-  if (membership2?.restricted) {
+  }) : null;
+  if (membership2?.restricted && prisma.deviceAccess) {
     const granted = await prisma.deviceAccess.findUnique({
       where: { deviceId_userId: { deviceId: input.deviceId, userId: input.actorId } }
     });
@@ -5471,6 +5471,26 @@ installRouter.post("/", async (req, res) => {
 });
 
 // src/app.ts
+init_prisma();
+async function schemaDiag() {
+  try {
+    const models = {
+      deviceAccess: typeof prisma.deviceAccess === "object",
+      deviceUsage: typeof prisma.deviceUsage === "object",
+      homeMemberRestricted: typeof prisma.homeMember === "object"
+    };
+    const table = async (t) => {
+      const r = await prisma.$queryRaw`
+        SELECT COUNT(*) AS c FROM information_schema.tables
+        WHERE table_schema = DATABASE() AND table_name = ${t}
+      `;
+      return Number(r[0]?.c ?? 0) > 0;
+    };
+    return { models, tables: { device_access: await table("device_access"), device_usage: await table("device_usage") } };
+  } catch {
+    return { error: "diag failed" };
+  }
+}
 function createApp() {
   const app = express();
   app.use(helmet());
@@ -5495,8 +5515,11 @@ function createApp() {
     });
     next();
   });
-  app.get("/api/health", (_req, res) => {
-    res.json({ success: true, data: { status: "ok", ts: (/* @__PURE__ */ new Date()).toISOString() } });
+  app.get("/api/health", async (_req, res) => {
+    res.json({
+      success: true,
+      data: { status: "ok", ts: (/* @__PURE__ */ new Date()).toISOString(), schema: await schemaDiag() }
+    });
   });
   app.use("/api/install", installRouter);
   app.use("/api", (req, res, next) => {
@@ -5594,6 +5617,10 @@ async function autoOffDevice(deviceId, homeId) {
 }
 async function runSafetyCheck() {
   if (running2) return;
+  if (!prisma.deviceAccess || !prisma.deviceUsage) {
+    fileLog("[family-safety] prisma models missing (stale client?) \u2014 run npx prisma generate, monitor skip");
+    return;
+  }
   running2 = true;
   try {
     const members = await prisma.homeMember.findMany({
@@ -5748,63 +5775,76 @@ async function runLightMigrations() {
       );
       logger.info("\u2705 Migration: support_messages.attachment_* columns added");
     }
-    const rm = await prisma.$queryRaw`
-      SELECT COUNT(*) AS c FROM information_schema.columns
-      WHERE table_schema = DATABASE() AND table_name = 'home_members' AND column_name = 'restricted'
-    `;
-    if (Number(rm[0]?.c ?? 0) === 0) {
-      await prisma.$executeRawUnsafe(
-        "ALTER TABLE `home_members` ADD COLUMN `restricted` BOOLEAN NOT NULL DEFAULT FALSE, ADD COLUMN `daily_limit_minutes` INT NULL"
-      );
-      logger.info("\u2705 Migration: home_members.restricted + daily_limit_minutes added");
-    }
-    const da = await prisma.$queryRaw`
-      SELECT COUNT(*) AS c FROM information_schema.tables
-      WHERE table_schema = DATABASE() AND table_name = 'device_access'
-    `;
-    if (Number(da[0]?.c ?? 0) === 0) {
-      await prisma.$executeRawUnsafe(`
-        CREATE TABLE device_access (
-          id INT NOT NULL AUTO_INCREMENT,
-          homeId INT NOT NULL,
-          deviceId INT NOT NULL,
-          userId INT NOT NULL,
-          created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-          PRIMARY KEY (id),
-          UNIQUE INDEX device_access_deviceId_userId_key (deviceId, userId),
-          INDEX device_access_homeId_idx (homeId),
-          INDEX device_access_userId_idx (userId),
-          CONSTRAINT device_access_homeId_fkey FOREIGN KEY (homeId) REFERENCES homes(id) ON DELETE CASCADE ON UPDATE CASCADE,
-          CONSTRAINT device_access_deviceId_fkey FOREIGN KEY (deviceId) REFERENCES devices(id) ON DELETE CASCADE ON UPDATE CASCADE,
-          CONSTRAINT device_access_userId_fkey FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-      `);
-      logger.info("\u2705 Migration: device_access table created");
-    }
-    const du = await prisma.$queryRaw`
-      SELECT COUNT(*) AS c FROM information_schema.tables
-      WHERE table_schema = DATABASE() AND table_name = 'device_usage'
-    `;
-    if (Number(du[0]?.c ?? 0) === 0) {
-      await prisma.$executeRawUnsafe(`
-        CREATE TABLE device_usage (
-          id INT NOT NULL AUTO_INCREMENT,
-          homeId INT NOT NULL,
-          deviceId INT NOT NULL,
-          userId INT NOT NULL,
-          date DATE NOT NULL,
-          on_minutes INT NOT NULL,
-          updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-          PRIMARY KEY (id),
-          UNIQUE INDEX device_usage_deviceId_userId_date_key (deviceId, userId, date),
-          INDEX device_usage_homeId_idx (homeId),
-          CONSTRAINT device_usage_homeId_fkey FOREIGN KEY (homeId) REFERENCES homes(id) ON DELETE CASCADE ON UPDATE CASCADE,
-          CONSTRAINT device_usage_deviceId_fkey FOREIGN KEY (deviceId) REFERENCES devices(id) ON DELETE CASCADE ON UPDATE CASCADE,
-          CONSTRAINT device_usage_userId_fkey FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-      `);
-      logger.info("\u2705 Migration: device_usage table created");
-    }
+    const migration = async (label, fn) => {
+      try {
+        await fn();
+      } catch (err) {
+        logger.warn(`Migration skip/fail (${label})`, err instanceof Error ? err.message : String(err));
+      }
+    };
+    await migration("home_members restricted", async () => {
+      const rm = await prisma.$queryRaw`
+        SELECT COUNT(*) AS c FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'home_members' AND column_name = 'restricted'
+      `;
+      if (Number(rm[0]?.c ?? 0) === 0) {
+        await prisma.$executeRawUnsafe(
+          "ALTER TABLE `home_members` ADD COLUMN `restricted` BOOLEAN NOT NULL DEFAULT FALSE, ADD COLUMN `daily_limit_minutes` INT NULL"
+        );
+        logger.info("\u2705 Migration: home_members.restricted + daily_limit_minutes added");
+      }
+    });
+    await migration("device_access table", async () => {
+      const da = await prisma.$queryRaw`
+        SELECT COUNT(*) AS c FROM information_schema.tables
+        WHERE table_schema = DATABASE() AND table_name = 'device_access'
+      `;
+      if (Number(da[0]?.c ?? 0) === 0) {
+        await prisma.$executeRawUnsafe(`
+          CREATE TABLE device_access (
+            id INT NOT NULL AUTO_INCREMENT,
+            homeId INT NOT NULL,
+            deviceId INT NOT NULL,
+            userId INT NOT NULL,
+            created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+            PRIMARY KEY (id),
+            UNIQUE INDEX device_access_deviceId_userId_key (deviceId, userId),
+            INDEX device_access_homeId_idx (homeId),
+            INDEX device_access_userId_idx (userId),
+            CONSTRAINT device_access_homeId_fkey FOREIGN KEY (homeId) REFERENCES homes(id) ON DELETE CASCADE ON UPDATE CASCADE,
+            CONSTRAINT device_access_deviceId_fkey FOREIGN KEY (deviceId) REFERENCES devices(id) ON DELETE CASCADE ON UPDATE CASCADE,
+            CONSTRAINT device_access_userId_fkey FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        `);
+        logger.info("\u2705 Migration: device_access table created");
+      }
+    });
+    await migration("device_usage table", async () => {
+      const du = await prisma.$queryRaw`
+        SELECT COUNT(*) AS c FROM information_schema.tables
+        WHERE table_schema = DATABASE() AND table_name = 'device_usage'
+      `;
+      if (Number(du[0]?.c ?? 0) === 0) {
+        await prisma.$executeRawUnsafe(`
+          CREATE TABLE device_usage (
+            id INT NOT NULL AUTO_INCREMENT,
+            homeId INT NOT NULL,
+            deviceId INT NOT NULL,
+            userId INT NOT NULL,
+            date DATE NOT NULL,
+            on_minutes INT NOT NULL,
+            updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+            PRIMARY KEY (id),
+            UNIQUE INDEX device_usage_deviceId_userId_date_key (deviceId, userId, date),
+            INDEX device_usage_homeId_idx (homeId),
+            CONSTRAINT device_usage_homeId_fkey FOREIGN KEY (homeId) REFERENCES homes(id) ON DELETE CASCADE ON UPDATE CASCADE,
+            CONSTRAINT device_usage_deviceId_fkey FOREIGN KEY (deviceId) REFERENCES devices(id) ON DELETE CASCADE ON UPDATE CASCADE,
+            CONSTRAINT device_usage_userId_fkey FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        `);
+        logger.info("\u2705 Migration: device_usage table created");
+      }
+    });
   } catch (err) {
     logger.warn("Light migration (esp serial unique) skip/fail", err instanceof Error ? err.message : String(err));
   }

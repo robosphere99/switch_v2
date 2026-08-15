@@ -86,6 +86,11 @@ async function autoOffDevice(deviceId: number, homeId: number) {
 
 export async function runSafetyCheck(): Promise<void> {
   if (running) return;
+  // Defensive: stale prisma client (model missing) pe skip — 500/crash nahi
+  if (!prisma.deviceAccess || !prisma.deviceUsage) {
+    fileLog("[family-safety] prisma models missing (stale client?) — run npx prisma generate, monitor skip");
+    return;
+  }
   running = true;
   try {
     const members = await prisma.homeMember.findMany({
