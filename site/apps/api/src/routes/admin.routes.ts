@@ -7,6 +7,7 @@ import { requireAuth } from "../middleware/auth";
 import { prisma } from "../lib/prisma";
 import { AppError, ok } from "../lib/response";
 import { audit } from "../services/audit.service";
+import { createNotification } from "../services/notification.service";
 import { generateSerials, updateOrderStatus } from "../services/shop.service";
 import { decryptSecret } from "../lib/crypto";
 import { resolveFirmware } from "../services/firmware.service";
@@ -509,7 +510,10 @@ adminRouter.post("/devices/:id/status", async (req, res) => {
   const id = Number(req.params.id);
   const status = req.body?.status;
   if (status !== "on" && status !== "off") throw new AppError("VALIDATION_ERROR", "status must be 'on' or 'off'", 400);
-  const device = await prisma.device.findUnique({ where: { id } });
+  const device = await prisma.device.findUnique({
+    where: { id },
+    include: { home: { select: { ownerId: true } } },
+  });
   if (!device) throw new AppError("NOT_FOUND", "Device not found", 404);
   await prisma.$transaction([
     prisma.device.update({ where: { id }, data: { status } }),
@@ -525,6 +529,11 @@ adminRouter.post("/devices/:id/status", async (req, res) => {
     entity: "device",
     entityId: id,
     meta: { name: device.name, status },
+  });
+  await createNotification(device.home.ownerId, {
+    type: "info",
+    title: `Support ne ${device.name} ${status === "on" ? "ON" : "OFF"} kiya`,
+    body: `Admin ne aapke device "${device.name}" ko ${status === "on" ? "chalu (ON)" : "band (OFF)"} kiya. Agar yeh galat hai to turant support ko batayein.`,
   });
   ok(res, { id, status });
 });
@@ -575,7 +584,10 @@ adminRouter.get("/devices/:id/support", async (req, res) => {
 /** Fix: stuck pending commands ko clear karo (device fir se responsive ho jayega). */
 adminRouter.post("/devices/:id/clear-commands", async (req, res) => {
   const id = Number(req.params.id);
-  const device = await prisma.device.findUnique({ where: { id } });
+  const device = await prisma.device.findUnique({
+    where: { id },
+    include: { home: { select: { ownerId: true } } },
+  });
   if (!device) throw new AppError("NOT_FOUND", "Device not found", 404);
   const cleared = await prisma.deviceCommand.updateMany({
     where: { deviceId: id, status: "pending" },
@@ -590,6 +602,13 @@ adminRouter.post("/devices/:id/clear-commands", async (req, res) => {
     entityId: id,
     meta: { name: device.name, cleared: cleared.count },
   });
+  if (cleared.count > 0) {
+    await createNotification(device.home.ownerId, {
+      type: "warning",
+      title: `Support ne "${device.name}" ke stuck commands clear kiye`,
+      body: `${cleared.count} pending command(s) clear kiye gaye. Device ab dobara responsive hoga.`,
+    });
+  }
   ok(res, { cleared: cleared.count });
 });
 
@@ -597,7 +616,10 @@ adminRouter.post("/devices/:id/clear-commands", async (req, res) => {
  * Firmware resolution board ke model se hota hai (model-specific > universal). */
 adminRouter.post("/devices/:id/push-ota", async (req, res) => {
   const id = Number(req.params.id);
-  const device = await prisma.device.findUnique({ where: { id } });
+  const device = await prisma.device.findUnique({
+    where: { id },
+    include: { home: { select: { ownerId: true } } },
+  });
   if (!device) throw new AppError("NOT_FOUND", "Device not found", 404);
 
   const esp = device.espId
@@ -625,6 +647,11 @@ adminRouter.post("/devices/:id/push-ota", async (req, res) => {
     entity: "device",
     entityId: id,
     meta: { version: current.version, model: esp?.modelCode ?? null },
+  });
+  await createNotification(device.home.ownerId, {
+    type: "info",
+    title: `Support ne "${device.name}" ke liye firmware update push kiya`,
+    body: `Naya firmware v${current.version} aapke device pe agle heartbeat pe install hoga.`,
   });
   ok(res, {
     deviceId: id,
@@ -659,6 +686,26 @@ adminRouter.post("/devices/push-ota-all", async (req, res) => {
     entity: "device",
     meta: { version: current.version, count },
   });
+  // Affected users ko batao (ek user ko ek hi notification, chahe kitne bhi devices ho).
+  const homeIds = new Set<number>();
+  if (homeId) {
+    homeIds.add(homeId);
+  } else {
+    (await prisma.espDevice.findMany({ select: { homeId: true } })).forEach((r) => r.homeId && homeIds.add(r.homeId));
+    (await prisma.device.findMany({ where: { espId: null }, select: { homeId: true } })).forEach((r) => r.homeId && homeIds.add(r.homeId));
+  }
+  const ownerIds = new Set(
+    (await prisma.home.findMany({ where: { id: { in: [...homeIds] } }, select: { ownerId: true } })).map((h) => h.ownerId)
+  );
+  await Promise.all(
+    [...ownerIds].map((ownerId) =>
+      createNotification(ownerId, {
+        type: "info",
+        title: "Support ne firmware update push kiya",
+        body: `Aapke ${count} device(s) ke liye naya firmware v${current.version} available hai — agle heartbeat pe auto-install hoga.`,
+      })
+    )
+  );
   ok(res, { count, version: current.version });
 });
 
