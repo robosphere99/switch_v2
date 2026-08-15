@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { encryptSecret } from "../lib/crypto";
 import { AppError } from "../lib/response";
+import { createNotification } from "./notification.service";
 
 export interface CreateOrderInput {
   userId: number;
@@ -106,6 +107,19 @@ export async function createOrder(input: CreateOrderInput) {
       include: { items: true },
     });
   });
+
+  // Order place hote hi user ko INFO notification — /notifications me dikhega.
+  try {
+    await createNotification(input.userId, {
+      category: "system",
+      type: "info",
+      title: "📦 Order placed",
+      body: `Order ${order.orderNumber} — ₹${Number(order.totalAmount).toLocaleString("en-IN")}, ${order.items.length} item(s). Status: ${order.status}.`,
+    });
+  } catch (err) {
+    // Notification failure se order kabhi fail na ho.
+    console.error("[shop] order notification failed", err);
+  }
 
   return order;
 }

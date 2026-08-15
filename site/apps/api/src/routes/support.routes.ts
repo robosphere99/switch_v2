@@ -121,11 +121,13 @@ supportRouter.post("/admin/messages", requireAuth, validateBody(adminSendSchema)
     },
   });
 
+  // Body me JSON marker ({u: senderId, t: text}) — frontend isse user chat
+  // kholne ke liye use karta hai. Display me sirf text dikhta hai.
   await createNotification(userId, {
     category: "support",
     type: "info",
     title: "🛠️ Support ne message bheja",
-    body: message.slice(0, 200),
+    body: JSON.stringify({ u: req.user!.sub, t: message.slice(0, 200) }),
   });
   emitToUser(userId, "support:new", { senderRole: "admin", message: created });
 
@@ -190,11 +192,13 @@ supportRouter.post("/messages", requireAuth, validateBody(userSendSchema), async
     orderBy: { id: "asc" },
   });
   if (admin) {
+    // JSON marker: u = reply karne wala user ka id — admin notification pe click
+    // karne se usi user ka chat khul jayega (bell + /notifications dono me).
     await createNotification(admin.id, {
       category: "support",
       type: "info",
       title: "📨 User ne support me reply kiya",
-      body: (req.body.message || "").slice(0, 200),
+      body: JSON.stringify({ u: req.user!.sub, t: (req.body.message || "").slice(0, 200) }),
     });
     emitToUser(admin.id, "support:new", { senderRole: "user", message: created });
   }
@@ -208,4 +212,76 @@ supportRouter.get("/admin/unread-count", requireAuth, async (req, res) => {
   if (!prisma.supportMessage) return ok(res, { unread: 0 });
   const unread = await supportModel().count({ where: { readByAdmin: false } });
   ok(res, { unread });
+});
+
+/** Admin: support conversations list (WhatsApp-style inbox) — ek row per user. */
+supportRouter.get("/admin/conversations", requireAuth, async (req, res) => {
+  if (req.user!.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
+  if (!prisma.supportMessage) return ok(res, { conversations: [], totalUnread: 0 });
+  const recent = await supportModel().findMany({
+    select: {
+      id: true,
+      userId: true,
+      senderRole: true,
+      message: true,
+      attachmentName: true,
+      readByAdmin: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: "desc" },
+    take: 1000,
+  });
+  // Ek baar me aggregate — sabse recent message = preview, unread ka count per user.
+  const byUser = new Map<number, { lastPreview: string; lastSenderRole: string; lastAt: Date; unread: number }>();
+  for (const m of recent) {
+    const cur = byUser.get(m.userId);
+    const preview = m.message?.trim()
+      ? m.message
+      : m.attachmentName
+        ? `📎 ${m.attachmentName}`
+        : "(attachment)";
+    if (!cur) {
+      byUser.set(m.userId, {
+        lastPreview: preview,
+        lastSenderRole: m.senderRole,
+        lastAt: m.createdAt,
+        unread: m.readByAdmin ? 0 : 1,
+      });
+    } else if (!m.readByAdmin) {
+      cur.unread += 1;
+    }
+  }
+  const userIds = [...byUser.keys()];
+  const users =
+    userIds.length > 0
+      ? await prisma.user.findMany({
+          where: { id: { in: userIds } },
+          select: { id: true, username: true, email: true },
+        })
+      : [];
+  const userMap = new Map(users.map((u) => [u.id, u]));
+  const conversations = [...byUser.entries()]
+    .map(([userId, c]) => ({
+      userId,
+      username: userMap.get(userId)?.username ?? "Unknown",
+      email: userMap.get(userId)?.email ?? null,
+      lastPreview: c.lastPreview.slice(0, 120),
+      lastSenderRole: c.lastSenderRole,
+      lastAt: c.lastAt,
+      unreadCount: c.unread,
+    }))
+    .sort((a, b) => b.lastAt.getTime() - a.lastAt.getTime());
+  const totalUnread = conversations.reduce((a, c) => a + c.unreadCount, 0);
+  ok(res, { conversations, totalUnread });
+});
+
+/** Admin: saari support chats 'read' mark karo (badge hat jayega). */
+supportRouter.post("/admin/read-all", requireAuth, async (req, res) => {
+  if (req.user!.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
+  if (!prisma.supportMessage) return ok(res, { unread: 0 });
+  await supportModel().updateMany({
+    where: { readByAdmin: false },
+    data: { readByAdmin: true },
+  });
+  ok(res, { unread: 0 });
 });

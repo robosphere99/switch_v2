@@ -1,12 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   listNotifications,
   markRead,
   markAllRead,
   removeNotification,
   unreadCount,
+  type Notification,
 } from "../api/notifications";
+import { useAuthStore } from "../stores/auth";
+import { parseNotificationBody } from "../lib/notificationBody";
 
 const CATEGORIES: Array<{ id: string; label: string; icon: string }> = [
   { id: "all", label: "All", icon: "🔔" },
@@ -14,6 +18,13 @@ const CATEGORIES: Array<{ id: string; label: string; icon: string }> = [
   { id: "device", label: "Device", icon: "📡" },
   { id: "schedule", label: "Schedule", icon: "⏰" },
   { id: "system", label: "System", icon: "⚙️" },
+];
+
+const TYPES: Array<{ id: string; label: string }> = [
+  { id: "all", label: "Sab types" },
+  { id: "info", label: "ℹ️ Info" },
+  { id: "warning", label: "⚠️ Warning" },
+  { id: "error", label: "⛔ Error" },
 ];
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -25,7 +36,11 @@ const CATEGORY_LABEL: Record<string, string> = {
 
 export function Notifications() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const user = useAuthStore((s) => s.user);
+  const isAdmin = user?.role === "system_admin";
   const [category, setCategory] = useState<string>("all");
+  const [typeFilter, setTypeFilter] = useState<string>("all");
   const [page, setPage] = useState(1);
   const [unreadOnly, setUnreadOnly] = useState(false);
   const pageSize = 10;
@@ -37,8 +52,15 @@ export function Notifications() {
   });
 
   const list = useQuery({
-    queryKey: ["notifications", category, page, unreadOnly],
-    queryFn: () => listNotifications({ page, pageSize, category, unread: unreadOnly || undefined }),
+    queryKey: ["notifications", category, typeFilter, page, unreadOnly],
+    queryFn: () =>
+      listNotifications({
+        page,
+        pageSize,
+        category,
+        type: typeFilter !== "all" ? typeFilter : undefined,
+        unread: unreadOnly || undefined,
+      }),
   });
 
   const invalidate = () => {
@@ -78,6 +100,19 @@ export function Notifications() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  /** Support notification → usi user ka chat kholo (admin) ya apna support page. */
+  const handleOpen = (n: Notification) => {
+    if (!n.readAt) readOne.mutate(n.id);
+    const parsed = parseNotificationBody(n.body);
+    if (n.category === "support") {
+      if (isAdmin && parsed.targetUserId) {
+        navigate(`/admin?tab=support&user=${parsed.targetUserId}`);
+      } else {
+        navigate("/support");
+      }
+    }
+  };
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -104,8 +139,8 @@ export function Notifications() {
         )}
       </div>
 
-      {/* Filter tabs */}
-      <div className="mb-4 flex flex-wrap items-center gap-2">
+      {/* Category filter */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
         {CATEGORIES.map((c) => (
           <button
             key={c.id}
@@ -120,6 +155,26 @@ export function Notifications() {
             }`}
           >
             {c.icon} {c.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Type filter — Info / Warning / Error */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        {TYPES.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => {
+              setTypeFilter(t.id);
+              setPage(1);
+            }}
+            className={`rounded-lg border px-3 py-1 text-xs font-medium transition ${
+              typeFilter === t.id
+                ? "border-brand bg-brand/20 text-brand"
+                : "border-gray-200 bg-night-800 text-gray-500 hover:border-brand/50 hover:text-brand"
+            }`}
+          >
+            {t.label}
           </button>
         ))}
         <label className="ml-auto flex cursor-pointer items-center gap-2 text-sm text-gray-500">
@@ -150,54 +205,60 @@ export function Notifications() {
             </p>
           </div>
         )}
-        {data?.items.map((n) => (
-          <div
-            key={n.id}
-            className={`flex items-start gap-3 rounded-xl border-l-4 px-4 py-3 transition ${typeStyle(n.type)} ${
-              n.readAt ? "opacity-60" : ""
-            }`}
-          >
-            <button
-              onClick={() => {
-                if (!n.readAt) readOne.mutate(n.id);
-              }}
-              className="flex-1 text-left"
-              title={n.readAt ? "Read" : "Click to mark as read"}
+        {data?.items.map((n) => {
+          const parsed = parseNotificationBody(n.body);
+          const clickable = n.category === "support";
+          return (
+            <div
+              key={n.id}
+              className={`flex items-start gap-3 rounded-xl border-l-4 px-4 py-3 transition ${typeStyle(n.type)} ${
+                n.readAt ? "opacity-60" : ""
+              } ${clickable ? "cursor-pointer" : ""}`}
             >
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm font-semibold text-gray-800">{n.title}</span>
-                {n.category && (
-                  <span className="rounded-full bg-night-800 px-2 py-0.5 text-[10px] text-gray-500">
-                    {CATEGORY_LABEL[n.category] ?? n.category}
+              <button
+                onClick={() => {
+                  if (clickable) handleOpen(n);
+                  else if (!n.readAt) readOne.mutate(n.id);
+                }}
+                className="flex-1 text-left"
+                title={clickable ? (isAdmin ? "Chat kholo aur reply do" : "Support kholo") : n.readAt ? "Read" : "Click to mark as read"}
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-semibold text-gray-800">{n.title}</span>
+                  {n.category && (
+                    <span className="rounded-full bg-night-800 px-2 py-0.5 text-[10px] text-gray-500">
+                      {CATEGORY_LABEL[n.category] ?? n.category}
+                    </span>
+                  )}
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${typeBadge(n.type)}`}>
+                    {n.type}
                   </span>
-                )}
-                <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${typeBadge(n.type)}`}>
-                  {n.type}
-                </span>
-                {!n.readAt && <span className="h-2 w-2 rounded-full bg-brand" />}
-              </div>
-              {n.body && <p className="mt-1 text-sm text-gray-500">{n.body}</p>}
-              <p className="mt-1.5 text-[11px] text-gray-500">
-                {new Date(n.createdAt).toLocaleString([], {
-                  day: "numeric",
-                  month: "short",
-                  year: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </p>
-            </button>
-            <button
-              onClick={() => {
-                if (confirm("Delete this notification?")) remove.mutate(n.id);
-              }}
-              className="rounded-lg p-2 text-gray-600 transition hover:bg-red-500/10 hover:text-red-400"
-              title="Delete"
-            >
-              ✕
-            </button>
-          </div>
-        ))}
+                  {!n.readAt && <span className="h-2 w-2 rounded-full bg-brand" />}
+                </div>
+                {parsed.text && <p className="mt-1 text-sm text-gray-500">{parsed.text}</p>}
+                <p className="mt-1.5 text-[11px] text-gray-500">
+                  {new Date(n.createdAt).toLocaleString([], {
+                    day: "numeric",
+                    month: "short",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                  {clickable && <span className="ml-2 text-brand">↪ chat kholo</span>}
+                </p>
+              </button>
+              <button
+                onClick={() => {
+                  if (confirm("Delete this notification?")) remove.mutate(n.id);
+                }}
+                className="rounded-lg p-2 text-gray-600 transition hover:bg-red-500/10 hover:text-red-400"
+                title="Delete"
+              >
+                ✕
+              </button>
+            </div>
+          );
+        })}
       </div>
 
       {/* Pagination */}

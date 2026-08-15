@@ -498,3 +498,29 @@ export async function getSupportUnread(): Promise<ApiResponse<{ unread: number }
   const { data } = await api.get<ApiResponse<{ unread: number }>>("/support/admin/unread-count");
   return data;
 }
+
+/** WhatsApp-style inbox — ek row per user jisne support me baat ki. */
+export interface SupportConversation {
+  userId: number;
+  username: string;
+  email: string | null;
+  lastPreview: string;
+  lastSenderRole: "admin" | "user";
+  lastAt: string;
+  unreadCount: number;
+}
+
+export async function getSupportConversations(): Promise<
+  ApiResponse<{ conversations: SupportConversation[]; totalUnread: number }>
+> {
+  const { data } = await api.get<ApiResponse<{ conversations: SupportConversation[]; totalUnread: number }>>(
+    "/support/admin/conversations",
+  );
+  return data;
+}
+
+/** Admin: saari support chats "read" mark karo — badge turant hat jata hai. */
+export async function markAllSupportRead(): Promise<ApiResponse<{ unread: number }>> {
+  const { data } = await api.post<ApiResponse<{ unread: number }>>("/support/admin/read-all");
+  return data;
+}
