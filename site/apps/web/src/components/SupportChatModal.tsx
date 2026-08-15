@@ -44,6 +44,13 @@ export function SupportChatModal({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [msgs.length]);
 
+  // Thread padha → server ne readByAdmin mark kiya → navbar badge turant drop
+  useEffect(() => {
+    if (chat.data?.success) {
+      queryClient.invalidateQueries({ queryKey: ["support", "admin", "unread"] });
+    }
+  }, [chat.data, queryClient]);
+
   return (
     <Modal title={`💬 Support chat — ${username}`} onClose={onClose}>
       <div className="flex h-80 flex-col gap-2 overflow-y-auto rounded-xl border border-gray-200 bg-gray-50 p-3">

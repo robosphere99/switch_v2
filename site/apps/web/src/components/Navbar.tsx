@@ -23,6 +23,7 @@ import { useAuthStore } from "../stores/auth";
 import { onThemeChange, resolvedDark } from "../lib/theme";
 import { changeTheme } from "../lib/themeAccount";
 import { NotificationBell } from "./NotificationBell";
+import { SupportUnreadBadge } from "./SupportUnreadBadge";
 import { Logo } from "./Logo";
 
 const NAV_LINKS: Array<{ to: string; label: string; icon: typeof Home }> = [
@@ -83,13 +84,16 @@ export function Navbar() {
               </span>
             </Link>
             {user.role === "system_admin" && (
-              <Link
-                to="/admin"
-                className="inline-flex items-center gap-1.5 rounded-lg bg-brand/10 px-2.5 py-1 font-semibold text-brand transition hover:bg-brand/20"
-              >
-                <Settings className="h-4 w-4" />
-                Admin
-              </Link>
+              <span className="relative">
+                <Link
+                  to="/admin"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-brand/10 px-2.5 py-1 font-semibold text-brand transition hover:bg-brand/20"
+                >
+                  <Settings className="h-4 w-4" />
+                  Admin
+                </Link>
+                <SupportUnreadBadge />
+              </span>
             )}
             <button
               onClick={() => { changeTheme(resolvedDark() ? "light" : "dark"); setDark(resolvedDark()); }}

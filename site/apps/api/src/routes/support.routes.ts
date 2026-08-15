@@ -69,6 +69,12 @@ supportRouter.get("/admin/messages", requireAuth, async (req, res) => {
     take: 200,
   });
   const unread = await prisma.supportMessage.count({ where: { userId, readByAdmin: false } });
+  if (unread > 0) {
+    await prisma.supportMessage.updateMany({
+      where: { userId, readByAdmin: false },
+      data: { readByAdmin: true },
+    });
+  }
   ok(res, { userId, unread, messages: msgs });
 });
 
@@ -168,6 +174,21 @@ supportRouter.post("/messages", requireAuth, validateBody(userSendSchema), async
       readByAdmin: false,
     },
   });
+  // Admin ko realtime + notification — taaki navbar badge turant update ho
+  const admin = await prisma.user.findFirst({
+    where: { role: "system_admin" },
+    select: { id: true },
+    orderBy: { id: "asc" },
+  });
+  if (admin) {
+    await createNotification(admin.id, {
+      category: "support",
+      type: "info",
+      title: "📨 User ne support me reply kiya",
+      body: (req.body.message || "").slice(0, 200),
+    });
+    emitToUser(admin.id, "support:new", { senderRole: "user", message: created });
+  }
   ok(res, created, 201);
 });
 
