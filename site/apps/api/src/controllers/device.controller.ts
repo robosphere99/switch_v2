@@ -62,3 +62,9 @@ export async function renameEsp(req: Request, res: Response) {
   );
   ok(res, board);
 }
+
+/** User ke saare boards (saare homes me) — My Boards page ke liye. */
+export async function listMyBoards(req: Request, res: Response) {
+  const data = await deviceService.listMyBoards(req.user!.sub);
+  ok(res, data);
+}

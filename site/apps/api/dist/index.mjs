@@ -581,84 +581,7 @@ async function remove(req, res) {
   ok(res, { message: "Home deleted" });
 }
 
-// ../../packages/shared/src/index.ts
-var HOME_MEMBER_ROLES = ["owner", "admin", "member", "viewer"];
-
-// src/middleware/requireRole.ts
-init_prisma();
-var ROLE_INDEX = Object.fromEntries(HOME_MEMBER_ROLES.map((r, i) => [r, i]));
-function requireHomeMember(minRole = "member") {
-  return async (req, _res, next) => {
-    try {
-      const userId = req.user?.sub;
-      if (!userId) return next(new AppError("UNAUTHORIZED", "Not authenticated", 401));
-      const homeId = Number(req.params.homeId);
-      if (!Number.isInteger(homeId)) return next(new AppError("BAD_REQUEST", "Invalid home id"));
-      const membership2 = await prisma.homeMember.findUnique({
-        where: { homeId_userId: { homeId, userId } }
-      });
-      if (!membership2) {
-        return next(new AppError("FORBIDDEN", "Not a member of this home", 403));
-      }
-      if (ROLE_INDEX[membership2.role] > ROLE_INDEX[minRole]) {
-        return next(new AppError("FORBIDDEN", "Insufficient role for this action", 403));
-      }
-      req.homeMembership = membership2;
-      next();
-    } catch (err) {
-      next(err);
-    }
-  };
-}
-
-// src/routes/home.routes.ts
-var homeRouter = Router2();
-var idParams = z3.object({ homeId: z3.coerce.number().int().positive() });
-var createSchema = z3.object({ name: z3.string().min(1).max(100) });
-var renameSchema = z3.object({ name: z3.string().min(1).max(100) });
-var transferSchema = z3.object({ newOwnerId: z3.coerce.number().int().positive() });
-homeRouter.post("/", requireAuth, validateBody(createSchema), create);
-homeRouter.get("/", requireAuth, list);
-homeRouter.get(
-  "/:homeId",
-  requireAuth,
-  validateParams(idParams),
-  requireHomeMember("viewer"),
-  detail
-);
-homeRouter.patch(
-  "/:homeId",
-  requireAuth,
-  validateParams(idParams),
-  requireHomeMember("admin"),
-  validateBody(renameSchema),
-  rename
-);
-homeRouter.delete(
-  "/:homeId",
-  requireAuth,
-  validateParams(idParams),
-  requireHomeMember("owner"),
-  remove
-);
-homeRouter.post(
-  "/:homeId/transfer",
-  requireAuth,
-  validateParams(idParams),
-  requireHomeMember("owner"),
-  validateBody(transferSchema),
-  transfer
-);
-
-// src/routes/member.routes.ts
-import { Router as Router3 } from "express";
-import { z as z4 } from "zod";
-
-// src/services/member.service.ts
-init_prisma();
-import crypto2 from "node:crypto";
-
-// src/services/notification.service.ts
+// src/services/device.service.ts
 init_prisma();
 
 // src/lib/socket.ts
@@ -706,7 +629,308 @@ function emitToHome(homeId, event, payload) {
   io?.to(`home:${homeId}`).emit(event, payload);
 }
 
+// src/services/audit.service.ts
+init_prisma();
+async function audit(actorId, action, opts = {}) {
+  try {
+    const data = {
+      actorId,
+      homeId: opts.homeId ?? null,
+      action,
+      entity: opts.entity ?? null,
+      entityId: opts.entityId ?? null
+    };
+    if (opts.meta) data.meta = opts.meta;
+    await prisma.auditLog.create({ data });
+  } catch (err) {
+    console.error("[audit] failed to write audit log:", err);
+  }
+}
+
+// src/services/device.service.ts
+async function listDevices(homeId) {
+  return prisma.device.findMany({
+    where: { homeId },
+    include: {
+      esp: { select: { id: true, name: true, serialCode: true, modelCode: true, offline: true, lastSeen: true } }
+    },
+    orderBy: { createdAt: "desc" }
+  });
+}
+async function createDevice(input) {
+  if (input.roomId) {
+    const room = await prisma.room.findFirst({
+      where: { id: input.roomId, homeId: input.homeId }
+    });
+    if (!room) throw new AppError("ROOM_NOT_FOUND", "Room does not belong to this home", 400);
+  }
+  return prisma.device.create({
+    data: {
+      homeId: input.homeId,
+      createdBy: input.createdBy,
+      name: input.name,
+      type: input.type,
+      roomId: input.roomId,
+      serialNumber: input.serialNumber
+    }
+  });
+}
+async function setDeviceStatus(input) {
+  const device = await prisma.device.findFirst({
+    where: { id: input.deviceId, homeId: input.homeId }
+  });
+  if (!device) throw new AppError("DEVICE_NOT_FOUND", "Device not found in this home", 404);
+  await prisma.$transaction([
+    prisma.device.update({
+      where: { id: device.id },
+      data: { status: input.status }
+    }),
+    prisma.deviceCommand.create({
+      data: {
+        deviceId: device.id,
+        actorId: input.actorId,
+        command: `set_status:${input.status}`
+      }
+    }),
+    prisma.deviceLog.create({
+      data: {
+        deviceId: device.id,
+        actorId: input.actorId,
+        logType: "status_change",
+        logMessage: `Device turned ${input.status}`
+      }
+    })
+  ]);
+  const updated = await prisma.device.findUnique({ where: { id: device.id } });
+  if (updated) emitToHome(input.homeId, "device:updated", updated);
+  return updated;
+}
+async function updateDevice(homeId, deviceId, patch) {
+  const device = await prisma.device.findFirst({ where: { id: deviceId, homeId } });
+  if (!device) throw new AppError("DEVICE_NOT_FOUND", "Device not found in this home", 404);
+  if (patch.roomId !== void 0 && patch.roomId !== null) {
+    const room = await prisma.room.findFirst({ where: { id: patch.roomId, homeId } });
+    if (!room) throw new AppError("ROOM_NOT_FOUND", "Room does not belong to this home", 400);
+  }
+  return prisma.device.update({
+    where: { id: deviceId },
+    data: { name: patch.name, roomId: patch.roomId }
+  });
+}
+async function getDeviceLogs(homeId, deviceId, limit = 50) {
+  const device = await prisma.device.findFirst({ where: { id: deviceId, homeId } });
+  if (!device) throw new AppError("DEVICE_NOT_FOUND", "Device not found in this home", 404);
+  return prisma.deviceLog.findMany({
+    where: { deviceId },
+    orderBy: { createdAt: "desc" },
+    take: limit,
+    include: { actor: { select: { id: true, username: true } } }
+  });
+}
+async function deleteDevice(homeId, deviceId) {
+  const device = await prisma.device.findFirst({ where: { id: deviceId, homeId } });
+  if (!device) throw new AppError("DEVICE_NOT_FOUND", "Device not found in this home", 404);
+  await prisma.device.delete({ where: { id: deviceId } });
+}
+async function renameEsp(homeId, espId, name, actorId) {
+  if (!name) throw new AppError("BAD_REQUEST", "Board ka naam required hai", 400);
+  if (name.length > 60) throw new AppError("BAD_REQUEST", "Naam 60 chars se chhota rakho", 400);
+  const esp = await prisma.espDevice.findFirst({ where: { id: espId, homeId } });
+  if (!esp) throw new AppError("NOT_FOUND", "Board is home me nahi mila", 404);
+  const dup = await prisma.espDevice.findFirst({ where: { name, id: { not: espId } }, select: { id: true } });
+  if (dup) {
+    throw new AppError("DUPLICATE_NAME", `Naam "${name}" already kisi aur board pe hai \u2014 unique naam chahiye`, 409);
+  }
+  const updated = await prisma.espDevice.update({ where: { id: espId }, data: { name } });
+  await audit(actorId, "user.esp.rename", {
+    homeId,
+    entity: "esp",
+    entityId: espId,
+    meta: { name }
+  });
+  return updated;
+}
+async function listMyBoards(userId) {
+  const homes = await prisma.home.findMany({
+    where: { members: { some: { userId } } },
+    select: {
+      id: true,
+      name: true,
+      members: { where: { userId }, select: { role: true } }
+    },
+    orderBy: { createdAt: "asc" }
+  });
+  const homeIds = homes.map((h) => h.id);
+  const boards = await prisma.espDevice.findMany({
+    where: { homeId: { in: homeIds } },
+    include: {
+      devices: {
+        select: {
+          id: true,
+          name: true,
+          type: true,
+          status: true,
+          offline: true,
+          lastSeen: true
+        },
+        orderBy: { id: "asc" }
+      }
+    },
+    orderBy: { id: "asc" }
+  });
+  const byHome = /* @__PURE__ */ new Map();
+  for (const b of boards) {
+    const arr = byHome.get(b.homeId) ?? [];
+    arr.push(b);
+    byHome.set(b.homeId, arr);
+  }
+  return homes.map((h) => ({
+    homeId: h.id,
+    homeName: h.name,
+    role: h.members[0]?.role ?? "member",
+    boards: byHome.get(h.id) ?? []
+  }));
+}
+
+// src/controllers/device.controller.ts
+async function list2(req, res) {
+  const devices = await listDevices(Number(req.params.homeId));
+  ok(res, devices);
+}
+async function create2(req, res) {
+  const device = await createDevice({
+    homeId: Number(req.params.homeId),
+    createdBy: req.user.sub,
+    name: req.body.name,
+    type: req.body.type,
+    roomId: req.body.roomId,
+    serialNumber: req.body.serialNumber
+  });
+  ok(res, device, 201);
+}
+async function setStatus(req, res) {
+  const device = await setDeviceStatus({
+    homeId: Number(req.params.homeId),
+    deviceId: Number(req.params.deviceId),
+    actorId: req.user.sub,
+    status: req.body.status
+  });
+  ok(res, device);
+}
+async function update(req, res) {
+  const device = await updateDevice(
+    Number(req.params.homeId),
+    Number(req.params.deviceId),
+    { name: req.body.name, roomId: req.body.roomId }
+  );
+  ok(res, device);
+}
+async function logs(req, res) {
+  const logs2 = await getDeviceLogs(
+    Number(req.params.homeId),
+    Number(req.params.deviceId),
+    Number(req.query.limit ?? 50)
+  );
+  ok(res, logs2);
+}
+async function remove2(req, res) {
+  await deleteDevice(Number(req.params.homeId), Number(req.params.deviceId));
+  ok(res, { message: "Device deleted" });
+}
+async function renameEsp2(req, res) {
+  const board = await renameEsp(
+    Number(req.params.homeId),
+    Number(req.params.espId),
+    String(req.body?.name ?? "").trim().slice(0, 60),
+    req.user.sub
+  );
+  ok(res, board);
+}
+async function listMyBoards2(req, res) {
+  const data = await listMyBoards(req.user.sub);
+  ok(res, data);
+}
+
+// ../../packages/shared/src/index.ts
+var HOME_MEMBER_ROLES = ["owner", "admin", "member", "viewer"];
+
+// src/middleware/requireRole.ts
+init_prisma();
+var ROLE_INDEX = Object.fromEntries(HOME_MEMBER_ROLES.map((r, i) => [r, i]));
+function requireHomeMember(minRole = "member") {
+  return async (req, _res, next) => {
+    try {
+      const userId = req.user?.sub;
+      if (!userId) return next(new AppError("UNAUTHORIZED", "Not authenticated", 401));
+      const homeId = Number(req.params.homeId);
+      if (!Number.isInteger(homeId)) return next(new AppError("BAD_REQUEST", "Invalid home id"));
+      const membership2 = await prisma.homeMember.findUnique({
+        where: { homeId_userId: { homeId, userId } }
+      });
+      if (!membership2) {
+        return next(new AppError("FORBIDDEN", "Not a member of this home", 403));
+      }
+      if (ROLE_INDEX[membership2.role] > ROLE_INDEX[minRole]) {
+        return next(new AppError("FORBIDDEN", "Insufficient role for this action", 403));
+      }
+      req.homeMembership = membership2;
+      next();
+    } catch (err) {
+      next(err);
+    }
+  };
+}
+
+// src/routes/home.routes.ts
+var homeRouter = Router2();
+var idParams = z3.object({ homeId: z3.coerce.number().int().positive() });
+var createSchema = z3.object({ name: z3.string().min(1).max(100) });
+var renameSchema = z3.object({ name: z3.string().min(1).max(100) });
+var transferSchema = z3.object({ newOwnerId: z3.coerce.number().int().positive() });
+homeRouter.post("/", requireAuth, validateBody(createSchema), create);
+homeRouter.get("/", requireAuth, list);
+homeRouter.get("/my-boards", requireAuth, listMyBoards2);
+homeRouter.get(
+  "/:homeId",
+  requireAuth,
+  validateParams(idParams),
+  requireHomeMember("viewer"),
+  detail
+);
+homeRouter.patch(
+  "/:homeId",
+  requireAuth,
+  validateParams(idParams),
+  requireHomeMember("admin"),
+  validateBody(renameSchema),
+  rename
+);
+homeRouter.delete(
+  "/:homeId",
+  requireAuth,
+  validateParams(idParams),
+  requireHomeMember("owner"),
+  remove
+);
+homeRouter.post(
+  "/:homeId/transfer",
+  requireAuth,
+  validateParams(idParams),
+  requireHomeMember("owner"),
+  validateBody(transferSchema),
+  transfer
+);
+
+// src/routes/member.routes.ts
+import { Router as Router3 } from "express";
+import { z as z4 } from "zod";
+
+// src/services/member.service.ts
+init_prisma();
+import crypto2 from "node:crypto";
+
 // src/services/notification.service.ts
+init_prisma();
 async function createNotification(userId, input) {
   const notification = await prisma.notification.create({
     data: {
@@ -738,7 +962,7 @@ async function listNotifications(userId, args = {}) {
   ]);
   return { items, total, page, pageSize, totalPages: Math.max(1, Math.ceil(total / pageSize)) };
 }
-async function remove2(userId, notificationId) {
+async function remove3(userId, notificationId) {
   await prisma.notification.deleteMany({ where: { id: notificationId, userId } });
   return { ok: true };
 }
@@ -872,7 +1096,7 @@ async function removeMember(homeId, userId) {
 }
 
 // src/controllers/member.controller.ts
-async function list2(req, res) {
+async function list3(req, res) {
   const members = await listMembers(Number(req.params.homeId));
   ok(res, members);
 }
@@ -911,7 +1135,7 @@ async function changeRole2(req, res) {
   );
   ok(res, member);
 }
-async function remove3(req, res) {
+async function remove4(req, res) {
   await removeMember(Number(req.params.homeId), Number(req.params.userId));
   ok(res, { message: "Member removed" });
 }
@@ -935,7 +1159,7 @@ memberRouter.get(
   requireAuth,
   validateParams(idParams2),
   requireHomeMember("viewer"),
-  list2
+  list3
 );
 memberRouter.get(
   "/:homeId/invitations",
@@ -977,195 +1201,13 @@ memberRouter.delete(
   requireAuth,
   validateParams(memberParams),
   requireHomeMember("admin"),
-  remove3
+  remove4
 );
 memberRouter.post("/invitations/accept", requireAuth, validateBody(acceptSchema), accept);
 
 // src/routes/device.routes.ts
 import { Router as Router4 } from "express";
 import { z as z5 } from "zod";
-
-// src/services/device.service.ts
-init_prisma();
-
-// src/services/audit.service.ts
-init_prisma();
-async function audit(actorId, action, opts = {}) {
-  try {
-    const data = {
-      actorId,
-      homeId: opts.homeId ?? null,
-      action,
-      entity: opts.entity ?? null,
-      entityId: opts.entityId ?? null
-    };
-    if (opts.meta) data.meta = opts.meta;
-    await prisma.auditLog.create({ data });
-  } catch (err) {
-    console.error("[audit] failed to write audit log:", err);
-  }
-}
-
-// src/services/device.service.ts
-async function listDevices(homeId) {
-  return prisma.device.findMany({
-    where: { homeId },
-    include: {
-      esp: { select: { id: true, name: true, serialCode: true, modelCode: true, offline: true, lastSeen: true } }
-    },
-    orderBy: { createdAt: "desc" }
-  });
-}
-async function createDevice(input) {
-  if (input.roomId) {
-    const room = await prisma.room.findFirst({
-      where: { id: input.roomId, homeId: input.homeId }
-    });
-    if (!room) throw new AppError("ROOM_NOT_FOUND", "Room does not belong to this home", 400);
-  }
-  return prisma.device.create({
-    data: {
-      homeId: input.homeId,
-      createdBy: input.createdBy,
-      name: input.name,
-      type: input.type,
-      roomId: input.roomId,
-      serialNumber: input.serialNumber
-    }
-  });
-}
-async function setDeviceStatus(input) {
-  const device = await prisma.device.findFirst({
-    where: { id: input.deviceId, homeId: input.homeId }
-  });
-  if (!device) throw new AppError("DEVICE_NOT_FOUND", "Device not found in this home", 404);
-  await prisma.$transaction([
-    prisma.device.update({
-      where: { id: device.id },
-      data: { status: input.status }
-    }),
-    prisma.deviceCommand.create({
-      data: {
-        deviceId: device.id,
-        actorId: input.actorId,
-        command: `set_status:${input.status}`
-      }
-    }),
-    prisma.deviceLog.create({
-      data: {
-        deviceId: device.id,
-        actorId: input.actorId,
-        logType: "status_change",
-        logMessage: `Device turned ${input.status}`
-      }
-    })
-  ]);
-  const updated = await prisma.device.findUnique({ where: { id: device.id } });
-  if (updated) emitToHome(input.homeId, "device:updated", updated);
-  return updated;
-}
-async function updateDevice(homeId, deviceId, patch) {
-  const device = await prisma.device.findFirst({ where: { id: deviceId, homeId } });
-  if (!device) throw new AppError("DEVICE_NOT_FOUND", "Device not found in this home", 404);
-  if (patch.roomId !== void 0 && patch.roomId !== null) {
-    const room = await prisma.room.findFirst({ where: { id: patch.roomId, homeId } });
-    if (!room) throw new AppError("ROOM_NOT_FOUND", "Room does not belong to this home", 400);
-  }
-  return prisma.device.update({
-    where: { id: deviceId },
-    data: { name: patch.name, roomId: patch.roomId }
-  });
-}
-async function getDeviceLogs(homeId, deviceId, limit = 50) {
-  const device = await prisma.device.findFirst({ where: { id: deviceId, homeId } });
-  if (!device) throw new AppError("DEVICE_NOT_FOUND", "Device not found in this home", 404);
-  return prisma.deviceLog.findMany({
-    where: { deviceId },
-    orderBy: { createdAt: "desc" },
-    take: limit,
-    include: { actor: { select: { id: true, username: true } } }
-  });
-}
-async function deleteDevice(homeId, deviceId) {
-  const device = await prisma.device.findFirst({ where: { id: deviceId, homeId } });
-  if (!device) throw new AppError("DEVICE_NOT_FOUND", "Device not found in this home", 404);
-  await prisma.device.delete({ where: { id: deviceId } });
-}
-async function renameEsp(homeId, espId, name, actorId) {
-  if (!name) throw new AppError("BAD_REQUEST", "Board ka naam required hai", 400);
-  if (name.length > 60) throw new AppError("BAD_REQUEST", "Naam 60 chars se chhota rakho", 400);
-  const esp = await prisma.espDevice.findFirst({ where: { id: espId, homeId } });
-  if (!esp) throw new AppError("NOT_FOUND", "Board is home me nahi mila", 404);
-  const dup = await prisma.espDevice.findFirst({ where: { name, id: { not: espId } }, select: { id: true } });
-  if (dup) {
-    throw new AppError("DUPLICATE_NAME", `Naam "${name}" already kisi aur board pe hai \u2014 unique naam chahiye`, 409);
-  }
-  const updated = await prisma.espDevice.update({ where: { id: espId }, data: { name } });
-  await audit(actorId, "user.esp.rename", {
-    homeId,
-    entity: "esp",
-    entityId: espId,
-    meta: { name }
-  });
-  return updated;
-}
-
-// src/controllers/device.controller.ts
-async function list3(req, res) {
-  const devices = await listDevices(Number(req.params.homeId));
-  ok(res, devices);
-}
-async function create2(req, res) {
-  const device = await createDevice({
-    homeId: Number(req.params.homeId),
-    createdBy: req.user.sub,
-    name: req.body.name,
-    type: req.body.type,
-    roomId: req.body.roomId,
-    serialNumber: req.body.serialNumber
-  });
-  ok(res, device, 201);
-}
-async function setStatus(req, res) {
-  const device = await setDeviceStatus({
-    homeId: Number(req.params.homeId),
-    deviceId: Number(req.params.deviceId),
-    actorId: req.user.sub,
-    status: req.body.status
-  });
-  ok(res, device);
-}
-async function update(req, res) {
-  const device = await updateDevice(
-    Number(req.params.homeId),
-    Number(req.params.deviceId),
-    { name: req.body.name, roomId: req.body.roomId }
-  );
-  ok(res, device);
-}
-async function logs(req, res) {
-  const logs2 = await getDeviceLogs(
-    Number(req.params.homeId),
-    Number(req.params.deviceId),
-    Number(req.query.limit ?? 50)
-  );
-  ok(res, logs2);
-}
-async function remove4(req, res) {
-  await deleteDevice(Number(req.params.homeId), Number(req.params.deviceId));
-  ok(res, { message: "Device deleted" });
-}
-async function renameEsp2(req, res) {
-  const board = await renameEsp(
-    Number(req.params.homeId),
-    Number(req.params.espId),
-    String(req.body?.name ?? "").trim().slice(0, 60),
-    req.user.sub
-  );
-  ok(res, board);
-}
-
-// src/routes/device.routes.ts
 var deviceRouter = Router4();
 var idParams3 = z5.object({ homeId: z5.coerce.number().int().positive() });
 var deviceParams = z5.object({
@@ -1189,7 +1231,7 @@ deviceRouter.get(
   requireAuth,
   validateParams(idParams3),
   requireHomeMember("viewer"),
-  list3
+  list2
 );
 deviceRouter.post(
   "/:homeId/devices",
@@ -1227,7 +1269,7 @@ deviceRouter.delete(
   requireAuth,
   validateParams(deviceParams),
   requireHomeMember("admin"),
-  remove4
+  remove2
 );
 deviceRouter.patch(
   "/:homeId/esp/:espId",
@@ -1975,7 +2017,7 @@ notificationRouter.post("/:id/read", requireAuth, validateParams(idParams5), asy
   ok(res, await markRead(req.user.sub, Number(req.params.id)));
 });
 notificationRouter.delete("/:id", requireAuth, validateParams(idParams5), async (req, res) => {
-  ok(res, await remove2(req.user.sub, Number(req.params.id)));
+  ok(res, await remove3(req.user.sub, Number(req.params.id)));
 });
 
 // src/routes/assistant.routes.ts

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import * as homeController from "../controllers/home.controller";
+import * as deviceController from "../controllers/device.controller";
 import { requireAuth } from "../middleware/auth";
 import { requireHomeMember } from "../middleware/requireRole";
 import { validateBody, validateParams } from "../middleware/validate";
@@ -15,6 +16,8 @@ const transferSchema = z.object({ newOwnerId: z.coerce.number().int().positive()
 
 homeRouter.post("/", requireAuth, validateBody(createSchema), homeController.create);
 homeRouter.get("/", requireAuth, homeController.list);
+
+homeRouter.get("/my-boards", requireAuth, deviceController.listMyBoards);
 
 homeRouter.get(
   "/:homeId",

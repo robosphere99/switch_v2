@@ -142,3 +142,52 @@ export async function renameEsp(homeId: number, espId: number, name: string, act
   });
   return updated;
 }
+
+/**
+ * Saare boards jinke user (kisi bhi home me) member hai — ek saath, devices ke saath.
+ * "My Boards" page ke liye: har board ki full info (firmware, IP, MAC, SSID) + devices.
+ */
+export async function listMyBoards(userId: number) {
+  const homes = await prisma.home.findMany({
+    where: { members: { some: { userId } } },
+    select: {
+      id: true,
+      name: true,
+      members: { where: { userId }, select: { role: true } },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
+  const homeIds = homes.map((h) => h.id);
+  const boards = await prisma.espDevice.findMany({
+    where: { homeId: { in: homeIds } },
+    include: {
+      devices: {
+        select: {
+          id: true,
+          name: true,
+          type: true,
+          status: true,
+          offline: true,
+          lastSeen: true,
+        },
+        orderBy: { id: "asc" },
+      },
+    },
+    orderBy: { id: "asc" },
+  });
+
+  const byHome = new Map<number, typeof boards>();
+  for (const b of boards) {
+    const arr = byHome.get(b.homeId) ?? [];
+    arr.push(b);
+    byHome.set(b.homeId, arr);
+  }
+
+  return homes.map((h) => ({
+    homeId: h.id,
+    homeName: h.name,
+    role: h.members[0]?.role ?? "member",
+    boards: byHome.get(h.id) ?? [],
+  }));
+}

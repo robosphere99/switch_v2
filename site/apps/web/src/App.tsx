@@ -8,6 +8,7 @@ import { Dashboard } from "./pages/Dashboard";
 import { DeviceKeys } from "./pages/DeviceKeys";
 import { Homes } from "./pages/Homes";
 import { Notifications } from "./pages/Notifications";
+import { MyBoards } from "./pages/MyBoards";
 import { Landing } from "./pages/Landing";
 import { Login } from "./pages/Login";
 import { Members } from "./pages/Members";
@@ -128,6 +129,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <Homes />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/boards"
+            element={
+              <ProtectedRoute>
+                <MyBoards />
               </ProtectedRoute>
             }
           />

@@ -85,3 +85,39 @@ export async function getDeviceLogs(
   );
   return data;
 }
+
+export interface MyBoardDevice {
+  id: number;
+  name: string;
+  type: string;
+  status: "on" | "off";
+  offline: boolean;
+  lastSeen: string | null;
+}
+
+export interface MyBoard {
+  id: number;
+  homeId: number;
+  name: string | null;
+  serialCode: string | null;
+  modelCode: string | null;
+  macAddress: string;
+  ssid: string | null;
+  ipAddress: string | null;
+  firmwareVersion: string | null;
+  offline: boolean;
+  lastSeen: string | null;
+  devices: MyBoardDevice[];
+}
+
+export interface MyBoardsGroup {
+  homeId: number;
+  homeName: string;
+  role: string;
+  boards: MyBoard[];
+}
+
+export async function listMyBoards(): Promise<ApiResponse<MyBoardsGroup[]>> {
+  const { data } = await api.get<ApiResponse<MyBoardsGroup[]>>("/homes/my-boards");
+  return data;
+}
