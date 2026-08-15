@@ -42,6 +42,15 @@ function refineAttachment(
   }
 }
 
+/** Defensive: agar production pe Prisma client purana generate hua ho (model missing)
+ *  to crash + IIS 500 page ki jagah clean error do. Root fix: npx prisma generate. */
+function supportModel() {
+  if (!prisma.supportMessage) {
+    throw new AppError("INTERNAL", "Support module unavailable — Prisma client stale. Run: npx prisma generate in site/apps/api", 500);
+  }
+  return prisma.supportMessage;
+}
+
 const msgSelect = {
   id: true,
   userId: true,
@@ -62,15 +71,15 @@ const msgSelect = {
 supportRouter.get("/admin/messages", requireAuth, async (req, res) => {
   const userId = Number(req.query.userId);
   if (!Number.isInteger(userId) || userId <= 0) throw new AppError("VALIDATION_ERROR", "userId required", 400);
-  const msgs = await prisma.supportMessage.findMany({
+  const msgs = await supportModel().findMany({
     where: { userId },
     select: msgSelect,
     orderBy: { createdAt: "asc" },
     take: 200,
   });
-  const unread = await prisma.supportMessage.count({ where: { userId, readByAdmin: false } });
+  const unread = await supportModel().count({ where: { userId, readByAdmin: false } });
   if (unread > 0) {
-    await prisma.supportMessage.updateMany({
+    await supportModel().updateMany({
       where: { userId, readByAdmin: false },
       data: { readByAdmin: true },
     });
@@ -98,7 +107,7 @@ supportRouter.post("/admin/messages", requireAuth, validateBody(adminSendSchema)
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, username: true } });
   if (!user) throw new AppError("NOT_FOUND", "User not found", 404);
 
-  const created = await prisma.supportMessage.create({
+  const created = await supportModel().create({
     data: {
       userId,
       senderRole: "admin",
@@ -129,16 +138,16 @@ supportRouter.post("/admin/messages", requireAuth, validateBody(adminSendSchema)
 supportRouter.get("/messages", requireAuth, async (req, res) => {
   const userId = req.user!.sub;
   const [messages, unreadCount] = await Promise.all([
-    prisma.supportMessage.findMany({
+    supportModel().findMany({
       where: { userId },
       select: msgSelect,
       orderBy: { createdAt: "asc" },
       take: 200,
     }),
-    prisma.supportMessage.count({ where: { userId, readByUser: false } }),
+    supportModel().count({ where: { userId, readByUser: false } }),
   ]);
   if (unreadCount > 0) {
-    await prisma.supportMessage.updateMany({
+    await supportModel().updateMany({
       where: { userId, readByUser: false },
       data: { readByUser: true },
     });
@@ -161,7 +170,7 @@ const userSendSchema = z
 
 supportRouter.post("/messages", requireAuth, validateBody(userSendSchema), async (req, res) => {
   const userId = req.user!.sub;
-  const created = await prisma.supportMessage.create({
+  const created = await supportModel().create({
     data: {
       userId,
       senderRole: "user",
@@ -197,6 +206,6 @@ supportRouter.get("/admin/unread-count", requireAuth, async (req, res) => {
   if (req.user!.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
   // Defensive: agar Prisma client purana generate hua ho (model missing) to crash mat karo.
   if (!prisma.supportMessage) return ok(res, { unread: 0 });
-  const unread = await prisma.supportMessage.count({ where: { readByAdmin: false } });
+  const unread = await supportModel().count({ where: { readByAdmin: false } });
   ok(res, { unread });
 });
