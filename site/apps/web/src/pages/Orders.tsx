@@ -11,11 +11,11 @@ import {
 } from "../api/shop";
 
 const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
-  pending: { label: "⏳ Pending", cls: "bg-amber-500/20 text-amber-300" },
-  paid: { label: "💳 Paid", cls: "bg-blue-500/20 text-blue-300" },
+  pending: { label: "⏳ Pending", cls: "bg-amber-500/20 text-amber-600" },
+  paid: { label: "💳 Paid", cls: "bg-blue-500/20 text-blue-700" },
   shipped: { label: "📦 Shipped", cls: "bg-purple-500/20 text-purple-300" },
-  delivered: { label: "✅ Delivered", cls: "bg-green-500/20 text-green-300" },
-  cancelled: { label: "❌ Cancelled", cls: "bg-red-500/20 text-red-300" },
+  delivered: { label: "✅ Delivered", cls: "bg-green-500/20 text-green-700" },
+  cancelled: { label: "❌ Cancelled", cls: "bg-red-500/20 text-red-600" },
 };
 
 export function Orders() {
@@ -87,7 +87,7 @@ export function Orders() {
     }
   };
 
-  if (loading) return <div className="p-10 text-center text-gray-400">Loading orders…</div>;
+  if (loading) return <div className="p-10 text-center text-gray-500">Loading orders…</div>;
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
@@ -96,7 +96,7 @@ export function Orders() {
       </h1>
 
       {placed && (
-        <div className="mb-6 rounded-lg border border-green-500/40 bg-green-900/30 p-4 text-sm text-green-300">
+        <div className="mb-6 rounded-lg border border-green-500/40 bg-green-900/30 p-4 text-sm text-green-700">
           ✅ Order <span className="font-bold">{placed}</span> placed! Delivery hone ke baad box pe serial code se{" "}
           <Link to="/activate" className="underline">device activate</Link> karo.
         </div>
@@ -105,7 +105,7 @@ export function Orders() {
       {orders.length === 0 ? (
         <div className="rounded-xl border border-brand/20 bg-night-800 p-10 text-center">
           <div className="mb-2 text-4xl">🛒</div>
-          <p className="text-gray-400">Koi order nahi abhi.</p>
+          <p className="text-gray-500">Koi order nahi abhi.</p>
           <Link to="/shop" className="mt-4 inline-block rounded-lg bg-gradient-to-r from-brand to-brand-light px-6 py-2.5 font-semibold text-white">
             Shop kholo
           </Link>
@@ -138,7 +138,7 @@ export function Orders() {
                   </div>
                 )}
 
-                <div className="mb-4 space-y-1.5 text-sm text-gray-300">
+                <div className="mb-4 space-y-1.5 text-sm text-gray-600">
                   {o.items.map((i) => (
                     <div key={i.id} className="flex justify-between">
                       <span>
@@ -147,21 +147,21 @@ export function Orders() {
                       <span>₹{(Number(i.price) * i.quantity).toLocaleString("en-IN")}</span>
                     </div>
                   ))}
-                  <div className="flex justify-between border-t border-brand/20 pt-2 font-bold text-white">
+                  <div className="flex justify-between border-t border-brand/20 pt-2 font-bold text-night-950">
                     <span>Total ({o.paymentMethod.toUpperCase()})</span>
                     <span>₹{Number(o.totalAmount).toLocaleString("en-IN")}</span>
                   </div>
                 </div>
 
                 {o.wifiSsid && (
-                  <div className="mb-3 text-xs text-gray-500">📶 Pre-provisioned WiFi: <span className="text-gray-300">{o.wifiSsid}</span></div>
+                  <div className="mb-3 text-xs text-gray-500">📶 Pre-provisioned WiFi: <span className="text-gray-600">{o.wifiSsid}</span></div>
                 )}
 
                 {serials.length > 0 ? (
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-xs text-gray-500">Serial:</span>
                     {serials.map((s) => (
-                      <CopyText key={s} text={s} className="rounded bg-night-700 px-2 py-1 text-xs text-brand-light" title="Hold to copy serial">
+                      <CopyText key={s} text={s} className="rounded bg-night-700 px-2 py-1 text-xs text-brand" title="Hold to copy serial">
                         {s}
                       </CopyText>
                     ))}
@@ -184,7 +184,7 @@ export function Orders() {
       )}
 
       {payMsg && (
-        <div className="mt-6 rounded-lg border border-brand/30 bg-night-800 p-4 text-sm text-brand-light">
+        <div className="mt-6 rounded-lg border border-brand/30 bg-night-800 p-4 text-sm text-brand">
           {payMsg}
           {payMsg.startsWith("✅") && (
             <button onClick={() => setPayMsg(null)} className="ml-3 underline">close</button>
@@ -198,10 +198,10 @@ export function Orders() {
             <h3 className="mb-3 text-lg font-bold">💳 Pay ₹{payIntent.amount.toLocaleString("en-IN")}</h3>
             {payIntent.mode === "demo" ? (
               <>
-                <p className="mb-3 text-sm text-gray-400">
+                <p className="mb-3 text-sm text-gray-500">
                   Demo mode — kisi bhi UPI app me yeh intent use karo:
                 </p>
-                <div className="mb-3 rounded-lg bg-night-700 p-3 font-mono text-xs text-brand-light break-all">
+                <div className="mb-3 rounded-lg bg-night-700 p-3 font-mono text-xs text-brand break-all">
                   {payIntent.upiIntent}
                 </div>
                 <button
@@ -214,21 +214,21 @@ export function Orders() {
               </>
             ) : (
               <>
-                <p className="mb-3 text-sm text-gray-400">
+                <p className="mb-3 text-sm text-gray-500">
                   Razorpay checkout — payment ke baad yahan payment ID + signature daalo (server verify karega):
                 </p>
                 <label className="mb-1 block text-xs text-gray-500">Razorpay Payment ID</label>
                 <input
                   value={verifyFields.paymentId}
                   onChange={(e) => setVerifyFields((v) => ({ ...v, paymentId: e.target.value }))}
-                  className="mb-3 w-full rounded-lg border border-brand/30 bg-night-700 px-3 py-2 text-sm text-white"
+                  className="mb-3 w-full rounded-lg border border-brand/30 bg-night-700 px-3 py-2 text-sm text-night-950"
                   placeholder="pay_xxxxxxxx"
                 />
                 <label className="mb-1 block text-xs text-gray-500">Razorpay Signature</label>
                 <input
                   value={verifyFields.signature}
                   onChange={(e) => setVerifyFields((v) => ({ ...v, signature: e.target.value }))}
-                  className="mb-3 w-full rounded-lg border border-brand/30 bg-night-700 px-3 py-2 text-sm text-white"
+                  className="mb-3 w-full rounded-lg border border-brand/30 bg-night-700 px-3 py-2 text-sm text-night-950"
                   placeholder="signature_hex"
                 />
                 <button
@@ -240,7 +240,7 @@ export function Orders() {
                 </button>
               </>
             )}
-            <button onClick={() => setPayIntent(null)} className="mt-3 w-full text-center text-xs text-gray-500 hover:text-gray-300">
+            <button onClick={() => setPayIntent(null)} className="mt-3 w-full text-center text-xs text-gray-500 hover:text-gray-600">
               Cancel
             </button>
           </div>

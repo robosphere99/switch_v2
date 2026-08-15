@@ -6,10 +6,10 @@ import { inviteMember, listInvitations, revokeInvitation, changeMemberRole, remo
 import { useAuthStore } from "../stores/auth";
 
 const ROLE_COLORS: Record<string, string> = {
-  owner: "bg-amber-500/20 text-amber-400 border-amber-500/40",
+  owner: "bg-amber-500/20 text-amber-600 border-amber-500/40",
   admin: "bg-blue-500/20 text-blue-400 border-blue-500/40",
   member: "bg-emerald-500/20 text-emerald-400 border-emerald-500/40",
-  viewer: "bg-gray-500/20 text-gray-400 border-gray-500/40",
+  viewer: "bg-gray-500/20 text-gray-500 border-gray-500/40",
 };
 
 export function Members() {
@@ -92,7 +92,7 @@ export function Members() {
   return (
     <div className="mx-auto max-w-4xl px-4 py-8">
       <h1 className="mb-2 text-3xl font-bold">👨‍👩‍👧‍👦 Family</h1>
-      <p className="mb-6 text-sm text-gray-400">
+      <p className="mb-6 text-sm text-gray-500">
         Members of your home, their roles, and pending invites.
       </p>
 
@@ -105,8 +105,8 @@ export function Members() {
               onClick={() => setActiveHomeId(h.id)}
               className={`rounded-lg border px-4 py-2 text-sm font-semibold ${
                 h.id === homeId
-                  ? "border-brand bg-brand/20 text-brand-light"
-                  : "border-gray-700 bg-night-800 text-gray-300"
+                  ? "border-brand bg-brand/20 text-brand"
+                  : "border-gray-200 bg-night-800 text-gray-600"
               }`}
             >
               🏠 {h.name}
@@ -150,7 +150,7 @@ export function Members() {
           {createdCode && (
             <div className="mt-4 rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm">
               <p className="font-semibold text-emerald-400">✅ Invite created!</p>
-              <p className="mt-1 text-gray-300">
+              <p className="mt-1 text-gray-600">
                 Share this code with your family member — they enter it after login:
               </p>
               <p className="mt-2 select-all rounded bg-night-900 px-3 py-2 font-mono text-lg font-bold text-emerald-300">
@@ -163,20 +163,20 @@ export function Members() {
 
       {/* Pending invitations */}
       {canInvite && invitations.data?.success && invitations.data.data.length > 0 && (
-        <div className="mb-8 rounded-xl border border-gray-700 bg-night-800 p-5">
+        <div className="mb-8 rounded-xl border border-gray-200 bg-night-800 p-5">
           <h2 className="mb-4 font-semibold">⏳ Pending invitations</h2>
           <div className="space-y-2">
             {invitations.data.data.map((inv) => (
               <div
                 key={inv.id}
-                className="flex items-center justify-between rounded-lg border border-gray-700 bg-night-900 px-4 py-2.5 text-sm"
+                className="flex items-center justify-between rounded-lg border border-gray-200 bg-night-900 px-4 py-2.5 text-sm"
               >
                 <div>
-                  <span className="text-gray-200">{inv.email}</span>
-                  <span className="ml-2 rounded-full border border-gray-600 px-2 py-0.5 text-[10px] font-bold uppercase text-gray-400">
+                  <span className="text-gray-700">{inv.email}</span>
+                  <span className="ml-2 rounded-full border border-gray-300 px-2 py-0.5 text-[10px] font-bold uppercase text-gray-500">
                     {inv.role}
                   </span>
-                  <span className="ml-2 font-mono text-xs text-brand-light">{inv.inviteCode}</span>
+                  <span className="ml-2 font-mono text-xs text-brand">{inv.inviteCode}</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-[11px] text-gray-500">
@@ -184,7 +184,7 @@ export function Members() {
                   </span>
                   <button
                     onClick={() => revoke.mutate(inv.id)}
-                    className="text-xs text-red-400 hover:text-red-300"
+                    className="text-xs text-red-400 hover:text-red-600"
                   >
                     Revoke
                   </button>
@@ -201,7 +201,7 @@ export function Members() {
           members.data.data.map((m) => (
             <div
               key={m.id}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-700 bg-night-800 px-5 py-4"
+              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-night-800 px-5 py-4"
             >
               <div>
                 <p className="font-semibold">
@@ -230,7 +230,7 @@ export function Members() {
                           role: e.target.value as "admin" | "member" | "viewer",
                         })
                       }
-                      className="rounded border border-gray-600 bg-night-900 px-2 py-1 text-xs outline-none"
+                      className="rounded border border-gray-300 bg-night-900 px-2 py-1 text-xs outline-none"
                     >
                       <option value="admin">admin</option>
                       <option value="member">member</option>
@@ -242,7 +242,7 @@ export function Members() {
                           remove.mutate(m.userId);
                         }
                       }}
-                      className="text-xs text-red-400 hover:text-red-300"
+                      className="text-xs text-red-400 hover:text-red-600"
                     >
                       Remove
                     </button>
@@ -255,8 +255,8 @@ export function Members() {
 
       {/* Join home with invite code */}
       <div className="mt-10 rounded-xl border border-dashed border-brand/40 bg-brand/5 p-5">
-        <p className="font-semibold text-brand-light">🔑 Join a family home</p>
-        <p className="mt-1 text-xs text-gray-400">
+        <p className="font-semibold text-brand">🔑 Join a family home</p>
+        <p className="mt-1 text-xs text-gray-500">
           Family member ne aapko invite kiya hai? Code enter karke uske home se jud jao.
         </p>
         <div className="mt-3 flex gap-2">

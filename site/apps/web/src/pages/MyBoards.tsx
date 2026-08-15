@@ -78,12 +78,12 @@ export function MyBoards() {
       <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold">🛰️ My Boards</h1>
-          <p className="mt-1 text-sm text-gray-400">
+          <p className="mt-1 text-sm text-gray-500">
             Saare ESP boards ek jagah — firmware, status aur devices ke saath
           </p>
         </div>
         <div className="flex items-center gap-3 text-sm">
-          <span className="rounded-full border border-gray-700 bg-night-800 px-4 py-1.5 font-semibold">
+          <span className="rounded-full border border-gray-200 bg-night-800 px-4 py-1.5 font-semibold">
             📡 {totalBoards} board{totalBoards === 1 ? "" : "s"}
           </span>
           <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-4 py-1.5 font-semibold text-emerald-400">
@@ -93,15 +93,15 @@ export function MyBoards() {
       </div>
 
       {error && (
-        <div className="mb-6 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+        <div className="mb-6 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-600">
           ⚠️ {error}
         </div>
       )}
 
-      {boards.isLoading && <p className="text-gray-400">Boards load ho rahe hain…</p>}
+      {boards.isLoading && <p className="text-gray-500">Boards load ho rahe hain…</p>}
 
       {!boards.isLoading && groups.length === 0 && (
-        <div className="rounded-xl border border-dashed border-gray-700 bg-night-800 p-10 text-center text-gray-400">
+        <div className="rounded-xl border border-dashed border-gray-200 bg-night-800 p-10 text-center text-gray-500">
           🛰️ Abhi koi board connected nahi hai.
           <br />
           <span className="text-sm">Order ke baad board activate karo ya support se baat karo.</span>
@@ -112,7 +112,7 @@ export function MyBoards() {
         <section key={g.homeId} className="mb-10">
           <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold">
             🏠 {g.homeName}
-            <span className="rounded-full bg-gray-800 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gray-400">
+            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gray-500">
               {g.role}
             </span>
             <span className="text-xs font-normal text-gray-500">
@@ -155,7 +155,7 @@ export function MyBoards() {
                                   rename.mutate({ homeId: g.homeId, espId: b.id, name: name.trim() });
                               }}
                               title="Board rename karo"
-                              className="rounded border border-gray-700 px-1.5 py-0.5 text-xs text-gray-400 hover:border-brand hover:text-brand-light"
+                              className="rounded border border-gray-200 px-1.5 py-0.5 text-xs text-gray-500 hover:border-brand hover:text-brand"
                             >
                               ✏️
                             </button>
@@ -179,26 +179,26 @@ export function MyBoards() {
 
                   <div className="flex flex-wrap gap-1.5 text-[11px]">
                     {b.modelCode && (
-                      <span className="rounded-full bg-gray-800 px-2 py-0.5 text-gray-300">
+                      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-gray-600">
                         {b.modelCode}
                       </span>
                     )}
                     {b.firmwareVersion && (
-                      <span className="rounded-full bg-brand/15 px-2 py-0.5 font-semibold text-brand-light">
+                      <span className="rounded-full bg-brand/15 px-2 py-0.5 font-semibold text-brand">
                         FW v{b.firmwareVersion}
                       </span>
                     )}
                     {b.ipAddress && (
-                      <span className="rounded-full bg-gray-800 px-2 py-0.5 text-gray-300">
+                      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-gray-600">
                         🌐 {b.ipAddress}
                       </span>
                     )}
                     {b.ssid && (
-                      <span className="rounded-full bg-gray-800 px-2 py-0.5 text-gray-300">
+                      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-gray-600">
                         📶 {b.ssid}
                       </span>
                     )}
-                    <span className="rounded-full bg-gray-800 px-2 py-0.5 text-gray-400">
+                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-gray-500">
                       🕒 {lastSeenText(b.lastSeen)}
                     </span>
                   </div>
@@ -210,7 +210,7 @@ export function MyBoards() {
                         return (
                           <div
                             key={d.id}
-                            className="flex items-center justify-between rounded-lg border border-gray-800 bg-night-900/60 px-3 py-2"
+                            className="flex items-center justify-between rounded-lg border border-gray-200 bg-night-900/60 px-3 py-2"
                           >
                             <span className="flex items-center gap-2 text-sm">
                               <span>{TYPE_ICONS[d.type] ?? "⚙️"}</span>
@@ -233,7 +233,7 @@ export function MyBoards() {
                               className={`rounded-full px-4 py-1.5 text-xs font-bold transition ${
                                 on
                                   ? "bg-emerald-500 text-white hover:bg-emerald-400"
-                                  : "bg-gray-700 text-gray-300 hover:bg-gray-600"
+                                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
                               }`}
                             >
                               {on ? "ON" : "OFF"}

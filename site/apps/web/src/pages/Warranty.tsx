@@ -8,10 +8,10 @@ import {
 } from "../api/shop";
 
 const CLAIM_BADGE: Record<string, { label: string; cls: string }> = {
-  submitted: { label: "🕐 Submitted", cls: "bg-amber-500/20 text-amber-300" },
-  approved: { label: "✅ Approved", cls: "bg-green-500/20 text-green-300" },
-  rejected: { label: "❌ Rejected", cls: "bg-red-500/20 text-red-300" },
-  resolved: { label: "🔧 Resolved", cls: "bg-blue-500/20 text-blue-300" },
+  submitted: { label: "🕐 Submitted", cls: "bg-amber-500/20 text-amber-600" },
+  approved: { label: "✅ Approved", cls: "bg-green-500/20 text-green-700" },
+  rejected: { label: "❌ Rejected", cls: "bg-red-500/20 text-red-600" },
+  resolved: { label: "🔧 Resolved", cls: "bg-blue-500/20 text-blue-700" },
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -60,20 +60,20 @@ export function Warranty() {
     }
   };
 
-  if (loading) return <div className="p-10 text-center text-gray-400">Loading…</div>;
+  if (loading) return <div className="p-10 text-center text-gray-500">Loading…</div>;
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
       <h1 className="mb-2 text-3xl font-bold">
         <span className="bg-gradient-to-r from-brand-light to-brand bg-clip-text text-transparent">🛡️ Warranty</span>
       </h1>
-      <p className="mb-6 text-sm text-gray-400">
-        Serial claim ke din se <span className="text-brand-light">1 saal</span> ki warranty. Koi device kharab ho to
+      <p className="mb-6 text-sm text-gray-500">
+        Serial claim ke din se <span className="text-brand">1 saal</span> ki warranty. Koi device kharab ho to
         claim file karo — support team approve karke resolution dega.
       </p>
 
       {msg && (
-        <div className={`mb-6 rounded-lg border p-4 text-sm ${msg.ok ? "border-green-500/40 bg-green-900/30 text-green-300" : "border-red-500/40 bg-red-900/30 text-red-300"}`}>
+        <div className={`mb-6 rounded-lg border p-4 text-sm ${msg.ok ? "border-green-500/40 bg-green-900/30 text-green-700" : "border-red-500/40 bg-red-900/30 text-red-600"}`}>
           {msg.text}
         </div>
       )}
@@ -81,21 +81,21 @@ export function Warranty() {
       {/* My devices */}
       <h2 className="mb-3 text-xl font-bold">Meri Devices ({serials.length})</h2>
       {serials.length === 0 ? (
-        <div className="rounded-xl border border-brand/20 bg-night-800 p-8 text-center text-sm text-gray-400">
-          Koi claimed device nahi. <a href="/activate" className="text-brand-light underline">Serial activate karo</a>.
+        <div className="rounded-xl border border-brand/20 bg-night-800 p-8 text-center text-sm text-gray-500">
+          Koi claimed device nahi. <a href="/activate" className="text-brand underline">Serial activate karo</a>.
         </div>
       ) : (
         <div className="mb-8 space-y-3">
           {serials.map((s) => (
             <div key={s.serialCode} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand/20 bg-night-800 p-4">
               <div>
-                <div className="font-bold text-white">{s.product?.name ?? s.productName}</div>
+                <div className="font-bold text-night-950">{s.product?.name ?? s.productName}</div>
                 <div className="text-xs text-gray-500">
-                  <CopyText text={s.serialCode} className="text-brand-light" title="Hold to copy serial">{s.serialCode}</CopyText> · {s.product?.modelCode ?? s.modelCode}
+                  <CopyText text={s.serialCode} className="text-brand" title="Hold to copy serial">{s.serialCode}</CopyText> · {s.product?.modelCode ?? s.modelCode}
                 </div>
               </div>
               <div className="text-right">
-                <div className={`text-xs font-semibold ${STATUS_LABEL[s.warrantyStatus]?.startsWith("🟢") ? "text-green-400" : "text-amber-400"}`}>
+                <div className={`text-xs font-semibold ${STATUS_LABEL[s.warrantyStatus]?.startsWith("🟢") ? "text-green-400" : "text-amber-600"}`}>
                   {STATUS_LABEL[s.warrantyStatus] ?? s.warrantyStatus}
                 </div>
                 <div className="text-xs text-gray-500">
@@ -110,12 +110,12 @@ export function Warranty() {
       {/* Claim form */}
       <h2 className="mb-3 text-xl font-bold">Naya Warranty Claim</h2>
       <form onSubmit={submit} className="mb-8 rounded-xl border border-brand/20 bg-night-800 p-6">
-        <label className="mb-1 block text-sm text-gray-400">Serial Code *</label>
+        <label className="mb-1 block text-sm text-gray-500">Serial Code *</label>
         <select
           value={form.serialCode}
           onChange={(e) => setForm((f) => ({ ...f, serialCode: e.target.value }))}
           required
-          className="mb-4 w-full rounded-lg border border-brand/30 bg-night-700 px-3 py-2 text-sm text-white"
+          className="mb-4 w-full rounded-lg border border-brand/30 bg-night-700 px-3 py-2 text-sm text-night-950"
         >
           <option value="">— choose device —</option>
           {serials.map((s) => (
@@ -125,11 +125,11 @@ export function Warranty() {
           ))}
         </select>
 
-        <label className="mb-1 block text-sm text-gray-400">Reason *</label>
+        <label className="mb-1 block text-sm text-gray-500">Reason *</label>
         <select
           value={form.reason}
           onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))}
-          className="mb-4 w-full rounded-lg border border-brand/30 bg-night-700 px-3 py-2 text-sm text-white"
+          className="mb-4 w-full rounded-lg border border-brand/30 bg-night-700 px-3 py-2 text-sm text-night-950"
         >
           <option value="not_working">🔴 Device not working</option>
           <option value="relay_fault">⚡ Relay/switch fault</option>
@@ -139,13 +139,13 @@ export function Warranty() {
           <option value="other">Other</option>
         </select>
 
-        <label className="mb-1 block text-sm text-gray-400">Description (optional)</label>
+        <label className="mb-1 block text-sm text-gray-500">Description (optional)</label>
         <textarea
           value={form.description}
           onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
           rows={3}
           placeholder="Kya problem hai — kab se, kya kiya try…"
-          className="mb-4 w-full rounded-lg border border-brand/30 bg-night-700 px-3 py-2 text-sm text-white"
+          className="mb-4 w-full rounded-lg border border-brand/30 bg-night-700 px-3 py-2 text-sm text-night-950"
         />
 
         <button
@@ -160,7 +160,7 @@ export function Warranty() {
       {/* My claims */}
       <h2 className="mb-3 text-xl font-bold">Meri Claims ({claims.length})</h2>
       {claims.length === 0 ? (
-        <div className="rounded-xl border border-brand/20 bg-night-800 p-8 text-center text-sm text-gray-400">
+        <div className="rounded-xl border border-brand/20 bg-night-800 p-8 text-center text-sm text-gray-500">
           Koi claim nahi abhi.
         </div>
       ) : (
@@ -170,13 +170,13 @@ export function Warranty() {
             return (
               <div key={c.id} className="rounded-xl border border-brand/20 bg-night-800 p-4">
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                  <span className="font-mono text-sm text-brand-light">{c.serialCode}</span>
+                  <span className="font-mono text-sm text-brand">{c.serialCode}</span>
                   <span className={`rounded-full px-3 py-1 text-xs font-semibold ${badge.cls}`}>{badge.label}</span>
                 </div>
-                <div className="text-sm text-gray-300">
+                <div className="text-sm text-gray-600">
                   <span className="text-gray-500">Reason:</span> {c.reason}
                 </div>
-                {c.description && <div className="mt-1 text-sm text-gray-400">{c.description}</div>}
+                {c.description && <div className="mt-1 text-sm text-gray-500">{c.description}</div>}
                 <div className="mt-2 text-xs text-gray-500">{new Date(c.createdAt).toLocaleString()}</div>
               </div>
             );

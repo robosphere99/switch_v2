@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Plus, Settings } from "lucide-react";
 import { useState } from "react";
 import type { Device, DeviceType } from "@robosphere/shared";
 import { listDevices, setDeviceStatus, createDevice, updateDevice, deleteDevice, getDeviceLogs, renameEsp, getCurrentFirmware, requestOta } from "../api/devices";
@@ -155,14 +156,14 @@ export function Dashboard() {
   const roomNameFor = (device: Device) =>
     home?.rooms.find((r) => r.id === device.roomId)?.name ?? null;
 
-  if (homes.isLoading) return <p className="p-10 text-center text-gray-400">Loading…</p>;
+  if (homes.isLoading) return <p className="p-10 text-center text-gray-500">Loading…</p>;
 
   if (homes.data?.success && homes.data.data.length === 0) {
     return (
       <div className="mx-auto max-w-xl px-4 py-16 text-center">
         <h1 className="mb-4 text-2xl font-bold">No homes yet</h1>
-        <p className="text-gray-400">
-          Create your home on the <span className="text-brand-light">Homes</span> page, or join
+        <p className="text-gray-500">
+          Create your home on the <span className="text-brand">Homes</span> page, or join
           your family with an invite code.
         </p>
       </div>
@@ -178,8 +179,8 @@ export function Dashboard() {
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-3xl font-bold">⚙️ Dashboard</h1>
-        <span className="rounded-full border border-brand/40 bg-brand/10 px-3 py-1 text-xs font-semibold text-brand-light">
+        <h1 className="flex items-center gap-2 text-3xl font-bold"><Settings className="h-7 w-7 text-brand" /> Dashboard</h1>
+        <span className="rounded-full border border-brand/40 bg-brand/10 px-3 py-1 text-xs font-semibold text-brand">
           Your role: {myRole}
         </span>
       </div>
@@ -192,8 +193,8 @@ export function Dashboard() {
             onClick={() => setActiveHomeId(h.id)}
             className={`rounded-lg border px-5 py-2.5 text-sm font-semibold transition ${
               h.id === homeId
-                ? "border-brand bg-brand/20 text-brand-light"
-                : "border-gray-700 bg-night-800 text-gray-300 hover:border-gray-500"
+                ? "border-brand bg-brand/20 text-brand"
+                : "border-gray-200 bg-night-800 text-gray-600 hover:border-gray-500"
             }`}
           >
             🏠 {h.name}
@@ -217,7 +218,7 @@ export function Dashboard() {
           <div className="space-y-6">
             {canAdminDevices && (
               <div className="rounded-xl border border-brand/20 bg-night-800 p-5">
-                <h2 className="mb-4 font-semibold">➕ Add Device</h2>
+                <h2 className="mb-4 flex items-center gap-1.5 font-semibold"><Plus className="h-4 w-4 text-brand" /> Add Device</h2>
                 <input
                   value={addForm.name}
                   onChange={(e) => setAddForm({ ...addForm, name: e.target.value })}
@@ -258,7 +259,7 @@ export function Dashboard() {
             )}
 
             {canAdminDevices && (
-              <div className="rounded-xl border border-gray-700 bg-night-800 p-5">
+              <div className="rounded-xl border border-gray-200 bg-night-800 p-5">
                 <h2 className="mb-4 font-semibold">📍 Rooms</h2>
                 <div className="mb-3 flex gap-2">
                   <input
@@ -279,7 +280,7 @@ export function Dashboard() {
                   {home.rooms.map((r) => (
                     <span
                       key={r.id}
-                      className="flex items-center gap-1.5 rounded-full border border-gray-600 bg-night-900 px-3 py-1 text-xs"
+                      className="flex items-center gap-1.5 rounded-full border border-gray-300 bg-night-900 px-3 py-1 text-xs"
                     >
                       {r.name}
                       <button
@@ -312,12 +313,12 @@ export function Dashboard() {
                 value={deviceQ}
                 onChange={(e) => setDeviceQ(e.target.value)}
                 placeholder="🔍 Search device / serial / board…"
-                className="w-full max-w-xs rounded-lg border border-gray-700 bg-night-800 px-3 py-1.5 text-sm text-gray-200 outline-none focus:border-brand"
+                className="w-full max-w-xs rounded-lg border border-gray-200 bg-night-800 px-3 py-1.5 text-sm text-gray-700 outline-none focus:border-brand"
               />
             </div>
-            {devices.isLoading && <p className="text-gray-400">Loading devices…</p>}
+            {devices.isLoading && <p className="text-gray-500">Loading devices…</p>}
             {devices.data?.success && devices.data.data.length === 0 && (
-              <p className="text-gray-400">
+              <p className="text-gray-500">
                 No devices yet{canAdminDevices ? " — add your first device!" : ""}
               </p>
             )}
@@ -339,7 +340,7 @@ export function Dashboard() {
                   })
                 : [];
               if (q && visible.length === 0) {
-                return <p className="text-gray-400">No devices match "{deviceQ}".</p>;
+                return <p className="text-gray-500">No devices match "{deviceQ}".</p>;
               }
               return (
                 <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
@@ -400,13 +401,13 @@ Abhi: v${cur} → Latest: v${next}`)) {
       {/* Edit modal */}
       {editing && (
         <Modal title={`Edit: ${editing.name}`} onClose={() => setEditing(null)}>
-          <label className="mb-1 block text-xs font-semibold uppercase text-gray-400">Name</label>
+          <label className="mb-1 block text-xs font-semibold uppercase text-gray-500">Name</label>
           <input
             value={editName}
             onChange={(e) => setEditName(e.target.value)}
             className="mb-4 w-full rounded-lg border border-brand/20 bg-night-900 px-3 py-2.5 text-sm outline-none focus:border-brand"
           />
-          <label className="mb-1 block text-xs font-semibold uppercase text-gray-400">Room</label>
+          <label className="mb-1 block text-xs font-semibold uppercase text-gray-500">Room</label>
           <select
             value={editRoom}
             onChange={(e) => setEditRoom(e.target.value)}
@@ -432,15 +433,15 @@ Abhi: v${cur} → Latest: v${next}`)) {
       {/* Logs modal */}
       {logsFor && (
         <Modal title={`📜 ${logsFor.name} — Activity`} onClose={() => setLogsFor(null)}>
-          {logsQuery.isLoading && <p className="text-sm text-gray-400">Loading…</p>}
+          {logsQuery.isLoading && <p className="text-sm text-gray-500">Loading…</p>}
           <div className="space-y-2">
             {(logsQuery.data?.success ? logsQuery.data.data : []).map((log) => (
               <div
                 key={log.id}
-                className="rounded-lg border border-gray-700 bg-night-900 px-3 py-2 text-sm"
+                className="rounded-lg border border-gray-200 bg-night-900 px-3 py-2 text-sm"
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-gray-200">{log.logMessage}</span>
+                  <span className="text-gray-700">{log.logMessage}</span>
                   <span className="text-[10px] text-gray-500">
                     {new Date(log.createdAt).toLocaleString()}
                   </span>

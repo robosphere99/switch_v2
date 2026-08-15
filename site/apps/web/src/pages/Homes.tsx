@@ -54,7 +54,7 @@ export function Homes() {
   return (
     <div className="mx-auto max-w-4xl px-4 py-8">
       <h1 className="mb-2 text-3xl font-bold">🏠 Homes</h1>
-      <p className="mb-8 text-sm text-gray-400">
+      <p className="mb-8 text-sm text-gray-500">
         Your family homes. Devices belong to a home — you own the home you created.
       </p>
 
@@ -88,13 +88,13 @@ export function Homes() {
             return (
               <div
                 key={h.id}
-                className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-gray-700 bg-night-800 px-5 py-4"
+                className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-gray-200 bg-night-800 px-5 py-4"
               >
                 <div>
                   <h3 className="text-lg font-semibold">🏠 {h.name}</h3>
                   <p className="text-xs text-gray-500">
                     {h._count.devices} devices · {h._count.members} members · you are{" "}
-                    <span className="text-brand-light">{role}</span>
+                    <span className="text-brand">{role}</span>
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2 text-xs">
@@ -102,7 +102,7 @@ export function Homes() {
                     <>
                       <button
                         onClick={() => setRenaming({ id: h.id, name: h.name })}
-                        className="rounded bg-gray-700/60 px-3 py-1.5 text-gray-200 hover:bg-gray-600"
+                        className="rounded bg-gray-100/60 px-3 py-1.5 text-gray-700 hover:bg-gray-200"
                       >
                         ✏️ Rename
                       </button>
@@ -111,7 +111,7 @@ export function Homes() {
                           setTransferring({ id: h.id });
                           setTransferTarget("");
                         }}
-                        className="rounded bg-gray-700/60 px-3 py-1.5 text-gray-200 hover:bg-gray-600"
+                        className="rounded bg-gray-100/60 px-3 py-1.5 text-gray-700 hover:bg-gray-200"
                       >
                         👑 Transfer
                       </button>
@@ -158,7 +158,7 @@ export function Homes() {
       {/* Transfer modal */}
       {transferring && (
         <Modal title={`Transfer ownership`} onClose={() => setTransferring(null)}>
-          <p className="mb-4 text-sm text-gray-400">
+          <p className="mb-4 text-sm text-gray-500">
             Choose a member to become the new owner. You will become an admin.
           </p>
           <select

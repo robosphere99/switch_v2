@@ -54,7 +54,7 @@ export function DeviceCard({
       className={`flex flex-col gap-3 rounded-xl border p-5 transition ${
         on
           ? "border-brand bg-gradient-to-br from-brand/20 to-brand-light/10 shadow-lg shadow-brand/20"
-          : "border-gray-700 bg-night-800"
+          : "border-gray-200 bg-night-800"
       }`}
     >
       <div className="flex items-start justify-between">
@@ -94,12 +94,12 @@ export function DeviceCard({
               {device.esp.firmwareVersion ? ` · FW v${device.esp.firmwareVersion}` : ""}
             </span>
             {isNewerVersion(latestVersion, device.esp.firmwareVersion) && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 font-bold text-amber-400">
+              <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 font-bold text-amber-600">
                 ⬆ v{latestVersion}
                 {canManage && onOta && (
                   <button
                     onClick={() => onOta(device)}
-                    className="ml-0.5 rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-bold text-amber-300 hover:bg-amber-500/30"
+                    className="ml-0.5 rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-bold text-amber-600 hover:bg-amber-500/30"
                     title="Board ka firmware update karo (OTA)"
                   >
                     Update
@@ -110,7 +110,7 @@ export function DeviceCard({
             {canManage && onRenameBoard && (
               <button
                 onClick={() => onRenameBoard(device.esp!)}
-                className="rounded px-1 text-gray-500 transition hover:bg-night-700 hover:text-brand-light"
+                className="rounded px-1 text-gray-500 transition hover:bg-night-700 hover:text-brand"
                 title="Board ka naam badlo"
               >
                 ✏️
@@ -136,13 +136,13 @@ export function DeviceCard({
         <div className="flex gap-2 text-xs">
           <button
             onClick={() => onEdit(device)}
-            className="flex-1 rounded bg-gray-700/60 py-1.5 text-gray-300 hover:bg-gray-600"
+            className="flex-1 rounded bg-gray-100/60 py-1.5 text-gray-600 hover:bg-gray-200"
           >
             ✏️ Edit
           </button>
           <button
             onClick={() => onLogs(device)}
-            className="flex-1 rounded bg-gray-700/60 py-1.5 text-gray-300 hover:bg-gray-600"
+            className="flex-1 rounded bg-gray-100/60 py-1.5 text-gray-600 hover:bg-gray-200"
           >
             📜 Logs
           </button>

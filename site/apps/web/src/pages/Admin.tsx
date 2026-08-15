@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { FileText, Home, KeyRound, LayoutDashboard, Lightbulb, RadioTower, ScrollText, ShoppingCart, Users, type LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
   getStats,
@@ -39,16 +40,16 @@ import { getSocket } from "../lib/socket";
 
 type Tab = "overview" | "users" | "homes" | "devices" | "keys" | "audit" | "ota" | "shop" | "logs";
 
-const TABS: Array<{ id: Tab; label: string }> = [
-  { id: "overview", label: "📊 Overview" },
-  { id: "users", label: "👤 Users" },
-  { id: "homes", label: "🏠 Homes" },
-  { id: "devices", label: "💡 Devices" },
-  { id: "ota", label: "🛰️ OTA / ESP" },
-  { id: "shop", label: "🛒 Shop / Orders" },
-  { id: "keys", label: "🔑 API Keys" },
-  { id: "audit", label: "📜 Audit Log" },
-  { id: "logs", label: "🪵 Logs" },
+const TABS: Array<{ id: Tab; label: string; icon: LucideIcon }> = [
+  { id: "overview", label: "Overview", icon: LayoutDashboard },
+  { id: "users", label: "Users", icon: Users },
+  { id: "homes", label: "Homes", icon: Home },
+  { id: "devices", label: "Devices", icon: Lightbulb },
+  { id: "ota", label: "OTA / ESP", icon: RadioTower },
+  { id: "shop", label: "Shop / Orders", icon: ShoppingCart },
+  { id: "keys", label: "API Keys", icon: KeyRound },
+  { id: "audit", label: "Audit Log", icon: ScrollText },
+  { id: "logs", label: "Logs", icon: FileText },
 ];
 
 function Badge({ children, color }: { children: React.ReactNode; color: string }) {
@@ -288,7 +289,7 @@ export function Admin() {
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="mb-1 text-3xl font-bold">🛡️ Admin Panel</h1>
-          <p className="text-sm text-gray-400">Platform-wide management (system admin only).</p>
+          <p className="text-sm text-gray-500">Platform-wide management (system admin only).</p>
         </div>
         <button
           onClick={() => {
@@ -296,7 +297,7 @@ export function Admin() {
             setFindQ("");
             setFindIdx(0);
           }}
-          className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm font-semibold text-amber-400 hover:bg-amber-500/20"
+          className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm font-semibold text-amber-600 hover:bg-amber-500/20"
           title="Customer support: phone / order / serial / MAC se turant user context"
         >
           🆘 Find anything
@@ -339,7 +340,7 @@ export function Admin() {
           {gsOpen && gsDebounced.length >= 2 && (
             <>
               <div className="fixed inset-0 z-30" onClick={() => setGsOpen(false)} />
-              <div className="absolute right-0 z-40 mt-2 max-h-[28rem] w-96 overflow-y-auto rounded-xl border border-gray-700 bg-night-900 shadow-2xl">
+              <div className="absolute right-0 z-40 mt-2 max-h-[28rem] w-96 overflow-y-auto rounded-xl border border-gray-200 bg-night-900 shadow-2xl">
                 {global.isLoading && <p className="px-4 py-6 text-center text-sm text-gray-500">Searching…</p>}
                 {!global.isLoading && global.data?.success && (() => {
                   const r = global.data.data;
@@ -360,7 +361,7 @@ export function Admin() {
                   let offset = 0;
                   return (
                     <>
-                      <div className="flex items-center justify-between border-b border-gray-700 px-4 py-2.5 text-xs text-gray-400">
+                      <div className="flex items-center justify-between border-b border-gray-200 px-4 py-2.5 text-xs text-gray-500">
                         <span>
                           "{gsDebounced}" — {total} result{total === 1 ? "" : "s"}
                         </span>
@@ -373,7 +374,7 @@ export function Admin() {
                       )}
                       {sections.map((sec) =>
                         sec.items.length === 0 ? null : (
-                          <div key={sec.label} className="border-b border-gray-800 px-2 py-2">
+                          <div key={sec.label} className="border-b border-gray-200 px-2 py-2">
                             <div className="px-2 pb-1 text-[10px] font-bold uppercase tracking-wide text-gray-500">
                               {sec.icon} {sec.label} ({sec.count})
                             </div>
@@ -388,8 +389,8 @@ export function Admin() {
                                   ref={active ? (el) => { if (el) el.scrollIntoView({ block: "nearest" }); } : undefined}
                                   className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition ${
                                     active
-                                      ? "bg-brand/20 text-brand-light"
-                                      : "text-gray-200 hover:bg-night-800 hover:text-brand-light"
+                                      ? "bg-brand/20 text-brand"
+                                      : "text-gray-700 hover:bg-night-800 hover:text-brand"
                                   }`}
                                 >
                                   <span className="truncate font-medium">
@@ -424,10 +425,11 @@ export function Admin() {
             onClick={() => setTab(t.id)}
             className={`rounded-lg border px-4 py-2 text-sm font-semibold transition ${
               tab === t.id
-                ? "border-brand bg-brand/20 text-brand-light"
-                : "border-gray-700 bg-night-800 text-gray-300 hover:border-gray-500"
+                ? "border-brand bg-brand/20 text-brand"
+                : "border-gray-200 bg-night-800 text-gray-600 hover:border-gray-500"
             }`}
           >
+            <t.icon className="h-4 w-4" />
             {t.label}
           </button>
         ))}
@@ -437,10 +439,10 @@ export function Admin() {
         <div>
           <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {statCards.map((c) => (
-              <div key={c.label} className="rounded-xl border border-gray-700 bg-night-800 p-6">
+              <div key={c.label} className="rounded-xl border border-gray-200 bg-night-800 p-6">
                 <div className="text-3xl">{c.icon}</div>
                 <div className="mt-3 text-3xl font-bold">{c.value}</div>
-                <div className="text-sm font-medium text-gray-200">{c.label}</div>
+                <div className="text-sm font-medium text-gray-700">{c.label}</div>
                 <div className="text-xs text-gray-500">{c.sub}</div>
               </div>
             ))}
@@ -463,9 +465,9 @@ export function Admin() {
                 </h2>
                 <div className="mt-3 grid gap-2 md:grid-cols-2">
                   {offline.map((e) => (
-                    <div key={e.id} className="flex items-center justify-between gap-3 rounded-lg border border-gray-800 bg-night-900 px-3 py-2">
+                    <div key={e.id} className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-night-900 px-3 py-2">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-gray-200">
+                        <p className="truncate text-sm font-medium text-gray-700">
                           {e.name ?? "ESP"} {e.serialCode ? <span className="font-mono text-[10px] text-gray-500">· {e.serialCode}</span> : null}
                         </p>
                         <p className="truncate text-[11px] text-gray-500">
@@ -482,15 +484,15 @@ export function Admin() {
           })()}
 
           {/* Recent audit activity */}
-          <div className="rounded-xl border border-gray-700 bg-night-800 p-5">
+          <div className="rounded-xl border border-gray-200 bg-night-800 p-5">
             <h2 className="mb-4 font-semibold">🕒 Recent activity</h2>
             <div className="space-y-2">
               {(audit.data?.success ? audit.data.data.slice(0, 8) : []).map((log) => (
-                <div key={log.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-700 bg-night-900 px-4 py-2 text-sm">
+                <div key={log.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 bg-night-900 px-4 py-2 text-sm">
                   <div>
-                    <Badge color="border-brand/40 text-brand-light">{log.action}</Badge>
+                    <Badge color="border-brand/40 text-brand">{log.action}</Badge>
                     {log.entity && (
-                      <span className="ml-2 text-xs text-gray-400">
+                      <span className="ml-2 text-xs text-gray-500">
                         {log.entity}{log.entityId ? ` #${log.entityId}` : ""}
                       </span>
                     )}
@@ -509,14 +511,14 @@ export function Admin() {
       )}
 
       {tab === "users" && (
-        <div className="rounded-xl border border-gray-700 bg-night-800 p-5">
+        <div className="rounded-xl border border-gray-200 bg-night-800 p-5">
           <h2 className="mb-4 font-semibold">
             Users <span className="text-sm font-normal text-gray-500">({users.data?.success ? users.data.data.length : "…"})</span>
           </h2>
           <div className="space-y-2">
             {users.data?.success &&
               users.data.data.map((u) => (
-                <div key={u.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-700 bg-night-900 px-4 py-2.5 text-sm">
+                <div key={u.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 bg-night-900 px-4 py-2.5 text-sm">
                   <div>
                     <span className="font-semibold">{u.username}</span>
                     <span className="ml-2 text-xs text-gray-500">{u.email}</span>
@@ -524,7 +526,7 @@ export function Admin() {
                       {u._count.ownedHomes} homes · {u._count.memberships} memberships
                     </span>
                     <span className={`ml-2 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${
-                      u.role === "system_admin" ? "border-purple-500/40 text-purple-400" : "border-gray-600 text-gray-400"
+                      u.role === "system_admin" ? "border-purple-500/40 text-purple-400" : "border-gray-300 text-gray-500"
                     }`}>
                       {u.role}
                     </span>
@@ -549,7 +551,7 @@ export function Admin() {
                     <button
                       onClick={() => setStatus.mutate({ id: u.id, status: u.status === "active" ? "suspended" : "active" })}
                       className={`text-xs font-semibold ${
-                        u.status === "active" ? "text-amber-400 hover:text-amber-300" : "text-emerald-400 hover:text-emerald-300"
+                        u.status === "active" ? "text-amber-600 hover:text-amber-600" : "text-emerald-400 hover:text-emerald-300"
                       }`}
                     >
                       {u.status === "active" ? "Suspend" : "Activate"}
@@ -558,7 +560,7 @@ export function Admin() {
                       onClick={() => {
                         if (confirm(`Delete user "${u.username}"? All their data will be removed.`)) delUser.mutate(u.id);
                       }}
-                      className="text-xs font-semibold text-red-400 hover:text-red-300"
+                      className="text-xs font-semibold text-red-400 hover:text-red-600"
                     >
                       🗑️
                     </button>
@@ -573,14 +575,14 @@ export function Admin() {
       )}
 
       {tab === "homes" && (
-        <div className="rounded-xl border border-gray-700 bg-night-800 p-5">
+        <div className="rounded-xl border border-gray-200 bg-night-800 p-5">
           <h2 className="mb-4 font-semibold">
             Homes <span className="text-sm font-normal text-gray-500">({homes.data?.success ? homes.data.data.length : "…"})</span>
           </h2>
           <div className="space-y-2">
             {homes.data?.success &&
               homes.data.data.map((h) => (
-                <div key={h.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-700 bg-night-900 px-4 py-2.5 text-sm">
+                <div key={h.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 bg-night-900 px-4 py-2.5 text-sm">
                   <div>
                     <span className="font-semibold">🏠 {h.name}</span>
                     <span className="ml-2 text-xs text-gray-500">
@@ -596,14 +598,14 @@ export function Admin() {
                     <span className="text-[11px] text-gray-500">created {new Date(h.createdAt).toLocaleDateString()}</span>
                     <button
                       onClick={() => getHomeDetail(h.id).then((r) => r.success && setViewHome(r.data))}
-                      className="text-xs font-semibold text-brand-light hover:text-brand"
+                      className="text-xs font-semibold text-brand hover:text-brand"
                     >
                       View
                     </button>
                     <button
                       onClick={() => setHomeStatusM.mutate({ id: h.id, status: h.status === "active" ? "suspended" : "active" })}
                       className={`text-xs font-semibold ${
-                        h.status === "active" ? "text-amber-400 hover:text-amber-300" : "text-emerald-400 hover:text-emerald-300"
+                        h.status === "active" ? "text-amber-600 hover:text-amber-600" : "text-emerald-400 hover:text-emerald-300"
                       }`}
                     >
                       {h.status === "active" ? "Suspend" : "Activate"}
@@ -612,7 +614,7 @@ export function Admin() {
                       onClick={() => {
                         if (confirm(`Delete home "${h.name}"? All devices, members and data will be removed.`)) delHome.mutate(h.id);
                       }}
-                      className="text-xs font-semibold text-red-400 hover:text-red-300"
+                      className="text-xs font-semibold text-red-400 hover:text-red-600"
                     >
                       🗑️
                     </button>
@@ -627,14 +629,14 @@ export function Admin() {
       )}
 
       {tab === "devices" && (
-        <div className="rounded-xl border border-gray-700 bg-night-800 p-5">
+        <div className="rounded-xl border border-gray-200 bg-night-800 p-5">
           <h2 className="mb-4 font-semibold">
             Devices <span className="text-sm font-normal text-gray-500">({devices.data?.success ? devices.data.data.length : "…"})</span>
           </h2>
           <div className="space-y-2">
             {devices.data?.success &&
               devices.data.data.map((d) => (
-                <div key={d.id} className="overflow-hidden rounded-lg border border-gray-700 bg-night-900">
+                <div key={d.id} className="overflow-hidden rounded-lg border border-gray-200 bg-night-900">
                   <button
                     type="button"
                     onClick={() => setSelectedDevice(selectedDevice === d.id ? null : d.id)}
@@ -647,7 +649,7 @@ export function Admin() {
                         {d.room ? ` · ${d.room.name}` : ""} · home: {d.home.name} ({d.home.owner.username})
                       </span>
                       <span className={`ml-2 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${
-                        d.status === "on" ? "border-emerald-500/40 text-emerald-400" : "border-gray-600 text-gray-400"
+                        d.status === "on" ? "border-emerald-500/40 text-emerald-400" : "border-gray-300 text-gray-500"
                       }`}>
                         {d.status}
                       </span>
@@ -675,17 +677,17 @@ export function Admin() {
       )}
 
       {tab === "keys" && (
-        <div className="rounded-xl border border-gray-700 bg-night-800 p-5">
+        <div className="rounded-xl border border-gray-200 bg-night-800 p-5">
           <h2 className="mb-4 font-semibold">
             API Keys <span className="text-sm font-normal text-gray-500">({keys.data?.success ? keys.data.data.length : "…"})</span>
           </h2>
           <div className="space-y-2">
             {keys.data?.success &&
               keys.data.data.map((k) => (
-                <div key={k.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-700 bg-night-900 px-4 py-2.5 text-sm">
+                <div key={k.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 bg-night-900 px-4 py-2.5 text-sm">
                   <div>
-                    <span className="font-mono text-xs font-semibold text-brand-light">{k.keyPrefix}…</span>
-                    {k.label && <span className="ml-2 text-xs text-gray-400">{k.label}</span>}
+                    <span className="font-mono text-xs font-semibold text-brand">{k.keyPrefix}…</span>
+                    {k.label && <span className="ml-2 text-xs text-gray-500">{k.label}</span>}
                     <span className="ml-2 text-xs text-gray-500">
                       by {k.user.username} · {k.home ? `home: ${k.home.name}` : "global"}
                     </span>
@@ -702,7 +704,7 @@ export function Admin() {
                       onClick={() => {
                         if (confirm("Revoke this API key? Devices using it will lose access.")) delKey.mutate(k.id);
                       }}
-                      className="text-xs font-semibold text-red-400 hover:text-red-300"
+                      className="text-xs font-semibold text-red-400 hover:text-red-600"
                     >
                       Revoke
                     </button>
@@ -717,18 +719,18 @@ export function Admin() {
       )}
 
       {tab === "audit" && (
-        <div className="rounded-xl border border-gray-700 bg-night-800 p-5">
+        <div className="rounded-xl border border-gray-200 bg-night-800 p-5">
           <h2 className="mb-4 font-semibold">
             Audit Log <span className="text-sm font-normal text-gray-500">({audit.data?.success ? audit.data.data.length : "…"})</span>
           </h2>
           <div className="space-y-2">
             {audit.data?.success &&
               audit.data.data.map((log) => (
-                <div key={log.id} className="rounded-lg border border-gray-700 bg-night-900 px-4 py-2 text-sm">
+                <div key={log.id} className="rounded-lg border border-gray-200 bg-night-900 px-4 py-2 text-sm">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <Badge color="border-brand/40 text-brand-light">{log.action}</Badge>
+                    <Badge color="border-brand/40 text-brand">{log.action}</Badge>
                     {log.entity && (
-                      <span className="text-xs text-gray-400">
+                      <span className="text-xs text-gray-500">
                         {log.entity}{log.entityId ? ` #${log.entityId}` : ""}
                       </span>
                     )}
@@ -759,13 +761,13 @@ export function Admin() {
           )}
 
           {/* Firmware manager */}
-          <div className="rounded-xl border border-gray-700 bg-night-800 p-5">
+          <div className="rounded-xl border border-gray-200 bg-night-800 p-5">
             <div className="mb-4 flex flex-wrap items-center gap-3">
               <h2 className="font-semibold">📦 Firmware</h2>
               {fw.data?.success && fw.data.data.current ? (
-                <Badge color="border-brand/40 text-brand-light">current: {fw.data.data.current.version}</Badge>
+                <Badge color="border-brand/40 text-brand">current: {fw.data.data.current.version}</Badge>
               ) : (
-                <Badge color="border-amber-500/40 text-amber-400">no firmware published</Badge>
+                <Badge color="border-amber-500/40 text-amber-600">no firmware published</Badge>
               )}
             </div>
 
@@ -803,29 +805,29 @@ export function Admin() {
               }}
             >
               <label className="block">
-                <span className="mb-1 block text-xs font-semibold uppercase text-gray-400">Firmware .bin</span>
+                <span className="mb-1 block text-xs font-semibold uppercase text-gray-500">Firmware .bin</span>
                 <input
                   type="file"
                   accept=".bin"
                   onChange={(ev) => setFwFile(ev.target.files?.[0] ?? null)}
-                  className="w-full rounded-lg border border-gray-700 bg-night-900 px-3 py-2 text-sm file:mr-3 file:rounded file:border-0 file:bg-brand file:px-3 file:py-1 file:text-xs file:font-semibold file:text-white"
+                  className="w-full rounded-lg border border-gray-200 bg-night-900 px-3 py-2 text-sm file:mr-3 file:rounded file:border-0 file:bg-brand file:px-3 file:py-1 file:text-xs file:font-semibold file:text-white"
                 />
               </label>
               <label className="block">
-                <span className="mb-1 block text-xs font-semibold uppercase text-gray-400">Version</span>
+                <span className="mb-1 block text-xs font-semibold uppercase text-gray-500">Version</span>
                 <input
                   value={fwVersion}
                   onChange={(ev) => setFwVersion(ev.target.value)}
                   placeholder="e.g. 1.0.1"
-                  className="w-full rounded-lg border border-gray-700 bg-night-900 px-3 py-2 text-sm outline-none focus:border-brand"
+                  className="w-full rounded-lg border border-gray-200 bg-night-900 px-3 py-2 text-sm outline-none focus:border-brand"
                 />
               </label>
               <label className="block">
-                <span className="mb-1 block text-xs font-semibold uppercase text-gray-400">Board model</span>
+                <span className="mb-1 block text-xs font-semibold uppercase text-gray-500">Board model</span>
                 <select
                   value={fwModel}
                   onChange={(ev) => setFwModel(ev.target.value)}
-                  className="w-full rounded-lg border border-gray-700 bg-night-900 px-3 py-2 text-sm outline-none focus:border-brand"
+                  className="w-full rounded-lg border border-gray-200 bg-night-900 px-3 py-2 text-sm outline-none focus:border-brand"
                 >
                   <option value="">🌐 Universal (sab models)</option>
                   <option value="2CH">2CH</option>
@@ -840,12 +842,12 @@ export function Admin() {
                 </select>
               </label>
               <label className="block sm:col-span-2">
-                <span className="mb-1 block text-xs font-semibold uppercase text-gray-400">Release notes (optional)</span>
+                <span className="mb-1 block text-xs font-semibold uppercase text-gray-500">Release notes (optional)</span>
                 <input
                   value={fwNotes}
                   onChange={(ev) => setFwNotes(ev.target.value)}
                   placeholder="What changed in this update?"
-                  className="w-full rounded-lg border border-gray-700 bg-night-900 px-3 py-2 text-sm outline-none focus:border-brand"
+                  className="w-full rounded-lg border border-gray-200 bg-night-900 px-3 py-2 text-sm outline-none focus:border-brand"
                 />
               </label>
               <div className="sm:col-span-2">
@@ -861,33 +863,33 @@ export function Admin() {
 
             {fw.data?.success && fw.data.data.versions.length > 0 && (
               <div className="mt-5">
-                <p className="mb-2 text-xs font-semibold uppercase text-gray-400">Version history</p>
+                <p className="mb-2 text-xs font-semibold uppercase text-gray-500">Version history</p>
                 <div className="space-y-2">
                   {fw.data.data.versions.map((v) => (
                     <div
                       key={v.id}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-700 bg-night-900 px-4 py-2 text-sm"
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 bg-night-900 px-4 py-2 text-sm"
                     >
                       <div>
                         <span className="font-mono font-semibold">{v.version}</span>
                         <span
                           className={`ml-2 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${
-                            v.isCurrent ? "border-emerald-500/40 text-emerald-400" : "border-gray-600 text-gray-400"
+                            v.isCurrent ? "border-emerald-500/40 text-emerald-400" : "border-gray-300 text-gray-500"
                           }`}
                         >
                           {v.isCurrent ? "current" : "old"}
                         </span>
                         {v.modelCode && (
-                          <span className="ml-2 rounded bg-brand/20 px-2 py-0.5 text-[10px] font-bold text-brand-light">
+                          <span className="ml-2 rounded bg-brand/20 px-2 py-0.5 text-[10px] font-bold text-brand">
                             {v.modelCode}
                           </span>
                         )}
-                        {v.releaseNotes && <span className="ml-2 text-xs text-gray-400">{v.releaseNotes}</span>}
+                        {v.releaseNotes && <span className="ml-2 text-xs text-gray-500">{v.releaseNotes}</span>}
                       </div>
                       {!v.isCurrent && (
                         <button
                           onClick={() => activateFw.mutate(v.id)}
-                          className="text-xs font-semibold text-brand-light hover:text-brand"
+                          className="text-xs font-semibold text-brand hover:text-brand"
                         >
                           Set current
                         </button>
@@ -900,7 +902,7 @@ export function Admin() {
           </div>
 
           {/* ESP boards — ek row per physical board */}
-          <div className="rounded-xl border border-gray-700 bg-night-800 p-5">
+          <div className="rounded-xl border border-gray-200 bg-night-800 p-5">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <h2 className="font-semibold">
                 🛰️ ESP Boards{" "}
@@ -921,7 +923,7 @@ export function Admin() {
                     });
                   }
                 }}
-                className="rounded-lg border border-brand/40 px-3 py-1.5 text-xs font-semibold text-brand-light hover:bg-brand/10"
+                className="rounded-lg border border-brand/40 px-3 py-1.5 text-xs font-semibold text-brand hover:bg-brand/10"
               >
                 📤 Push to All
               </button>
@@ -930,7 +932,7 @@ export function Admin() {
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead>
-                  <tr className="border-b border-gray-700 text-xs uppercase text-gray-400">
+                  <tr className="border-b border-gray-200 text-xs uppercase text-gray-500">
                     <th className="py-2 pr-3">ESP Board</th>
                     <th className="py-2 pr-3">Home</th>
                     <th className="py-2 pr-3">Devices</th>
@@ -945,7 +947,7 @@ export function Admin() {
                   {esp.data?.success &&
                     esp.data.data.esps.map((espRow) => (
                       <>
-                      <tr key={espRow.id} className="border-b border-gray-800 align-top">
+                      <tr key={espRow.id} className="border-b border-gray-200 align-top">
                         <td className="py-2 pr-3">
                           <div className="flex items-center gap-2 font-medium">
                             {espRow.name ?? "ESP"}
@@ -960,23 +962,23 @@ export function Admin() {
                                   });
                                 }
                               }}
-                              className="rounded border border-gray-600 px-1.5 py-0.5 text-[10px] text-gray-400 hover:border-brand/40 hover:text-brand-light"
+                              className="rounded border border-gray-300 px-1.5 py-0.5 text-[10px] text-gray-500 hover:border-brand/40 hover:text-brand"
                             >
                               ✏️
                             </button>
                           </div>
                           <div className="font-mono text-[10px] text-gray-500">{espRow.macAddress}</div>
-                          <div className="mt-0.5 flex items-center gap-1 text-[10px] text-gray-400">
+                          <div className="mt-0.5 flex items-center gap-1 text-[10px] text-gray-500">
                             <span>📶</span>
                             <span>{espRow.ssid ?? "—"}</span>
                           </div>
                           {espRow.serialCode && (
                             <div className="mt-0.5 flex items-center gap-1.5">
-                              <span className="rounded bg-brand/20 px-1.5 py-0.5 font-mono text-[10px] font-bold text-brand-light">
+                              <span className="rounded bg-brand/20 px-1.5 py-0.5 font-mono text-[10px] font-bold text-brand">
                                 {espRow.serialCode}
                               </span>
                               {espRow.modelCode && (
-                                <span className="rounded bg-night-700 px-1.5 py-0.5 text-[10px] text-gray-400">
+                                <span className="rounded bg-night-700 px-1.5 py-0.5 text-[10px] text-gray-500">
                                   {espRow.modelCode}
                                 </span>
                               )}
@@ -984,7 +986,7 @@ export function Admin() {
                           )}
                         </td>
                         <td className="py-2 pr-3">
-                          <div className="text-gray-300">{espRow.home.name}</div>
+                          <div className="text-gray-600">{espRow.home.name}</div>
                           <div className="mt-0.5 flex items-center gap-1.5">
                             <span className="font-mono text-[10px] text-gray-500" title="API key prefix (full key sirf issue ke waqt dikhta hai)">
                               🔑 {espRow.home.apiKeys?.[0]?.keyPrefix ?? "no key"}
@@ -993,7 +995,7 @@ export function Admin() {
                               onClick={() => issueKeyM.mutate(espRow.id)}
                               disabled={issueKeyM.isPending}
                               title="Fresh API key issue — user ko support ke liye de sakte ho"
-                              className="rounded border border-gray-600 px-1.5 py-0.5 text-[10px] text-gray-400 hover:border-brand/40 hover:text-brand-light disabled:opacity-50"
+                              className="rounded border border-gray-300 px-1.5 py-0.5 text-[10px] text-gray-500 hover:border-brand/40 hover:text-brand disabled:opacity-50"
                             >
                               {issueKeyM.isPending ? "…" : "🔑 New"}
                             </button>
@@ -1011,7 +1013,7 @@ export function Admin() {
                                 className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] ${
                                   dev.status === "on"
                                     ? "border-emerald-500/40 text-emerald-400"
-                                    : "border-gray-600 text-gray-400"
+                                    : "border-gray-300 text-gray-500"
                                 }`}
                               >
                                 <span
@@ -1031,7 +1033,7 @@ export function Admin() {
                                 href={`http://${espRow.ipAddress}`}
                                 onClick={(e) => handleIpClick(e, espRow)}
                                 title={`Open ${espRow.ipAddress} (ESP web panel)`}
-                                className="font-mono text-xs text-brand-light underline decoration-dotted underline-offset-2 hover:text-brand"
+                                className="font-mono text-xs text-brand underline decoration-dotted underline-offset-2 hover:text-brand"
                               >
                                 {espRow.ipAddress}
                               </a>
@@ -1054,13 +1056,13 @@ export function Admin() {
                               )}
                             </span>
                           ) : (
-                            <span className="font-mono text-xs text-brand-light">—</span>
+                            <span className="font-mono text-xs text-brand">—</span>
                           )}
                         </td>
                         <td className="py-2 pr-3">
                           {espRow.firmwareVersion ?? "—"}
                           {espRow.otaPendingVersion && (
-                            <Badge color="border-amber-500/40 text-amber-400">⏳ v{espRow.otaPendingVersion}</Badge>
+                            <Badge color="border-amber-500/40 text-amber-600">⏳ v{espRow.otaPendingVersion}</Badge>
                           )}
                           {(() => {
                             const ota =
@@ -1068,7 +1070,7 @@ export function Admin() {
                               (espRow.otaStatus ? { progress: espRow.otaProgress ?? 0, status: espRow.otaStatus } : null);
                             if (!ota || ota.status === "complete") {
                               return ota?.status === "complete" ? (
-                                <div className="mt-1 text-[10px] text-amber-400">✓ Flashed — rebooting…</div>
+                                <div className="mt-1 text-[10px] text-amber-600">✓ Flashed — rebooting…</div>
                               ) : null;
                             }
                             if (ota.status === "failed") {
@@ -1077,15 +1079,15 @@ export function Admin() {
                             return (
                               <div className="mt-1">
                                 <div className="flex items-center gap-2">
-                                  <div className="h-1.5 w-24 overflow-hidden rounded-full bg-gray-700">
+                                  <div className="h-1.5 w-24 overflow-hidden rounded-full bg-gray-100">
                                     <div
                                       className="h-full rounded-full bg-brand transition-all"
                                       style={{ width: `${ota.progress}%` }}
                                     />
                                   </div>
-                                  <span className="text-[10px] text-brand-light">{ota.progress}%</span>
+                                  <span className="text-[10px] text-brand">{ota.progress}%</span>
                                 </div>
-                                <span className="text-[10px] text-gray-400">
+                                <span className="text-[10px] text-gray-500">
                                   {ota.status === "downloading" ? "Downloading…" : "Flashing…"}
                                 </span>
                               </div>
@@ -1107,7 +1109,7 @@ export function Admin() {
                             <button
                               onClick={() => setHistFor(histFor === espRow.id ? null : espRow.id)}
                               title="Rename history dekho"
-                              className="rounded border border-gray-600 px-2 py-1 text-xs text-gray-400 hover:border-brand/40 hover:text-brand-light"
+                              className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-500 hover:border-brand/40 hover:text-brand"
                             >
                               🕓
                             </button>
@@ -1129,7 +1131,7 @@ export function Admin() {
                                 }
                               }}
                               disabled={pushOtaM.isPending}
-                              className="rounded border border-brand/40 px-2.5 py-1 text-xs font-semibold text-brand-light hover:bg-brand/10 disabled:opacity-50"
+                              className="rounded border border-brand/40 px-2.5 py-1 text-xs font-semibold text-brand hover:bg-brand/10 disabled:opacity-50"
                             >
                               📤 Push
                             </button>
@@ -1137,15 +1139,15 @@ export function Admin() {
                         </td>
                       </tr>
                       {histFor === espRow.id && (
-                        <tr className="border-b border-gray-800 bg-night-900/60">
+                        <tr className="border-b border-gray-200 bg-night-900/60">
                           <td colSpan={8} className="px-4 py-3">
                             <div className="mb-2 flex items-center justify-between">
-                              <span className="text-xs font-bold uppercase tracking-wide text-gray-400">
+                              <span className="text-xs font-bold uppercase tracking-wide text-gray-500">
                                 🕓 Rename history — {espRow.name ?? espRow.macAddress}
                               </span>
                               <button
                                 onClick={() => setHistFor(null)}
-                                className="text-[10px] text-gray-500 hover:text-gray-300"
+                                className="text-[10px] text-gray-500 hover:text-gray-600"
                               >
                                 ✕ close
                               </button>
@@ -1159,23 +1161,23 @@ export function Admin() {
                                 {espHist.data.data.map((ev) => (
                                   <div
                                     key={ev.id}
-                                    className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-800 bg-night-950/60 px-3 py-2 text-xs"
+                                    className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-night-800 px-3 py-2 text-xs"
                                   >
                                     <span
                                       className={`rounded px-1.5 py-0.5 font-mono text-[10px] font-bold ${
                                         ev.action === "admin.esp.rename"
-                                          ? "bg-amber-500/15 text-amber-400"
-                                          : "bg-brand/15 text-brand-light"
+                                          ? "bg-amber-500/15 text-amber-600"
+                                          : "bg-brand/15 text-brand"
                                       }`}
                                     >
                                       {ev.action === "admin.esp.rename" ? "ADMIN" : "USER"}
                                     </span>
-                                    <span className="text-gray-300">
+                                    <span className="text-gray-600">
                                       <span className="text-gray-500 line-through decoration-gray-600">
                                         {ev.meta?.from ?? "—"}
                                       </span>
                                       {" → "}
-                                      <span className="font-semibold text-white">{ev.meta?.to ?? "—"}</span>
+                                      <span className="font-semibold text-night-950">{ev.meta?.to ?? "—"}</span>
                                     </span>
                                     <span className="text-gray-500">
                                       by {ev.actor?.username ?? "system"}
@@ -1204,13 +1206,13 @@ export function Admin() {
             </div>
 
             {esp.data?.success && esp.data.data.unlinked.length > 0 && (
-              <div className="mt-4 rounded-lg border border-dashed border-gray-700 bg-night-900/50 p-4">
-                <p className="mb-2 text-xs font-semibold uppercase text-gray-400">
+              <div className="mt-4 rounded-lg border border-dashed border-gray-200 bg-night-900/50 p-4">
+                <p className="mb-2 text-xs font-semibold uppercase text-gray-500">
                   Devices without an ESP ({esp.data.data.unlinked.length}) — koi board report nahi kar raha
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {esp.data.data.unlinked.map((d) => (
-                    <span key={d.id} className="rounded-full border border-gray-700 px-2.5 py-0.5 text-[10px] text-gray-400">
+                    <span key={d.id} className="rounded-full border border-gray-200 px-2.5 py-0.5 text-[10px] text-gray-500">
                       {d.name} · {d.home.name}
                     </span>
                   ))}
@@ -1226,34 +1228,34 @@ export function Admin() {
       {viewHome && (
         <Modal title={`🏠 ${viewHome.name} — Details`} onClose={() => setViewHome(null)}>
           <div className="mb-4 grid grid-cols-3 gap-3 text-center">
-            <div className="rounded-lg border border-gray-700 bg-night-900 p-3">
+            <div className="rounded-lg border border-gray-200 bg-night-900 p-3">
               <div className="text-xl font-bold">{viewHome._count.devices}</div>
               <div className="text-xs text-gray-500">Devices</div>
             </div>
-            <div className="rounded-lg border border-gray-700 bg-night-900 p-3">
+            <div className="rounded-lg border border-gray-200 bg-night-900 p-3">
               <div className="text-xl font-bold">{viewHome._count.members}</div>
               <div className="text-xs text-gray-500">Members</div>
             </div>
-            <div className="rounded-lg border border-gray-700 bg-night-900 p-3">
+            <div className="rounded-lg border border-gray-200 bg-night-900 p-3">
               <div className="text-xl font-bold">{viewHome._count.rooms}</div>
               <div className="text-xs text-gray-500">Rooms</div>
             </div>
           </div>
-          <p className="mb-2 text-xs font-semibold uppercase text-gray-400">Owner</p>
+          <p className="mb-2 text-xs font-semibold uppercase text-gray-500">Owner</p>
           <p className="mb-4 text-sm">{viewHome.owner.username} · {viewHome.owner.email}</p>
-          <p className="mb-2 text-xs font-semibold uppercase text-gray-400">Members</p>
+          <p className="mb-2 text-xs font-semibold uppercase text-gray-500">Members</p>
           <div className="mb-4 space-y-1">
             {viewHome.members.map((m) => (
-              <div key={m.id} className="flex justify-between rounded border border-gray-700 bg-night-900 px-3 py-1.5 text-sm">
+              <div key={m.id} className="flex justify-between rounded border border-gray-200 bg-night-900 px-3 py-1.5 text-sm">
                 <span>{m.user.username}</span>
-                <span className="text-xs text-gray-400">{m.role}</span>
+                <span className="text-xs text-gray-500">{m.role}</span>
               </div>
             ))}
           </div>
-          <p className="mb-2 text-xs font-semibold uppercase text-gray-400">Devices</p>
+          <p className="mb-2 text-xs font-semibold uppercase text-gray-500">Devices</p>
           <div className="space-y-1">
             {viewHome.devices.map((d) => (
-              <div key={d.id} className="flex justify-between rounded border border-gray-700 bg-night-900 px-3 py-1.5 text-sm">
+              <div key={d.id} className="flex justify-between rounded border border-gray-200 bg-night-900 px-3 py-1.5 text-sm">
                 <span>{d.name} <span className="text-xs text-gray-500">#{d.id} · {d.type}</span></span>
                 <span className={`text-xs font-bold uppercase ${d.status === "on" ? "text-emerald-400" : "text-gray-500"}`}>
                   {d.status}
@@ -1266,7 +1268,7 @@ export function Admin() {
       )}
 
       {tab === "logs" && (
-        <div className="rounded-xl border border-gray-700 bg-night-800 p-5">
+        <div className="rounded-xl border border-gray-200 bg-night-800 p-5">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h2 className="font-semibold">
               🪵 System Logs{" "}
@@ -1293,7 +1295,7 @@ export function Admin() {
                     /* clipboard blocked — ignore */
                   }
                 }}
-                className="rounded-lg border border-gray-600 px-3 py-1 text-xs font-semibold hover:bg-gray-700"
+                className="rounded-lg border border-gray-300 px-3 py-1 text-xs font-semibold hover:bg-gray-100"
               >
                 {copied ? "✅ Copied" : "📋 Copy"}
               </button>
@@ -1310,13 +1312,13 @@ export function Admin() {
                   a.click();
                   URL.revokeObjectURL(url);
                 }}
-                className="rounded-lg border border-gray-600 px-3 py-1 text-xs font-semibold hover:bg-gray-700"
+                className="rounded-lg border border-gray-300 px-3 py-1 text-xs font-semibold hover:bg-gray-100"
               >
                 ⬇️ .txt
               </button>
               <button
                 onClick={() => queryClient.invalidateQueries({ queryKey: ["admin-logs"] })}
-                className="rounded-lg border border-gray-600 px-3 py-1 text-xs font-semibold hover:bg-gray-700"
+                className="rounded-lg border border-gray-300 px-3 py-1 text-xs font-semibold hover:bg-gray-100"
               >
                 🔄 Refresh
               </button>
@@ -1328,7 +1330,7 @@ export function Admin() {
               <p className="mb-1 text-xs font-bold uppercase text-red-400">
                 ⚠️ Crash / Error lines ({logs.data.data.crashes.length})
               </p>
-              <pre className="max-h-40 overflow-auto whitespace-pre-wrap text-xs text-red-300">
+              <pre className="max-h-40 overflow-auto whitespace-pre-wrap text-xs text-red-600">
                 {logs.data.data.crashes.join(String.fromCharCode(10))}
               </pre>
             </div>
@@ -1336,12 +1338,12 @@ export function Admin() {
 
           {logs.data?.success && logs.data.data.iisnodeLogs.length > 0 && (
             <div className="mb-3 space-y-2">
-              <p className="text-xs font-bold uppercase text-amber-400">
+              <p className="text-xs font-bold uppercase text-amber-600">
                 🧩 iisnode logs — native crash dump yahan milta hai ({logs.data.data.iisnodeLogs.length})
               </p>
               {logs.data.data.iisnodeLogs.map((f) => (
                 <div key={f.path} className="rounded-lg border border-amber-500/30 bg-amber-950/20 p-2">
-                  <p className="mb-1 text-[11px] text-amber-300">
+                  <p className="mb-1 text-[11px] text-amber-600">
                     {f.name} · {(f.size / 1024).toFixed(1)} KB
                   </p>
                   <pre className="max-h-32 overflow-auto whitespace-pre-wrap font-mono text-[10px] text-amber-200/80">
@@ -1352,7 +1354,7 @@ export function Admin() {
             </div>
           )}
 
-          <div className="rounded-lg border border-gray-700 bg-black/60 p-3">
+          <div className="rounded-lg border border-gray-200 bg-black/60 p-3">
             <pre className="h-[60vh] overflow-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-emerald-300">
               {logs.data?.success ? logs.data.data.lines.join(String.fromCharCode(10)) : "Loading…"}
             </pre>
@@ -1428,8 +1430,8 @@ export function Admin() {
                       ref={active ? (el) => { if (el) el.scrollIntoView({ block: "nearest" }); } : undefined}
                       className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition ${
                         active
-                          ? "bg-brand/20 text-brand-light"
-                          : "text-gray-200 hover:bg-night-800 hover:text-brand-light"
+                          ? "bg-brand/20 text-brand"
+                          : "text-gray-700 hover:bg-night-800 hover:text-brand"
                       }`}
                     >
                       <span className="truncate font-medium">{findTitle(row.label, item)}</span>
@@ -1480,14 +1482,14 @@ function DeviceSupportPanel({ deviceId }: { deviceId: number }) {
   const pending = d.commands.filter((c) => c.status === "pending").length;
 
   return (
-    <div className="border-t border-gray-700 bg-night-900 px-4 py-4 text-sm">
+    <div className="border-t border-gray-200 bg-night-900 px-4 py-4 text-sm">
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <span className="font-semibold text-gray-300">🛠️ Support: {d.name}</span>
-        <Badge color={d.status === "on" ? "border-emerald-500/40 text-emerald-400" : "border-gray-600 text-gray-400"}>{d.status}</Badge>
+        <span className="font-semibold text-gray-600">🛠️ Support: {d.name}</span>
+        <Badge color={d.status === "on" ? "border-emerald-500/40 text-emerald-400" : "border-gray-300 text-gray-500"}>{d.status}</Badge>
         <Badge color={d.online ? "border-emerald-500/40 text-emerald-400" : "border-red-500/40 text-red-400"}>
           {d.online ? "ONLINE" : "OFFLINE"}
         </Badge>
-        {pending > 0 && <Badge color="border-amber-500/40 text-amber-400">{pending} pending cmd</Badge>}
+        {pending > 0 && <Badge color="border-amber-500/40 text-amber-600">{pending} pending cmd</Badge>}
         <span className="ml-auto flex gap-2">
           <button type="button" disabled={setStatus.isPending} onClick={() => setStatus.mutate("on")}
             className="rounded-lg border border-emerald-500/40 px-3 py-1 text-xs font-semibold text-emerald-400 hover:bg-emerald-500/10 disabled:opacity-50">⏻ ON</button>
@@ -1496,7 +1498,7 @@ function DeviceSupportPanel({ deviceId }: { deviceId: number }) {
         </span>
       </div>
 
-      <div className="grid grid-cols-2 gap-x-6 gap-y-1 rounded-lg border border-gray-700 bg-night-800 p-3 text-xs md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-x-6 gap-y-1 rounded-lg border border-gray-200 bg-night-800 p-3 text-xs md:grid-cols-4">
         <Info label="ID" value={`#${d.id}`} />
         <Info label="Type" value={d.type} />
         <Info label="Serial" value={d.serialNumber ?? "—"} />
@@ -1544,11 +1546,11 @@ function DeviceSupportPanel({ deviceId }: { deviceId: number }) {
                   <div
                     key={dv.id}
                     className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 ${
-                      dv.status === "on" ? "border-emerald-500/40 bg-emerald-500/10" : "border-gray-700 bg-night-900"
+                      dv.status === "on" ? "border-emerald-500/40 bg-emerald-500/10" : "border-gray-200 bg-night-900"
                     }`}
                   >
                     <span className="text-[10px] font-bold text-gray-500">R{i}</span>
-                    <span className="text-xs font-semibold text-gray-300">{dv.name}</span>
+                    <span className="text-xs font-semibold text-gray-600">{dv.name}</span>
                     <span className={`text-[10px] font-bold uppercase ${dv.status === "on" ? "text-emerald-400" : "text-gray-500"}`}>
                       {dv.status === "on" ? "ON" : "OFF"}
                     </span>
@@ -1561,21 +1563,21 @@ function DeviceSupportPanel({ deviceId }: { deviceId: number }) {
       )}
 
       <div className="mt-3 grid gap-3 md:grid-cols-2">
-        <div className="rounded-lg border border-gray-700 bg-night-800 p-3">
-          <div className="mb-2 text-xs font-semibold text-gray-300">📨 Commands (last 20)</div>
+        <div className="rounded-lg border border-gray-200 bg-night-800 p-3">
+          <div className="mb-2 text-xs font-semibold text-gray-600">📨 Commands (last 20)</div>
           {d.commands.length === 0 && <p className="text-xs text-gray-600">No commands yet.</p>}
           <div className="max-h-44 space-y-1 overflow-y-auto">
             {d.commands.map((c) => (
               <div key={c.id} className="flex items-center justify-between rounded bg-night-900 px-2 py-1 text-[11px]">
-                <span className="font-mono text-gray-400">{c.command}</span>
+                <span className="font-mono text-gray-500">{c.command}</span>
                 <span className="flex items-center gap-2">
                   <Badge
                     color={
                       c.status === "executed"
                         ? "border-emerald-500/40 text-emerald-400"
                         : c.status === "pending"
-                          ? "border-amber-500/40 text-amber-400"
-                          : "border-gray-600 text-gray-400"
+                          ? "border-amber-500/40 text-amber-600"
+                          : "border-gray-300 text-gray-500"
                     }
                   >
                     {c.status}
@@ -1586,14 +1588,14 @@ function DeviceSupportPanel({ deviceId }: { deviceId: number }) {
             ))}
           </div>
         </div>
-        <div className="rounded-lg border border-gray-700 bg-night-800 p-3">
-          <div className="mb-2 text-xs font-semibold text-gray-300">📜 Device Logs (last 20)</div>
+        <div className="rounded-lg border border-gray-200 bg-night-800 p-3">
+          <div className="mb-2 text-xs font-semibold text-gray-600">📜 Device Logs (last 20)</div>
           {d.logs.length === 0 && <p className="text-xs text-gray-600">No logs yet.</p>}
           <div className="max-h-44 space-y-1 overflow-y-auto">
             {d.logs.map((l) => (
               <div key={l.id} className="rounded bg-night-900 px-2 py-1 text-[11px]">
                 <span className="text-gray-500">{new Date(l.createdAt).toLocaleString()}</span>
-                <span className="ml-2 text-gray-300">{l.logMessage}</span>
+                <span className="ml-2 text-gray-600">{l.logMessage}</span>
                 {l.actor && <span className="ml-1 text-gray-600">by {l.actor.username}</span>}
               </div>
             ))}
@@ -1602,7 +1604,7 @@ function DeviceSupportPanel({ deviceId }: { deviceId: number }) {
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <button type="button" disabled={clearCmds.isPending} onClick={() => clearCmds.mutate()}
-          className="rounded-lg border border-amber-500/40 px-3 py-1 text-xs font-semibold text-amber-400 hover:bg-amber-500/10 disabled:opacity-50">
+          className="rounded-lg border border-amber-500/40 px-3 py-1 text-xs font-semibold text-amber-600 hover:bg-amber-500/10 disabled:opacity-50">
           🧹 Clear stuck commands{clearCmds.data?.success ? ` (cleared ${clearCmds.data.data.cleared})` : ""}
         </button>
         <button type="button" disabled={ota.isPending} onClick={() => ota.mutate()}
@@ -1619,7 +1621,7 @@ function Info({ label, value }: { label: string; value: string }) {
   return (
     <div className="truncate">
       <span className="text-gray-600">{label}: </span>
-      <span className="text-gray-300">{value}</span>
+      <span className="text-gray-600">{value}</span>
     </div>
   );
 }

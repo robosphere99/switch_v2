@@ -39,7 +39,7 @@ export function HowItWorksSection() {
           How It Works
         </span>
       </h2>
-      <p className="mb-12 text-center text-gray-400">
+      <p className="mb-12 text-center text-gray-500">
         Shop se leke control tak — bas 4 steps.
       </p>
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
@@ -49,8 +49,8 @@ export function HowItWorksSection() {
               Step {i + 1}
             </div>
             <div className="mb-3 mt-2 text-4xl">{s.icon}</div>
-            <h3 className="mb-2 font-semibold text-white">{s.title}</h3>
-            <p className="text-sm text-gray-400">{s.desc}</p>
+            <h3 className="mb-2 font-semibold text-night-950">{s.title}</h3>
+            <p className="text-sm text-gray-500">{s.desc}</p>
           </div>
         ))}
       </div>
@@ -68,14 +68,14 @@ export function AboutUsSection() {
               About RoboSphere
             </span>
           </h2>
-          <div className="space-y-4 text-gray-300">
+          <div className="space-y-4 text-gray-600">
             <p>
               RoboSphere ek Indian smart-home company hai — hum aam ghar ke liye
-              <span className="text-brand-light"> practical, affordable WiFi boards</span> banate hain.
+              <span className="text-brand"> practical, affordable WiFi boards</span> banate hain.
               Na complex wiring, na costly subscription — bas board kharido, serial se activate karo, control karo.
             </p>
             <p>
-              Har board <span className="text-brand-light">manufacturing me hi flash + relay self-test</span> se
+              Har board <span className="text-brand">manufacturing me hi flash + relay self-test</span> se
               guzarta hai, aur WiFi se OTA updates milte rehte hain. Dimmer se leke 8-channel boards tak —
               naye boards customers ki demand pe design hote hain.
             </p>
@@ -85,15 +85,15 @@ export function AboutUsSection() {
           </div>
           <div className="mt-8 flex gap-8">
             <div>
-              <div className="text-3xl font-bold text-brand-light">100%</div>
+              <div className="text-3xl font-bold text-brand">100%</div>
               <div className="text-xs text-gray-500">Factory tested boards</div>
             </div>
             <div>
-              <div className="text-3xl font-bold text-brand-light">1 yr</div>
+              <div className="text-3xl font-bold text-brand">1 yr</div>
               <div className="text-xs text-gray-500">Serial warranty</div>
             </div>
             <div>
-              <div className="text-3xl font-bold text-brand-light">OTA</div>
+              <div className="text-3xl font-bold text-brand">OTA</div>
               <div className="text-xs text-gray-500">WiFi updates</div>
             </div>
           </div>
@@ -107,8 +107,8 @@ export function AboutUsSection() {
           ].map((c) => (
             <div key={c.t} className="rounded-xl border border-brand/20 bg-night-800 p-5">
               <div className="mb-2 text-3xl">{c.icon}</div>
-              <div className="font-semibold text-white">{c.t}</div>
-              <div className="mt-1 text-sm text-gray-400">{c.d}</div>
+              <div className="font-semibold text-night-950">{c.t}</div>
+              <div className="mt-1 text-sm text-gray-500">{c.d}</div>
             </div>
           ))}
         </div>
@@ -132,12 +132,12 @@ export function LocateUsSection() {
               <span className="text-2xl">{c.icon}</span>
               <div>
                 <div className="text-xs uppercase tracking-wide text-gray-500">{c.label}</div>
-                <div className="text-sm text-gray-200">{c.value}</div>
+                <div className="text-sm text-gray-700">{c.value}</div>
               </div>
             </div>
           ))}
-          <div className="rounded-xl border border-brand/20 bg-night-800 p-4 text-sm text-gray-400">
-            🚗 <span className="text-gray-200">Visit:</span> Lab visits by appointment — WhatsApp pe pehle message karo,
+          <div className="rounded-xl border border-brand/20 bg-night-800 p-4 text-sm text-gray-500">
+            🚗 <span className="text-gray-700">Visit:</span> Lab visits by appointment — WhatsApp pe pehle message karo,
             board demos dikhate hain.
           </div>
         </div>
@@ -184,18 +184,18 @@ export function ContactUsSection() {
               Contact / Feedback
             </span>
           </h2>
-          <p className="mb-6 max-w-md text-gray-400">
+          <p className="mb-6 max-w-md text-gray-500">
             Sawaal, order help, ya product feedback — form bharke bhejo, humara team seedha reply karta hai.
             (Chat widget bhi hai — bottom right 🤖)
           </p>
           {status && (
-            <div className={`mb-4 rounded-lg border p-4 text-sm ${status.ok ? "border-green-500/40 bg-green-900/30 text-green-300" : "border-red-500/40 bg-red-900/30 text-red-300"}`}>
+            <div className={`mb-4 rounded-lg border p-4 text-sm ${status.ok ? "border-green-500/40 bg-green-900/30 text-green-700" : "border-red-500/40 bg-red-900/30 text-red-600"}`}>
               {status.text}
             </div>
           )}
           <div className="space-y-3 text-sm">
             {CONTACT_INFO.map((c) => (
-              <div key={c.label} className="flex items-center gap-3 text-gray-300">
+              <div key={c.label} className="flex items-center gap-3 text-gray-600">
                 <span className="text-xl">{c.icon}</span>
                 <span className="text-gray-500">{c.label}:</span>
                 <span>{c.value}</span>
@@ -212,7 +212,7 @@ export function ContactUsSection() {
                 required
                 value={form.name}
                 onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                className="w-full rounded-lg border border-brand/30 bg-night-700 px-3 py-2 text-sm text-white"
+                className="w-full rounded-lg border border-brand/30 bg-night-700 px-3 py-2 text-sm text-night-950"
                 placeholder="Aapka naam"
               />
             </div>
@@ -222,7 +222,7 @@ export function ContactUsSection() {
                 type="email"
                 value={form.email}
                 onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-                className="w-full rounded-lg border border-brand/30 bg-night-700 px-3 py-2 text-sm text-white"
+                className="w-full rounded-lg border border-brand/30 bg-night-700 px-3 py-2 text-sm text-night-950"
                 placeholder="you@example.com"
               />
             </div>
@@ -233,7 +233,7 @@ export function ContactUsSection() {
               <input
                 value={form.phone}
                 onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-                className="w-full rounded-lg border border-brand/30 bg-night-700 px-3 py-2 text-sm text-white"
+                className="w-full rounded-lg border border-brand/30 bg-night-700 px-3 py-2 text-sm text-night-950"
                 placeholder="+91 …"
               />
             </div>
@@ -242,7 +242,7 @@ export function ContactUsSection() {
               <select
                 value={form.subject}
                 onChange={(e) => setForm((f) => ({ ...f, subject: e.target.value }))}
-                className="w-full rounded-lg border border-brand/30 bg-night-700 px-3 py-2 text-sm text-white"
+                className="w-full rounded-lg border border-brand/30 bg-night-700 px-3 py-2 text-sm text-night-950"
               >
                 <option>Feedback</option>
                 <option>Order / Delivery Help</option>
@@ -260,7 +260,7 @@ export function ContactUsSection() {
               rows={4}
               value={form.message}
               onChange={(e) => setForm((f) => ({ ...f, message: e.target.value }))}
-              className="w-full rounded-lg border border-brand/30 bg-night-700 px-3 py-2 text-sm text-white"
+              className="w-full rounded-lg border border-brand/30 bg-night-700 px-3 py-2 text-sm text-night-950"
               placeholder="Kya help chahiye? / Aapka feedback…"
             />
           </div>

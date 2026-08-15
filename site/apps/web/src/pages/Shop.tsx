@@ -38,23 +38,23 @@ const ProductCard = forwardRef<HTMLDivElement, { p: Product; onAdd: () => void; 
       <div className="mb-3 text-4xl">{MODEL_ICON[p.modelCode] ?? "📦"}</div>
       <div className="mb-1 flex items-center justify-between gap-2">
         <h3 className="text-lg font-semibold">{p.name}</h3>
-        <span className="rounded bg-brand/20 px-2 py-0.5 text-xs font-semibold text-brand-light">
+        <span className="rounded bg-brand/20 px-2 py-0.5 text-xs font-semibold text-brand">
           {p.modelCode}
         </span>
       </div>
-      <div className="mb-2 text-sm text-gray-400">
+      <div className="mb-2 text-sm text-gray-500">
         {p.relayCount > 1 ? `${p.relayCount} relay channels` : "Single channel"} · ESP32
       </div>
-      <p className="mb-4 flex-1 text-sm text-gray-400">{p.description}</p>
+      <p className="mb-4 flex-1 text-sm text-gray-500">{p.description}</p>
       <div className="mb-4 flex flex-wrap gap-1.5">
         {featureChips(p).map((c) => (
-          <span key={c} className="rounded-full bg-night-700 px-2.5 py-0.5 text-xs text-gray-300">
+          <span key={c} className="rounded-full bg-night-700 px-2.5 py-0.5 text-xs text-gray-600">
             {c}
           </span>
         ))}
       </div>
       <div className="flex items-center justify-between">
-        <span className="text-xl font-bold text-brand-light">₹{Number(p.price).toLocaleString("en-IN")}</span>
+        <span className="text-xl font-bold text-brand">₹{Number(p.price).toLocaleString("en-IN")}</span>
         <button
           onClick={onAdd}
           className="rounded-lg bg-gradient-to-r from-brand to-brand-light px-4 py-2 text-sm font-semibold text-white transition hover:-translate-y-0.5"
@@ -105,19 +105,19 @@ export function Shop() {
               🛒 RoboSphere Shop
             </span>
           </h1>
-          <p className="mt-1 text-sm text-gray-400">
+          <p className="mt-1 text-sm text-gray-500">
             Har board pe unique serial code — box pe sticker. Delivery ke baad Activate karke apne home me add karo.
           </p>
         </div>
         <button
           onClick={() => setCartOpen(true)}
-          className="relative rounded-lg border-2 border-brand-light px-4 py-2 font-semibold text-brand-light hover:bg-brand-light hover:text-night-900"
+          className="relative rounded-lg border-2 border-brand-light px-4 py-2 font-semibold text-brand hover:bg-brand-light hover:text-white"
         >
           🛒 Cart ({count})
         </button>
       </div>
 
-      {error && <div className="mb-6 rounded bg-red-900/40 p-3 text-sm text-red-300">{error}</div>}
+      {error && <div className="mb-6 rounded bg-red-900/40 p-3 text-sm text-red-600">{error}</div>}
 
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {products.map((p) => (
@@ -148,20 +148,20 @@ export function Shop() {
           >
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-xl font-bold">Your Cart</h2>
-              <button onClick={() => setCartOpen(false)} className="text-gray-400 hover:text-white">
+              <button onClick={() => setCartOpen(false)} className="text-gray-500 hover:text-night-950">
                 ✕
               </button>
             </div>
 
             {items.length === 0 ? (
-              <p className="flex-1 text-sm text-gray-400">Cart khali hai — products add karo.</p>
+              <p className="flex-1 text-sm text-gray-500">Cart khali hai — products add karo.</p>
             ) : (
               <div className="flex-1 space-y-3 overflow-y-auto">
                 {items.map((i) => (
                   <div key={i.productId} className="flex items-center justify-between gap-3 rounded-lg bg-night-700 p-3">
                     <div className="min-w-0">
                       <div className="truncate text-sm font-semibold">{i.name}</div>
-                      <div className="text-xs text-gray-400">
+                      <div className="text-xs text-gray-500">
                         ₹{i.price.toLocaleString("en-IN")} × {i.quantity} = ₹{(i.price * i.quantity).toLocaleString("en-IN")}
                       </div>
                     </div>
@@ -179,7 +179,7 @@ export function Shop() {
                       >
                         +
                       </button>
-                      <button onClick={() => remove(i.productId)} className="ml-1 text-red-400 hover:text-red-300">
+                      <button onClick={() => remove(i.productId)} className="ml-1 text-red-400 hover:text-red-600">
                         ✕
                       </button>
                     </div>
@@ -200,7 +200,7 @@ export function Shop() {
                 >
                   Checkout →
                 </Link>
-                <Link to="/orders" className="mt-2 block text-center text-sm text-gray-400 hover:text-brand-light">
+                <Link to="/orders" className="mt-2 block text-center text-sm text-gray-500 hover:text-brand">
                   View my orders
                 </Link>
               </div>

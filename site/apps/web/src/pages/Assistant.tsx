@@ -88,7 +88,7 @@ export function Assistant() {
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold">🤖 AI Assist</h1>
-          <p className="mt-1 text-sm text-gray-400">
+          <p className="mt-1 text-sm text-gray-500">
             Natural language me bolo — device on/off. Pehle confirm, phir execute. (Hindi + English)
           </p>
         </div>
@@ -118,13 +118,13 @@ export function Assistant() {
       {chats.data?.success && chats.data.data.length === 0 && (
         <div className="rounded-xl border border-brand/20 bg-night-800 p-8 text-center">
           <p className="mb-2 text-lg">👋 Kuch bhi bolo!</p>
-          <p className="mb-6 text-sm text-gray-400">Pehle home select karke "New Chat" banao, phir command do.</p>
+          <p className="mb-6 text-sm text-gray-500">Pehle home select karke "New Chat" banao, phir command do.</p>
           <div className="flex flex-wrap justify-center gap-2">
             {EXAMPLES.map((ex) => (
               <button
                 key={ex}
                 onClick={() => setInput(ex)}
-                className="rounded-full border border-brand/30 bg-night-900 px-3 py-1.5 text-xs text-brand-light hover:bg-brand/10"
+                className="rounded-full border border-brand/30 bg-night-900 px-3 py-1.5 text-xs text-brand hover:bg-brand/10"
               >
                 {ex}
               </button>
@@ -144,7 +144,7 @@ export function Assistant() {
                     key={c.id}
                     onClick={() => setChatId(c.id)}
                     className={`w-full truncate rounded-lg border px-3 py-2 text-left text-sm ${
-                      c.id === chatId ? "border-brand bg-brand/15 text-brand-light" : "border-gray-700 bg-night-800 text-gray-300 hover:border-gray-500"
+                      c.id === chatId ? "border-brand bg-brand/15 text-brand" : "border-gray-200 bg-night-800 text-gray-600 hover:border-gray-500"
                     }`}
                   >
                     💬 {c.title}
@@ -154,7 +154,7 @@ export function Assistant() {
           </div>
 
           {/* Thread */}
-          <div className="flex h-[70vh] flex-col rounded-xl border border-gray-700 bg-night-800">
+          <div className="flex h-[70vh] flex-col rounded-xl border border-gray-200 bg-night-800">
             <div className="flex-1 space-y-4 overflow-y-auto p-5">
               {msgList.length === 0 && (
                 <p className="text-center text-sm text-gray-500">Message bhejo — jaise "saare lights band karo"</p>
@@ -173,7 +173,7 @@ export function Assistant() {
               <div ref={bottomRef} />
             </div>
 
-            <div className="border-t border-gray-700 p-4">
+            <div className="border-t border-gray-200 p-4">
               <div className="flex gap-2">
                 <input
                   value={input}
@@ -197,7 +197,7 @@ export function Assistant() {
                   <button
                     key={ex}
                     onClick={() => setInput(ex)}
-                    className="rounded-full border border-gray-700 px-2.5 py-1 text-[11px] text-gray-400 hover:border-brand hover:text-brand-light"
+                    className="rounded-full border border-gray-200 px-2.5 py-1 text-[11px] text-gray-500 hover:border-brand hover:text-brand"
                   >
                     {ex}
                   </button>
@@ -225,7 +225,7 @@ function MessageBubble({
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div
         className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm ${
-          isUser ? "rounded-br-sm bg-gradient-to-r from-brand to-brand-light text-white" : "rounded-bl-sm border border-gray-700 bg-night-900 text-gray-200"
+          isUser ? "rounded-br-sm bg-gradient-to-r from-brand to-brand-light text-white" : "rounded-bl-sm border border-gray-200 bg-night-900 text-gray-700"
         }`}
       >
         <div className="whitespace-pre-line">{message.content}</div>
@@ -242,7 +242,7 @@ function MessageBubble({
             <button
               onClick={onConfirm}
               disabled={confirming}
-              className="w-full rounded-lg bg-gradient-to-r from-green-600 to-green-500 py-2 text-sm font-semibold text-white hover:from-green-500 hover:to-green-400 disabled:opacity-50"
+              className="w-full rounded-lg bg-gradient-to-r from-green-600 to-green-500 py-2 text-sm font-semibold text-night-950 hover:from-green-500 hover:to-green-400 disabled:opacity-50"
             >
               {confirming ? "Executing…" : "✅ Confirm & Execute"}
             </button>

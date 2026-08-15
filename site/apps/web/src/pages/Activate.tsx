@@ -41,15 +41,15 @@ export function Activate() {
       <div className="mx-auto max-w-xl px-4 py-16 text-center">
         <div className="mb-4 text-6xl">🎉</div>
         <h1 className="mb-2 text-3xl font-bold">Device Activated!</h1>
-        <p className="mb-4 text-gray-400">
-          <span className="font-semibold text-white">{result.device.name}</span> aapke home me add ho gaya.
+        <p className="mb-4 text-gray-500">
+          <span className="font-semibold text-night-950">{result.device.name}</span> aapke home me add ho gaya.
         </p>
-        <code className="rounded bg-night-700 px-3 py-1 text-sm text-brand-light">{result.serialCode}</code>
+        <code className="rounded bg-night-700 px-3 py-1 text-sm text-brand">{result.serialCode}</code>
         <div className="mt-8 flex justify-center gap-3">
           <Link to="/dashboard" className="rounded-lg bg-gradient-to-r from-brand to-brand-light px-6 py-3 font-semibold text-white">
             Dashboard kholo
           </Link>
-          <Link to="/orders" className="rounded-lg border-2 border-brand-light px-6 py-3 font-semibold text-brand-light hover:bg-brand-light hover:text-night-900">
+          <Link to="/orders" className="rounded-lg border-2 border-brand-light px-6 py-3 font-semibold text-brand hover:bg-brand-light hover:text-white">
             Orders
           </Link>
         </div>
@@ -62,13 +62,13 @@ export function Activate() {
       <h1 className="mb-2 text-3xl font-bold">
         <span className="bg-gradient-to-r from-brand-light to-brand bg-clip-text text-transparent">🔑 Activate Device</span>
       </h1>
-      <p className="mb-8 text-sm text-gray-400">
+      <p className="mb-8 text-sm text-gray-500">
         Box pe laga sticker se serial code daalo — device aapke home me add ho jayega aur aapke account se permanently linked.
       </p>
 
       <form onSubmit={handleClaim} className="space-y-5 rounded-xl border border-brand/20 bg-night-800 p-6">
         <div>
-          <label className="mb-1 block text-sm text-gray-400">Serial code (box pe sticker)</label>
+          <label className="mb-1 block text-sm text-gray-500">Serial code (box pe sticker)</label>
           <input
             value={serialCode}
             onChange={(e) => setSerialCode(e.target.value.toUpperCase())}
@@ -79,10 +79,10 @@ export function Activate() {
         </div>
 
         <div>
-          <label className="mb-1 block text-sm text-gray-400">Home (device kahan add hoga)</label>
+          <label className="mb-1 block text-sm text-gray-500">Home (device kahan add hoga)</label>
           {homes.length === 0 ? (
             <p className="text-sm text-gray-500">
-              Koi home nahi mila — <Link to="/homes" className="text-brand-light underline">home banao</Link> pehle.
+              Koi home nahi mila — <Link to="/homes" className="text-brand underline">home banao</Link> pehle.
             </p>
           ) : (
             <select
@@ -99,7 +99,7 @@ export function Activate() {
           )}
         </div>
 
-        {error && <div className="rounded bg-red-900/40 p-3 text-sm text-red-300">{error}</div>}
+        {error && <div className="rounded bg-red-900/40 p-3 text-sm text-red-600">{error}</div>}
 
         <button
           type="submit"

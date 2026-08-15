@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { getProducts, type Product } from "../api/shop";
 import { AboutUsSection, ContactUsSection, HowItWorksSection, LocateUsSection } from "../components/LandingSections";
+import { ShoppingCart } from "lucide-react";
+import { Logo } from "../components/Logo";
 
 const FEATURES = [
   {
@@ -56,7 +58,7 @@ function LandingProductCard({ p }: { p: Product }) {
         </div>
       </div>
       <div className="text-right">
-        <div className="font-bold text-brand-light">₹{Number(p.price).toLocaleString("en-IN")}</div>
+        <div className="font-bold text-brand">₹{Number(p.price).toLocaleString("en-IN")}</div>
       </div>
     </div>
   );
@@ -75,12 +77,13 @@ export function Landing() {
     <div>
       {/* Hero */}
       <section className="flex min-h-[70vh] flex-col items-center justify-center px-4 text-center">
+        <div className="mb-6"><Logo size="lg" /></div>
         <h1 className="max-w-3xl text-5xl font-bold leading-tight">
           <span className="bg-gradient-to-r from-brand-light to-brand bg-clip-text text-transparent">
             Welcome to RoboSphere
           </span>
         </h1>
-        <p className="mt-6 max-w-xl text-lg text-gray-400">
+        <p className="mt-6 max-w-xl text-lg text-gray-500">
           Control all your IoT devices from one powerful dashboard — built for real
           families, not just one user.
         </p>
@@ -93,9 +96,10 @@ export function Landing() {
           </Link>
           <Link
             to="/shop"
-            className="rounded-lg border-2 border-brand-light px-8 py-3 font-semibold text-brand-light hover:bg-brand-light hover:text-night-900"
+            className="rounded-lg border-2 border-brand-light px-8 py-3 font-semibold text-brand hover:bg-brand-light hover:text-white"
           >
-            🛒 Shop Boards
+            <ShoppingCart className="mr-1.5 inline h-4 w-4" />
+            Shop Boards
           </Link>
         </div>
       </section>
@@ -109,7 +113,7 @@ export function Landing() {
                 Shop Hardware
               </span>
             </h2>
-            <Link to="/shop" className="text-sm text-brand-light hover:underline">
+            <Link to="/shop" className="text-sm text-brand hover:underline">
               View all →
             </Link>
           </div>
@@ -136,7 +140,7 @@ export function Landing() {
             >
               <div className="mb-4 text-4xl">{f.icon}</div>
               <h3 className="mb-2 text-lg font-semibold">{f.title}</h3>
-              <p className="text-sm text-gray-400">{f.desc}</p>
+              <p className="text-sm text-gray-500">{f.desc}</p>
             </div>
           ))}
         </div>
