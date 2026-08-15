@@ -203,8 +203,8 @@ export interface FirmwareListResponse {
   current: FirmwareVersion | null;
 }
 
-export async function getEspDevices(): Promise<ApiResponse<EspListResponse>> {
-  const { data } = await api.get<ApiResponse<EspListResponse>>("/admin/esp");
+export async function getEspDevices(q?: string): Promise<ApiResponse<EspListResponse>> {
+  const { data } = await api.get<ApiResponse<EspListResponse>>("/admin/esp", { params: { q } });
   return data;
 }
 

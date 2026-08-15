@@ -81,11 +81,21 @@ export interface Device {
   customValue: string | null;
   serialNumber: string | null;
   firmwareVersion: string | null;
+  ipAddress: string | null;
   lastSeen: string | null;
   offline: boolean;
   createdBy: number;
   createdAt: string;
   lastUpdated: string;
+  /** Physical ESP board jo is device ko control karta hai (board = N relays = N devices). */
+  esp?: {
+    id: number;
+    name: string | null;
+    serialCode: string | null;
+    modelCode: string | null;
+    offline: boolean;
+    lastSeen: string | null;
+  } | null;
 }
 
 export interface DeviceLog {

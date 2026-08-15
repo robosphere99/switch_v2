@@ -276,7 +276,7 @@ model EspDevice {
   macAddress         String    @unique @db.VarChar(32)
   name               String?   @db.VarChar(64)
   ssid               String?   @db.VarChar(64)
-  serialCode         String?   @db.VarChar(32) @map("serial_code")
+  serialCode         String?   @unique @db.VarChar(32) @map("serial_code")
   modelCode          String?   @db.VarChar(16) @map("model_code")
   ipAddress          String?   @db.VarChar(45) @map("ip_address")
   firmwareVersion    String?   @db.VarChar(32) @map("firmware_version")

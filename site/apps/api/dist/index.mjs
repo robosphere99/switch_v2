@@ -973,6 +973,9 @@ init_prisma();
 async function listDevices(homeId) {
   return prisma.device.findMany({
     where: { homeId },
+    include: {
+      esp: { select: { id: true, name: true, serialCode: true, modelCode: true, offline: true, lastSeen: true } }
+    },
     orderBy: { createdAt: "desc" }
   });
 }
@@ -1300,15 +1303,26 @@ async function heartbeat(key, input, baseUrl) {
   const model = input.model?.trim().toUpperCase() || void 0;
   let esp = null;
   const macKey = mac ? mac.replace(/[^0-9A-Fa-f:]/g, "").toLowerCase() : "";
+  let attachSerial = serial;
+  if (macKey && serial) {
+    const other = await prisma.espDevice.findFirst({
+      where: { serialCode: serial, macAddress: { not: macKey } },
+      select: { id: true }
+    });
+    if (other) attachSerial = void 0;
+  }
+  const macTail = macKey.replace(/:/g, "").slice(-6).toUpperCase();
   if (macKey) {
     esp = await prisma.espDevice.upsert({
       where: { macAddress: macKey },
       create: {
         homeId,
         macAddress: macKey,
-        name: ssid ? `${ssid} \xB7 ${serial || macKey.replace(/:/g, "").slice(-6).toUpperCase()}` : `ESP-${macKey.replace(/:/g, "").slice(-6).toUpperCase()}`,
+        // Unique + searchable naam: serial (product code) pehle, SSID baad me.
+        // Serial na ho to MAC-tail se unique `ESP-XXXXXX` fallback.
+        name: attachSerial ? `${attachSerial} \xB7 ${ssid ?? "Robosphere"}` : ssid ? `${ssid} \xB7 ESP-${macTail}` : `ESP-${macTail}`,
         ssid,
-        serialCode: serial,
+        serialCode: attachSerial,
         modelCode: model,
         ipAddress: ip,
         firmwareVersion: fw,
@@ -1318,7 +1332,7 @@ async function heartbeat(key, input, baseUrl) {
       update: {
         homeId,
         ssid: ssid ?? void 0,
-        serialCode: serial ?? void 0,
+        serialCode: attachSerial ?? void 0,
         modelCode: model ?? void 0,
         ipAddress: ip ?? void 0,
         firmwareVersion: fw ?? void 0,
@@ -2623,7 +2637,15 @@ adminRouter.get("/devices", async (req, res) => {
       room: { select: { name: true } },
       _count: { select: { commands: true, logs: true } }
     },
-    where: q ? { name: { contains: q } } : void 0,
+    where: q ? {
+      OR: [
+        { name: { contains: q } },
+        { serialNumber: { contains: q } },
+        { ipAddress: { contains: q } },
+        { home: { name: { contains: q } } },
+        { home: { owner: { username: { contains: q } } } }
+      ]
+    } : void 0,
     orderBy: { id: "desc" },
     take: 200
   });
@@ -2715,9 +2737,21 @@ var upload = multer({
   limits: { fileSize: 8 * 1024 * 1024 }
   // 8 MB is plenty for ESP32 .bin
 });
-adminRouter.get("/esp", async (_req, res) => {
+adminRouter.get("/esp", async (req, res) => {
+  const q = String(req.query.q ?? "").trim();
   const current = await prisma.firmwareVersion.findFirst({ where: { isCurrent: true } });
   const esps = await prisma.espDevice.findMany({
+    where: q ? {
+      OR: [
+        { name: { contains: q } },
+        { serialCode: { contains: q } },
+        { macAddress: { contains: q } },
+        { ipAddress: { contains: q } },
+        { ssid: { contains: q } },
+        { modelCode: { contains: q } },
+        { home: { OR: [{ name: { contains: q } }, { owner: { username: { contains: q } } }] } }
+      ]
+    } : void 0,
     select: {
       id: true,
       homeId: true,
@@ -2812,6 +2846,10 @@ adminRouter.patch("/esp/:id", async (req, res) => {
   const id = Number(req.params.id);
   const name = String(req.body?.name ?? "").trim().slice(0, 60);
   if (!name) throw new AppError("BAD_REQUEST", "Name required");
+  const dup = await prisma.espDevice.findFirst({ where: { name, id: { not: id } }, select: { id: true } });
+  if (dup) {
+    throw new AppError("DUPLICATE_NAME", `Naam "${name}" already kisi aur board pe hai \u2014 har board ka unique naam chahiye`, 409);
+  }
   const esp = await prisma.espDevice.update({ where: { id }, data: { name } });
   await audit(req.user.sub, "admin.esp.rename", {
     entity: "esp",
@@ -4391,6 +4429,33 @@ function createApp() {
 
 // src/index.ts
 init_prisma();
+async function runLightMigrations() {
+  try {
+    await prisma.$executeRawUnsafe(
+      `UPDATE esp_devices e
+       JOIN (
+         SELECT serial_code, MAX(id) AS keep_id
+         FROM esp_devices
+         WHERE serial_code IS NOT NULL
+         GROUP BY serial_code
+         HAVING COUNT(*) > 1
+       ) d ON e.serial_code = d.serial_code AND e.id <> d.keep_id
+       SET e.serial_code = NULL`
+    );
+    const idx = await prisma.$queryRaw`
+      SELECT COUNT(*) AS c FROM information_schema.statistics
+      WHERE table_schema = DATABASE() AND table_name = 'esp_devices' AND index_name = 'esp_devices_serial_code_key'
+    `;
+    if (Number(idx[0]?.c ?? 0) === 0) {
+      await prisma.$executeRawUnsafe(
+        "ALTER TABLE `esp_devices` ADD UNIQUE INDEX `esp_devices_serial_code_key`(`serial_code`)"
+      );
+      logger.info("\u2705 Migration: esp_devices.serial_code unique index added");
+    }
+  } catch (err) {
+    logger.warn("Light migration (esp serial unique) skip/fail", err instanceof Error ? err.message : String(err));
+  }
+}
 async function dbHasSchema() {
   try {
     const rows = await prisma.$queryRaw`
@@ -4481,6 +4546,7 @@ async function initDatabase() {
     if (await dbHasSchema()) {
       dbReady = true;
       logger.info("\u2705 Database connected (schema ready)");
+      await runLightMigrations();
     } else {
       logger.warn(
         "\u26A0\uFE0F Database reachable par installed nahi \u2014 setup mode. /api/install se installation karo."

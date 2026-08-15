@@ -75,7 +75,15 @@ export function DeviceCard({
         <p className="text-[11px] text-gray-500">
           {device.type} · ID {device.id}
           {device.serialNumber ? ` · ${device.serialNumber}` : ""}
+          {device.ipAddress ? ` · ${device.ipAddress}` : ""}
         </p>
+        {device.esp && (
+          <p className="mt-1 text-[11px] text-gray-500">
+            🛰️ {device.esp.name ?? "ESP Board"}
+            {device.esp.serialCode ? ` · ${device.esp.serialCode}` : ""}
+            {device.esp.modelCode ? ` · ${device.esp.modelCode}` : ""}
+          </p>
+        )}
       </div>
 
       <button

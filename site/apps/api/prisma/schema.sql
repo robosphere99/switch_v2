@@ -144,6 +144,7 @@ CREATE TABLE `esp_devices` (
     `updated_at` DATETIME(3) NOT NULL,
 
     UNIQUE INDEX `esp_devices_macAddress_key`(`macAddress`),
+    UNIQUE INDEX `esp_devices_serial_code_key`(`serial_code`),
     INDEX `esp_devices_homeId_idx`(`homeId`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

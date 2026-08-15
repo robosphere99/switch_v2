@@ -191,7 +191,17 @@ adminRouter.get("/devices", async (req, res) => {
       room: { select: { name: true } },
       _count: { select: { commands: true, logs: true } },
     },
-    where: q ? { name: { contains: q } } : undefined,
+    where: q
+      ? {
+          OR: [
+            { name: { contains: q } },
+            { serialNumber: { contains: q } },
+            { ipAddress: { contains: q } },
+            { home: { name: { contains: q } } },
+            { home: { owner: { username: { contains: q } } } },
+          ],
+        }
+      : undefined,
     orderBy: { id: "desc" },
     take: 200,
   });
@@ -317,9 +327,23 @@ const upload = multer({
 });
 
 /** ESP boards — ek row per PHYSICAL board (MAC se), under me controlled devices. */
-adminRouter.get("/esp", async (_req, res) => {
+adminRouter.get("/esp", async (req, res) => {
+  const q = String(req.query.q ?? "").trim();
   const current = await prisma.firmwareVersion.findFirst({ where: { isCurrent: true } });
   const esps = await prisma.espDevice.findMany({
+    where: q
+      ? {
+          OR: [
+            { name: { contains: q } },
+            { serialCode: { contains: q } },
+            { macAddress: { contains: q } },
+            { ipAddress: { contains: q } },
+            { ssid: { contains: q } },
+            { modelCode: { contains: q } },
+            { home: { OR: [{ name: { contains: q } }, { owner: { username: { contains: q } } }] } },
+          ],
+        }
+      : undefined,
     select: {
       id: true,
       homeId: true,
@@ -423,6 +447,11 @@ adminRouter.patch("/esp/:id", async (req, res) => {
   const id = Number(req.params.id);
   const name = String(req.body?.name ?? "").trim().slice(0, 60);
   if (!name) throw new AppError("BAD_REQUEST", "Name required");
+  // Tracking ke liye board ka naam UNIQUE hona chahiye — duplicate pe reject.
+  const dup = await prisma.espDevice.findFirst({ where: { name, id: { not: id } }, select: { id: true } });
+  if (dup) {
+    throw new AppError("DUPLICATE_NAME", `Naam "${name}" already kisi aur board pe hai — har board ka unique naam chahiye`, 409);
+  }
   const esp = await prisma.espDevice.update({ where: { id }, data: { name } });
   await audit(req.user!.sub, "admin.esp.rename", {
     entity: "esp",
