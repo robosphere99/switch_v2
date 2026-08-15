@@ -4578,6 +4578,7 @@ supportRouter.post("/messages", requireAuth, validateBody(userSendSchema), async
 });
 supportRouter.get("/admin/unread-count", requireAuth, async (req, res) => {
   if (req.user.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
+  if (!prisma.supportMessage) return ok(res, { unread: 0 });
   const unread = await prisma.supportMessage.count({ where: { readByAdmin: false } });
   ok(res, { unread });
 });
