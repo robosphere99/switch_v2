@@ -29,10 +29,25 @@
     @apply bg-night-900 text-night-950 font-sans antialiased;
     background: linear-gradient(135deg, #f1f5f9 0%, #e8eef6 100%);
     min-height: 100vh;
-    transition: background-color 0.2s ease, color 0.2s ease;
+    transition: background-color 0.4s ease, color 0.4s ease;
   }
   .dark body {
     background: linear-gradient(135deg, #090d18 0%, #101628 100%);
+  }
+
+  /* Theme switch pe soft cross-fade — sirf theme-change ke waqt (html.theme-fade
+     class apply hone par) poore tree pe bg/color/border smoothly morph hota hai.
+     Page load pe nahi — theme.ts sirf change ke samay class lagata hai. */
+  html.theme-fade *,
+  html.theme-fade *::before,
+  html.theme-fade *::after {
+    transition:
+      background-color 0.4s ease,
+      color 0.4s ease,
+      border-color 0.4s ease,
+      box-shadow 0.4s ease,
+      fill 0.4s ease,
+      stroke 0.4s ease !important;
   }
 
   /* Utility overrides under .dark — grays/whites jo night palette me nahi hain */

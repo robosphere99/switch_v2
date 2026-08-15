@@ -19,9 +19,22 @@ export function resolvedDark(): boolean {
   return mode === "dark" || (mode === "system" && systemPrefersDark());
 }
 
-function apply(): boolean {
+let fadeTimer: number | undefined;
+
+/**
+ * Theme switch ke waqt soft cross-fade — html.theme-fade class laga ke
+ * poore tree pe bg/color/border 0.4s me morph hota hai (CSS index.css me).
+ * Page load pe (applyTheme initial) class nahi lagti — sirf change pe.
+ */
+function apply(animate: boolean): boolean {
+  const root = document.documentElement;
   const dark = resolvedDark();
-  document.documentElement.classList.toggle("dark", dark);
+  if (animate) {
+    root.classList.add("theme-fade");
+    if (fadeTimer) window.clearTimeout(fadeTimer);
+    fadeTimer = window.setTimeout(() => root.classList.remove("theme-fade"), 500);
+  }
+  root.classList.toggle("dark", dark);
   document.dispatchEvent(
     new CustomEvent(THEME_EVENT, { detail: { mode: getThemeMode(), dark } }),
   );
@@ -29,20 +42,20 @@ function apply(): boolean {
 }
 
 /**
- * Apply saved theme to <html> — run once at startup.
+ * Apply saved theme to <html> — run once at startup (koi fade nahi).
  * System mode me OS ke dark/light change hone par bhi live update hota hai.
  */
 export function applyTheme(): boolean {
   window.matchMedia?.("(prefers-color-scheme: dark)")?.addEventListener?.("change", () => {
-    if (getThemeMode() === "system") apply();
+    if (getThemeMode() === "system") apply(true);
   });
-  return apply();
+  return apply(false);
 }
 
 /** Set explicit mode (light/dark/system) and persist. Returns resolved dark state. */
 export function setThemeMode(mode: ThemeMode): boolean {
   localStorage.setItem(STORAGE_KEY, mode);
-  return apply();
+  return apply(true);
 }
 
 /** Navbar quick toggle — current resolution ke opposite explicit mode set karta hai. */
