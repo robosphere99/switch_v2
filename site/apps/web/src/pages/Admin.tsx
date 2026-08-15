@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   getStats,
   globalSearch,
@@ -64,6 +64,7 @@ export function Admin() {
   const [q, setQ] = useState("");
   const [gsQ, setGsQ] = useState("");
   const [gsOpen, setGsOpen] = useState(false);
+  const [gsIdx, setGsIdx] = useState(0);
   const [gsDebounced, setGsDebounced] = useState("");
   useEffect(() => {
     const t = setTimeout(() => setGsDebounced(gsQ.trim()), 250);
@@ -74,6 +75,26 @@ export function Admin() {
     queryFn: () => globalSearch(gsDebounced),
     enabled: gsOpen && gsDebounced.length >= 2,
   });
+
+  // Flat list of all search results (sections + items) — keyboard navigation ke liye.
+  const flatResults = useMemo(() => {
+    if (!global.data?.success) return [];
+    const r = global.data.data;
+    const sections: Array<{ label: string; icon: string; items: unknown[]; tab: Tab }> = [
+      { label: "Users", icon: "👤", items: r.users, tab: "users" },
+      { label: "Homes", icon: "🏠", items: r.homes, tab: "homes" },
+      { label: "Devices", icon: "💡", items: r.devices, tab: "devices" },
+      { label: "ESP Boards", icon: "🛰️", items: r.esps, tab: "ota" },
+      { label: "Orders", icon: "🛒", items: r.orders, tab: "shop" },
+      { label: "Serials", icon: "🔑", items: r.serials, tab: "shop" },
+    ];
+    return sections.flatMap((sec) =>
+      sec.items.map((item) => ({ label: sec.label, icon: sec.icon, tab: sec.tab, item })),
+    );
+  }, [global.data]);
+
+  // Query/close hone pe selection reset
+  useEffect(() => setGsIdx(0), [gsDebounced, gsOpen]);
   const [copied, setCopied] = useState(false);
   const [selectedDevice, setSelectedDevice] = useState<number | null>(null);
   const [viewHome, setViewHome] = useState<AdminHomeDetail | null>(null);
@@ -248,19 +269,27 @@ export function Admin() {
             }}
             onFocus={() => setGsOpen(true)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && gsDebounced.length >= 2) {
-                const r = global.data?.success ? global.data.data : null;
-                const first =
-                  r && (r.users[0] || r.homes[0] || r.devices[0] || r.esps[0] || r.orders[0] || r.serials[0]);
-                if (first) {
-                  if (r.users[0]) setTab("users");
-                  else if (r.homes[0]) setTab("homes");
-                  else if (r.devices[0]) setTab("devices");
-                  else if (r.esps[0]) setTab("ota");
-                  else setTab("shop");
+              if (e.key === "ArrowDown") {
+                e.preventDefault();
+                if (!gsOpen) {
+                  setGsOpen(true);
+                } else if (flatResults.length > 0) {
+                  setGsIdx((i) => Math.min(i + 1, flatResults.length - 1));
+                }
+              } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                if (flatResults.length > 0) setGsIdx((i) => Math.max(i - 1, 0));
+              } else if (e.key === "Enter") {
+                e.preventDefault();
+                if (flatResults.length > 0) {
+                  const row = flatResults[Math.min(gsIdx, flatResults.length - 1)];
+                  setTab(row.tab);
                   setQ(gsDebounced);
                 }
                 setGsOpen(false);
+              } else if (e.key === "Escape") {
+                setGsOpen(false);
+                (e.target as HTMLInputElement).blur();
               }
             }}
             placeholder="🔍 Global search… (users / homes / devices / ESPs / orders / serials)"
@@ -287,10 +316,16 @@ export function Admin() {
                     setQ(gsDebounced);
                     setGsOpen(false);
                   };
+                  let offset = 0;
                   return (
                     <>
-                      <div className="border-b border-gray-700 px-4 py-2.5 text-xs text-gray-400">
-                        "{gsDebounced}" — {total} result{total === 1 ? "" : "s"}
+                      <div className="flex items-center justify-between border-b border-gray-700 px-4 py-2.5 text-xs text-gray-400">
+                        <span>
+                          "{gsDebounced}" — {total} result{total === 1 ? "" : "s"}
+                        </span>
+                        <span className="hidden text-[10px] text-gray-600 sm:inline">
+                          ↑↓ select · ↵ open · esc close
+                        </span>
                       </div>
                       {total === 0 && (
                         <p className="px-4 py-6 text-center text-sm text-gray-500">Kuch nahi mila. 😕</p>
@@ -301,23 +336,33 @@ export function Admin() {
                             <div className="px-2 pb-1 text-[10px] font-bold uppercase tracking-wide text-gray-500">
                               {sec.icon} {sec.label} ({sec.count})
                             </div>
-                            {sec.items.map((item) => (
-                              <button
-                                key={String((item as { id: number }).id)}
-                                onClick={() => jump(sec.tab)}
-                                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-gray-200 transition hover:bg-night-800 hover:text-brand-light"
-                              >
-                                <span className="truncate font-medium">
-                                  {(item as { name?: string; username?: string; orderNumber?: string; serialCode?: string }).name ??
-                                    (item as { username?: string }).username ??
-                                    (item as { orderNumber?: string }).orderNumber ??
-                                    (item as { serialCode?: string }).serialCode}
-                                </span>
-                                <span className="ml-auto truncate text-[10px] text-gray-500">
-                                  {subtitleFor(sec.label, item)}
-                                </span>
-                              </button>
-                            ))}
+                            {sec.items.map((item) => {
+                              const idx = offset++;
+                              const active = gsIdx === idx;
+                              return (
+                                <button
+                                  key={String((item as { id: number }).id)}
+                                  onMouseEnter={() => setGsIdx(idx)}
+                                  onClick={() => jump(sec.tab)}
+                                  ref={active ? (el) => { if (el) el.scrollIntoView({ block: "nearest" }); } : undefined}
+                                  className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition ${
+                                    active
+                                      ? "bg-brand/20 text-brand-light"
+                                      : "text-gray-200 hover:bg-night-800 hover:text-brand-light"
+                                  }`}
+                                >
+                                  <span className="truncate font-medium">
+                                    {(item as { name?: string; username?: string; orderNumber?: string; serialCode?: string }).name ??
+                                      (item as { username?: string }).username ??
+                                      (item as { orderNumber?: string }).orderNumber ??
+                                      (item as { serialCode?: string }).serialCode}
+                                  </span>
+                                  <span className="ml-auto truncate text-[10px] text-gray-500">
+                                    {subtitleFor(sec.label, item)}
+                                  </span>
+                                </button>
+                              );
+                            })}
                           </div>
                         ),
                       )}
