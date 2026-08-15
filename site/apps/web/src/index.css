@@ -3,9 +3,65 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --night-950: 15 23 42; /* dark text */
+    --night-900: 241 245 249; /* page bg */
+    --night-800: 255 255 255; /* cards */
+    --night-700: 232 238 246; /* inputs / hover */
+    --night-600: 203 213 225; /* borders */
+    --night-500: 148 163 184; /* muted */
+  }
+  .dark {
+    --night-950: 241 245 249; /* light text */
+    --night-900: 9 13 24; /* page bg */
+    --night-800: 23 27 44; /* cards */
+    --night-700: 32 38 60; /* inputs / hover */
+    --night-600: 44 51 78; /* borders */
+    --night-500: 100 116 139; /* muted */
+  }
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
   body {
     @apply bg-night-900 text-night-950 font-sans antialiased;
     background: linear-gradient(135deg, #f1f5f9 0%, #e8eef6 100%);
     min-height: 100vh;
+    transition: background-color 0.2s ease, color 0.2s ease;
   }
+  .dark body {
+    background: linear-gradient(135deg, #090d18 0%, #101628 100%);
+  }
+
+  /* Utility overrides under .dark — grays/whites jo night palette me nahi hain */
+  .dark .bg-white { background-color: rgb(23 27 44); }
+  .dark .bg-white\/95 { background-color: rgb(23 27 44 / 0.95); }
+  .dark .bg-gray-100\/50 { background-color: rgb(28 33 53 / 0.5); }
+  .dark .bg-gray-100\/60 { background-color: rgb(28 33 53 / 0.6); }
+  .dark .bg-gray-500\/20 { background-color: rgb(71 85 105 / 0.2); }
+  .dark .bg-gray-50 { background-color: rgb(15 19 34); }
+  .dark .bg-gray-100 { background-color: rgb(28 33 53); }
+  .dark .border-gray-200 { border-color: rgb(44 51 78); }
+  .dark .border-gray-300 { border-color: rgb(58 66 97); }
+  .dark .divide-gray-200 > :not([hidden]) ~ :not([hidden]) { border-color: rgb(44 51 78); }
+  .dark .divide-gray-300 > :not([hidden]) ~ :not([hidden]) { border-color: rgb(58 66 97); }
+  .dark .text-gray-400 { color: rgb(148 163 184); }
+  .dark .text-gray-500 { color: rgb(148 163 184); }
+  .dark .text-gray-600 { color: rgb(174 184 203); }
+  .dark .text-gray-700 { color: rgb(203 213 225); }
+  .dark .text-gray-800 { color: rgb(226 232 240); }
+  .dark .placeholder-gray-500::placeholder { color: rgb(100 116 139); }
+  .dark .placeholder-gray-400::placeholder { color: rgb(148 163 184); }
+
+  /* Semantic colors — dark pe lighter shades */
+  .dark .text-green-700 { color: #4ade80; }
+  .dark .text-green-600 { color: #4ade80; }
+  .dark .text-red-600 { color: #f87171; }
+  .dark .text-red-500 { color: #f87171; }
+  .dark .text-amber-600 { color: #fbbf24; }
+  .dark .text-blue-700 { color: #60a5fa; }
+  .dark .bg-green-50 { background-color: rgb(15 40 30); }
+  .dark .bg-red-50 { background-color: rgb(45 18 24); }
 }
