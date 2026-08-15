@@ -95,11 +95,11 @@ export function PrintSerials() {
 
   return (
     <div className="print-root mx-auto max-w-5xl px-4 py-8">
-      <style>{`
+            <style>{`
         .print-toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; margin-bottom: 16px; }
-        .print-toolbar label { font-size: 12px; color: #9ca3af; display: block; margin-bottom: 4px; }
+        .print-toolbar label { font-size: 12px; color: rgb(var(--night-500)); display: block; margin-bottom: 4px; }
         .print-toolbar select {
-          background: #1a1a2e; border: 1px solid #374151; color: #e5e7eb;
+          background: rgb(var(--night-800)); border: 1px solid rgb(var(--night-600)); color: rgb(var(--night-950));
           border-radius: 8px; padding: 6px 10px; font-size: 14px;
         }
         .print-toolbar .btn {
@@ -107,12 +107,13 @@ export function PrintSerials() {
           border: 0; border-radius: 8px; padding: 8px 16px; font-weight: 600; cursor: pointer;
         }
         .print-toolbar .btn-secondary {
-          background: transparent; border: 1px solid #06b6d4; color: #06b6d4;
+          background: transparent; border: 1px solid #2563eb; color: #2563eb;
         }
         .sticker-sheet { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
         .sticker {
           border: 1px dashed #c0c0c0; border-radius: 6px; padding: 10px 12px;
           background: #ffffff; color: #111; break-inside: avoid; page-break-inside: avoid;
+          -webkit-print-color-adjust: exact; print-color-adjust: exact;
         }
         .sticker-brand { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
         .sticker-logo { font-size: 14px; }
@@ -123,13 +124,16 @@ export function PrintSerials() {
         .sticker-qr { width: 74px; height: 74px; }
         .sticker-qr-empty { display: flex; align-items: center; justify-content: center; background: #eee; color: #999; font-size: 10px; }
         .sticker-foot { font-size: 8px; color: #666; margin-top: 4px; text-align: right; }
-        .print-hint { color: #9ca3af; font-size: 12px; margin-bottom: 12px; }
+        .print-hint { color: rgb(var(--night-500)); font-size: 12px; margin-bottom: 12px; }
         @media print {
+          html { color-scheme: light; }
           body { background: #fff !important; }
           .print-toolbar, .print-hint, header, nav { display: none !important; }
           .print-root { max-width: 100%; padding: 0; }
           .sticker-sheet { grid-template-columns: repeat(2, 1fr); gap: 6px; }
-          .sticker { border: 1px dashed #999; }
+          .sticker { border: 1px dashed #999; background: #ffffff !important; color: #111 !important; }
+          .sticker-name, .sticker-model, .sticker-code, .sticker-foot { color: #111 !important; }
+          .sticker-qr-empty { background: #eee !important; color: #999 !important; }
           @page { size: A4; margin: 10mm; }
         }
       `}</style>
@@ -160,7 +164,7 @@ export function PrintSerials() {
         </span>
       </div>
 
-      {error && <div style={{ color: "#f87171", marginBottom: 12 }}>{error}</div>}
+      {error && <div style={{ color: "#dc2626", marginBottom: 12 }}>{error}</div>}
 
       {serials.length === 0 && !loading && (
         <div style={{ color: "#9ca3af" }}>Koi serial nahi mile is filter me — status/product badal ke dekho.</div>
