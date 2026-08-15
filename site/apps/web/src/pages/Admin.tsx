@@ -57,6 +57,7 @@ export function Admin() {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<Tab>("overview");
   const [q, setQ] = useState("");
+  const [copied, setCopied] = useState(false);
   const [viewHome, setViewHome] = useState<AdminHomeDetail | null>(null);
   const [fwFile, setFwFile] = useState<File | null>(null);
   const [fwVersion, setFwVersion] = useState("");
@@ -978,6 +979,40 @@ export function Admin() {
                 </span>
               )}
               <button
+                onClick={async () => {
+                  if (!logs.data?.success) return;
+                  try {
+                    await navigator.clipboard.writeText(
+                      logs.data.data.lines.join(String.fromCharCode(10)),
+                    );
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 1500);
+                  } catch {
+                    /* clipboard blocked — ignore */
+                  }
+                }}
+                className="rounded-lg border border-gray-600 px-3 py-1 text-xs font-semibold hover:bg-gray-700"
+              >
+                {copied ? "✅ Copied" : "📋 Copy"}
+              </button>
+              <button
+                onClick={() => {
+                  if (!logs.data?.success) return;
+                  const blob = new Blob([logs.data.data.lines.join(String.fromCharCode(10))], {
+                    type: "text/plain",
+                  });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = "robosphere-app.log.txt";
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+                className="rounded-lg border border-gray-600 px-3 py-1 text-xs font-semibold hover:bg-gray-700"
+              >
+                ⬇️ .txt
+              </button>
+              <button
                 onClick={() => queryClient.invalidateQueries({ queryKey: ["admin-logs"] })}
                 className="rounded-lg border border-gray-600 px-3 py-1 text-xs font-semibold hover:bg-gray-700"
               >
@@ -994,6 +1029,24 @@ export function Admin() {
               <pre className="max-h-40 overflow-auto whitespace-pre-wrap text-xs text-red-300">
                 {logs.data.data.crashes.join(String.fromCharCode(10))}
               </pre>
+            </div>
+          )}
+
+          {logs.data?.success && logs.data.data.iisnodeLogs.length > 0 && (
+            <div className="mb-3 space-y-2">
+              <p className="text-xs font-bold uppercase text-amber-400">
+                🧩 iisnode logs — native crash dump yahan milta hai ({logs.data.data.iisnodeLogs.length})
+              </p>
+              {logs.data.data.iisnodeLogs.map((f) => (
+                <div key={f.path} className="rounded-lg border border-amber-500/30 bg-amber-950/20 p-2">
+                  <p className="mb-1 text-[11px] text-amber-300">
+                    {f.name} · {(f.size / 1024).toFixed(1)} KB
+                  </p>
+                  <pre className="max-h-32 overflow-auto whitespace-pre-wrap font-mono text-[10px] text-amber-200/80">
+                    {f.lines.join(String.fromCharCode(10))}
+                  </pre>
+                </div>
+              ))}
             </div>
           )}
 

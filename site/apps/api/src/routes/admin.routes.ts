@@ -246,13 +246,52 @@ adminRouter.get("/audit", async (req, res) => {
 /** Admin ko app.log ke aakhri N lines dikhao — crashguard / boot lines yahan hain. */
 adminRouter.get("/logs", async (_req, res) => {
   const n = Math.min(Number(_req.query.lines ?? 300) || 300, 1000);
-  if (!logFilePath || !fs.existsSync(logFilePath)) {
-    return ok(res, { path: logFilePath ?? null, lines: [], note: "log file nahi mili — naya build chahiye" });
+  const result: {
+    path: string | null;
+    totalLines: number;
+    lines: string[];
+    crashes: string[];
+    iisnodeLogs: Array<{ name: string; path: string; size: number; lines: string[] }>;
+  } = { path: logFilePath ?? null, totalLines: 0, lines: [], crashes: [], iisnodeLogs: [] };
+
+  if (logFilePath && fs.existsSync(logFilePath)) {
+    const raw = fs.readFileSync(logFilePath, "utf8");
+    const lines = raw.split(/\r?\n/).filter(Boolean).slice(-n);
+    result.lines = lines;
+    result.totalLines = lines.length;
+    result.crashes = lines.filter((l) => /crashguard|unhandled|error|fail|exception/i.test(l)).slice(-40);
   }
-  const raw = fs.readFileSync(logFilePath, "utf8");
-  const lines = raw.split(/\r?\n/).filter(Boolean).slice(-n);
-  const crashes = lines.filter((l) => /crashguard|unhandled|error|fail|exception/i.test(l)).slice(-40);
-  ok(res, { path: logFilePath, totalLines: lines.length, lines, crashes });
+
+  // iisnode apne stdout/stderr yahan likhta hai — native crash dump (jo JS
+  // crashguard pakad nahi sakta) inhi files me hota hai. web.config ka
+  // logDirectory=../logs = site/apps/logs. Saath me site/logs bhi try.
+  const dirs = new Set<string>();
+  if (logFilePath) dirs.add(path.dirname(logFilePath));
+  dirs.add(path.resolve(process.cwd(), "../logs"));
+  dirs.add(path.resolve(process.cwd(), "../../logs"));
+  for (const dir of dirs) {
+    let entries: fs.Dirent[] = [];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue; // permission/nahi mila — skip
+    }
+    for (const e of entries) {
+      if (!e.isFile()) continue;
+      const name = e.name;
+      if (!/^stdout_/i.test(name) && !/^stderr_/i.test(name) && !/\.log$/i.test(name)) continue;
+      const full = path.join(dir, name);
+      try {
+        const size = fs.statSync(full).size;
+        const buf = fs.readFileSync(full, "utf8");
+        const ls = buf.split(/\r?\n/).filter(Boolean).slice(-200);
+        result.iisnodeLogs.push({ name, path: full, size, lines: ls });
+      } catch {
+        /* read nahi ho paya — skip */
+      }
+    }
+  }
+  ok(res, result);
 });
 
 // ESP / OTA — connected ESPs (IPs, firmware) + firmware publish + push

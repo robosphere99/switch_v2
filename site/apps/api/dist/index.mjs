@@ -2540,13 +2540,40 @@ adminRouter.get("/audit", async (req, res) => {
 });
 adminRouter.get("/logs", async (_req, res) => {
   const n = Math.min(Number(_req.query.lines ?? 300) || 300, 1e3);
-  if (!logFilePath || !fs3.existsSync(logFilePath)) {
-    return ok(res, { path: logFilePath ?? null, lines: [], note: "log file nahi mili \u2014 naya build chahiye" });
+  const result = { path: logFilePath ?? null, totalLines: 0, lines: [], crashes: [], iisnodeLogs: [] };
+  if (logFilePath && fs3.existsSync(logFilePath)) {
+    const raw = fs3.readFileSync(logFilePath, "utf8");
+    const lines = raw.split(/\r?\n/).filter(Boolean).slice(-n);
+    result.lines = lines;
+    result.totalLines = lines.length;
+    result.crashes = lines.filter((l) => /crashguard|unhandled|error|fail|exception/i.test(l)).slice(-40);
   }
-  const raw = fs3.readFileSync(logFilePath, "utf8");
-  const lines = raw.split(/\r?\n/).filter(Boolean).slice(-n);
-  const crashes = lines.filter((l) => /crashguard|unhandled|error|fail|exception/i.test(l)).slice(-40);
-  ok(res, { path: logFilePath, totalLines: lines.length, lines, crashes });
+  const dirs = /* @__PURE__ */ new Set();
+  if (logFilePath) dirs.add(path4.dirname(logFilePath));
+  dirs.add(path4.resolve(process.cwd(), "../logs"));
+  dirs.add(path4.resolve(process.cwd(), "../../logs"));
+  for (const dir of dirs) {
+    let entries = [];
+    try {
+      entries = fs3.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const e of entries) {
+      if (!e.isFile()) continue;
+      const name = e.name;
+      if (!/^stdout_/i.test(name) && !/^stderr_/i.test(name) && !/\.log$/i.test(name)) continue;
+      const full = path4.join(dir, name);
+      try {
+        const size = fs3.statSync(full).size;
+        const buf = fs3.readFileSync(full, "utf8");
+        const ls = buf.split(/\r?\n/).filter(Boolean).slice(-200);
+        result.iisnodeLogs.push({ name, path: full, size, lines: ls });
+      } catch {
+      }
+    }
+  }
+  ok(res, result);
 });
 try {
   fs3.mkdirSync(firmwareDir, { recursive: true });
