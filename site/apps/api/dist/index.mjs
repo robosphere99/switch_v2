@@ -470,7 +470,7 @@ var signupSchema = z2.object({
   username: z2.string().min(3).max(50),
   email: z2.string().email().max(100),
   password: z2.string().min(6).max(255),
-  homeName: z2.string().min(1).max(100).optional()
+  homeName: z2.string().max(100).optional()
 });
 var loginSchema = z2.object({
   usernameEmail: z2.string().min(1).max(100),

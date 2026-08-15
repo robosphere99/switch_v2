@@ -10,7 +10,7 @@ const signupSchema = z.object({
   username: z.string().min(3).max(50),
   email: z.string().email().max(100),
   password: z.string().min(6).max(255),
-  homeName: z.string().min(1).max(100).optional(),
+  homeName: z.string().max(100).optional(),
 });
 
 const loginSchema = z.object({
