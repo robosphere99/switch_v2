@@ -6,7 +6,7 @@ import { logger, fileLog, logFilePath } from "./lib/logger";
 import { initSocket } from "./lib/socket";
 import { startScheduler } from "./services/scheduler.service";
 import { startOfflineWatcher } from "./services/offline.service";
-import { setDbReady, isDbReady } from "./lib/dbState";
+import { setDbReady } from "./lib/dbState";
 
 // Tables exist ya nahi — information_schema se check (empty DB pe crash
 // nahi karta). Bas DB reachable hona kaafi nahi: tables nahi hain to
@@ -147,11 +147,10 @@ async function initDatabase(): Promise<void> {
   }
   boot("db probe: schema ready =", dbReady);
 
-  // Install route bhi setDbReady(true) karta hai — yahan kabhi ready ko
-  // false-override nahi karte agar kisi aur ne pehle hi ready kar diya ho.
-  if (dbReady || !isDbReady()) {
-    setDbReady(dbReady);
-  }
+  // Probe result hamesha set karo. Fresh install (tables nahi) -> false
+  // -> setup mode. Installed site -> true. (Install route apna
+  // setDbReady(true) probe ke baad hi chalta hai — koi race nahi.)
+  setDbReady(dbReady);
   if (dbReady) {
     try {
       startScheduler();

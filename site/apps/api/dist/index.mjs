@@ -3684,7 +3684,7 @@ import bcrypt2 from "bcryptjs";
 init_prisma();
 
 // src/lib/dbState.ts
-var ready = false;
+var ready = true;
 function setDbReady(value) {
   ready = value;
 }
@@ -4250,9 +4250,7 @@ async function initDatabase() {
     logger.debug(err instanceof Error ? err.message : String(err));
   }
   boot("db probe: schema ready =", dbReady);
-  if (dbReady || !isDbReady()) {
-    setDbReady(dbReady);
-  }
+  setDbReady(dbReady);
   if (dbReady) {
     try {
       startScheduler();
