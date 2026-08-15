@@ -88,6 +88,7 @@ export async function acceptInvitation(inviteCode: string, userId: number, userE
 
     // Notify the home owner that a new member joined.
     await createNotification(invitation.home.ownerId, {
+      category: "system",
       type: "info",
       title: `👤 New member joined ${invitation.home.name}`,
       body: `A user joined your home with the ${invitation.role} role.`,

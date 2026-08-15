@@ -7,6 +7,7 @@ import { useRealtime } from "./hooks/useRealtime";
 import { Dashboard } from "./pages/Dashboard";
 import { DeviceKeys } from "./pages/DeviceKeys";
 import { Homes } from "./pages/Homes";
+import { Notifications } from "./pages/Notifications";
 import { Landing } from "./pages/Landing";
 import { Login } from "./pages/Login";
 import { Members } from "./pages/Members";
@@ -127,6 +128,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <Homes />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/notifications"
+            element={
+              <ProtectedRoute>
+                <Notifications />
               </ProtectedRoute>
             }
           />

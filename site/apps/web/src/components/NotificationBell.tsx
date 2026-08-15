@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { listNotifications, markRead, markAllRead, unreadCount } from "../api/notifications";
 
 export function NotificationBell() {
@@ -14,7 +15,7 @@ export function NotificationBell() {
 
   const notifications = useQuery({
     queryKey: ["notifications"],
-    queryFn: listNotifications,
+    queryFn: () => listNotifications({ page: 1, pageSize: 15 }),
     enabled: open,
   });
 
@@ -33,7 +34,7 @@ export function NotificationBell() {
   });
 
   const count = unread.data?.success ? unread.data.data : 0;
-  const list = notifications.data?.success ? notifications.data.data : [];
+  const list = notifications.data?.success ? notifications.data.data.items : [];
 
   const typeColor = (type: string) =>
     type === "warning" ? "border-amber-500/50 bg-amber-500/10" : type === "error" ? "border-red-500/50 bg-red-500/10" : "border-brand/30 bg-night-900";
@@ -58,7 +59,9 @@ export function NotificationBell() {
           <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
           <div className="absolute right-0 z-40 mt-2 w-80 overflow-hidden rounded-xl border border-gray-700 bg-night-800 shadow-2xl">
             <div className="flex items-center justify-between border-b border-gray-700 px-4 py-2.5">
-              <span className="text-sm font-semibold">Notifications</span>
+              <Link to="/notifications" onClick={() => setOpen(false)} className="text-sm font-semibold hover:text-brand-light">
+                Notifications <span className="text-[10px] font-normal text-gray-500">· View all →</span>
+              </Link>
               {count > 0 && (
                 <button
                   onClick={() => readAll.mutate()}

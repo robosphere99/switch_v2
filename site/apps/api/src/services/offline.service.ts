@@ -53,6 +53,7 @@ async function checkOfflineDevicesInner(): Promise<void> {
     const targetIds = device.home.members.map((m) => m.userId);
     for (const userId of targetIds) {
       await createNotification(userId, {
+        category: "device",
         type: "warning",
         title: `📡 ${device.name} offline`,
         body: `${device.name} ne 2+ min se sync nahi kiya. WiFi/device check karo.`,
@@ -73,6 +74,7 @@ async function checkOfflineDevicesInner(): Promise<void> {
     emitToHome(device.homeId, "device:updated", { id: device.id, offline: false });
     for (const userId of device.home.members.map((m) => m.userId)) {
       await createNotification(userId, {
+        category: "device",
         type: "info",
         title: `✅ ${device.name} online`,
         body: `${device.name} wapas connected ho gaya.`,

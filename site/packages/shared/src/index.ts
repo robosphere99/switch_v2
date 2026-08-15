@@ -33,6 +33,9 @@ export type ScheduleType = (typeof SCHEDULE_TYPES)[number];
 export const NOTIFICATION_TYPES = ["info", "warning", "error"] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
+export const NOTIFICATION_CATEGORIES = ["support", "device", "schedule", "system"] as const;
+export type NotificationCategory = (typeof NOTIFICATION_CATEGORIES)[number];
+
 // ---------- Entities ----------
 
 export interface User {
