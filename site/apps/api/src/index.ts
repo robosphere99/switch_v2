@@ -50,6 +50,18 @@ async function runLightMigrations(): Promise<void> {
       );
       logger.info("✅ Migration: notifications.category column added");
     }
+    // 2b) Backfill: schedule notifications category fix — pehle (bina category ke)
+    //     default 'system' me banti thi, ab 'schedule' me aati hain. Purani wali ko
+    //     bhi fix karo taaki Schedule filter me dikhen. (Idempotent — ek baar update,
+    //     dobara kuch match nahi karega.)
+    const fixed = await prisma.$executeRawUnsafe(`
+      UPDATE notifications
+      SET category = 'schedule'
+      WHERE category = 'system' AND title LIKE '⏰ Schedule fired:%'
+    `);
+    if (Number(fixed) > 0) {
+      logger.info(`✅ Backfill: ${fixed} schedule notification(s) category → schedule`);
+    }
     // 3) support_messages - admin <-> user support chat table.
     const sm = await prisma.$queryRaw<{ c: bigint }[]>`
       SELECT COUNT(*) AS c FROM information_schema.tables
