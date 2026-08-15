@@ -12,7 +12,14 @@ import * as deviceApi from "../services/deviceApi.service";
  */
 export const deviceApiRouter = Router();
 
-const keyQuery = z.object({ api_key: z.string().min(1) });
+const keyQuery = z.object({
+  api_key: z.string().min(1),
+  // Long-poll mode (ESP32 v2 firmware): `long=1&hold=20` — server response ko
+  // hold karta hai jab tak command na aaye (max hold seconds). Old firmware
+  // bina long=1 ke same instant behaviour paata hai.
+  long: z.string().optional(),
+  hold: z.string().optional(),
+});
 
 const updateSchema = z.object({
   api_key: z.string().optional(),
@@ -105,7 +112,24 @@ deviceApiRouter.get(
   "/commands",
   validateQuery(keyQuery),
   requireApiKey,
-  async (req, res) => ok(res, { commands: await deviceApi.pendingCommands(req.apiKey!) }),
+  async (req, res) => {
+    const long = req.query.long === "1" || req.query.long === "true";
+    if (!long) {
+      // Legacy path — old firmware ko pehle jaisa instant empty/commands response.
+      return ok(res, { commands: await deviceApi.pendingCommands(req.apiKey!) });
+    }
+    const holdSec = Math.min(25, Math.max(1, Number(req.query.hold) || 20));
+    // Client disconnect (ESP reboot / network change) pe wait loop jaldi khatam
+    // karo — held request server pe kabhi stuck na rahe.
+    const ac = new AbortController();
+    res.on("close", () => ac.abort());
+    const commands = await deviceApi.pendingCommandsLongPoll(
+      req.apiKey!,
+      holdSec * 1000,
+      ac.signal,
+    );
+    if (!res.headersSent) ok(res, { commands });
+  },
 );
 
 deviceApiRouter.post(

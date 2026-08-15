@@ -1659,13 +1659,31 @@ async function heartbeat(key, input, baseUrl) {
   };
 }
 async function pendingCommands(key) {
+  const commands = await findPendingCommands(key);
+  await markHomeAlive(key);
+  return commands;
+}
+async function findPendingCommands(key) {
   const homeId = homeScope(key);
-  const commands = await prisma.deviceCommand.findMany({
+  return prisma.deviceCommand.findMany({
     where: { device: { homeId }, status: "pending" },
     orderBy: { createdAt: "asc" },
     take: 20
   });
+}
+async function markHomeAlive(key) {
+  const homeId = homeScope(key);
   await prisma.device.updateMany({ where: { homeId }, data: { lastSeen: /* @__PURE__ */ new Date() } }).catch(() => void 0);
+}
+async function pendingCommandsLongPoll(key, holdMs, signal) {
+  const deadline = Date.now() + holdMs;
+  let commands = await findPendingCommands(key);
+  while (commands.length === 0 && Date.now() < deadline) {
+    if (signal?.aborted) break;
+    await new Promise((r) => setTimeout(r, 300));
+    commands = await findPendingCommands(key);
+  }
+  await markHomeAlive(key);
   return commands;
 }
 async function ackCommand(key, commandId, deviceId, status) {
@@ -1693,7 +1711,14 @@ async function ackCommand(key, commandId, deviceId, status) {
 
 // src/routes/deviceApi.routes.ts
 var deviceApiRouter = Router5();
-var keyQuery = z6.object({ api_key: z6.string().min(1) });
+var keyQuery = z6.object({
+  api_key: z6.string().min(1),
+  // Long-poll mode (ESP32 v2 firmware): `long=1&hold=20` — server response ko
+  // hold karta hai jab tak command na aaye (max hold seconds). Old firmware
+  // bina long=1 ke same instant behaviour paata hai.
+  long: z6.string().optional(),
+  hold: z6.string().optional()
+});
 var updateSchema2 = z6.object({
   api_key: z6.string().optional(),
   device_id: z6.coerce.number().int().positive(),
@@ -1773,7 +1798,21 @@ deviceApiRouter.get(
   "/commands",
   validateQuery(keyQuery),
   requireApiKey,
-  async (req, res) => ok(res, { commands: await pendingCommands(req.apiKey) })
+  async (req, res) => {
+    const long = req.query.long === "1" || req.query.long === "true";
+    if (!long) {
+      return ok(res, { commands: await pendingCommands(req.apiKey) });
+    }
+    const holdSec = Math.min(25, Math.max(1, Number(req.query.hold) || 20));
+    const ac = new AbortController();
+    res.on("close", () => ac.abort());
+    const commands = await pendingCommandsLongPoll(
+      req.apiKey,
+      holdSec * 1e3,
+      ac.signal
+    );
+    if (!res.headersSent) ok(res, { commands });
+  }
 );
 deviceApiRouter.post(
   "/commands/ack",
