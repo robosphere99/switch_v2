@@ -285,3 +285,108 @@ supportRouter.post("/admin/read-all", requireAuth, async (req, res) => {
   });
   ok(res, { unread: 0 });
 });
+
+/** Admin: support inbox me user ka context — orders, homes, devices, ESP boards. */
+supportRouter.get("/admin/context", requireAuth, async (req, res) => {
+  if (req.user!.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
+  const userId = Number(req.query.userId);
+  if (!Number.isInteger(userId) || userId <= 0) {
+    throw new AppError("VALIDATION_ERROR", "userId required", 400);
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      username: true,
+      email: true,
+      role: true,
+      status: true,
+      createdAt: true,
+      lastLoginAt: true,
+    },
+  });
+  if (!user) throw new AppError("NOT_FOUND", "User not found", 404);
+
+  const [memberships, orders] = await Promise.all([
+    prisma.homeMember.findMany({
+      where: { userId },
+      select: {
+        role: true,
+        home: {
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            owner: { select: { id: true, username: true } },
+            _count: { select: { devices: true, members: true, rooms: true } },
+          },
+        },
+      },
+      orderBy: { joinedAt: "asc" },
+    }),
+    prisma.order.findMany({
+      where: { userId },
+      select: {
+        id: true,
+        orderNumber: true,
+        status: true,
+        paymentStatus: true,
+        totalAmount: true,
+        shippingPhone: true,
+        createdAt: true,
+        _count: { select: { items: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 15,
+    }),
+  ]);
+
+  const homeIds = memberships.map((m) => m.home.id);
+  const [devices, esps] =
+    homeIds.length > 0
+      ? await Promise.all([
+          prisma.device.findMany({
+            where: { homeId: { in: homeIds } },
+            select: {
+              id: true,
+              name: true,
+              type: true,
+              status: true,
+              serialNumber: true,
+              offline: true,
+              lastSeen: true,
+              room: { select: { name: true } },
+              home: { select: { name: true } },
+            },
+            orderBy: { name: "asc" },
+            take: 100,
+          }),
+          prisma.espDevice.findMany({
+            where: { homeId: { in: homeIds } },
+            select: {
+              id: true,
+              name: true,
+              macAddress: true,
+              serialCode: true,
+              modelCode: true,
+              firmwareVersion: true,
+              offline: true,
+              ipAddress: true,
+              lastSeen: true,
+              home: { select: { name: true } },
+            },
+            orderBy: { id: "asc" },
+            take: 50,
+          }),
+        ])
+      : [[], []];
+
+  ok(res, {
+    user,
+    homes: memberships.map((m) => ({ ...m.home, memberRole: m.role })),
+    devices,
+    esps,
+    orders,
+  });
+});

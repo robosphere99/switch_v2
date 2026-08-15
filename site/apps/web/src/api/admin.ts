@@ -524,3 +524,64 @@ export async function markAllSupportRead(): Promise<ApiResponse<{ unread: number
   const { data } = await api.post<ApiResponse<{ unread: number }>>("/support/admin/read-all");
   return data;
 }
+
+/** Support inbox: user ka context (orders / homes / devices / ESP boards). */
+export interface SupportUserContext {
+  user: {
+    id: number;
+    username: string;
+    email: string;
+    role: string;
+    status: string;
+    createdAt: string;
+    lastLoginAt: string | null;
+  };
+  homes: Array<{
+    id: number;
+    name: string;
+    status: string;
+    memberRole: string;
+    owner: { id: number; username: string } | null;
+    _count: { devices: number; members: number; rooms: number };
+  }>;
+  devices: Array<{
+    id: number;
+    name: string;
+    type: string;
+    status: string;
+    serialNumber: string | null;
+    offline: boolean;
+    lastSeen: string | null;
+    room: { name: string } | null;
+    home: { name: string };
+  }>;
+  esps: Array<{
+    id: number;
+    name: string | null;
+    macAddress: string;
+    serialCode: string | null;
+    modelCode: string | null;
+    firmwareVersion: string | null;
+    offline: boolean;
+    ipAddress: string | null;
+    lastSeen: string | null;
+    home: { name: string };
+  }>;
+  orders: Array<{
+    id: number;
+    orderNumber: string;
+    status: string;
+    paymentStatus: string;
+    totalAmount: string;
+    shippingPhone: string;
+    createdAt: string;
+    _count: { items: number };
+  }>;
+}
+
+export async function getSupportUserContext(userId: number): Promise<ApiResponse<SupportUserContext>> {
+  const { data } = await api.get<ApiResponse<SupportUserContext>>("/support/admin/context", {
+    params: { userId },
+  });
+  return data;
+}
