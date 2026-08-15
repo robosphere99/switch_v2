@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { submitSupport, getMySupportTickets, getMySupportChat, sendSupportReply } from "../api/public";
+import { submitSupport, getMySupportTickets, getMySupportChat, sendSupportReply, type SupportAttachment } from "../api/public";
 import { getMyOrders, type Order } from "../api/shop";
+import { AttachmentPicker } from "../components/AttachmentPicker";
+import { AttachmentBubble } from "../components/AttachmentBubble";
 
 const SUBJECTS = [
   "Order / Delivery Help",
@@ -26,8 +28,9 @@ export function Support() {
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   // Support chat state
-  const [chatMsgs, setChatMsgs] = useState<Array<{ id: number; senderRole: string; message: string; createdAt: string }>>([]);
+  const [chatMsgs, setChatMsgs] = useState<Array<{ id: number; senderRole: string; message: string; attachmentName: string | null; attachmentType: string | null; attachmentData: string | null; createdAt: string }>>([]);
   const [chatDraft, setChatDraft] = useState("");
+  const [chatAttachment, setChatAttachment] = useState<SupportAttachment | null>(null);
   const [chatBusy, setChatBusy] = useState(false);
   const [chatError, setChatError] = useState(false);
   const [chatLoading, setChatLoading] = useState(true);
@@ -49,12 +52,13 @@ export function Support() {
     chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMsgs.length]);
 
-  const sendChat = async (text: string) => {
+  const sendChat = async (text: string, attachment: SupportAttachment | null) => {
     setChatBusy(true);
     setChatError(false);
     try {
-      await sendSupportReply(text);
+      await sendSupportReply(text, attachment);
       setChatDraft("");
+      setChatAttachment(null);
       await refreshChat();
     } catch {
       setChatError(true);
@@ -225,7 +229,10 @@ export function Support() {
               }`}
             >
               <div className="text-[10px] font-bold uppercase opacity-70">{m.senderRole === "user" ? "Aap" : "Support"}</div>
-              <div className="whitespace-pre-wrap">{m.message}</div>
+              {m.message && <div className="whitespace-pre-wrap">{m.message}</div>}
+              {m.attachmentName && m.attachmentType && m.attachmentData && (
+                <AttachmentBubble name={m.attachmentName} type={m.attachmentType} data={m.attachmentData} />
+              )}
               <div className="mt-0.5 text-right text-[10px] opacity-60">{new Date(m.createdAt).toLocaleString()}</div>
             </div>
           ))}
@@ -235,10 +242,11 @@ export function Support() {
           onSubmit={(e) => {
             e.preventDefault();
             const t = chatDraft.trim();
-            if (t && !chatBusy) sendChat(t);
+            if ((t || chatAttachment) && !chatBusy) sendChat(t, chatAttachment);
           }}
           className="mt-3 flex gap-2"
         >
+          <AttachmentPicker value={chatAttachment} onChange={setChatAttachment} />
           <input
             value={chatDraft}
             onChange={(e) => setChatDraft(e.target.value)}
@@ -247,7 +255,7 @@ export function Support() {
           />
           <button
             type="submit"
-            disabled={chatBusy || !chatDraft.trim()}
+            disabled={chatBusy || (!chatDraft.trim() && !chatAttachment)}
             className="rounded-lg bg-brand px-4 py-2 text-white disabled:opacity-40"
           >
             Send

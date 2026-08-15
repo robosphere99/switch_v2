@@ -85,6 +85,17 @@ async function runLightMigrations(): Promise<void> {
       );
       logger.info("✅ Migration: users.theme_pref column added");
     }
+    // 5) support_messages.attachment_* — support chat files (photos/invoice/screenshots).
+    const att = await prisma.$queryRaw<{ c: bigint }[]>`
+      SELECT COUNT(*) AS c FROM information_schema.columns
+      WHERE table_schema = DATABASE() AND table_name = 'support_messages' AND column_name = 'attachment_name'
+    `;
+    if (Number(att[0]?.c ?? 0) === 0) {
+      await prisma.$executeRawUnsafe(
+        "ALTER TABLE `support_messages` ADD COLUMN `attachment_name` VARCHAR(255) NULL, ADD COLUMN `attachment_type` VARCHAR(100) NULL, ADD COLUMN `attachment_data` MEDIUMTEXT NULL",
+      );
+      logger.info("✅ Migration: support_messages.attachment_* columns added");
+    }
   } catch (err) {
     logger.warn("Light migration (esp serial unique) skip/fail", err instanceof Error ? err.message : String(err));
   }

@@ -457,9 +457,19 @@ export interface SupportMessage {
   senderRole: "admin" | "user";
   senderName: string;
   message: string;
+  attachmentName: string | null;
+  attachmentType: string | null;
+  attachmentData: string | null;
   readByUser: boolean;
   readByAdmin: boolean;
   createdAt: string;
+}
+
+/** Support chat attachment (optional) — photo/invoice/screenshot. */
+export interface SupportAttachment {
+  name: string;
+  type: string;
+  data: string; // base64
 }
 
 /** Admin: kisi user ka poora support thread. */
@@ -472,8 +482,14 @@ export async function getSupportMessages(userId: number): Promise<ApiResponse<{ 
 }
 
 /** Admin: user ko support message bhejo. */
-export async function sendSupportMessage(userId: number, message: string): Promise<ApiResponse<SupportMessage>> {
-  const { data } = await api.post<ApiResponse<SupportMessage>>("/support/admin/messages", { userId, message });
+export async function sendSupportMessage(userId: number, message: string, attachment?: SupportAttachment | null): Promise<ApiResponse<SupportMessage>> {
+  const { data } = await api.post<ApiResponse<SupportMessage>>("/support/admin/messages", {
+    userId,
+    message,
+    ...(attachment
+      ? { attachmentName: attachment.name, attachmentType: attachment.type, attachmentData: attachment.data }
+      : {}),
+  });
   return data;
 }
 

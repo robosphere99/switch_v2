@@ -21,7 +21,7 @@ export function createApp() {
       credentials: true,
     }),
   );
-  app.use(express.json({ limit: "1mb" }));
+  app.use(express.json({ limit: "4mb" }));
   // ESP32 posts form-encoded data (application/x-www-form-urlencoded).
   app.use(express.urlencoded({ extended: true }));
 

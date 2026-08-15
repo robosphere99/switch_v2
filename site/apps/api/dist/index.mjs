@@ -4414,12 +4414,41 @@ import { Router as Router16 } from "express";
 import { z as z12 } from "zod";
 init_prisma();
 var supportRouter = Router16();
+var MAX_ATTACHMENT_BYTES = 2 * 1024 * 1024;
+var ALLOWED_TYPES = /^(image\/(png|jpe?g|gif|webp|heic)|application\/pdf|text\/plain)$/;
+var attachmentFields = {
+  attachmentName: z12.string().trim().min(1).max(255).optional(),
+  attachmentType: z12.string().trim().min(1).max(100).optional(),
+  attachmentData: z12.string().min(1).optional()
+};
+function refineAttachment(d, ctx) {
+  const hasAny = d.attachmentName != null || d.attachmentType != null || d.attachmentData != null;
+  if (!hasAny) return;
+  if (!d.attachmentName || !d.attachmentType || !d.attachmentData) {
+    ctx.addIssue({ code: "custom", path: ["attachmentData"], message: "Attachment incomplete" });
+    return;
+  }
+  if (!ALLOWED_TYPES.test(d.attachmentType)) {
+    ctx.addIssue({ code: "custom", path: ["attachmentType"], message: "Unsupported file type" });
+    return;
+  }
+  if (!/^[A-Za-z0-9+/=]+$/.test(d.attachmentData)) {
+    ctx.addIssue({ code: "custom", path: ["attachmentData"], message: "Invalid file data" });
+    return;
+  }
+  if (d.attachmentData.length * 3 > MAX_ATTACHMENT_BYTES * 4 + 8) {
+    ctx.addIssue({ code: "custom", path: ["attachmentData"], message: "File too large (max 2MB)" });
+  }
+}
 var msgSelect = {
   id: true,
   userId: true,
   senderRole: true,
   senderName: true,
   message: true,
+  attachmentName: true,
+  attachmentType: true,
+  attachmentData: true,
   readByUser: true,
   readByAdmin: true,
   createdAt: true
@@ -4438,7 +4467,13 @@ supportRouter.get("/admin/messages", requireAuth, async (req, res) => {
 });
 var adminSendSchema = z12.object({
   userId: z12.number().int().positive(),
-  message: z12.string().trim().min(1).max(4e3)
+  message: z12.string().trim().max(4e3),
+  ...attachmentFields
+}).superRefine((d, ctx) => {
+  if (!d.message && !d.attachmentData) {
+    ctx.addIssue({ code: "custom", path: ["message"], message: "Message ya file required" });
+  }
+  refineAttachment(d, ctx);
 });
 supportRouter.post("/admin/messages", requireAuth, validateBody(adminSendSchema), async (req, res) => {
   if (req.user.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
@@ -4451,6 +4486,9 @@ supportRouter.post("/admin/messages", requireAuth, validateBody(adminSendSchema)
       senderRole: "admin",
       senderName: req.user.username,
       message,
+      attachmentName: req.body.attachmentName ?? null,
+      attachmentType: req.body.attachmentType ?? null,
+      attachmentData: req.body.attachmentData ?? null,
       readByUser: false,
       readByAdmin: true
     }
@@ -4484,7 +4522,13 @@ supportRouter.get("/messages", requireAuth, async (req, res) => {
   ok(res, { unread: unreadCount2, messages });
 });
 var userSendSchema = z12.object({
-  message: z12.string().trim().min(1).max(4e3)
+  message: z12.string().trim().max(4e3),
+  ...attachmentFields
+}).superRefine((d, ctx) => {
+  if (!d.message && !d.attachmentData) {
+    ctx.addIssue({ code: "custom", path: ["message"], message: "Message ya file required" });
+  }
+  refineAttachment(d, ctx);
 });
 supportRouter.post("/messages", requireAuth, validateBody(userSendSchema), async (req, res) => {
   const userId = req.user.sub;
@@ -4494,6 +4538,9 @@ supportRouter.post("/messages", requireAuth, validateBody(userSendSchema), async
       senderRole: "user",
       senderName: req.user.username,
       message: req.body.message,
+      attachmentName: req.body.attachmentName ?? null,
+      attachmentType: req.body.attachmentType ?? null,
+      attachmentData: req.body.attachmentData ?? null,
       readByUser: true,
       readByAdmin: false
     }
@@ -5004,7 +5051,7 @@ function createApp() {
       credentials: true
     })
   );
-  app.use(express.json({ limit: "1mb" }));
+  app.use(express.json({ limit: "4mb" }));
   app.use(express.urlencoded({ extended: true }));
   app.use((req, res, next) => {
     const start = Date.now();
@@ -5118,6 +5165,16 @@ async function runLightMigrations() {
         "ALTER TABLE `users` ADD COLUMN `theme_pref` VARCHAR(16) NULL"
       );
       logger.info("\u2705 Migration: users.theme_pref column added");
+    }
+    const att = await prisma.$queryRaw`
+      SELECT COUNT(*) AS c FROM information_schema.columns
+      WHERE table_schema = DATABASE() AND table_name = 'support_messages' AND column_name = 'attachment_name'
+    `;
+    if (Number(att[0]?.c ?? 0) === 0) {
+      await prisma.$executeRawUnsafe(
+        "ALTER TABLE `support_messages` ADD COLUMN `attachment_name` VARCHAR(255) NULL, ADD COLUMN `attachment_type` VARCHAR(100) NULL, ADD COLUMN `attachment_data` MEDIUMTEXT NULL"
+      );
+      logger.info("\u2705 Migration: support_messages.attachment_* columns added");
     }
   } catch (err) {
     logger.warn("Light migration (esp serial unique) skip/fail", err instanceof Error ? err.message : String(err));
