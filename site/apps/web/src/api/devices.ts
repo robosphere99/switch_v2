@@ -121,3 +121,41 @@ export async function listMyBoards(): Promise<ApiResponse<MyBoardsGroup[]>> {
   const { data } = await api.get<ApiResponse<MyBoardsGroup[]>>("/homes/my-boards");
   return data;
 }
+
+export interface CurrentFirmware {
+  modelCode: string;
+  version: string;
+  releaseNotes: string | null;
+}
+
+/** User board pe firmware OTA push kare. */
+export async function requestOta(
+  homeId: number,
+  deviceId: number,
+): Promise<ApiResponse<{ version: string; model: string; message: string }>> {
+  const { data } = await api.post<ApiResponse<{ version: string; model: string; message: string }>>(
+    `/homes/${homeId}/devices/${deviceId}/ota`,
+  );
+  return data;
+}
+
+/** Current published firmware versions — "update available" badge ke liye. */
+export async function getCurrentFirmware(): Promise<ApiResponse<CurrentFirmware[]>> {
+  const { data } = await api.get<ApiResponse<CurrentFirmware[]>>("/firmware/current");
+  return data;
+}
+
+/** v1.2.10 vs v1.2.9 — numeric compare; latest > current means update available. */
+export function isNewerVersion(latest: string | undefined | null, current: string | undefined | null): boolean {
+  if (!latest || !current) return false;
+  if (latest === current) return false;
+  const a = latest.split(".").map((n) => parseInt(n, 10) || 0);
+  const b = current.split(".").map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const x = a[i] ?? 0;
+    const y = b[i] ?? 0;
+    if (x > y) return true;
+    if (x < y) return false;
+  }
+  return false;
+}

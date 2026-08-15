@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import type { Device, DeviceType } from "@robosphere/shared";
-import { listDevices, setDeviceStatus, createDevice, updateDevice, deleteDevice, getDeviceLogs, renameEsp } from "../api/devices";
+import { listDevices, setDeviceStatus, createDevice, updateDevice, deleteDevice, getDeviceLogs, renameEsp, getCurrentFirmware, requestOta } from "../api/devices";
 import { listHomes, getHomeDetail } from "../api/homes";
 import { createRoom, deleteRoom } from "../api/rooms";
 import { DeviceCard } from "../components/DeviceCard";
@@ -49,12 +49,35 @@ export function Dashboard() {
   const canManage = myRole === "owner" || myRole === "admin" || myRole === "member";
   const canAdminDevices = myRole === "owner" || myRole === "admin";
 
+  const [otaMsg, setOtaMsg] = useState("");
   const [deviceQ, setDeviceQ] = useState("");
   const devices = useQuery({
     queryKey: ["devices", homeId],
     queryFn: () => listDevices(homeId!),
     enabled: homeId !== null,
     refetchInterval: 5_000,
+  });
+
+  const firmware = useQuery({
+    queryKey: ["current-firmware"],
+    queryFn: getCurrentFirmware,
+    refetchInterval: 60_000,
+  });
+  const latestForModel = (modelCode?: string | null): string | undefined => {
+    if (!modelCode || !firmware.data?.success) return undefined;
+    const fw = firmware.data.data.find((f) => f.modelCode.toUpperCase() === modelCode.toUpperCase());
+    return fw?.version;
+  };
+
+  const pushOta = useMutation({
+    mutationFn: (d: Device) => requestOta(homeId!, d.id),
+    onSuccess: (r) => {
+      if (r.success) {
+        setOtaMsg(`${r.data.message} (v${r.data.version})`);
+        invalidate();
+      }
+    },
+    onError: (e) => setError(apiErrMsg(e)),
   });
 
   const invalidate = () => {
@@ -183,6 +206,9 @@ export function Dashboard() {
 
       {error && (
         <p className="mb-4 rounded bg-red-500/10 px-4 py-2 text-sm text-red-400">{error}</p>
+      )}
+      {otaMsg && (
+        <p className="mb-4 rounded bg-emerald-500/10 px-4 py-2 text-sm text-emerald-400">📲 {otaMsg}</p>
       )}
 
       {home && (
@@ -336,6 +362,15 @@ export function Dashboard() {
                       setEditRoom(d.roomId ? String(d.roomId) : "");
                     }}
                     onLogs={(d) => setLogsFor(d)}
+                    latestVersion={latestForModel(device.esp?.modelCode)}
+                    onOta={(d) => {
+                      const cur = d.esp?.firmwareVersion ?? "—";
+                      const next = latestForModel(d.esp?.modelCode);
+                      if (next && confirm(`Board "${d.esp?.name}" ka firmware update karein?
+Abhi: v${cur} → Latest: v${next}`)) {
+                        pushOta.mutate(d);
+                      }
+                    }}
                     onRenameBoard={(esp) => {
                       const name = window.prompt("ESP board ka naam (unique hona chahiye):", esp.name ?? "");
                       if (name && name.trim()) renameBoard.mutate({ espId: esp.id, name: name.trim() });

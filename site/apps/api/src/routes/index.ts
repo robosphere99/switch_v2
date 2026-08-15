@@ -14,6 +14,9 @@ import { shopRouter } from "./shop.routes";
 import { claimRouter } from "./claim.routes";
 import { warrantyRouter } from "./warranty.routes";
 import { publicRouter } from "./public.routes";
+import { requireAuth } from "../middleware/auth";
+import { prisma } from "../lib/prisma";
+import { ok } from "../lib/response";
 
 export const apiRouter = Router();
 
@@ -32,3 +35,12 @@ apiRouter.use("/shop", shopRouter);
 apiRouter.use("/claim", claimRouter);
 apiRouter.use("/warranty", warrantyRouter);
 apiRouter.use("/public", publicRouter);
+apiRouter.get("/firmware/current", requireAuth, async (_req, res) => {
+  const versions = await prisma.firmwareVersion.findMany({
+    where: { isCurrent: true },
+    select: { modelCode: true, version: true, releaseNotes: true },
+    orderBy: { modelCode: "asc" },
+  });
+  ok(res, versions);
+});
+
