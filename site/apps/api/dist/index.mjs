@@ -5372,6 +5372,14 @@ async function runLightMigrations() {
       );
       logger.info("\u2705 Migration: notifications.category column added");
     }
+    const fixed = await prisma.$executeRawUnsafe(`
+      UPDATE notifications
+      SET category = 'schedule'
+      WHERE category = 'system' AND title LIKE '\u23F0 Schedule fired:%'
+    `);
+    if (Number(fixed) > 0) {
+      logger.info(`\u2705 Backfill: ${fixed} schedule notification(s) category \u2192 schedule`);
+    }
     const sm = await prisma.$queryRaw`
       SELECT COUNT(*) AS c FROM information_schema.tables
       WHERE table_schema = DATABASE() AND table_name = 'support_messages'
