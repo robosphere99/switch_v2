@@ -2008,6 +2008,98 @@ function decodeAssistantContent(content) {
     return { text: content, proposal: null };
   }
 }
+var STATUS_PATTERNS = [
+  /\bstatus\b/,
+  /\bstates?\b/,
+  /\bkya (haal|hal)\b/,
+  /\bkaise (hai|hain)\b/,
+  /\bcheck\b/,
+  /\bcondition\b/,
+  /\bkaun se (on|chalu)\b/,
+  /\bwhich.*(on|chalu)\b/,
+  /\bsab (on|off|chalu|band)\b/,
+  /\bkitne (on|chalu)\b/
+];
+var TROUBLE_PATTERNS = [
+  /\bkaam nahi (kar raha|kar rahi)\b/,
+  /\bnahi (chal|chalu|khul|khuli|ja raha|ho raha)\b/,
+  /\bnot (working|turning|responding)\b/,
+  /\bproblem\b/,
+  /\bissue\b/,
+  /\bkharab\b/,
+  /\bgadbad\b/,
+  /\btrouble\b/,
+  /\bbroken\b/,
+  /\bkyu(n)?\b.*\bnahi\b/,
+  /\bwhy.*(not|isn.t)\b/,
+  /\bmadad\b/
+];
+var ONLINE_PATTERNS = [/online/, /offline/, /connected/, /zinda/, /available/];
+function detectQueryType(text) {
+  const lower = text.toLowerCase();
+  if (TROUBLE_PATTERNS.some((r) => r.test(lower))) return "troubleshoot";
+  if (STATUS_PATTERNS.some((r) => r.test(lower)) || ONLINE_PATTERNS.some((r) => r.test(lower))) return "status";
+  return null;
+}
+function fmtRelative(ts) {
+  if (!ts) return "kabhi nahi";
+  const mins = Math.floor((Date.now() - ts.getTime()) / 6e4);
+  if (mins < 1) return "abhi";
+  if (mins < 60) return `${mins} min pehle`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} ghante pehle`;
+  return `${Math.floor(hrs / 24)} din pehle`;
+}
+function deviceOnline(d) {
+  if (d.offline) return false;
+  if (!d.lastSeen) return false;
+  return Date.now() - d.lastSeen.getTime() < 24 * 60 * 60 * 1e3;
+}
+function buildStatusReply(devices, content) {
+  const lower = content.toLowerCase();
+  const matched = devices.filter((d) => lower.includes(d.name.toLowerCase()));
+  const list4 = matched.length > 0 ? matched : devices;
+  const lines = list4.map((d) => {
+    const st = d.status === "on" ? "ON \u2705" : "OFF";
+    const conn = deviceOnline(d) ? "online" : "offline \u26A0\uFE0F";
+    return `\u2022 ${d.name} \u2014 ${st} (${conn}, last seen ${fmtRelative(d.lastSeen)})`;
+  });
+  const header = matched.length > 0 ? `\u{1F4CA} "${content.trim()}" ka status:` : `\u{1F4CA} Tumhare home ke devices ka status:`;
+  return `${header}
+${lines.join(String.fromCharCode(10))}
+
+Kisi device ki problem ho to bolo \u2014 jaise "bulb kyu kaam nahi kar raha".`;
+}
+function buildTroubleshootReply(devices, content) {
+  const lower = content.toLowerCase();
+  const matched = devices.filter((d) => lower.includes(d.name.toLowerCase()));
+  const target = matched.length > 0 ? matched : devices;
+  const parts = [];
+  for (const d of target) {
+    const pending = d._count?.commands ?? 0;
+    parts.push(`\u{1F527} ${d.name}:`);
+    parts.push(`  \u2022 Status: ${d.status.toUpperCase()}`);
+    parts.push(`  \u2022 Connection: ${deviceOnline(d) ? "ONLINE" : "OFFLINE \u26A0\uFE0F"} (last seen ${fmtRelative(d.lastSeen)})`);
+    if (d.firmwareVersion) parts.push(`  \u2022 Firmware: ${d.firmwareVersion}`);
+    if (d.ipAddress) parts.push(`  \u2022 Board IP: ${d.ipAddress}`);
+    parts.push(`  \u2022 Pending commands: ${pending}`);
+    if (!deviceOnline(d)) {
+      parts.push(`  \u2192 ${d.name} board se connected NAHI hai.`);
+      parts.push(`    Fix: (1) Board ka power check karo (USB/adapter)  (2) WiFi router on hai?  (3) Board reboot karo`);
+    } else if (pending > 0) {
+      parts.push(`  \u2192 Kuch commands atki hui hain (pending queue).`);
+      parts.push(`    Fix: (1) 5-10 sec wait karo \u2014 board har 5s poll karta hai  (2) fir bhi na ho to support se "clear stuck commands" karwao`);
+    } else if (d.status === "on") {
+      parts.push(`  \u2192 Device ON dikh raha hai par kaam nahi kar raha?`);
+      parts.push(`    Fix: (1) wiring/connection check karo  (2) kisi dusre device se relay test karo`);
+    } else {
+      parts.push(`  \u2192 Device OFF hai. Pehle ON karo \u2014 "ON karo" bolo ya dashboard se toggle karo.`);
+    }
+  }
+  return parts.join(String.fromCharCode(10)) + `
+
+Aur madad chahiye? Board level ki details ke liye admin/support se baat karo.`;
+}
 async function sendMessage(userId, chatId, content) {
   const chat = await getChat(userId, chatId);
   if (!chat) throw new AppError("NOT_FOUND", "Chat not found", 404);
@@ -2016,8 +2108,32 @@ async function sendMessage(userId, chatId, content) {
   });
   const devices = await prisma.device.findMany({
     where: { homeId: chat.homeId },
-    select: { id: true, name: true, type: true, status: true }
+    select: {
+      id: true,
+      name: true,
+      type: true,
+      status: true,
+      lastSeen: true,
+      offline: true,
+      ipAddress: true,
+      firmwareVersion: true,
+      _count: { select: { commands: { where: { status: "pending" } } } }
+    }
   });
+  const queryType = detectQueryType(content);
+  if (queryType) {
+    const replyText2 = queryType === "troubleshoot" ? buildTroubleshootReply(devices, content) : buildStatusReply(devices, content);
+    const assistantMessage2 = await prisma.assistantMessage.create({
+      data: { chatId, role: "assistant", content: encodeAssistantContent(replyText2, null) }
+    });
+    if (chat.title === "AI Assist" && content.trim().length > 0) {
+      await prisma.assistantChat.update({
+        where: { id: chat.id },
+        data: { title: content.trim().slice(0, 60) }
+      });
+    }
+    return { chat, userMessage, assistantMessage: { ...assistantMessage2, content: replyText2, proposal: null } };
+  }
   const parsed2 = parseIntent(content, devices);
   let replyText;
   let proposal = null;
