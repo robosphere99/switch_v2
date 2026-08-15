@@ -349,3 +349,19 @@ export async function clearDeviceCommands(id: number): Promise<ApiResponse<{ cle
   const { data } = await api.post<ApiResponse<{ cleared: number }>>(`/admin/devices/${id}/clear-commands`);
   return data;
 }
+
+export interface EspRenameEvent {
+  id: number;
+  action: string;
+  entity: string;
+  entityId: number;
+  meta: { from?: string | null; to?: string | null };
+  createdAt: string;
+  actor: { id: number; username: string } | null;
+}
+
+/** Board ki rename history (user + admin dono ke renames). */
+export async function getEspHistory(espId: number): Promise<ApiResponse<EspRenameEvent[]>> {
+  const { data } = await api.get<ApiResponse<EspRenameEvent[]>>(`/admin/esp/${espId}/history`);
+  return data;
+}

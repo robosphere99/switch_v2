@@ -647,6 +647,61 @@ async function audit(actorId, action, opts = {}) {
   }
 }
 
+// src/services/notification.service.ts
+init_prisma();
+async function createNotification(userId, input) {
+  const notification = await prisma.notification.create({
+    data: {
+      userId,
+      category: input.category ?? "system",
+      type: input.type ?? "info",
+      title: input.title,
+      body: input.body ?? null
+    }
+  });
+  emitToUser(userId, "notification:new", notification);
+  return notification;
+}
+async function listNotifications(userId, args = {}) {
+  const page = Math.max(1, Math.floor(args.page ?? 1));
+  const pageSize = Math.min(50, Math.max(1, Math.floor(args.pageSize ?? 20)));
+  const where = { userId };
+  if (args.category && args.category !== "all") where.category = args.category;
+  if (args.type && args.type !== "all") where.type = args.type;
+  if (args.unread) where.readAt = null;
+  const [items, total] = await Promise.all([
+    prisma.notification.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize
+    }),
+    prisma.notification.count({ where })
+  ]);
+  return { items, total, page, pageSize, totalPages: Math.max(1, Math.ceil(total / pageSize)) };
+}
+async function remove2(userId, notificationId) {
+  await prisma.notification.deleteMany({ where: { id: notificationId, userId } });
+  return { ok: true };
+}
+async function unreadCount(userId) {
+  return prisma.notification.count({ where: { userId, readAt: null } });
+}
+async function markRead(userId, notificationId) {
+  await prisma.notification.updateMany({
+    where: { id: notificationId, userId },
+    data: { readAt: /* @__PURE__ */ new Date() }
+  });
+  return { ok: true };
+}
+async function markAllRead(userId) {
+  await prisma.notification.updateMany({
+    where: { userId, readAt: null },
+    data: { readAt: /* @__PURE__ */ new Date() }
+  });
+  return { ok: true };
+}
+
 // src/services/device.service.ts
 async function listDevices(homeId) {
   return prisma.device.findMany({
@@ -746,8 +801,25 @@ async function renameEsp(homeId, espId, name, actorId) {
     homeId,
     entity: "esp",
     entityId: espId,
-    meta: { name }
+    meta: { from: esp.name ?? null, to: name }
   });
+  const actor = await prisma.user.findUnique({ where: { id: actorId }, select: { username: true } });
+  const home = await prisma.home.findUnique({
+    where: { id: homeId },
+    include: { members: { where: { role: { in: ["owner", "admin"] } }, select: { userId: true } } }
+  });
+  if (home) {
+    const oldName = esp.name ?? esp.serialCode ?? `ESP-${esp.macAddress.slice(-6).toUpperCase()}`;
+    for (const m of home.members) {
+      await createNotification(m.userId, {
+        category: "device",
+        type: "info",
+        title: `\u{1F6F0}\uFE0F Board renamed: ${oldName} \u2192 ${name}`,
+        body: `${actor?.username ?? "Kisi ne"} ne board ka naam "${oldName}" se "${name}" kar diya.`
+      });
+    }
+    emitToHome(homeId, "esp:updated", { id: espId, name });
+  }
   return updated;
 }
 async function listMyBoards(userId) {
@@ -833,7 +905,7 @@ async function logs(req, res) {
   );
   ok(res, logs2);
 }
-async function remove2(req, res) {
+async function remove3(req, res) {
   await deleteDevice(Number(req.params.homeId), Number(req.params.deviceId));
   ok(res, { message: "Device deleted" });
 }
@@ -928,63 +1000,6 @@ import { z as z4 } from "zod";
 // src/services/member.service.ts
 init_prisma();
 import crypto2 from "node:crypto";
-
-// src/services/notification.service.ts
-init_prisma();
-async function createNotification(userId, input) {
-  const notification = await prisma.notification.create({
-    data: {
-      userId,
-      category: input.category ?? "system",
-      type: input.type ?? "info",
-      title: input.title,
-      body: input.body ?? null
-    }
-  });
-  emitToUser(userId, "notification:new", notification);
-  return notification;
-}
-async function listNotifications(userId, args = {}) {
-  const page = Math.max(1, Math.floor(args.page ?? 1));
-  const pageSize = Math.min(50, Math.max(1, Math.floor(args.pageSize ?? 20)));
-  const where = { userId };
-  if (args.category && args.category !== "all") where.category = args.category;
-  if (args.type && args.type !== "all") where.type = args.type;
-  if (args.unread) where.readAt = null;
-  const [items, total] = await Promise.all([
-    prisma.notification.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      skip: (page - 1) * pageSize,
-      take: pageSize
-    }),
-    prisma.notification.count({ where })
-  ]);
-  return { items, total, page, pageSize, totalPages: Math.max(1, Math.ceil(total / pageSize)) };
-}
-async function remove3(userId, notificationId) {
-  await prisma.notification.deleteMany({ where: { id: notificationId, userId } });
-  return { ok: true };
-}
-async function unreadCount(userId) {
-  return prisma.notification.count({ where: { userId, readAt: null } });
-}
-async function markRead(userId, notificationId) {
-  await prisma.notification.updateMany({
-    where: { id: notificationId, userId },
-    data: { readAt: /* @__PURE__ */ new Date() }
-  });
-  return { ok: true };
-}
-async function markAllRead(userId) {
-  await prisma.notification.updateMany({
-    where: { userId, readAt: null },
-    data: { readAt: /* @__PURE__ */ new Date() }
-  });
-  return { ok: true };
-}
-
-// src/services/member.service.ts
 function generateInviteCode() {
   const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
   const bytes = crypto2.randomBytes(8);
@@ -1269,7 +1284,7 @@ deviceRouter.delete(
   requireAuth,
   validateParams(deviceParams),
   requireHomeMember("admin"),
-  remove2
+  remove3
 );
 deviceRouter.patch(
   "/:homeId/esp/:espId",
@@ -2017,7 +2032,7 @@ notificationRouter.post("/:id/read", requireAuth, validateParams(idParams5), asy
   ok(res, await markRead(req.user.sub, Number(req.params.id)));
 });
 notificationRouter.delete("/:id", requireAuth, validateParams(idParams5), async (req, res) => {
-  ok(res, await remove3(req.user.sub, Number(req.params.id)));
+  ok(res, await remove2(req.user.sub, Number(req.params.id)));
 });
 
 // src/routes/assistant.routes.ts
@@ -3063,13 +3078,45 @@ adminRouter.patch("/esp/:id", async (req, res) => {
   if (dup) {
     throw new AppError("DUPLICATE_NAME", `Naam "${name}" already kisi aur board pe hai \u2014 har board ka unique naam chahiye`, 409);
   }
+  const before = await prisma.espDevice.findUnique({ where: { id } });
+  if (!before) throw new AppError("NOT_FOUND", "Board nahi mila", 404);
   const esp = await prisma.espDevice.update({ where: { id }, data: { name } });
   await audit(req.user.sub, "admin.esp.rename", {
     entity: "esp",
     entityId: id,
-    meta: { name }
+    meta: { from: before.name ?? null, to: name }
   });
+  const home = await prisma.home.findUnique({
+    where: { id: esp.homeId },
+    include: { members: { where: { role: { in: ["owner", "admin"] } }, select: { userId: true } } }
+  });
+  if (home) {
+    const oldName = before.name ?? before.serialCode ?? `ESP-${before.macAddress.slice(-6).toUpperCase()}`;
+    for (const m of home.members) {
+      await createNotification(m.userId, {
+        category: "support",
+        type: "info",
+        title: `\u{1F6F0}\uFE0F Support ne board renamed kiya: ${oldName} \u2192 ${name}`,
+        body: `Support team ne board ka naam "${oldName}" se "${name}" kar diya.`
+      });
+    }
+    emitToHome(esp.homeId, "esp:updated", { id, name });
+  }
   ok(res, esp);
+});
+adminRouter.get("/esp/:id/history", async (req, res) => {
+  const id = Number(req.params.id);
+  const logs2 = await prisma.auditLog.findMany({
+    where: {
+      entity: "esp",
+      entityId: id,
+      action: { in: ["user.esp.rename", "admin.esp.rename"] }
+    },
+    include: { actor: { select: { id: true, username: true } } },
+    orderBy: { createdAt: "desc" },
+    take: 50
+  });
+  ok(res, logs2);
 });
 adminRouter.get("/firmware", async (_req, res) => {
   const versions = await prisma.firmwareVersion.findMany({ orderBy: { createdAt: "desc" } });

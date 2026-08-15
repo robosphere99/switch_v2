@@ -30,6 +30,7 @@ import {
   getDeviceSupport,
   adminSetDeviceStatus,
   clearDeviceCommands,
+  getEspHistory,
 } from "../api/admin";
 import { Modal } from "../components/Modal";
 import { AdminShop } from "../components/AdminShop";
@@ -81,6 +82,7 @@ export function Admin() {
   const [fwModel, setFwModel] = useState("");
   const [fwNotes, setFwNotes] = useState("");
   const [otaMsg, setOtaMsg] = useState<string | null>(null);
+  const [histFor, setHistFor] = useState<number | null>(null);
 
   const stats = useQuery({ queryKey: ["admin-stats"], queryFn: getStats, refetchInterval: 15_000 });
   const users = useQuery({ queryKey: ["admin-users", q], queryFn: () => listUsers(q || undefined), refetchInterval: 15_000 });
@@ -96,6 +98,11 @@ export function Admin() {
   const audit = useQuery({ queryKey: ["admin-audit"], queryFn: () => listAuditLogs(), refetchInterval: 15_000 });
   const esp = useQuery({ queryKey: ["admin-esp", q], queryFn: () => getEspDevices(q || undefined), refetchInterval: 10_000 });
   const fw = useQuery({ queryKey: ["admin-firmware"], queryFn: getFirmwareList, refetchInterval: 30_000 });
+  const espHist = useQuery({
+    queryKey: ["esp-hist", histFor],
+    queryFn: () => getEspHistory(histFor!),
+    enabled: histFor !== null,
+  });
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["admin-"] });
@@ -851,6 +858,7 @@ export function Admin() {
                 <tbody>
                   {esp.data?.success &&
                     esp.data.data.esps.map((espRow) => (
+                      <>
                       <tr key={espRow.id} className="border-b border-gray-800 align-top">
                         <td className="py-2 pr-3">
                           <div className="flex items-center gap-2 font-medium">
@@ -1009,30 +1017,94 @@ export function Admin() {
                           {espRow.lastSeen ? new Date(espRow.lastSeen).toLocaleString() : "—"}
                         </td>
                         <td className="py-2 text-right">
-                          <button
-                            onClick={() => {
-                              const cur = fw.data?.success ? fw.data.data.current?.version : null;
-                              if (!cur) {
-                                alert("No firmware published yet — upload a .bin first.");
-                                return;
-                              }
-                              if (espRow.devices.length === 0) {
-                                alert("This board has no linked devices yet — waiting for its first heartbeat.");
-                                return;
-                              }
-                              if (confirm(`Push firmware ${cur} to "${espRow.name ?? espRow.macAddress}"?`)) {
-                                pushOtaM.mutate(espRow.devices[0].id, {
-                                  onSuccess: (r) => r.success && setOtaMsg(r.data.message),
-                                });
-                              }
-                            }}
-                            disabled={pushOtaM.isPending}
-                            className="rounded border border-brand/40 px-2.5 py-1 text-xs font-semibold text-brand-light hover:bg-brand/10 disabled:opacity-50"
-                          >
-                            📤 Push
-                          </button>
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              onClick={() => setHistFor(histFor === espRow.id ? null : espRow.id)}
+                              title="Rename history dekho"
+                              className="rounded border border-gray-600 px-2 py-1 text-xs text-gray-400 hover:border-brand/40 hover:text-brand-light"
+                            >
+                              🕓
+                            </button>
+                            <button
+                              onClick={() => {
+                                const cur = fw.data?.success ? fw.data.data.current?.version : null;
+                                if (!cur) {
+                                  alert("No firmware published yet — upload a .bin first.");
+                                  return;
+                                }
+                                if (espRow.devices.length === 0) {
+                                  alert("This board has no linked devices yet — waiting for its first heartbeat.");
+                                  return;
+                                }
+                                if (confirm(`Push firmware ${cur} to "${espRow.name ?? espRow.macAddress}"?`)) {
+                                  pushOtaM.mutate(espRow.devices[0].id, {
+                                    onSuccess: (r) => r.success && setOtaMsg(r.data.message),
+                                  });
+                                }
+                              }}
+                              disabled={pushOtaM.isPending}
+                              className="rounded border border-brand/40 px-2.5 py-1 text-xs font-semibold text-brand-light hover:bg-brand/10 disabled:opacity-50"
+                            >
+                              📤 Push
+                            </button>
+                          </div>
                         </td>
                       </tr>
+                      {histFor === espRow.id && (
+                        <tr className="border-b border-gray-800 bg-night-900/60">
+                          <td colSpan={8} className="px-4 py-3">
+                            <div className="mb-2 flex items-center justify-between">
+                              <span className="text-xs font-bold uppercase tracking-wide text-gray-400">
+                                🕓 Rename history — {espRow.name ?? espRow.macAddress}
+                              </span>
+                              <button
+                                onClick={() => setHistFor(null)}
+                                className="text-[10px] text-gray-500 hover:text-gray-300"
+                              >
+                                ✕ close
+                              </button>
+                            </div>
+                            {espHist.isLoading && <p className="text-xs text-gray-500">Loading…</p>}
+                            {espHist.data?.success && espHist.data.data.length === 0 && (
+                              <p className="text-xs text-gray-500">Koi rename nahi hua abhi tak.</p>
+                            )}
+                            {espHist.data?.success && espHist.data.data.length > 0 && (
+                              <div className="flex flex-col gap-2">
+                                {espHist.data.data.map((ev) => (
+                                  <div
+                                    key={ev.id}
+                                    className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-800 bg-night-950/60 px-3 py-2 text-xs"
+                                  >
+                                    <span
+                                      className={`rounded px-1.5 py-0.5 font-mono text-[10px] font-bold ${
+                                        ev.action === "admin.esp.rename"
+                                          ? "bg-amber-500/15 text-amber-400"
+                                          : "bg-brand/15 text-brand-light"
+                                      }`}
+                                    >
+                                      {ev.action === "admin.esp.rename" ? "ADMIN" : "USER"}
+                                    </span>
+                                    <span className="text-gray-300">
+                                      <span className="text-gray-500 line-through decoration-gray-600">
+                                        {ev.meta?.from ?? "—"}
+                                      </span>
+                                      {" → "}
+                                      <span className="font-semibold text-white">{ev.meta?.to ?? "—"}</span>
+                                    </span>
+                                    <span className="text-gray-500">
+                                      by {ev.actor?.username ?? "system"}
+                                    </span>
+                                    <span className="ml-auto font-mono text-[10px] text-gray-500">
+                                      {new Date(ev.createdAt).toLocaleString()}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                      </>
                     ))}
                   {esp.data?.success && esp.data.data.esps.length === 0 && (
                     <tr>
