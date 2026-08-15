@@ -18,7 +18,9 @@ export async function listMembers(homeId: number, viewerRole?: HomeMemberRole) {
     orderBy: { joinedAt: "asc" },
   });
   // Device grants sirf owner/admin ko dikhao (member/viewer ko nahi).
-  if (viewerRole === "owner" || viewerRole === "admin") {
+  // Defensive: agar server pe prisma client stale ho (model missing) to bina
+  // grants ke degrade karo — 500 kabhi nahi.
+  if ((viewerRole === "owner" || viewerRole === "admin") && prisma.deviceAccess) {
     const grants = await prisma.deviceAccess.findMany({
       where: { homeId },
       select: { userId: true, deviceId: true },

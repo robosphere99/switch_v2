@@ -10,6 +10,28 @@ import { apiRouter } from "./routes";
 import { installRouter } from "./routes/install.routes";
 import { isDbReady } from "./lib/dbState";
 import { fileLog } from "./lib/logger";
+import { prisma } from "./lib/prisma";
+
+/** Health diagnostics — models/tables present hain ya nahi (deploy issue pehchanna). */
+async function schemaDiag() {
+  try {
+    const models = {
+      deviceAccess: typeof (prisma as unknown as Record<string, unknown>).deviceAccess === "object",
+      deviceUsage: typeof (prisma as unknown as Record<string, unknown>).deviceUsage === "object",
+      homeMemberRestricted: typeof (prisma as unknown as Record<string, unknown>).homeMember === "object",
+    };
+    const table = async (t: string) => {
+      const r = await prisma.$queryRaw<{ c: bigint }[]>`
+        SELECT COUNT(*) AS c FROM information_schema.tables
+        WHERE table_schema = DATABASE() AND table_name = ${t}
+      `;
+      return Number(r[0]?.c ?? 0) > 0;
+    };
+    return { models, tables: { device_access: await table("device_access"), device_usage: await table("device_usage") } };
+  } catch {
+    return { error: "diag failed" };
+  }
+}
 
 export function createApp() {
   const app = express();
@@ -41,8 +63,11 @@ export function createApp() {
     next();
   });
 
-  app.get("/api/health", (_req, res) => {
-    res.json({ success: true, data: { status: "ok", ts: new Date().toISOString() } });
+  app.get("/api/health", async (_req, res) => {
+    res.json({
+      success: true,
+      data: { status: "ok", ts: new Date().toISOString(), schema: await schemaDiag() },
+    });
   });
 
   // Install routes hamesha available — setup mode me bhi.

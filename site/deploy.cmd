@@ -19,13 +19,22 @@ REM     then npx prisma generate to rebuild @prisma/client.
 REM ============================================================
 cd /d "%~dp0apps\api"
 
+REM node_modules npm workspaces ke saath hoisted hoke site\ pe bhi ho sakta hai
+REM — dono jagah check karo (apps\api\node_modules ya site\node_modules).
 set NODE_MODULES_OK=0
 if exist "node_modules\.prisma\client\index.js" if exist "node_modules\express" set NODE_MODULES_OK=1
+if not "%NODE_MODULES_OK%"=="1" if exist "..\node_modules\.prisma\client\index.js" if exist "..\node_modules\express" set NODE_MODULES_OK=1
 
 if "%NODE_MODULES_OK%"=="1" (
   echo [deploy] node_modules mila — npm skip, prisma client refresh
   call npx --no-install prisma generate
-  if errorlevel 1 echo [deploy] WARN: prisma generate failed (purana client chalega)
+  if errorlevel 1 (
+    echo [deploy] WARN: npx --no-install prisma generate fail — plain npx retry
+    call npx prisma generate
+  )
+  if errorlevel 1 (
+    echo [deploy] ERROR: prisma generate failed — purana client chalega
+  )
   echo [deploy] OK
   exit /b 0
 )
