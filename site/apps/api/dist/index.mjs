@@ -15,12 +15,21 @@ var __export = (target, all) => {
 
 // src/lib/prisma.ts
 import { PrismaClient } from "@prisma/client";
+function withConnLimit(url, limit = 2) {
+  try {
+    const u = new URL(url);
+    u.searchParams.set("connection_limit", String(limit));
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
 async function resetPrismaClient(databaseUrl) {
   try {
     await prisma.$disconnect();
   } catch {
   }
-  process.env.DATABASE_URL = databaseUrl;
+  process.env.DATABASE_URL = withConnLimit(databaseUrl);
   const next = new PrismaClient();
   await next.$connect();
   prisma = next;
@@ -32,7 +41,9 @@ var init_prisma = __esm({
   "src/lib/prisma.ts"() {
     "use strict";
     globalForPrisma = globalThis;
-    prisma = globalForPrisma.prisma ?? new PrismaClient();
+    prisma = globalForPrisma.prisma ?? new PrismaClient({
+      datasources: { db: { url: withConnLimit(process.env.DATABASE_URL ?? "") } }
+    });
     if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
   }
 });
@@ -86,7 +97,7 @@ function buildDatabaseUrl() {
   const user = process.env.DB_USER ?? "root";
   const pass = process.env.DB_PASS ?? "";
   const name = process.env.DB_NAME ?? "switch_v2";
-  return `mysql://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}:${port}/${name}`;
+  return `mysql://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}:${port}/${name}?connection_limit=2`;
 }
 var envSchema = z.object({
   // Empty DATABASE_URL diya ho to ignore karke DB_* vars use hote hain

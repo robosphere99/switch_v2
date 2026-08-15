@@ -16,7 +16,9 @@ function buildDatabaseUrl(): string {
   const user = process.env.DB_USER ?? "root";
   const pass = process.env.DB_PASS ?? "";
   const name = process.env.DB_NAME ?? "switch_v2";
-  return `mysql://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}:${port}/${name}`;
+  // connection_limit=2 — Plesk pe per-user max_user_connections hota hai.
+  // Default pool (num_cpus*2+1) multiple processes me exhaust ho jata hai (ERROR 1203).
+  return `mysql://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}:${port}/${name}?connection_limit=2`;
 }
 
 const envSchema = z.object({
