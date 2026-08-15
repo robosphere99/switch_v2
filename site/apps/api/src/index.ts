@@ -133,6 +133,19 @@ async function runLightMigrations(): Promise<void> {
         logger.info("✅ Migration: support_messages.deleted_at added");
       }
     });
+    // 5b2) support_messages.attachment_path — naye attachments file disk pe (DB me blob nahi).
+    await migration("support_messages.attachment_path", async () => {
+      const ap = await prisma.$queryRaw<{ c: bigint }[]>`
+        SELECT COUNT(*) AS c FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'support_messages' AND column_name = 'attachment_path'
+      `;
+      if (Number(ap[0]?.c ?? 0) === 0) {
+        await prisma.$executeRawUnsafe(
+          "ALTER TABLE `support_messages` ADD COLUMN `attachment_path` VARCHAR(255) NULL",
+        );
+        logger.info("✅ Migration: support_messages.attachment_path added");
+      }
+    });
     // 5c) support_chat_settings — mute/pin per conversation (user ya admin ka apna view).
     await migration("support_chat_settings table", async () => {
       const cs = await prisma.$queryRaw<{ c: bigint }[]>`

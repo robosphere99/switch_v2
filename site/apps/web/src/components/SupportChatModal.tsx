@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { Send } from "lucide-react";
 import { getSupportMessages, sendSupportMessage, type SupportAttachment } from "../api/admin";
+import { getAttachmentUrl } from "../api/client";
 import { Modal } from "./Modal";
 import { AttachmentPicker } from "./AttachmentPicker";
 import { AttachmentBubble } from "./AttachmentBubble";
@@ -69,8 +70,13 @@ export function SupportChatModal({
           >
             <div className="text-[10px] font-bold uppercase opacity-70">{m.senderName}</div>
             {m.message && <div className="whitespace-pre-wrap">{m.message}</div>}
-            {m.attachmentName && m.attachmentType && m.attachmentData && (
-              <AttachmentBubble name={m.attachmentName} type={m.attachmentType} data={m.attachmentData} />
+            {m.attachmentName && m.attachmentType && (m.attachmentData || m.attachmentPath) && (
+              <AttachmentBubble
+                name={m.attachmentName}
+                type={m.attachmentType}
+                data={m.attachmentData}
+                url={getAttachmentUrl(m)}
+              />
             )}
             <div className="mt-0.5 text-right text-[10px] opacity-60">{new Date(m.createdAt).toLocaleString()}</div>
           </div>

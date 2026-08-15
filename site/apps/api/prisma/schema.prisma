@@ -621,7 +621,8 @@ model SupportMessage {
   message    String   @db.Text
   attachmentName String? @db.VarChar(255) @map("attachment_name")
   attachmentType String? @db.VarChar(100) @map("attachment_type")
-  attachmentData String? @db.MediumText @map("attachment_data")
+  attachmentData String? @db.MediumText @map("attachment_data") // purana base64 blob (legacy rows)
+  attachmentPath String? @db.VarChar(255) @map("attachment_path") // naya: file path (disk pe, DB me blob nahi)
   readByUser   Boolean @default(false) @map("read_by_user")
   readByAdmin  Boolean @default(true)  @map("read_by_admin")
   deletedAt    DateTime? @map("deleted_at") // soft delete (WhatsApp-style)

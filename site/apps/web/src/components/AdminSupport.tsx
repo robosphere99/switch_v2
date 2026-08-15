@@ -14,6 +14,7 @@ import {
   type SupportConversation,
 } from "../api/admin";
 import { AttachmentBubble } from "./AttachmentBubble";
+import { getAttachmentUrl } from "../api/client";
 import { AttachmentPicker } from "./AttachmentPicker";
 import { SupportUserContext } from "./SupportUserContext";
 import { getSocket } from "../lib/socket";
@@ -400,8 +401,13 @@ export function AdminSupport({
                       {m.senderRole === "admin" ? "Admin" : m.senderName || "User"}
                     </div>
                     {m.message && <div className="whitespace-pre-wrap">{m.message}</div>}
-                    {m.attachmentName && m.attachmentType && m.attachmentData && (
-                      <AttachmentBubble name={m.attachmentName} type={m.attachmentType} data={m.attachmentData} />
+                    {m.attachmentName && m.attachmentType && (m.attachmentData || m.attachmentPath) && (
+                      <AttachmentBubble
+                        name={m.attachmentName}
+                        type={m.attachmentType}
+                        data={m.attachmentData}
+                        url={getAttachmentUrl(m)}
+                      />
                     )}
                     <div className={`mt-0.5 flex items-center justify-end gap-1 text-right text-[10px] opacity-60`}>
                       {new Date(m.createdAt).toLocaleTimeString([], {
