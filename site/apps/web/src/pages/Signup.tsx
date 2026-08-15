@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { signup } from "../api/auth";
 import { useAuthStore } from "../stores/auth";
+import { applyAccountTheme } from "../lib/themeAccount";
 
 export function Signup() {
   const [username, setUsername] = useState("");
@@ -21,6 +22,7 @@ export function Signup() {
       const res = await signup({ username, email, password, homeName });
       if (res.success) {
         setAuth(res.data);
+        applyAccountTheme(res.data.user);
         navigate("/dashboard");
       } else {
         setError(res.error.message);

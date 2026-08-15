@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { Lock } from "lucide-react";
 import { login } from "../api/auth";
 import { useAuthStore } from "../stores/auth";
+import { applyAccountTheme } from "../lib/themeAccount";
 import { Logo } from "../components/Logo";
 
 export function Login() {
@@ -21,6 +22,7 @@ export function Login() {
       const res = await login({ usernameEmail, password });
       if (res.success) {
         setAuth(res.data);
+        applyAccountTheme(res.data.user);
         navigate("/dashboard");
       } else {
         setError(res.error.message);

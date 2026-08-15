@@ -8,7 +8,7 @@ import { prisma } from "../lib/prisma";
 import { AppError } from "../lib/response";
 
 function toAuthUser(user: User): AuthUser {
-  return { id: user.id, username: user.username, email: user.email, role: user.role };
+  return { id: user.id, username: user.username, email: user.email, role: user.role, themePref: user.themePref };
 }
 
 function hashToken(token: string): string {
@@ -114,6 +114,15 @@ export async function updateProfile(
   }
 
   const updated = await prisma.user.update({ where: { id: userId }, data });
+  return toAuthUser(updated);
+}
+
+/** Save theme preference on the account — light/dark/system (cross-device). */
+export async function updateThemePref(userId: number, theme: string): Promise<AuthUser> {
+  const updated = await prisma.user.update({
+    where: { id: userId },
+    data: { themePref: theme },
+  });
   return toAuthUser(updated);
 }
 

@@ -116,6 +116,7 @@ model User {
   status      UserStatus @default(active)
   createdAt   DateTime   @default(now()) @map("created_at")
   lastLoginAt DateTime?  @map("last_login_at")
+  themePref   String?    @db.VarChar(16) @map("theme_pref")
 
   ownedHomes     Home[]            @relation("HomeOwner")
   memberships    HomeMember[]

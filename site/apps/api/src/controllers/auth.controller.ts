@@ -18,7 +18,7 @@ export async function login(req: Request, res: Response) {
 export async function me(req: Request, res: Response) {
   const user = await prisma.user.findUnique({
     where: { id: req.user!.sub },
-    select: { id: true, username: true, email: true, role: true, createdAt: true },
+    select: { id: true, username: true, email: true, role: true, themePref: true, createdAt: true },
   });
   ok(res, user);
 }
@@ -37,5 +37,10 @@ export async function logout(req: Request, res: Response) {
 
 export async function updateProfile(req: Request, res: Response) {
   const user = await authService.updateProfile(req.user!.sub, req.body);
+  ok(res, user);
+}
+
+export async function updateTheme(req: Request, res: Response) {
+  const user = await authService.updateThemePref(req.user!.sub, req.body.theme as string);
   ok(res, user);
 }

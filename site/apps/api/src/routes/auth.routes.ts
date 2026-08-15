@@ -26,6 +26,10 @@ const logoutSchema = z.object({
   refreshToken: z.string().min(1),
 });
 
+const themeSchema = z.object({
+  theme: z.enum(["light", "dark", "system"]),
+});
+
 const profileSchema = z
   .object({
     username: z.string().min(3).max(50).optional(),
@@ -41,3 +45,4 @@ authRouter.post("/refresh", validateBody(refreshSchema), authController.refresh)
 authRouter.post("/logout", validateBody(logoutSchema), authController.logout);
 authRouter.get("/me", requireAuth, authController.me);
 authRouter.patch("/me", requireAuth, validateBody(profileSchema), authController.updateProfile);
+authRouter.put("/theme", requireAuth, validateBody(themeSchema), authController.updateTheme);

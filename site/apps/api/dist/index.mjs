@@ -257,7 +257,7 @@ import crypto from "node:crypto";
 import jwt from "jsonwebtoken";
 init_prisma();
 function toAuthUser(user) {
-  return { id: user.id, username: user.username, email: user.email, role: user.role };
+  return { id: user.id, username: user.username, email: user.email, role: user.role, themePref: user.themePref };
 }
 function hashToken(token) {
   return crypto.createHash("sha256").update(token).digest("hex");
@@ -329,6 +329,13 @@ async function updateProfile(userId, input) {
   const updated = await prisma.user.update({ where: { id: userId }, data });
   return toAuthUser(updated);
 }
+async function updateThemePref(userId, theme) {
+  const updated = await prisma.user.update({
+    where: { id: userId },
+    data: { themePref: theme }
+  });
+  return toAuthUser(updated);
+}
 async function login(usernameEmail, password) {
   const user = await prisma.user.findFirst({
     where: { OR: [{ username: usernameEmail }, { email: usernameEmail }] }
@@ -398,7 +405,7 @@ async function login2(req, res) {
 async function me(req, res) {
   const user = await prisma.user.findUnique({
     where: { id: req.user.sub },
-    select: { id: true, username: true, email: true, role: true, createdAt: true }
+    select: { id: true, username: true, email: true, role: true, themePref: true, createdAt: true }
   });
   ok(res, user);
 }
@@ -414,6 +421,10 @@ async function logout2(req, res) {
 }
 async function updateProfile2(req, res) {
   const user = await updateProfile(req.user.sub, req.body);
+  ok(res, user);
+}
+async function updateTheme(req, res) {
+  const user = await updateThemePref(req.user.sub, req.body.theme);
   ok(res, user);
 }
 
@@ -471,6 +482,9 @@ var refreshSchema = z2.object({
 var logoutSchema = z2.object({
   refreshToken: z2.string().min(1)
 });
+var themeSchema = z2.object({
+  theme: z2.enum(["light", "dark", "system"])
+});
 var profileSchema = z2.object({
   username: z2.string().min(3).max(50).optional(),
   email: z2.string().email().max(100).optional(),
@@ -483,6 +497,7 @@ authRouter.post("/refresh", validateBody(refreshSchema), refresh2);
 authRouter.post("/logout", validateBody(logoutSchema), logout2);
 authRouter.get("/me", requireAuth, me);
 authRouter.patch("/me", requireAuth, validateBody(profileSchema), updateProfile2);
+authRouter.put("/theme", requireAuth, validateBody(themeSchema), updateTheme);
 
 // src/routes/home.routes.ts
 import { Router as Router2 } from "express";
@@ -5093,6 +5108,16 @@ async function runLightMigrations() {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
       `);
       logger.info("\u2705 Migration: support_messages table created");
+    }
+    const tp = await prisma.$queryRaw`
+      SELECT COUNT(*) AS c FROM information_schema.columns
+      WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'theme_pref'
+    `;
+    if (Number(tp[0]?.c ?? 0) === 0) {
+      await prisma.$executeRawUnsafe(
+        "ALTER TABLE `users` ADD COLUMN `theme_pref` VARCHAR(16) NULL"
+      );
+      logger.info("\u2705 Migration: users.theme_pref column added");
     }
   } catch (err) {
     logger.warn("Light migration (esp serial unique) skip/fail", err instanceof Error ? err.message : String(err));

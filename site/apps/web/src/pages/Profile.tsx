@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Monitor, Moon, Save, Sun, User } from "lucide-react";
 import { updateProfile } from "../api/auth";
 import { useAuthStore } from "../stores/auth";
-import { getThemeMode, setThemeMode } from "../lib/theme";
+import { getThemeMode } from "../lib/theme";
+import { changeTheme } from "../lib/themeAccount";
 import type { ThemeMode } from "../lib/theme";
 
 const THEME_OPTIONS: Array<{ mode: ThemeMode; label: string; icon: typeof Sun }> = [
@@ -144,7 +145,7 @@ export function Profile() {
               key={mode}
               type="button"
               onClick={() => {
-                setThemeMode(mode);
+                changeTheme(mode);
                 setThemeModeState(mode);
               }}
               className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-semibold transition ${
