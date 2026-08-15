@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { submitSupport, getMySupportTickets, getMySupportChat, sendSupportReply, type SupportAttachment } from "../api/public";
 import { getMyOrders, type Order } from "../api/shop";
 import { AttachmentPicker } from "../components/AttachmentPicker";
@@ -21,6 +22,7 @@ const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
 };
 
 export function Support() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [orders, setOrders] = useState<Order[]>([]);
   const [tickets, setTickets] = useState<Array<{ id: number; subject: string; message: string; status: string; createdAt: string }>>([]);
   const [form, setForm] = useState({ subject: SUBJECTS[0], orderNumber: "", phone: "", message: "" });
@@ -35,6 +37,23 @@ export function Support() {
   const [chatError, setChatError] = useState(false);
   const [chatLoading, setChatLoading] = useState(true);
   const chatBottomRef = useRef<HTMLDivElement>(null);
+  const chatSectionRef = useRef<HTMLDivElement>(null);
+  const chatInputRef = useRef<HTMLInputElement>(null);
+
+  // Notification click se aaya draft → chat input mein pre-fill + focus + scroll
+  const draftFromUrl = searchParams.get("draft");
+  const [draftApplied, setDraftApplied] = useState(false);
+  useEffect(() => {
+    if (!draftFromUrl) return;
+    setChatDraft(draftFromUrl);
+    setDraftApplied(true);
+    setSearchParams({}, { replace: true });
+    requestAnimationFrame(() => {
+      chatSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      chatInputRef.current?.focus();
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const refreshChat = () =>
     getMySupportChat()
@@ -209,7 +228,7 @@ export function Support() {
 
 
       {/* Support chat — seedha team se baat */}
-      <div className="mt-8 rounded-xl border border-gray-200 bg-night-800 p-6">
+      <div ref={chatSectionRef} className="mt-8 rounded-xl border border-gray-200 bg-night-800 p-6">
         <h2 className="mb-1 text-lg font-semibold">💬 Support Chat</h2>
         <p className="mb-4 text-sm text-gray-500">
           Seedha humari team se baat karo — ticket kholne ki zaroorat nahi. Message bhejo, support reply karega (bell 🔔 me bhi pata chalega).
@@ -248,6 +267,7 @@ export function Support() {
         >
           <AttachmentPicker value={chatAttachment} onChange={setChatAttachment} />
           <input
+            ref={chatInputRef}
             value={chatDraft}
             onChange={(e) => setChatDraft(e.target.value)}
             placeholder="Message likho… (Enter se bhejo)"
@@ -261,6 +281,11 @@ export function Support() {
             Send
           </button>
         </form>
+        {draftApplied && chatDraft.trim() && (
+          <p className="mt-2 rounded-lg border border-brand/30 bg-brand/10 px-3 py-1.5 text-xs text-brand">
+            📝 Notification se draft tayyar hai — edit karke <b>Enter</b> dabao.
+          </p>
+        )}
         {chatError && <p className="mt-2 text-xs text-red-500">Bhejne me dikkat — dobara try karo.</p>}
       </div>
 
