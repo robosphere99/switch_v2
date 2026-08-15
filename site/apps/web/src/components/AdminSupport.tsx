@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Bell, BellOff, CheckCheck, Copy, Inbox, Pin, PinOff, Search, Send, Trash2, UserRound } from "lucide-react";
+import { ArrowLeft, Bell, BellOff, CheckCheck, Copy, Inbox, Pin, PinOff, Search, Send, Trash2, UserRound } from "lucide-react";
 import {
   clearSupportConversation,
   deleteSupportMessage,
@@ -57,7 +57,8 @@ export function AdminSupport({
   const [q, setQ] = useState("");
   const [draft, setDraft] = useState("");
   const [attachment, setAttachment] = useState<SupportAttachment | null>(null);
-  const [showContext, setShowContext] = useState(true);
+  // Desktop pe right-panel default open; mobile pe drawer default band (chat dikhna chahiye pehle).
+  const [showContext, setShowContext] = useState(() => window.matchMedia("(min-width: 768px)").matches);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const conversations = useQuery({
@@ -202,8 +203,10 @@ export function AdminSupport({
       </div>
 
       <div className="flex h-[65vh] flex-col md:flex-row">
-        {/* Left — conversation list */}
-        <div className="flex w-full shrink-0 flex-col border-b border-gray-200 md:w-80 md:border-b-0 md:border-r">
+        {/* Left — conversation list (mobile: sirf tab jab koi chat na khuli ho — WhatsApp jaisa) */}
+        <div
+          className={`${selectedUserId == null ? "flex" : "hidden md:flex"} w-full shrink-0 flex-col border-b border-gray-200 md:w-80 md:border-b-0 md:border-r`}
+        >
           <div className="p-2">
             <div className="relative">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
@@ -301,6 +304,15 @@ export function AdminSupport({
             <div className="flex min-w-0 flex-1 flex-col">
             {/* Thread header */}
             <div className="flex items-center gap-3 border-b border-gray-200 bg-night-900 px-4 py-2.5">
+              {/* Mobile back — chats list pe wapas */}
+              <button
+                onClick={() => onSelectUser(null)}
+                className="rounded-lg p-1.5 text-gray-500 transition hover:bg-night-700 hover:text-brand md:hidden"
+                title="Chats wapas"
+                aria-label="Back to chats"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </button>
               <div
                 className={`flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold text-white ${avatarColor(selectedUserId)}`}
               >
@@ -353,7 +365,7 @@ export function AdminSupport({
               </div>
               <button
                 onClick={() => setShowContext((v) => !v)}
-                className={`hidden shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition md:flex ${
+                className={`flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition ${
                   showContext
                     ? "border-brand/50 bg-brand/15 text-brand"
                     : "border-gray-200 text-gray-500 hover:bg-night-700"
@@ -361,7 +373,7 @@ export function AdminSupport({
                 title={showContext ? "User info band karo" : "User ka order/home/device context dikhao"}
               >
                 <UserRound className="h-3.5 w-3.5" />
-                Info
+                <span className="hidden md:inline">Info</span>
               </button>
             </div>
 
@@ -405,8 +417,8 @@ export function AdminSupport({
                         ))}
                     </div>
                   </div>
-                  {/* Hover actions — copy + delete (admin koi bhi delete kar sakta hai) */}
-                  <div className="absolute right-0 top-0 z-10 hidden items-center gap-1 rounded-lg bg-night-800/95 p-1 shadow-lg group-hover:flex">
+                  {/* Copy + delete — desktop hover pe, mobile pe hamesha visible (touch pe hover nahi hota) */}
+                  <div className="absolute right-0 top-0 z-10 flex items-center gap-1 rounded-lg bg-night-800/95 p-1 shadow-lg opacity-0 transition group-hover:opacity-100 max-md:opacity-100">
                     {m.message && (
                       <button
                         onClick={() => navigator.clipboard?.writeText(m.message)}
@@ -463,11 +475,25 @@ export function AdminSupport({
             )}
           </div>
 
-            {/* Right — user context panel (orders / homes / devices / boards) */}
+            {/* Right — user context (orders / homes / devices / boards):
+                desktop = right column, mobile = full-screen drawer (Info button se) */}
             {showContext && (
-              <div className="hidden md:block">
-                <SupportUserContext userId={selectedUserId} onClose={() => setShowContext(false)} />
-              </div>
+              <>
+                <div className="hidden md:block">
+                  <SupportUserContext userId={selectedUserId} onClose={() => setShowContext(false)} />
+                </div>
+                <div
+                  className="fixed inset-0 z-40 bg-night-950/70 md:hidden"
+                  onClick={() => setShowContext(false)}
+                >
+                  <div
+                    className="flex h-full w-full flex-col"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <SupportUserContext userId={selectedUserId} onClose={() => setShowContext(false)} />
+                  </div>
+                </div>
+              </>
             )}
           </div>
         )}
