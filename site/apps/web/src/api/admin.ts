@@ -73,6 +73,21 @@ export interface AdminAuditLog {
   actor: { id: number; username: string } | null;
 }
 
+export interface GlobalSearchResult {
+  q: string;
+  users: Array<{ id: number; username: string; email: string; role: string; status: string }>;
+  homes: Array<{ id: number; name: string; status: string; owner: { username: string } | null; _count: { devices: number; members: number } }>;
+  devices: Array<{ id: number; name: string; type: string; status: string; serialNumber: string | null; ipAddress: string | null; home: { name: string } | null }>;
+  esps: Array<{ id: number; name: string | null; serialCode: string | null; modelCode: string | null; ipAddress: string | null; offline: boolean; home: { name: string } | null }>;
+  orders: Array<{ id: number; orderNumber: string; status: string; paymentStatus: string; totalAmount: string; createdAt: string; user: { username: string } | null }>;
+  serials: Array<{ id: number; serialCode: string; status: string; orderId: number | null; product: { name: string } | null; user: { username: string } | null }>;
+}
+
+export async function globalSearch(q: string): Promise<ApiResponse<GlobalSearchResult>> {
+  const { data } = await api.get<ApiResponse<GlobalSearchResult>>("/admin/search", { params: { q } });
+  return data;
+}
+
 export async function getStats(): Promise<ApiResponse<AdminStats>> {
   const { data } = await api.get<ApiResponse<AdminStats>>("/admin/stats");
   return data;
