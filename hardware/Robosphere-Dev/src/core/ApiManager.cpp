@@ -1,7 +1,8 @@
 #include <Arduino.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
-#include<WiFi.h>
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include "core/ApiManager.h"
 #include "preferences/PreferencesManager.h"
 #include "core/DeviceManager.h"
@@ -30,6 +31,21 @@ static bool clientForUrl(const String &url, HTTPClient &http, bool secureOnly = 
     {
         secureClient.setInsecure();
         return http.begin(secureClient, url);
+    }
+    return http.begin(url);
+}
+
+// Command poller apne dedicated task (core 0) se chalta hai — uske liye ALAG
+// TLS client rakhte hain taaki main loop (downloadDevices/heartbeat/updateDevice)
+// wale secureClient se ek hi connection pe conflict na ho. Aisi sharing se
+// dono ek saath TLS session corrupt kar sakte the.
+static WiFiClientSecure commandSecureClient;
+static bool commandClientForUrl(const String &url, HTTPClient &http)
+{
+    if (url.startsWith("https://"))
+    {
+        commandSecureClient.setInsecure();
+        return http.begin(commandSecureClient, url);
     }
     return http.begin(url);
 }
@@ -396,10 +412,16 @@ bool downloadCommands()
 
     HTTPClient http;
 
-    String url = serverURL + "/api/device/commands?api_key=" + apiKey;
+    // Long-poll mode (v2): server response ko hold karta hai jab tak command
+    // na aaye (max 20s). Command aate hi turant response milta hai → web toggle
+    // se relay pe click ~1s ke andar. Yah function ab dedicated command-poll
+    // task (core 0) se chalta hai, isliye blocking se loop/web-panel freeze
+    // nahi hota. Read timeout = hold + 6s buffer; connect timeout short rehta
+    // hai taaki WiFi down pe jaldi fail ho.
+    String url = serverURL + "/api/device/commands?api_key=" + apiKey + "&long=1&hold=20";
 
-    clientForUrl(url, http);
-    http.setTimeout(500);
+    commandClientForUrl(url, http);
+    http.setTimeout(26000);
     http.setConnectTimeout(1500);
     int httpCode = http.GET();
 
@@ -502,7 +524,8 @@ bool ackCommand(int commandId, int deviceId, bool ok)
 
     String url = PreferencesManager::getServerURL() + "/api/device/commands/ack";
 
-    clientForUrl(url, http);
+    // ack sirf command-poll task se aata hai — apna dedicated client use karo
+    commandClientForUrl(url, http);
     http.setTimeout(500);
     http.setConnectTimeout(1500);
 

@@ -50,8 +50,8 @@ export function NotificationBell() {
     const parsed = parseNotificationBody(n.body);
     setOpen(false);
     if (n.category === "support") {
-      if (isAdmin && parsed.targetUserId) {
-        navigate(`/admin?tab=support&user=${parsed.targetUserId}`);
+      if (isAdmin) {
+        navigate(parsed.targetUserId ? `/admin?tab=support&user=${parsed.targetUserId}` : "/admin?tab=support");
       } else {
         navigate("/support");
       }
