@@ -136,17 +136,33 @@ export async function heartbeat(
   // board create/update hota hai aur uske under saare mapped devices link.
   let esp: { id: number; macAddress: string; name: string | null; ssid: string | null; serialCode: string | null; modelCode: string | null; ipAddress: string | null; firmwareVersion: string | null; otaPendingVersion: string | null } | null = null;
   const macKey = mac ? mac.replace(/[^0-9A-Fa-f:]/g, "").toLowerCase() : "";
+  // Serial code sirf EK physical board se bind ho sakta hai (tracking/security).
+  // Agar yeh serial kisi AUR board pe already hai, to is board pe attach mat karo —
+  // board apna kaam phir bhi karega, par serial wahi rahega jis board ko mila.
+  let attachSerial = serial;
+  if (macKey && serial) {
+    const other = await prisma.espDevice.findFirst({
+      where: { serialCode: serial, macAddress: { not: macKey } },
+      select: { id: true },
+    });
+    if (other) attachSerial = undefined;
+  }
+  const macTail = macKey.replace(/:/g, "").slice(-6).toUpperCase();
   if (macKey) {
     esp = await prisma.espDevice.upsert({
       where: { macAddress: macKey },
       create: {
         homeId,
         macAddress: macKey,
-        name: ssid
-          ? `${ssid} · ${(serial || macKey.replace(/:/g, "").slice(-6).toUpperCase())}`
-          : `ESP-${macKey.replace(/:/g, "").slice(-6).toUpperCase()}`,
+        // Unique + searchable naam: serial (product code) pehle, SSID baad me.
+        // Serial na ho to MAC-tail se unique `ESP-XXXXXX` fallback.
+        name: attachSerial
+          ? `${attachSerial} · ${ssid ?? "Robosphere"}`
+          : ssid
+            ? `${ssid} · ESP-${macTail}`
+            : `ESP-${macTail}`,
         ssid,
-        serialCode: serial,
+        serialCode: attachSerial,
         modelCode: model,
         ipAddress: ip,
         firmwareVersion: fw,
@@ -156,7 +172,7 @@ export async function heartbeat(
       update: {
         homeId,
         ssid: ssid ?? undefined,
-        serialCode: serial ?? undefined,
+        serialCode: attachSerial ?? undefined,
         modelCode: model ?? undefined,
         ipAddress: ip ?? undefined,
         firmwareVersion: fw ?? undefined,

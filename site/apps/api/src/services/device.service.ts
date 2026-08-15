@@ -6,6 +6,9 @@ import { emitToHome } from "../lib/socket";
 export async function listDevices(homeId: number) {
   return prisma.device.findMany({
     where: { homeId },
+    include: {
+      esp: { select: { id: true, name: true, serialCode: true, modelCode: true, offline: true, lastSeen: true } },
+    },
     orderBy: { createdAt: "desc" },
   });
 }

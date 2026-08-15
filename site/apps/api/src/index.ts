@@ -11,6 +11,39 @@ import { setDbReady } from "./lib/dbState";
 // Tables exist ya nahi — information_schema se check (empty DB pe crash
 // nahi karta). Bas DB reachable hona kaafi nahi: tables nahi hain to
 // setup mode me rehna hai, warna startup queries crash karti hain.
+/** Lightweight boot-time migrations — naye installs ke liye schema.sql me hai,
+ *  purane (already-installed) DBs ke liye yahan idempotent patches chalao.
+ *  Fail hone pe app crash mat karo — bas log karo (agle boot pe dobara try). */
+async function runLightMigrations(): Promise<void> {
+  try {
+    // 1) ESP serial code unique — tracking/security: ek serial sirf ek board pe.
+    //    Pehle duplicates (agar koi ho) me se sirf sabse naya wala rakho.
+    await prisma.$executeRawUnsafe(
+      `UPDATE esp_devices e
+       JOIN (
+         SELECT serial_code, MAX(id) AS keep_id
+         FROM esp_devices
+         WHERE serial_code IS NOT NULL
+         GROUP BY serial_code
+         HAVING COUNT(*) > 1
+       ) d ON e.serial_code = d.serial_code AND e.id <> d.keep_id
+       SET e.serial_code = NULL`,
+    );
+    const idx = await prisma.$queryRaw<{ c: bigint }[]>`
+      SELECT COUNT(*) AS c FROM information_schema.statistics
+      WHERE table_schema = DATABASE() AND table_name = 'esp_devices' AND index_name = 'esp_devices_serial_code_key'
+    `;
+    if (Number(idx[0]?.c ?? 0) === 0) {
+      await prisma.$executeRawUnsafe(
+        "ALTER TABLE `esp_devices` ADD UNIQUE INDEX `esp_devices_serial_code_key`(`serial_code`)",
+      );
+      logger.info("✅ Migration: esp_devices.serial_code unique index added");
+    }
+  } catch (err) {
+    logger.warn("Light migration (esp serial unique) skip/fail", err instanceof Error ? err.message : String(err));
+  }
+}
+
 async function dbHasSchema(): Promise<boolean> {
   try {
     const rows = await prisma.$queryRaw<{ c: bigint }[]>`
@@ -133,6 +166,7 @@ async function initDatabase(): Promise<void> {
     if (await dbHasSchema()) {
       dbReady = true;
       logger.info("✅ Database connected (schema ready)");
+      await runLightMigrations();
     } else {
       logger.warn(
         "⚠️ Database reachable par installed nahi — setup mode. /api/install se installation karo.",

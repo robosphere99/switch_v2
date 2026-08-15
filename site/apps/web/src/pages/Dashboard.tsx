@@ -41,6 +41,7 @@ export function Dashboard() {
   const canManage = myRole === "owner" || myRole === "admin" || myRole === "member";
   const canAdminDevices = myRole === "owner" || myRole === "admin";
 
+  const [deviceQ, setDeviceQ] = useState("");
   const devices = useQuery({
     queryKey: ["devices", homeId],
     queryFn: () => listDevices(homeId!),
@@ -255,21 +256,49 @@ export function Dashboard() {
 
           {/* Right: devices */}
           <div>
-            <h2 className="mb-4 text-lg font-semibold">
-              Devices{" "}
-              <span className="text-sm font-normal text-gray-500">
-                ({devices.data?.success ? devices.data.data.length : "…"})
-              </span>
-            </h2>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-lg font-semibold">
+                Devices{" "}
+                <span className="text-sm font-normal text-gray-500">
+                  ({devices.data?.success ? devices.data.data.length : "…"})
+                </span>
+              </h2>
+              <input
+                value={deviceQ}
+                onChange={(e) => setDeviceQ(e.target.value)}
+                placeholder="🔍 Search device / serial / board…"
+                className="w-full max-w-xs rounded-lg border border-gray-700 bg-night-800 px-3 py-1.5 text-sm text-gray-200 outline-none focus:border-brand"
+              />
+            </div>
             {devices.isLoading && <p className="text-gray-400">Loading devices…</p>}
             {devices.data?.success && devices.data.data.length === 0 && (
               <p className="text-gray-400">
                 No devices yet{canAdminDevices ? " — add your first device!" : ""}
               </p>
             )}
-            <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-              {devices.data?.success &&
-                devices.data.data.map((device) => (
+            {(() => {
+              const q = deviceQ.trim().toLowerCase();
+              const visible = devices.data?.success
+                ? devices.data.data.filter((d) => {
+                    if (!q) return true;
+                    const room = roomNameFor(d)?.toLowerCase() ?? "";
+                    const board = d.esp?.name?.toLowerCase() ?? "";
+                    const boardSerial = d.esp?.serialCode?.toLowerCase() ?? "";
+                    return (
+                      d.name.toLowerCase().includes(q) ||
+                      (d.serialNumber?.toLowerCase() ?? "").includes(q) ||
+                      room.includes(q) ||
+                      board.includes(q) ||
+                      boardSerial.includes(q)
+                    );
+                  })
+                : [];
+              if (q && visible.length === 0) {
+                return <p className="text-gray-400">No devices match "{deviceQ}".</p>;
+              }
+              return (
+                <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+                  {visible.map((device) => (
                   <DeviceCard
                     key={device.id}
                     device={device}
@@ -294,8 +323,10 @@ export function Dashboard() {
                       }
                     }}
                   />
-                ))}
-            </div>
+                  ))}
+                </div>
+              );
+            })()}
 
             <div className="mt-8">
               <ScheduleSection

@@ -81,7 +81,7 @@ export function Admin() {
   const devices = useQuery({ queryKey: ["admin-devices", q], queryFn: () => listAllDevices(q || undefined), refetchInterval: 10_000 });
   const keys = useQuery({ queryKey: ["admin-keys"], queryFn: listAllApiKeys, refetchInterval: 30_000 });
   const audit = useQuery({ queryKey: ["admin-audit"], queryFn: () => listAuditLogs(), refetchInterval: 15_000 });
-  const esp = useQuery({ queryKey: ["admin-esp"], queryFn: getEspDevices, refetchInterval: 10_000 });
+  const esp = useQuery({ queryKey: ["admin-esp", q], queryFn: () => getEspDevices(q || undefined), refetchInterval: 10_000 });
   const fw = useQuery({ queryKey: ["admin-firmware"], queryFn: getFirmwareList, refetchInterval: 30_000 });
 
   const invalidate = () => {
