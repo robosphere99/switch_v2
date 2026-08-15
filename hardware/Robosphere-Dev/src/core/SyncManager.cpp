@@ -13,22 +13,52 @@ namespace SyncManager {
 
 static unsigned long lastSync = 0;
 
-// Command queue polling — device sync (5s) se alag, thoda faster taaki
-// web/API se kiya toggle jaldi se relay pe lage.
-static unsigned long lastCommandCheck = 0;
-
 // Heartbeat — device online report + server-push OTA check.
 // Admin ne is device ko update push kiya hai to heartbeat response me
 // firmware URL aata hai aur hum update turant start kar dete hain.
 static unsigned long lastHeartbeat = 0;
 
-static const unsigned long COMMAND_CHECK_MS = 3000;
 static const unsigned long HEARTBEAT_MS = 30000;
+
+// ==================================================
+// Command poller — dedicated task (core 0)
+//
+// Web/API se kiya toggle pehle 5s wale sync gate ke andar poll hota tha
+// (worst case 5s+ lag). Ab command queue apne alag task se LONG-POLL hota
+// hai: server response ko hold karta hai jab tak command na aaye, to web
+// toggle se relay pe click ~1s ke andar ho jata hai. Main loop (web panel,
+// physical switches) kabhi block nahi hota — task core 0 pe chalta hai,
+// Arduino loop core 1 pe.
+// ==================================================
+static TaskHandle_t commandTaskHandle = nullptr;
+
+static void commandPollTask(void *param)
+{
+    for (;;)
+    {
+        // WiFi connected + server configured ho tabhi poll karo.
+        if (WiFi.status() == WL_CONNECTED &&
+            !PreferencesManager::getServerURL().isEmpty() &&
+            !PreferencesManager::getApiKey().isEmpty())
+        {
+            // Long-poll (~20s max hold) — command aate hi return, apply + ack.
+            // Task hai isliye blocking se loop freeze nahi hota.
+            ApiManager::downloadCommands();
+        }
+        vTaskDelay(pdMS_TO_TICKS(200));
+    }
+}
 
 bool begin() {
   lastSync = millis();
-  lastCommandCheck = millis();
   lastHeartbeat = millis();
+
+  // Command polling — core 0 pe pinned task (Arduino loop core 1 pe hai).
+  // 16KB stack (loop task ke barabar) — TLS handshake + JSON parse safe rahega.
+  if (commandTaskHandle == nullptr)
+  {
+    xTaskCreatePinnedToCore(commandPollTask, "cmdPoll", 16384, NULL, 1, &commandTaskHandle, 0);
+  }
 
   return true;
 }
@@ -100,14 +130,9 @@ if(device->id == ledDevice)
         Logger::warning("Device Sync Failed");
     }
 
-    // Command queue (v2) — web/API se aaye pending commands ko relay pe
-    // apply karke ack karo. downloadCommands() apne andar server/WiFi
-    // guard karta hai, isliye yahan sirf interval check kaafi hai.
-    if (millis() - lastCommandCheck >= COMMAND_CHECK_MS)
-    {
-        lastCommandCheck = millis();
-        ApiManager::downloadCommands();
-    }
+    // Command queue polling ab dedicated commandPollTask (core 0) se hota
+    // hai — long-poll ke saath near-instant delivery. Main loop sirf device
+    // sync + heartbeat karta hai.
 
     // Heartbeat + OTA push check (har 30s). Server ab IP / firmware /
     // relay states track karta hai aur admin push kare to update trigger.
