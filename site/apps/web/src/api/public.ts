@@ -94,14 +94,15 @@ export interface SupportMessage {
   attachmentData: string | null;
   readByUser: boolean;
   readByAdmin: boolean;
+  deletedAt: string | null;
   createdAt: string;
 }
 
-/** Support chat attachment (optional) — photo/invoice/screenshot. */
-export interface SupportAttachment {
-  name: string;
-  type: string;
-  data: string; // base64
+/** User side chat settings — mute/pin (peer = support team). */
+export interface SupportChatSetting {
+  peerUserId: number;
+  mutedAt: string | null;
+  pinnedAt: string | null;
 }
 
 /** User: apna support thread (read mark karta hai). */
@@ -119,4 +120,39 @@ export async function sendSupportReply(message: string, attachment?: SupportAtta
       : {}),
   });
   return data.data;
+}
+
+/** User: apna message delete. */
+export async function deleteMySupportMessage(id: number): Promise<{ deleted: boolean }> {
+  const { data } = await api.delete(`/support/messages/${id}`);
+  return data.data;
+}
+
+/** User: poora thread clear. */
+export async function clearMySupportChat(): Promise<{ cleared: number }> {
+  const { data } = await api.delete("/support/messages");
+  return data.data;
+}
+
+/** User: apni chat settings (mute/pin). */
+export async function getMySupportSettings(): Promise<SupportChatSetting[]> {
+  const { data } = await api.get("/support/settings");
+  return data.data.settings;
+}
+
+/** User: support team conversation mute/pin karo. */
+export async function setMySupportSettings(input: {
+  peerUserId: number;
+  muted?: boolean;
+  pinned?: boolean;
+}): Promise<SupportChatSetting> {
+  const { data } = await api.put(`/support/settings/${input.peerUserId}`, input);
+  return data.data;
+}
+
+/** Support chat attachment (optional) — photo/invoice/screenshot. */
+export interface SupportAttachment {
+  name: string;
+  type: string;
+  data: string; // base64
 }

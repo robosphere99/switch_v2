@@ -1,6 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { submitSupport, getMySupportTickets, getMySupportChat, sendSupportReply, type SupportAttachment } from "../api/public";
+import { Bell, BellOff, CheckCheck, Pin, PinOff, Trash2 } from "lucide-react";
+import {
+  submitSupport,
+  getMySupportTickets,
+  getMySupportChat,
+  sendSupportReply,
+  deleteMySupportMessage,
+  clearMySupportChat,
+  getMySupportSettings,
+  setMySupportSettings,
+  type SupportAttachment,
+  type SupportChatSetting,
+  type SupportMessage,
+} from "../api/public";
 import { getMyOrders, type Order } from "../api/shop";
 import { AttachmentPicker } from "../components/AttachmentPicker";
 import { AttachmentBubble } from "../components/AttachmentBubble";
@@ -30,12 +43,13 @@ export function Support() {
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   // Support chat state
-  const [chatMsgs, setChatMsgs] = useState<Array<{ id: number; senderRole: string; message: string; attachmentName: string | null; attachmentType: string | null; attachmentData: string | null; createdAt: string }>>([]);
+  const [chatMsgs, setChatMsgs] = useState<SupportMessage[]>([]);
   const [chatDraft, setChatDraft] = useState("");
   const [chatAttachment, setChatAttachment] = useState<SupportAttachment | null>(null);
   const [chatBusy, setChatBusy] = useState(false);
   const [chatError, setChatError] = useState(false);
   const [chatLoading, setChatLoading] = useState(true);
+  const [chatSettings, setChatSettings] = useState<SupportChatSetting[]>([]);
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const chatSectionRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<HTMLInputElement>(null);
@@ -65,7 +79,54 @@ export function Support() {
 
   useEffect(() => {
     refreshChat();
+    getMySupportSettings().then(setChatSettings).catch(() => {});
   }, []);
+
+  const mySetting = chatSettings[0];
+
+  const toggleMute = async () => {
+    if (!mySetting) return;
+    try {
+      const s = await setMySupportSettings({ peerUserId: mySetting.peerUserId, muted: !mySetting.mutedAt });
+      setChatSettings((prev) =>
+        prev.map((p) => (p.peerUserId === s.peerUserId ? { ...p, mutedAt: s.mutedAt } : p)),
+      );
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const togglePin = async () => {
+    if (!mySetting) return;
+    try {
+      const s = await setMySupportSettings({ peerUserId: mySetting.peerUserId, pinned: !mySetting.pinnedAt });
+      setChatSettings((prev) =>
+        prev.map((p) => (p.peerUserId === s.peerUserId ? { ...p, pinnedAt: s.pinnedAt } : p)),
+      );
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const deleteMessage = async (id: number) => {
+    if (!confirm("Apna message delete karein? (dono side se gayab)")) return;
+    try {
+      await deleteMySupportMessage(id);
+      await refreshChat();
+    } catch {
+      setChatError(true);
+    }
+  };
+
+  const clearChat = async () => {
+    if (!confirm("Poora support chat clear karein? (dono side se gayab)")) return;
+    try {
+      await clearMySupportChat();
+      await refreshChat();
+    } catch {
+      setChatError(true);
+    }
+  };
 
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -229,9 +290,35 @@ export function Support() {
 
       {/* Support chat — seedha team se baat */}
       <div ref={chatSectionRef} className="mt-8 rounded-xl border border-gray-200 bg-night-800 p-6">
-        <h2 className="mb-1 text-lg font-semibold">💬 Support Chat</h2>
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <h2 className="text-lg font-semibold">💬 Support Chat</h2>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={togglePin}
+              className={`rounded-lg p-2 transition ${mySetting?.pinnedAt ? "bg-brand/15 text-brand" : "text-gray-500 hover:bg-night-700 hover:text-brand"}`}
+              title={mySetting?.pinnedAt ? "Unpin" : "Pin"}
+            >
+              {mySetting?.pinnedAt ? <Pin className="h-4 w-4" /> : <PinOff className="h-4 w-4" />}
+            </button>
+            <button
+              onClick={toggleMute}
+              className={`rounded-lg p-2 transition ${mySetting?.mutedAt ? "bg-brand/15 text-brand" : "text-gray-500 hover:bg-night-700 hover:text-brand"}`}
+              title={mySetting?.mutedAt ? "Unmute — notifications wapas" : "Mute — notifications band"}
+            >
+              {mySetting?.mutedAt ? <BellOff className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
+            </button>
+            <button
+              onClick={clearChat}
+              className="rounded-lg p-2 text-gray-500 transition hover:bg-red-500/10 hover:text-red-400"
+              title="Clear chat"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
         <p className="mb-4 text-sm text-gray-500">
           Seedha humari team se baat karo — ticket kholne ki zaroorat nahi. Message bhejo, support reply karega (bell 🔔 me bhi pata chalega).
+          {mySetting?.mutedAt && <span className="ml-2 text-gray-400">🔕 muted</span>}
         </p>
         <div className="flex h-72 flex-col gap-2 overflow-y-auto rounded-xl border border-gray-200 bg-gray-50 p-3">
           {chatLoading && <p className="m-auto text-sm text-gray-500">Loading…</p>}
@@ -239,20 +326,40 @@ export function Support() {
             <p className="m-auto text-sm text-gray-500">Koi message nahi — pehla message bhejo 👇</p>
           )}
           {chatMsgs.map((m) => (
-            <div
-              key={m.id}
-              className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${
-                m.senderRole === "user"
-                  ? "self-end rounded-br-sm bg-brand text-white"
-                  : "self-start rounded-bl-sm border border-gray-200 bg-white text-gray-800"
-              }`}
-            >
-              <div className="text-[10px] font-bold uppercase opacity-70">{m.senderRole === "user" ? "Aap" : "Support"}</div>
-              {m.message && <div className="whitespace-pre-wrap">{m.message}</div>}
-              {m.attachmentName && m.attachmentType && m.attachmentData && (
-                <AttachmentBubble name={m.attachmentName} type={m.attachmentType} data={m.attachmentData} />
+            <div key={m.id} className="group relative">
+              <div
+                className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${
+                  m.senderRole === "user"
+                    ? "self-end rounded-br-sm bg-brand text-white"
+                    : "self-start rounded-bl-sm border border-gray-200 bg-white text-gray-800"
+                }`}
+              >
+                <div className="text-[10px] font-bold uppercase opacity-70">{m.senderRole === "user" ? "Aap" : "Support"}</div>
+                {m.message && <div className="whitespace-pre-wrap">{m.message}</div>}
+                {m.attachmentName && m.attachmentType && m.attachmentData && (
+                  <AttachmentBubble name={m.attachmentName} type={m.attachmentType} data={m.attachmentData} />
+                )}
+                <div className="mt-0.5 flex items-center justify-end gap-1 text-right text-[10px] opacity-60">
+                  {new Date(m.createdAt).toLocaleString()}
+                  {/* Read receipt — apna message: ✓ sent, ✓✓ blue = admin ne padha */}
+                  {m.senderRole === "user" &&
+                    (m.readByAdmin ? (
+                      <CheckCheck className="h-3 w-3 text-blue-300" />
+                    ) : (
+                      <CheckCheck className="h-3 w-3 opacity-70" />
+                    ))}
+                </div>
+              </div>
+              {/* Hover — apna message delete */}
+              {m.senderRole === "user" && (
+                <button
+                  onClick={() => deleteMessage(m.id)}
+                  className="absolute right-0 top-0 z-10 hidden rounded-md bg-white p-1 text-gray-500 shadow-lg group-hover:block hover:text-red-500"
+                  title="Delete message"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
               )}
-              <div className="mt-0.5 text-right text-[10px] opacity-60">{new Date(m.createdAt).toLocaleString()}</div>
             </div>
           ))}
           <div ref={chatBottomRef} />

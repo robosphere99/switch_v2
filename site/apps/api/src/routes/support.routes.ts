@@ -62,8 +62,31 @@ const msgSelect = {
   attachmentData: true,
   readByUser: true,
   readByAdmin: true,
+  deletedAt: true,
   createdAt: true,
 } as const;
+
+/** Kisi conversation ka mute/pin set karo (apne view ke liye). */
+async function firstAdminId(): Promise<number | null> {
+  const admin = await prisma.user.findFirst({
+    where: { role: "system_admin" },
+    select: { id: true },
+    orderBy: { id: "asc" },
+  });
+  return admin?.id ?? null;
+}
+
+/** Muted hai? (notification suppress ke liye) — stale client pe false. */
+async function isMuted(viewerId: number, peerUserId: number): Promise<boolean> {
+  if (!prisma.supportChatSettings) return false;
+  const s = await prisma.supportChatSettings
+    .findUnique({
+      where: { userId_peerUserId: { userId: viewerId, peerUserId } },
+      select: { mutedAt: true },
+    })
+    .catch(() => null);
+  return !!s?.mutedAt;
+}
 
 // ---------- Admin side ----------
 
@@ -72,15 +95,15 @@ supportRouter.get("/admin/messages", requireAuth, async (req, res) => {
   const userId = Number(req.query.userId);
   if (!Number.isInteger(userId) || userId <= 0) throw new AppError("VALIDATION_ERROR", "userId required", 400);
   const msgs = await supportModel().findMany({
-    where: { userId },
+    where: { userId, deletedAt: null },
     select: msgSelect,
     orderBy: { createdAt: "asc" },
     take: 200,
   });
-  const unread = await supportModel().count({ where: { userId, readByAdmin: false } });
+  const unread = await supportModel().count({ where: { userId, readByAdmin: false, deletedAt: null } });
   if (unread > 0) {
     await supportModel().updateMany({
-      where: { userId, readByAdmin: false },
+      where: { userId, readByAdmin: false, deletedAt: null },
       data: { readByAdmin: true },
     });
   }
@@ -123,12 +146,15 @@ supportRouter.post("/admin/messages", requireAuth, validateBody(adminSendSchema)
 
   // Body me JSON marker ({u: senderId, t: text}) — frontend isse user chat
   // kholne ke liye use karta hai. Display me sirf text dikhta hai.
-  await createNotification(userId, {
-    category: "support",
-    type: "info",
-    title: "🛠️ Support ne message bheja",
-    body: JSON.stringify({ u: req.user!.sub, t: message.slice(0, 200) }),
-  });
+  // Muted conversation → notification suppress (sirf bell; unread badge rehta hai).
+  if (!(await isMuted(userId, req.user!.sub))) {
+    await createNotification(userId, {
+      category: "support",
+      type: "info",
+      title: "🛠️ Support ne message bheja",
+      body: JSON.stringify({ u: req.user!.sub, t: message.slice(0, 200) }),
+    });
+  }
   emitToUser(userId, "support:new", { senderRole: "admin", message: created });
 
   ok(res, created, 201);
@@ -141,16 +167,16 @@ supportRouter.get("/messages", requireAuth, async (req, res) => {
   const userId = req.user!.sub;
   const [messages, unreadCount] = await Promise.all([
     supportModel().findMany({
-      where: { userId },
+      where: { userId, deletedAt: null },
       select: msgSelect,
       orderBy: { createdAt: "asc" },
       take: 200,
     }),
-    supportModel().count({ where: { userId, readByUser: false } }),
+    supportModel().count({ where: { userId, readByUser: false, deletedAt: null } }),
   ]);
   if (unreadCount > 0) {
     await supportModel().updateMany({
-      where: { userId, readByUser: false },
+      where: { userId, readByUser: false, deletedAt: null },
       data: { readByUser: true },
     });
   }
@@ -194,12 +220,15 @@ supportRouter.post("/messages", requireAuth, validateBody(userSendSchema), async
   if (admin) {
     // JSON marker: u = reply karne wala user ka id — admin notification pe click
     // karne se usi user ka chat khul jayega (bell + /notifications dono me).
-    await createNotification(admin.id, {
-      category: "support",
-      type: "info",
-      title: "📨 User ne support me reply kiya",
-      body: JSON.stringify({ u: req.user!.sub, t: (req.body.message || "").slice(0, 200) }),
-    });
+    // Admin ne us user ka chat mute kiya ho to notification suppress.
+    if (!(await isMuted(admin.id, req.user!.sub))) {
+      await createNotification(admin.id, {
+        category: "support",
+        type: "info",
+        title: "📨 User ne support me reply kiya",
+        body: JSON.stringify({ u: req.user!.sub, t: (req.body.message || "").slice(0, 200) }),
+      });
+    }
     emitToUser(admin.id, "support:new", { senderRole: "user", message: created });
   }
   ok(res, created, 201);
@@ -226,6 +255,7 @@ supportRouter.get("/admin/conversations", requireAuth, async (req, res) => {
       message: true,
       attachmentName: true,
       readByAdmin: true,
+      deletedAt: true,
       createdAt: true,
     },
     orderBy: { createdAt: "desc" },
@@ -235,11 +265,13 @@ supportRouter.get("/admin/conversations", requireAuth, async (req, res) => {
   const byUser = new Map<number, { lastPreview: string; lastSenderRole: string; lastAt: Date; unread: number }>();
   for (const m of recent) {
     const cur = byUser.get(m.userId);
-    const preview = m.message?.trim()
-      ? m.message
-      : m.attachmentName
-        ? `📎 ${m.attachmentName}`
-        : "(attachment)";
+    const preview = m.deletedAt
+      ? "🚫 (deleted)"
+      : m.message?.trim()
+        ? m.message
+        : m.attachmentName
+          ? `📎 ${m.attachmentName}`
+          : "(attachment)";
     if (!cur) {
       byUser.set(m.userId, {
         lastPreview: preview,
@@ -389,4 +421,93 @@ supportRouter.get("/admin/context", requireAuth, async (req, res) => {
     esps,
     orders,
   });
+});
+
+// ---------- Chat settings (mute / pin) + delete / clear ----------
+
+/** Meri chat settings — admin ko saare users ke, user ko apna support-team peer. */
+supportRouter.get("/settings", requireAuth, async (req, res) => {
+  if (!prisma.supportChatSettings) return ok(res, { settings: [] });
+  const settings = await prisma.supportChatSettings.findMany({
+    where: { userId: req.user!.sub },
+    select: { peerUserId: true, mutedAt: true, pinnedAt: true },
+  });
+  ok(res, { settings });
+});
+
+/** Conversation mute/pin toggle (apne view ke liye). */
+supportRouter.put("/settings/:peerUserId", requireAuth, async (req, res) => {
+  if (!prisma.supportChatSettings) throw new AppError("INTERNAL", "Chat settings unavailable — prisma client stale", 500);
+  // User (non-admin) ka peer hamesha support team hota hai — param ignore karo.
+  let peerUserId = Number(req.params.peerUserId);
+  if (req.user!.role !== "system_admin") {
+    peerUserId = (await firstAdminId()) ?? 0;
+  }
+  if (!Number.isInteger(peerUserId) || peerUserId <= 0) {
+    throw new AppError("VALIDATION_ERROR", "peerUserId required", 400);
+  }
+  const { muted, pinned } = req.body as { muted?: boolean; pinned?: boolean };
+  if (muted === undefined && pinned === undefined) {
+    throw new AppError("VALIDATION_ERROR", "muted ya pinned required", 400);
+  }
+  const data: { mutedAt?: Date | null; pinnedAt?: Date | null } = {};
+  if (typeof muted === "boolean") data.mutedAt = muted ? new Date() : null;
+  if (typeof pinned === "boolean") data.pinnedAt = pinned ? new Date() : null;
+
+  const setting = await prisma.supportChatSettings.upsert({
+    where: { userId_peerUserId: { userId: req.user!.sub, peerUserId } },
+    create: {
+      userId: req.user!.sub,
+      peerUserId,
+      mutedAt: data.mutedAt ?? null,
+      pinnedAt: data.pinnedAt ?? null,
+    },
+    update: data,
+  });
+  ok(res, setting);
+});
+
+/** User: apna message delete (soft — WhatsApp-style, dono side se gayab). */
+supportRouter.delete("/messages/:id", requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const msg = await supportModel().findUnique({ where: { id } });
+  if (!msg) throw new AppError("NOT_FOUND", "Message not found", 404);
+  if (msg.userId !== req.user!.sub || msg.senderRole !== "user") {
+    throw new AppError("FORBIDDEN", "Sirf apna message delete kar sakte ho", 403);
+  }
+  await supportModel().update({ where: { id }, data: { deletedAt: new Date() } });
+  ok(res, { deleted: true });
+});
+
+/** Admin: koi bhi message delete (moderation). */
+supportRouter.delete("/admin/messages/:id", requireAuth, async (req, res) => {
+  if (req.user!.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
+  const id = Number(req.params.id);
+  const msg = await supportModel().findUnique({ where: { id } });
+  if (!msg) throw new AppError("NOT_FOUND", "Message not found", 404);
+  await supportModel().update({ where: { id }, data: { deletedAt: new Date() } });
+  ok(res, { deleted: true });
+});
+
+/** User: apna poora support thread clear (soft). */
+supportRouter.delete("/messages", requireAuth, async (req, res) => {
+  const r = await supportModel().updateMany({
+    where: { userId: req.user!.sub, deletedAt: null },
+    data: { deletedAt: new Date() },
+  });
+  ok(res, { cleared: r.count });
+});
+
+/** Admin: kisi user ka poora thread clear. */
+supportRouter.delete("/admin/messages", requireAuth, async (req, res) => {
+  if (req.user!.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
+  const userId = Number(req.query.peerUserId);
+  if (!Number.isInteger(userId) || userId <= 0) {
+    throw new AppError("VALIDATION_ERROR", "peerUserId required", 400);
+  }
+  const r = await supportModel().updateMany({
+    where: { userId, deletedAt: null },
+    data: { deletedAt: new Date() },
+  });
+  ok(res, { cleared: r.count });
 });
