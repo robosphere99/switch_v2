@@ -449,3 +449,36 @@ export async function findAnything(q: string): Promise<ApiResponse<FindResult>> 
   const { data } = await api.get<ApiResponse<FindResult>>("/admin/find", { params: { q } });
   return data;
 }
+
+/** Support chat — admin <-> user. */
+export interface SupportMessage {
+  id: number;
+  userId: number;
+  senderRole: "admin" | "user";
+  senderName: string;
+  message: string;
+  readByUser: boolean;
+  readByAdmin: boolean;
+  createdAt: string;
+}
+
+/** Admin: kisi user ka poora support thread. */
+export async function getSupportMessages(userId: number): Promise<ApiResponse<{ userId: number; unread: number; messages: SupportMessage[] }>> {
+  const { data } = await api.get<ApiResponse<{ userId: number; unread: number; messages: SupportMessage[] }>>(
+    "/support/admin/messages",
+    { params: { userId } },
+  );
+  return data;
+}
+
+/** Admin: user ko support message bhejo. */
+export async function sendSupportMessage(userId: number, message: string): Promise<ApiResponse<SupportMessage>> {
+  const { data } = await api.post<ApiResponse<SupportMessage>>("/support/admin/messages", { userId, message });
+  return data;
+}
+
+/** Admin: unread support replies count (badge). */
+export async function getSupportUnread(): Promise<ApiResponse<{ unread: number }>> {
+  const { data } = await api.get<ApiResponse<{ unread: number }>>("/support/admin/unread-count");
+  return data;
+}

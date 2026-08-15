@@ -242,7 +242,7 @@ var firmwareDir = repoRoot ? path3.join(repoRoot, "hardware", "firmware") : path
 var webDist = repoRoot ? path3.join(repoRoot, "site", "apps", "web", "dist") : path3.resolve(process.cwd(), "../../apps/web/dist");
 
 // src/routes/index.ts
-import { Router as Router16 } from "express";
+import { Router as Router17 } from "express";
 
 // src/routes/auth.routes.ts
 import { Router } from "express";
@@ -4394,9 +4394,106 @@ publicRouter.post("/support", requireAuth, async (req, res) => {
   ok(res, { id: created.id, status: created.status }, 201);
 });
 
+// src/routes/support.routes.ts
+import { Router as Router16 } from "express";
+import { z as z12 } from "zod";
+init_prisma();
+var supportRouter = Router16();
+var msgSelect = {
+  id: true,
+  userId: true,
+  senderRole: true,
+  senderName: true,
+  message: true,
+  readByUser: true,
+  readByAdmin: true,
+  createdAt: true
+};
+supportRouter.get("/admin/messages", requireAuth, async (req, res) => {
+  const userId = Number(req.query.userId);
+  if (!Number.isInteger(userId) || userId <= 0) throw new AppError("VALIDATION_ERROR", "userId required", 400);
+  const msgs = await prisma.supportMessage.findMany({
+    where: { userId },
+    select: msgSelect,
+    orderBy: { createdAt: "asc" },
+    take: 200
+  });
+  const unread = await prisma.supportMessage.count({ where: { userId, readByAdmin: false } });
+  ok(res, { userId, unread, messages: msgs });
+});
+var adminSendSchema = z12.object({
+  userId: z12.number().int().positive(),
+  message: z12.string().trim().min(1).max(4e3)
+});
+supportRouter.post("/admin/messages", requireAuth, validateBody(adminSendSchema), async (req, res) => {
+  if (req.user.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
+  const { userId, message } = req.body;
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, username: true } });
+  if (!user) throw new AppError("NOT_FOUND", "User not found", 404);
+  const created = await prisma.supportMessage.create({
+    data: {
+      userId,
+      senderRole: "admin",
+      senderName: req.user.username,
+      message,
+      readByUser: false,
+      readByAdmin: true
+    }
+  });
+  await createNotification(userId, {
+    category: "support",
+    type: "info",
+    title: "\u{1F6E0}\uFE0F Support ne message bheja",
+    body: message.slice(0, 200)
+  });
+  emitToUser(userId, "support:new", { senderRole: "admin", message: created });
+  ok(res, created, 201);
+});
+supportRouter.get("/messages", requireAuth, async (req, res) => {
+  const userId = req.user.sub;
+  const [messages, unreadCount2] = await Promise.all([
+    prisma.supportMessage.findMany({
+      where: { userId },
+      select: msgSelect,
+      orderBy: { createdAt: "asc" },
+      take: 200
+    }),
+    prisma.supportMessage.count({ where: { userId, readByUser: false } })
+  ]);
+  if (unreadCount2 > 0) {
+    await prisma.supportMessage.updateMany({
+      where: { userId, readByUser: false },
+      data: { readByUser: true }
+    });
+  }
+  ok(res, { unread: unreadCount2, messages });
+});
+var userSendSchema = z12.object({
+  message: z12.string().trim().min(1).max(4e3)
+});
+supportRouter.post("/messages", requireAuth, validateBody(userSendSchema), async (req, res) => {
+  const userId = req.user.sub;
+  const created = await prisma.supportMessage.create({
+    data: {
+      userId,
+      senderRole: "user",
+      senderName: req.user.username,
+      message: req.body.message,
+      readByUser: true,
+      readByAdmin: false
+    }
+  });
+  ok(res, created, 201);
+});
+supportRouter.get("/admin/unread-count", requireAuth, async (req, res) => {
+  if (req.user.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
+  const unread = await prisma.supportMessage.count({ where: { readByAdmin: false } });
+  ok(res, { unread });
+});
+
 // src/routes/index.ts
 init_prisma();
-var apiRouter = Router16();
+var apiRouter = Router17();
 apiRouter.use("/auth", authRouter);
 apiRouter.use("/homes", homeRouter);
 apiRouter.use("/homes", memberRouter);
@@ -4406,6 +4503,7 @@ apiRouter.use("/homes", scheduleRouter);
 apiRouter.use("/device", deviceApiRouter);
 apiRouter.use("/api-keys", apiKeyRouter);
 apiRouter.use("/notifications", notificationRouter);
+apiRouter.use("/support", supportRouter);
 apiRouter.use("/assistant", assistantRouter);
 apiRouter.use("/admin", adminRouter);
 apiRouter.use("/shop", shopRouter);
@@ -4422,7 +4520,7 @@ apiRouter.get("/firmware/current", requireAuth, async (_req, res) => {
 });
 
 // src/routes/install.routes.ts
-import { Router as Router17 } from "express";
+import { Router as Router18 } from "express";
 import mysql from "mysql2/promise";
 import fs4 from "node:fs";
 import path5 from "node:path";
@@ -4654,7 +4752,7 @@ async function checkOfflineDevicesInner() {
 
 // src/routes/install.routes.ts
 var SCHEMA_SQL = path5.resolve(process.cwd(), "prisma/schema.sql");
-var installRouter = Router17();
+var installRouter = Router18();
 var DEFAULT_PRODUCTS = [
   { name: "2CH WiFi Relay Module", modelCode: "2CH", relayCount: 2, price: "599", description: "Two-channel WiFi relay board for lights and small appliances. 10A per channel, ESP32 based, works with the SwitchNest app and voice assistant.", features: { channels: 2, wifi: true, ota: true, voice: true } },
   { name: "4CH WiFi Relay Module", modelCode: "4CH", relayCount: 4, price: "799", description: "Four-channel WiFi relay board \u2014 the classic choice for room-wide control. 10A per channel with status LED and manual override switches.", features: { channels: 4, wifi: true, ota: true, voice: true } },
@@ -4972,6 +5070,29 @@ async function runLightMigrations() {
         "ALTER TABLE `notifications` ADD COLUMN `category` VARCHAR(20) NOT NULL DEFAULT 'system'"
       );
       logger.info("\u2705 Migration: notifications.category column added");
+    }
+    const sm = await prisma.$queryRaw`
+      SELECT COUNT(*) AS c FROM information_schema.tables
+      WHERE table_schema = DATABASE() AND table_name = 'support_messages'
+    `;
+    if (Number(sm[0]?.c ?? 0) === 0) {
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE support_messages (
+          id INT NOT NULL AUTO_INCREMENT,
+          userId INT NOT NULL,
+          senderRole VARCHAR(10) NOT NULL DEFAULT 'admin',
+          senderName VARCHAR(100) NOT NULL,
+          message TEXT NOT NULL,
+          read_by_user BOOLEAN NOT NULL DEFAULT FALSE,
+          read_by_admin BOOLEAN NOT NULL DEFAULT TRUE,
+          created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+          PRIMARY KEY (id),
+          INDEX support_messages_userId_createdAt_idx (userId, created_at),
+          INDEX support_messages_readByAdmin_idx (read_by_admin),
+          CONSTRAINT support_messages_userId_fkey FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+      `);
+      logger.info("\u2705 Migration: support_messages table created");
     }
   } catch (err) {
     logger.warn("Light migration (esp serial unique) skip/fail", err instanceof Error ? err.message : String(err));

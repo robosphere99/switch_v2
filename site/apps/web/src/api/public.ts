@@ -81,3 +81,27 @@ export async function updateContactStatus(id: number, status: string): Promise<C
 export async function deleteContact(id: number): Promise<void> {
   await api.delete(`/admin/contact/${id}`);
 }
+
+/** Support chat — user side. */
+export interface SupportMessage {
+  id: number;
+  userId: number;
+  senderRole: "admin" | "user";
+  senderName: string;
+  message: string;
+  readByUser: boolean;
+  readByAdmin: boolean;
+  createdAt: string;
+}
+
+/** User: apna support thread (read mark karta hai). */
+export async function getMySupportChat(): Promise<{ unread: number; messages: SupportMessage[] }> {
+  const { data } = await api.get("/support/messages");
+  return data.data;
+}
+
+/** User: support ko reply karo. */
+export async function sendSupportReply(message: string): Promise<SupportMessage> {
+  const { data } = await api.post("/support/messages", { message });
+  return data.data;
+}

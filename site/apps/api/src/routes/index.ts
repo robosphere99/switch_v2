@@ -14,6 +14,7 @@ import { shopRouter } from "./shop.routes";
 import { claimRouter } from "./claim.routes";
 import { warrantyRouter } from "./warranty.routes";
 import { publicRouter } from "./public.routes";
+import { supportRouter } from "./support.routes";
 import { requireAuth } from "../middleware/auth";
 import { prisma } from "../lib/prisma";
 import { ok } from "../lib/response";
@@ -29,6 +30,7 @@ apiRouter.use("/homes", scheduleRouter); // schedule routes live under /homes/:h
 apiRouter.use("/device", deviceApiRouter); // device-facing API (api_key auth) — ESP32 etc.
 apiRouter.use("/api-keys", apiKeyRouter);
 apiRouter.use("/notifications", notificationRouter);
+apiRouter.use("/support", supportRouter);
 apiRouter.use("/assistant", assistantRouter);
 apiRouter.use("/admin", adminRouter);
 apiRouter.use("/shop", shopRouter);

@@ -132,6 +132,7 @@ model User {
   claimedSerials SerialRegistry[]
   warrantyClaims WarrantyClaim[]
   contactMessages ContactMessage[]
+  supportMessages SupportMessage[]
 
   @@map("users")
 }
@@ -563,6 +564,22 @@ model ContactMessage {
   @@index([status])
   @@index([userId])
   @@map("contact_messages")
+}
+
+model SupportMessage {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  senderRole String   @default("admin") @db.VarChar(10) // admin | user
+  senderName String   @db.VarChar(100)
+  message    String   @db.Text
+  readByUser   Boolean @default(false) @map("read_by_user")
+  readByAdmin  Boolean @default(true)  @map("read_by_admin")
+  createdAt  DateTime @default(now()) @map("created_at")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([readByAdmin])
+  @@map("support_messages")
 }
 
 model AppMeta {

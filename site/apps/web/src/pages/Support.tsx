@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { submitSupport, getMySupportTickets } from "../api/public";
+import { useEffect, useRef, useState } from "react";
+import { submitSupport, getMySupportTickets, getMySupportChat, sendSupportReply } from "../api/public";
 import { getMyOrders, type Order } from "../api/shop";
 
 const SUBJECTS = [
@@ -25,6 +25,43 @@ export function Support() {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  // Support chat state
+  const [chatMsgs, setChatMsgs] = useState<Array<{ id: number; senderRole: string; message: string; createdAt: string }>>([]);
+  const [chatDraft, setChatDraft] = useState("");
+  const [chatBusy, setChatBusy] = useState(false);
+  const [chatError, setChatError] = useState(false);
+  const [chatLoading, setChatLoading] = useState(true);
+  const chatBottomRef = useRef<HTMLDivElement>(null);
+
+  const refreshChat = () =>
+    getMySupportChat()
+      .then((c) => {
+        setChatMsgs(c.messages);
+        setChatLoading(false);
+      })
+      .catch(() => setChatLoading(false));
+
+  useEffect(() => {
+    refreshChat();
+  }, []);
+
+  useEffect(() => {
+    chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMsgs.length]);
+
+  const sendChat = async (text: string) => {
+    setChatBusy(true);
+    setChatError(false);
+    try {
+      await sendSupportReply(text);
+      setChatDraft("");
+      await refreshChat();
+    } catch {
+      setChatError(true);
+    } finally {
+      setChatBusy(false);
+    }
+  };
 
   const refreshTickets = () =>
     getMySupportTickets().then((t) => setTickets(t));
@@ -70,21 +107,21 @@ export function Support() {
       </p>
 
       {msg && (
-        <div className={`mb-6 rounded-lg border p-4 text-sm ${msg.ok ? "border-green-500/40 bg-green-900/30 text-green-700" : "border-red-500/40 bg-red-900/30 text-red-600"}`}>
+        <div className={`mb-6 rounded-lg border p-4 text-sm ${msg.ok ? "border-green-500/40 bg-green-50 text-green-700" : "border-red-500/40 bg-red-50 text-red-600"}`}>
           {msg.text}
         </div>
       )}
 
       <div className="grid gap-6 md:grid-cols-2">
         {/* Form */}
-        <form onSubmit={submit} className="rounded-xl border border-white/10 bg-white/5 p-6">
+        <form onSubmit={submit} className="rounded-xl border border-gray-200 bg-night-800 p-6">
           <h2 className="mb-4 text-lg font-semibold">📩 New Ticket</h2>
 
           <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Subject</label>
           <select
             value={form.subject}
             onChange={(e) => setForm({ ...form, subject: e.target.value })}
-            className="mb-4 w-full rounded-lg border border-white/10 bg-gray-900 px-3 py-2 text-sm"
+            className="mb-4 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
           >
             {SUBJECTS.map((s) => (
               <option key={s} value={s}>{s}</option>
@@ -95,7 +132,7 @@ export function Support() {
           <select
             value={form.orderNumber}
             onChange={(e) => setForm({ ...form, orderNumber: e.target.value })}
-            className="mb-4 w-full rounded-lg border border-white/10 bg-gray-900 px-3 py-2 text-sm"
+            className="mb-4 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
           >
             <option value="">— Koi order nahi —</option>
             {orders.map((o) => (
@@ -108,7 +145,7 @@ export function Support() {
             value={form.phone}
             onChange={(e) => setForm({ ...form, phone: e.target.value })}
             placeholder="+91 …"
-            className="mb-4 w-full rounded-lg border border-white/10 bg-gray-900 px-3 py-2 text-sm"
+            className="mb-4 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
           />
 
           <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Message *</label>
@@ -118,7 +155,7 @@ export function Support() {
             required
             rows={4}
             placeholder="Kya help chahiye? Device ka serial, kya hua, kab se…"
-            className="mb-4 w-full rounded-lg border border-white/10 bg-gray-900 px-3 py-2 text-sm"
+            className="mb-4 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
           />
 
           <button
@@ -132,7 +169,7 @@ export function Support() {
 
         {/* Contact info + FAQ */}
         <div className="space-y-4">
-          <div className="rounded-xl border border-white/10 bg-white/5 p-6 text-sm">
+          <div className="rounded-xl border border-gray-200 bg-night-800 p-6 text-sm">
             <h2 className="mb-3 text-lg font-semibold">📞 Seedha baat karo</h2>
             <div className="space-y-2 text-gray-600">
               <p>📧 <span className="text-brand">support@switchnest.in</span></p>
@@ -142,7 +179,7 @@ export function Support() {
             </div>
           </div>
 
-          <div className="rounded-xl border border-white/10 bg-white/5 p-6 text-sm">
+          <div className="rounded-xl border border-gray-200 bg-night-800 p-6 text-sm">
             <h2 className="mb-3 text-lg font-semibold">❓ Quick FAQ</h2>
             <div className="space-y-3 text-gray-600">
               <div>
@@ -166,7 +203,61 @@ export function Support() {
         </div>
       </div>
 
+
+      {/* Support chat — seedha team se baat */}
+      <div className="mt-8 rounded-xl border border-gray-200 bg-night-800 p-6">
+        <h2 className="mb-1 text-lg font-semibold">💬 Support Chat</h2>
+        <p className="mb-4 text-sm text-gray-500">
+          Seedha humari team se baat karo — ticket kholne ki zaroorat nahi. Message bhejo, support reply karega (bell 🔔 me bhi pata chalega).
+        </p>
+        <div className="flex h-72 flex-col gap-2 overflow-y-auto rounded-xl border border-gray-200 bg-gray-50 p-3">
+          {chatLoading && <p className="m-auto text-sm text-gray-500">Loading…</p>}
+          {!chatLoading && chatMsgs.length === 0 && (
+            <p className="m-auto text-sm text-gray-500">Koi message nahi — pehla message bhejo 👇</p>
+          )}
+          {chatMsgs.map((m) => (
+            <div
+              key={m.id}
+              className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${
+                m.senderRole === "user"
+                  ? "self-end rounded-br-sm bg-gradient-to-r from-brand to-brand-light text-white"
+                  : "self-start rounded-bl-sm border border-gray-200 bg-white text-gray-800"
+              }`}
+            >
+              <div className="text-[10px] font-bold uppercase opacity-70">{m.senderRole === "user" ? "Aap" : "Support"}</div>
+              <div className="whitespace-pre-wrap">{m.message}</div>
+              <div className="mt-0.5 text-right text-[10px] opacity-60">{new Date(m.createdAt).toLocaleString()}</div>
+            </div>
+          ))}
+          <div ref={chatBottomRef} />
+        </div>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            const t = chatDraft.trim();
+            if (t && !chatBusy) sendChat(t);
+          }}
+          className="mt-3 flex gap-2"
+        >
+          <input
+            value={chatDraft}
+            onChange={(e) => setChatDraft(e.target.value)}
+            placeholder="Message likho… (Enter se bhejo)"
+            className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+          />
+          <button
+            type="submit"
+            disabled={chatBusy || !chatDraft.trim()}
+            className="rounded-lg bg-gradient-to-r from-brand to-brand-light px-4 py-2 text-white disabled:opacity-40"
+          >
+            Send
+          </button>
+        </form>
+        {chatError && <p className="mt-2 text-xs text-red-500">Bhejne me dikkat — dobara try karo.</p>}
+      </div>
+
       {/* My tickets */}
+
       <div className="mt-8">
         <h2 className="mb-3 text-lg font-semibold">🗂️ Meri Tickets ({tickets.length})</h2>
         {tickets.length === 0 ? (
@@ -174,7 +265,7 @@ export function Support() {
         ) : (
           <div className="space-y-3">
             {tickets.map((t) => (
-              <div key={t.id} className="rounded-xl border border-white/10 bg-white/5 p-4">
+              <div key={t.id} className="rounded-xl border border-gray-200 bg-night-800 p-4">
                 <div className="mb-1 flex items-center justify-between gap-2">
                   <span className="text-sm font-semibold text-night-950">#{t.id} · {t.subject}</span>
                   <span className={`rounded-full px-2 py-0.5 text-xs ${STATUS_BADGE[t.status]?.cls ?? ""}`}>
