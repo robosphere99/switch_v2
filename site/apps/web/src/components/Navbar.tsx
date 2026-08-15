@@ -17,7 +17,10 @@ import {
   Settings,
   Zap,
 } from "lucide-react";
+import { useState } from "react";
+import { Moon, Sun } from "lucide-react";
 import { useAuthStore } from "../stores/auth";
+import { toggleTheme } from "../lib/theme";
 import { NotificationBell } from "./NotificationBell";
 import { Logo } from "./Logo";
 
@@ -39,6 +42,7 @@ export function Navbar() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const navigate = useNavigate();
+  const [dark, setDark] = useState(() => document.documentElement.classList.contains("dark"));
 
   function handleLogout() {
     logout();
@@ -84,6 +88,13 @@ export function Navbar() {
               </Link>
             )}
             <button
+              onClick={() => setDark(toggleTheme())}
+              className="rounded-lg border border-gray-300 p-1.5 text-gray-600 transition hover:border-brand hover:text-brand"
+              title={dark ? "Light mode" : "Dark mode"}
+            >
+              {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </button>
+            <button
               onClick={handleLogout}
               className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-600 transition hover:border-red-300 hover:bg-red-50 hover:text-red-600"
             >
@@ -100,6 +111,13 @@ export function Navbar() {
               <ShoppingCart className="h-4 w-4" />
               Shop
             </Link>
+            <button
+              onClick={() => setDark(toggleTheme())}
+              className="rounded-lg border border-gray-300 p-1.5 text-gray-600 transition hover:border-brand hover:text-brand"
+              title={dark ? "Light mode" : "Dark mode"}
+            >
+              {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </button>
             <Link
               to="/login"
               className="rounded-lg border border-gray-300 px-4 py-1.5 font-semibold text-gray-700 transition hover:border-brand hover:text-brand"
