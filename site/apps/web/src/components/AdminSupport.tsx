@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CheckCheck, Inbox, Search, Send } from "lucide-react";
+import { CheckCheck, Inbox, Search, Send, UserRound } from "lucide-react";
 import {
   getSupportConversations,
   getSupportMessages,
@@ -11,6 +11,7 @@ import {
 } from "../api/admin";
 import { AttachmentBubble } from "./AttachmentBubble";
 import { AttachmentPicker } from "./AttachmentPicker";
+import { SupportUserContext } from "./SupportUserContext";
 import { getSocket } from "../lib/socket";
 import { parseNotificationBody } from "../lib/notificationBody";
 
@@ -52,6 +53,7 @@ export function AdminSupport({
   const [q, setQ] = useState("");
   const [draft, setDraft] = useState("");
   const [attachment, setAttachment] = useState<SupportAttachment | null>(null);
+  const [showContext, setShowContext] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const conversations = useQuery({
@@ -239,7 +241,9 @@ export function AdminSupport({
             </div>
           </div>
         ) : (
-          <div className="flex min-h-0 flex-1 flex-col">
+          <div className="flex min-h-0 flex-1">
+            {/* Thread + right-side user context (WhatsApp contact-info jaisa) */}
+            <div className="flex min-w-0 flex-1 flex-col">
             {/* Thread header */}
             <div className="flex items-center gap-3 border-b border-gray-200 bg-night-900 px-4 py-2.5">
               <div
@@ -260,6 +264,18 @@ export function AdminSupport({
                   {chat.data.data.unread} unread
                 </span>
               )}
+              <button
+                onClick={() => setShowContext((v) => !v)}
+                className={`hidden shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition md:flex ${
+                  showContext
+                    ? "border-brand/50 bg-brand/15 text-brand"
+                    : "border-gray-200 text-gray-500 hover:bg-night-700"
+                }`}
+                title={showContext ? "User info band karo" : "User ka order/home/device context dikhao"}
+              >
+                <UserRound className="h-3.5 w-3.5" />
+                Info
+              </button>
             </div>
 
             {/* Messages */}
@@ -329,6 +345,14 @@ export function AdminSupport({
             </form>
             {send.isError && (
               <p className="px-4 pb-2 text-xs text-red-500">Bhejne me dikkat — dobara try karo.</p>
+            )}
+          </div>
+
+            {/* Right — user context panel (orders / homes / devices / boards) */}
+            {showContext && (
+              <div className="hidden md:block">
+                <SupportUserContext userId={selectedUserId} onClose={() => setShowContext(false)} />
+              </div>
             )}
           </div>
         )}
