@@ -3,6 +3,7 @@
 #include <Arduino.h>
 
 #include "Config.h"
+#include "preferences/PreferencesManager.h"
 
 static bool ledState = false;
 
@@ -20,6 +21,8 @@ namespace LedManager
 bool begin()
 {
     pinMode(STATUS_LED_PIN, OUTPUT);
+
+    ledEnabled = PreferencesManager::getLedEnabled();
 
     return true;
 }
@@ -220,5 +223,18 @@ bool isEnabled()
 {
     return ledEnabled;
 }
+
+/** Web panel se toggle — user choice persist hota hai (restart pe bhi yaad rahe). */
+void setUserEnabled(bool enabled)
+{
+    PreferencesManager::saveLedEnabled(enabled);
+
+    if (enabled)
+        enable();
+    else
+        disable();
+}
+
+
 
 }

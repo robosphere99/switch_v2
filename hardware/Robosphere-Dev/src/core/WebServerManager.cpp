@@ -13,6 +13,7 @@
 #include "Config.h"
 #include "core/Logger.h"
 #include "preferences/PreferencesManager.h"
+#include "core/LedManager.h"
 #include "core/WebServerManager.h"
 #include "web/DashboardPage.h"
 #include "core/WiFiManager.h"
@@ -191,6 +192,7 @@ void handleServerSave();
 void handleServerTest();
 void handleLogout();
 void handleSystem();
+void handleSystemLed();
 void handleWiFi();
 void handleWiFiSave();
 bool checkLogin()
@@ -866,9 +868,31 @@ void handleSystem()
             OTAManager::getStatus(),
             OTAManager::getReleaseNotes(),
             OTAManager::getProgress(),
-            PreferencesManager::getOTAURL()
+            PreferencesManager::getOTAURL(),
+            LedManager::isEnabled()
         )
     );
+}
+
+void handleSystemLed()
+{
+    if(!checkLogin())
+        return;
+
+    // JSON body: { "enabled": true/false }
+    String body = server.arg("plain");
+
+    bool enabled = true;
+
+    if (body.indexOf("\"enabled\":false") >= 0)
+        enabled = false;
+
+    LedManager::setUserEnabled(enabled);
+
+    String json = "{\"success\":true,\"ledEnabled\":";
+    json += enabled ? "true" : "false";
+    json += "}";
+    server.send(200, "application/json", json);
 }
 
 void handleWiFi()
@@ -1010,6 +1034,7 @@ void begin()
 });
     server.on("/logout", HTTP_GET, handleLogout);
     server.on("/system", HTTP_GET, handleSystem);
+    server.on("/system/led", HTTP_POST, handleSystemLed);
     server.on("/wifi", HTTP_GET, handleWiFi);
     server.on("/wifi/save", HTTP_POST, handleWiFiSave);
     server.on("/config/export", HTTP_GET, []()

@@ -268,6 +268,16 @@ void saveSwitchMode(int mode)
     preferences.putInt(PREF_SWITCH_MODE, mode);
 }
 
+void saveLedEnabled(bool enabled)
+{
+    preferences.putBool("led_enabled", enabled);
+}
+
+bool getLedEnabled()
+{
+    return preferences.getBool("led_enabled", true);
+}
+
 int getSwitchMode()
 {
     return preferences.getInt(PREF_SWITCH_MODE, SWITCH_MODE_MOMENTARY);
