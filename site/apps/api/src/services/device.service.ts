@@ -30,6 +30,15 @@ export async function createDevice(input: {
     if (!room) throw new AppError("ROOM_NOT_FOUND", "Room does not belong to this home", 400);
   }
 
+  // Home ke andar device ka naam UNIQUE — search/tracking clean rahe.
+  const dup = await prisma.device.findFirst({
+    where: { homeId: input.homeId, name: input.name },
+    select: { id: true },
+  });
+  if (dup) {
+    throw new AppError("DUPLICATE_NAME", `Naam "${input.name}" already is home me hai — har device ka unique naam chahiye`, 409);
+  }
+
   return prisma.device.create({
     data: {
       homeId: input.homeId,
@@ -96,6 +105,17 @@ export async function updateDevice(
   if (patch.roomId !== undefined && patch.roomId !== null) {
     const room = await prisma.room.findFirst({ where: { id: patch.roomId, homeId } });
     if (!room) throw new AppError("ROOM_NOT_FOUND", "Room does not belong to this home", 400);
+  }
+
+  // Rename pe unique check — is home me kisi aur device ka naam same na ho.
+  if (patch.name !== undefined) {
+    const dup = await prisma.device.findFirst({
+      where: { homeId, name: patch.name, id: { not: deviceId } },
+      select: { id: true },
+    });
+    if (dup) {
+      throw new AppError("DUPLICATE_NAME", `Naam "${patch.name}" already is home me kisi aur device pe hai — unique naam chahiye`, 409);
+    }
   }
 
   return prisma.device.update({
