@@ -30,7 +30,8 @@ adminRouter.use(requireAuth, requireAdmin);
 
 adminRouter.get("/stats", async (_req, res) => {
   const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const [users, homes, devices, activeToday, onlineDevices, pendingCommands, apiKeys, auditCount] =
+  const twoMin = new Date(Date.now() - 120_000);
+  const [users, homes, devices, activeToday, onlineDevices, pendingCommands, apiKeys, auditCount, espBoards, offlineBoards] =
     await Promise.all([
       prisma.user.count(),
       prisma.home.count(),
@@ -40,8 +41,10 @@ adminRouter.get("/stats", async (_req, res) => {
       prisma.deviceCommand.count({ where: { status: "pending" } }),
       prisma.apiKey.count(),
       prisma.auditLog.count(),
+      prisma.espDevice.count(),
+      prisma.espDevice.count({ where: { OR: [{ offline: true }, { lastSeen: { lt: twoMin } }] } }),
     ]);
-  ok(res, { users, homes, devices, activeToday, onlineDevices, pendingCommands, apiKeys, auditCount });
+  ok(res, { users, homes, devices, activeToday, onlineDevices, pendingCommands, apiKeys, auditCount, espBoards, offlineBoards });
 });
 
 // ---------- Users ----------
