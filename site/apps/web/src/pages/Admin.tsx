@@ -1153,6 +1153,42 @@ function DeviceSupportPanel({ deviceId }: { deviceId: number }) {
             <Info label="Board last seen" value={d.esp.lastSeen ? new Date(d.esp.lastSeen).toLocaleString() : "—"} />
             <Info label="OTA" value={d.esp.otaStatus ?? (d.esp.otaProgress != null ? `${d.esp.otaProgress}%` : "—")} />
           </div>
+          <div className="mt-3 border-t border-sky-500/20 pt-2">
+            <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px] text-gray-500">
+              <span>⚡ Live relay states <span className="text-gray-600">(board heartbeat se sync, ~30s)</span></span>
+              <Badge
+                color={
+                  d.esp.lastSeen && Date.now() - new Date(d.esp.lastSeen).getTime() < 120_000
+                    ? "border-emerald-500/40 text-emerald-400"
+                    : "border-red-500/40 text-red-400"
+                }
+              >
+                {d.esp.lastSeen && Date.now() - new Date(d.esp.lastSeen).getTime() < 120_000 ? "BOARD ONLINE" : "BOARD OFFLINE"}
+              </Badge>
+            </div>
+            {d.esp.devices.length === 0 ? (
+              <p className="text-[11px] text-gray-600">
+                Is board se koi device link nahi hai — heartbeat aane pe link ho jayega.
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {d.esp.devices.map((dv, i) => (
+                  <div
+                    key={dv.id}
+                    className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 ${
+                      dv.status === "on" ? "border-emerald-500/40 bg-emerald-500/10" : "border-gray-700 bg-night-900"
+                    }`}
+                  >
+                    <span className="text-[10px] font-bold text-gray-500">R{i}</span>
+                    <span className="text-xs font-semibold text-gray-300">{dv.name}</span>
+                    <span className={`text-[10px] font-bold uppercase ${dv.status === "on" ? "text-emerald-400" : "text-gray-500"}`}>
+                      {dv.status === "on" ? "ON" : "OFF"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
