@@ -155,6 +155,134 @@ export function decodeAssistantContent(content: string): {
 }
 
 // ---------------------------------------------------------------------------
+// Status check + troubleshooting (non-command queries)
+// ---------------------------------------------------------------------------
+
+const STATUS_PATTERNS = [
+  /\bstatus\b/,
+  /\bstates?\b/,
+  /\bkya (haal|hal)\b/,
+  /\bkaise (hai|hain)\b/,
+  /\bcheck\b/,
+  /\bcondition\b/,
+  /\bkaun se (on|chalu)\b/,
+  /\bwhich.*(on|chalu)\b/,
+  /\bsab (on|off|chalu|band)\b/,
+  /\bkitne (on|chalu)\b/,
+];
+
+const TROUBLE_PATTERNS = [
+  /\bkaam nahi (kar raha|kar rahi)\b/,
+  /\bnahi (chal|chalu|khul|khuli|ja raha|ho raha)\b/,
+  /\bnot (working|turning|responding)\b/,
+  /\bproblem\b/,
+  /\bissue\b/,
+  /\bkharab\b/,
+  /\bgadbad\b/,
+  /\btrouble\b/,
+  /\bbroken\b/,
+  /\bkyu(n)?\b.*\bnahi\b/,
+  /\bwhy.*(not|isn.t)\b/,
+  /\bmadad\b/,
+];
+
+const ONLINE_PATTERNS = [/online/, /offline/, /connected/, /zinda/, /available/];
+
+function detectQueryType(text: string): "status" | "troubleshoot" | null {
+  const lower = text.toLowerCase();
+  if (TROUBLE_PATTERNS.some((r) => r.test(lower))) return "troubleshoot";
+  if (STATUS_PATTERNS.some((r) => r.test(lower)) || ONLINE_PATTERNS.some((r) => r.test(lower))) return "status";
+  return null;
+}
+
+interface DeviceBrief {
+  id: number;
+  name: string;
+  type: string;
+  status: string;
+  lastSeen: Date | null;
+  offline: boolean;
+  ipAddress: string | null;
+  firmwareVersion: string | null;
+  _count?: { commands: number };
+}
+
+function fmtRelative(ts: Date | null): string {
+  if (!ts) return "kabhi nahi";
+  const mins = Math.floor((Date.now() - ts.getTime()) / 60000);
+  if (mins < 1) return "abhi";
+  if (mins < 60) return `${mins} min pehle`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} ghante pehle`;
+  return `${Math.floor(hrs / 24)} din pehle`;
+}
+
+function deviceOnline(d: DeviceBrief): boolean {
+  if (d.offline) return false;
+  if (!d.lastSeen) return false;
+  return Date.now() - d.lastSeen.getTime() < 24 * 60 * 60 * 1000;
+}
+
+function buildStatusReply(devices: DeviceBrief[], content: string): string {
+  const lower = content.toLowerCase();
+  const matched = devices.filter((d) => lower.includes(d.name.toLowerCase()));
+  const list = matched.length > 0 ? matched : devices;
+  const lines = list.map((d) => {
+    const st = d.status === "on" ? "ON ✅" : "OFF";
+    const conn = deviceOnline(d) ? "online" : "offline ⚠️";
+    return `• ${d.name} — ${st} (${conn}, last seen ${fmtRelative(d.lastSeen)})`;
+  });
+  const header =
+    matched.length > 0
+      ? `📊 "${content.trim()}" ka status:`
+      : `📊 Tumhare home ke devices ka status:`;
+  return (
+    `${header}
+${lines.join(String.fromCharCode(10))}` +
+    `
+
+Kisi device ki problem ho to bolo — jaise "bulb kyu kaam nahi kar raha".`
+  );
+}
+
+function buildTroubleshootReply(devices: DeviceBrief[], content: string): string {
+  const lower = content.toLowerCase();
+  const matched = devices.filter((d) => lower.includes(d.name.toLowerCase()));
+  const target = matched.length > 0 ? matched : devices;
+  const parts: string[] = [];
+
+  for (const d of target) {
+    const pending = d._count?.commands ?? 0;
+    parts.push(`🔧 ${d.name}:`);
+    parts.push(`  • Status: ${d.status.toUpperCase()}`);
+    parts.push(`  • Connection: ${deviceOnline(d) ? "ONLINE" : "OFFLINE ⚠️"} (last seen ${fmtRelative(d.lastSeen)})`);
+    if (d.firmwareVersion) parts.push(`  • Firmware: ${d.firmwareVersion}`);
+    if (d.ipAddress) parts.push(`  • Board IP: ${d.ipAddress}`);
+    parts.push(`  • Pending commands: ${pending}`);
+
+    if (!deviceOnline(d)) {
+      parts.push(`  → ${d.name} board se connected NAHI hai.`);
+      parts.push(`    Fix: (1) Board ka power check karo (USB/adapter)  (2) WiFi router on hai?  (3) Board reboot karo`);
+    } else if (pending > 0) {
+      parts.push(`  → Kuch commands atki hui hain (pending queue).`);
+      parts.push(`    Fix: (1) 5-10 sec wait karo — board har 5s poll karta hai  (2) fir bhi na ho to support se "clear stuck commands" karwao`);
+    } else if (d.status === "on") {
+      parts.push(`  → Device ON dikh raha hai par kaam nahi kar raha?`);
+      parts.push(`    Fix: (1) wiring/connection check karo  (2) kisi dusre device se relay test karo`);
+    } else {
+      parts.push(`  → Device OFF hai. Pehle ON karo — "ON karo" bolo ya dashboard se toggle karo.`);
+    }
+  }
+
+  return (
+    parts.join(String.fromCharCode(10)) +
+    `
+
+Aur madad chahiye? Board level ki details ke liye admin/support se baat karo.`
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Message flow: user message -> parse -> assistant reply (with proposal)
 // ---------------------------------------------------------------------------
 
@@ -168,8 +296,37 @@ export async function sendMessage(userId: number, chatId: number, content: strin
 
   const devices = await prisma.device.findMany({
     where: { homeId: chat.homeId },
-    select: { id: true, name: true, type: true, status: true },
+    select: {
+      id: true,
+      name: true,
+      type: true,
+      status: true,
+      lastSeen: true,
+      offline: true,
+      ipAddress: true,
+      firmwareVersion: true,
+      _count: { select: { commands: { where: { status: "pending" } } } },
+    },
   });
+
+  // Status / troubleshooting questions pehle — command flow me nahi jaane dena.
+  const queryType = detectQueryType(content);
+  if (queryType) {
+    const replyText =
+      queryType === "troubleshoot"
+        ? buildTroubleshootReply(devices, content)
+        : buildStatusReply(devices, content);
+    const assistantMessage = await prisma.assistantMessage.create({
+      data: { chatId, role: "assistant", content: encodeAssistantContent(replyText, null) },
+    });
+    if (chat.title === "AI Assist" && content.trim().length > 0) {
+      await prisma.assistantChat.update({
+        where: { id: chat.id },
+        data: { title: content.trim().slice(0, 60) },
+      });
+    }
+    return { chat, userMessage, assistantMessage: { ...assistantMessage, content: replyText, proposal: null } };
+  }
 
   const parsed = parseIntent(content, devices);
   let replyText: string;
