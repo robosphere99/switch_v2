@@ -10,7 +10,7 @@ import {
   type Notification,
 } from "../api/notifications";
 import { useAuthStore } from "../stores/auth";
-import { parseNotificationBody } from "../lib/notificationBody";
+import { buildSupportDraft, parseNotificationBody } from "../lib/notificationBody";
 
 const CATEGORIES: Array<{ id: string; label: string; icon: string }> = [
   { id: "all", label: "All", icon: "🔔" },
@@ -100,17 +100,18 @@ export function Notifications() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  /** Support notification → usi user ka chat kholo (admin) ya apna support page. */
+  /** Notification click → support chat kholo. User ko draft message pre-filled milta hai. */
   const handleOpen = (n: Notification) => {
     if (!n.readAt) readOne.mutate(n.id);
     const parsed = parseNotificationBody(n.body);
-    if (n.category === "support") {
-      if (isAdmin) {
+    if (isAdmin) {
+      if (n.category === "support") {
         navigate(parsed.targetUserId ? `/admin?tab=support&user=${parsed.targetUserId}` : "/admin?tab=support");
-      } else {
-        navigate("/support");
       }
+      return;
     }
+    const draft = buildSupportDraft(n);
+    navigate(draft ? `/support?draft=${encodeURIComponent(draft)}` : "/support");
   };
 
   return (
@@ -207,7 +208,9 @@ export function Notifications() {
         )}
         {data?.items.map((n) => {
           const parsed = parseNotificationBody(n.body);
-          const clickable = n.category === "support";
+          // User ke liye har notification clickable (draft ke saath support khulta hai),
+          // admin ke liye sirf support notifications chat kholte hain.
+          const clickable = !isAdmin || n.category === "support";
           return (
             <div
               key={n.id}
@@ -221,7 +224,7 @@ export function Notifications() {
                   else if (!n.readAt) readOne.mutate(n.id);
                 }}
                 className="flex-1 text-left"
-                title={clickable ? (isAdmin ? "Chat kholo aur reply do" : "Support kholo") : n.readAt ? "Read" : "Click to mark as read"}
+                title={clickable ? (isAdmin ? "Chat kholo aur reply do" : "Support kholo — draft message ready") : n.readAt ? "Read" : "Click to mark as read"}
               >
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-semibold text-gray-800">{n.title}</span>
@@ -244,7 +247,7 @@ export function Notifications() {
                     hour: "2-digit",
                     minute: "2-digit",
                   })}
-                  {clickable && <span className="ml-2 text-brand">↪ chat kholo</span>}
+                  {clickable && <span className="ml-2 text-brand">{isAdmin ? "↪ chat kholo" : "↪ support kholo — draft ready"}</span>}
                 </p>
               </button>
               <button

@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { listNotifications, markRead, markAllRead, unreadCount, type Notification } from "../api/notifications";
 import { useAuthStore } from "../stores/auth";
-import { parseNotificationBody } from "../lib/notificationBody";
+import { buildSupportDraft, parseNotificationBody } from "../lib/notificationBody";
 
 export function NotificationBell() {
   const queryClient = useQueryClient();
@@ -44,18 +44,19 @@ export function NotificationBell() {
   const typeColor = (type: string) =>
     type === "warning" ? "border-amber-500/50 bg-amber-500/10" : type === "error" ? "border-red-500/50 bg-red-500/10" : "border-brand/30 bg-night-900";
 
-  /** Support notification → usi user ka chat kholo (admin) ya apna support page. */
+  /** Notification click → support chat kholo. User ko draft message pre-filled milta hai. */
   const handleOpen = (n: Notification) => {
     if (!n.readAt) readOne.mutate(n.id);
     const parsed = parseNotificationBody(n.body);
     setOpen(false);
-    if (n.category === "support") {
-      if (isAdmin) {
+    if (isAdmin) {
+      if (n.category === "support") {
         navigate(parsed.targetUserId ? `/admin?tab=support&user=${parsed.targetUserId}` : "/admin?tab=support");
-      } else {
-        navigate("/support");
       }
+      return;
     }
+    const draft = buildSupportDraft(n);
+    navigate(draft ? `/support?draft=${encodeURIComponent(draft)}` : "/support");
   };
 
   return (
@@ -96,7 +97,8 @@ export function NotificationBell() {
               ) : (
                 list.map((n) => {
                   const parsed = parseNotificationBody(n.body);
-                  const clickable = n.category === "support";
+                  // User ke liye har notification clickable (draft ke saath support khulta hai)
+                  const clickable = !isAdmin || n.category === "support";
                   return (
                     <div
                       key={n.id}
@@ -110,13 +112,13 @@ export function NotificationBell() {
                           readOne.mutate(n.id);
                         }
                       }}
-                      title={clickable ? (isAdmin ? "Chat kholo aur reply do" : "Support kholo") : "Notification"}
+                      title={clickable ? (isAdmin ? "Chat kholo aur reply do" : "Support kholo — draft message ready") : "Notification"}
                     >
                       <p className="text-sm font-medium text-gray-700">{n.title}</p>
                       {parsed.text && <p className="mt-0.5 text-xs text-gray-500">{parsed.text}</p>}
                       <p className="mt-1 text-[10px] text-gray-500">
                         {new Date(n.createdAt).toLocaleString([], { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })}
-                        {clickable && <span className="ml-1.5 text-brand">· open →</span>}
+                        {clickable && <span className="ml-1.5 text-brand">{isAdmin ? "· open →" : "· support → draft"}</span>}
                       </p>
                     </div>
                   );
