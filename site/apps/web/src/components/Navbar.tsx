@@ -7,6 +7,7 @@ import {
   KeyRound,
   LayoutDashboard,
   LogOut,
+  Menu,
   Package,
   RadioTower,
   ShieldCheck,
@@ -15,6 +16,7 @@ import {
   Users,
   Wrench,
   Settings,
+  X,
   Zap,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -40,11 +42,17 @@ const NAV_LINKS: Array<{ to: string; label: string; icon: typeof Home }> = [
   { to: "/notifications", label: "Center", icon: Bell },
 ];
 
+function toggleTheme(setDark: (d: boolean) => void) {
+  changeTheme(resolvedDark() ? "light" : "dark");
+  setDark(resolvedDark());
+}
+
 export function Navbar() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const navigate = useNavigate();
   const [dark, setDark] = useState(() => resolvedDark());
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   // Profile me theme change ho to yahan bhi sync rahe
   useEffect(() => onThemeChange(() => setDark(resolvedDark())), []);
@@ -52,17 +60,21 @@ export function Navbar() {
   function handleLogout() {
     logout();
     navigate("/");
+    setMobileOpen(false);
   }
+
+  const mobileLinkCls =
+    "flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm text-gray-700 transition hover:bg-gray-100 hover:text-brand";
 
   return (
     <header className="sticky top-0 z-20 border-b border-gray-200 bg-white/95 backdrop-blur">
-      <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3">
-        <Link to="/" className="shrink-0">
+      <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3">
+        <Link to="/" className="shrink-0" onClick={() => setMobileOpen(false)}>
           <Logo />
         </Link>
 
         {user ? (
-          <nav className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
+          <nav className="hidden items-center gap-x-5 gap-y-2 text-sm md:flex">
             {NAV_LINKS.map(({ to, label, icon: Icon }) => (
               <Link
                 key={to}
@@ -96,7 +108,7 @@ export function Navbar() {
               </span>
             )}
             <button
-              onClick={() => { changeTheme(resolvedDark() ? "light" : "dark"); setDark(resolvedDark()); }}
+              onClick={() => toggleTheme(setDark)}
               className="rounded-lg border border-gray-300 p-1.5 text-gray-600 transition hover:border-brand hover:text-brand"
               title={dark ? "Light mode" : "Dark mode"}
             >
@@ -111,7 +123,7 @@ export function Navbar() {
             </button>
           </nav>
         ) : (
-          <nav className="flex items-center gap-3 text-sm">
+          <nav className="hidden items-center gap-3 text-sm md:flex">
             <Link
               to="/shop"
               className="inline-flex items-center gap-1.5 text-gray-600 transition hover:text-brand"
@@ -120,7 +132,7 @@ export function Navbar() {
               Shop
             </Link>
             <button
-              onClick={() => { changeTheme(resolvedDark() ? "light" : "dark"); setDark(resolvedDark()); }}
+              onClick={() => toggleTheme(setDark)}
               className="rounded-lg border border-gray-300 p-1.5 text-gray-600 transition hover:border-brand hover:text-brand"
               title={dark ? "Light mode" : "Dark mode"}
             >
@@ -141,7 +153,88 @@ export function Navbar() {
             </Link>
           </nav>
         )}
+
+        {/* Mobile hamburger */}
+        <button
+          onClick={() => setMobileOpen((o) => !o)}
+          className="rounded-lg border border-gray-300 p-2 text-gray-600 transition hover:border-brand hover:text-brand md:hidden"
+          title={mobileOpen ? "Close menu" : "Menu"}
+          aria-label="Menu"
+        >
+          {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+        </button>
       </div>
+
+      {/* Mobile dropdown */}
+      {mobileOpen && (
+        <div className="border-t border-gray-200 bg-white md:hidden">
+          <div className="mx-auto max-w-7xl space-y-1 px-4 py-3">
+            {user ? (
+              <>
+                {NAV_LINKS.map(({ to, label, icon: Icon }) => (
+                  <Link key={to} to={to} className={mobileLinkCls} onClick={() => setMobileOpen(false)}>
+                    <Icon className="h-4 w-4 text-brand" />
+                    {label}
+                  </Link>
+                ))}
+                <Link to="/profile" className={mobileLinkCls} onClick={() => setMobileOpen(false)}>
+                  <User className="h-4 w-4 text-brand" />
+                  Hi, {user.username}
+                </Link>
+                {user.role === "system_admin" && (
+                  <span className="relative block">
+                    <Link
+                      to="/admin"
+                      className="flex w-full items-center gap-2.5 rounded-lg bg-brand/10 px-3 py-2.5 text-sm font-semibold text-brand transition hover:bg-brand/20"
+                      onClick={() => setMobileOpen(false)}
+                    >
+                      <Settings className="h-4 w-4" />
+                      Admin
+                    </Link>
+                    <SupportUnreadBadge />
+                  </span>
+                )}
+                <div className="flex items-center justify-between gap-2 pt-1">
+                  <NotificationBell />
+                  <button
+                    onClick={() => toggleTheme(setDark)}
+                    className="rounded-lg border border-gray-300 p-2 text-gray-600 transition hover:border-brand hover:text-brand"
+                    title={dark ? "Light mode" : "Dark mode"}
+                  >
+                    {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                  </button>
+                  <button
+                    onClick={handleLogout}
+                    className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-600 transition hover:border-red-300 hover:bg-red-50 hover:text-red-600"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Logout
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <Link to="/shop" className={mobileLinkCls} onClick={() => setMobileOpen(false)}>
+                  <ShoppingCart className="h-4 w-4 text-brand" />
+                  Shop
+                </Link>
+                <Link to="/login" className={mobileLinkCls} onClick={() => setMobileOpen(false)}>
+                  <User className="h-4 w-4 text-brand" />
+                  Login
+                </Link>
+                <Link
+                  to="/signup"
+                  className="mt-1 flex w-full items-center justify-center gap-2 rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-110"
+                  onClick={() => setMobileOpen(false)}
+                >
+                  <Zap className="h-4 w-4" />
+                  Sign Up
+                </Link>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </header>
   );
 }
