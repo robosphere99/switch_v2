@@ -8,6 +8,7 @@ import { startScheduler } from "./services/scheduler.service";
 import { startFamilySafety } from "./services/familySafety.service";
 import { startOfflineWatcher } from "./services/offline.service";
 import { setDbReady } from "./lib/dbState";
+import { loadRequestTracker, startRequestFlush } from "./lib/requestTracker";
 
 // Tables exist ya nahi — information_schema se check (empty DB pe crash
 // nahi karta). Bas DB reachable hona kaafi nahi: tables nahi hain to
@@ -155,6 +156,26 @@ async function runLightMigrations(): Promise<void> {
           ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         `);
         logger.info("✅ Migration: support_chat_settings table created");
+      }
+    });
+    // 5d) app_meta.value VARCHAR(255) -> TEXT — request tracker + site settings
+    //     JSON payload ke liye (255 chars kaafi nahi).
+    await migration("app_meta.value TEXT", async () => {
+      const am = await prisma.$queryRaw<{ c: bigint }[]>`
+        SELECT COUNT(*) AS c FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'app_meta' AND column_name = 'value'
+      `;
+      if (Number(am[0]?.c ?? 0) > 0) {
+        const typ = await prisma.$queryRaw<{ data_type: string }[]>`
+          SELECT DATA_TYPE AS data_type FROM information_schema.columns
+          WHERE table_schema = DATABASE() AND table_name = 'app_meta' AND column_name = 'value'
+        `;
+        if (typ[0]?.data_type === "varchar") {
+          await prisma.$executeRawUnsafe(
+            "ALTER TABLE `app_meta` MODIFY COLUMN `value` TEXT NOT NULL",
+          );
+          logger.info("✅ Migration: app_meta.value -> TEXT");
+        }
       }
     });
     // 6) Family safety — child mode: home_members.restricted + daily_limit_minutes,
@@ -437,6 +458,14 @@ async function initDatabase(): Promise<void> {
       startOfflineWatcher();
     } catch (err) {
       logger.warn("Offline watcher start skipped/failed", err instanceof Error ? err.message : String(err));
+    }
+    // Request traffic tracker — AppMeta se load + periodic flush
+    try {
+      await loadRequestTracker();
+      startRequestFlush();
+      boot("request tracker: loaded");
+    } catch (err) {
+      logger.warn("Request tracker start failed", err instanceof Error ? err.message : String(err));
     }
   }
 }

@@ -12,6 +12,20 @@ export interface AdminStats {
   auditCount: number;
   espBoards: number;
   offlineBoards: number;
+  orders: number;
+  pendingOrders: number;
+  ordersToday: number;
+  ordersThisMonth: number;
+  revenueTotal: number;
+  revenueThisMonth: number;
+  newUsers7d: number;
+  supportMessages: number;
+  contactMessages: number;
+  deviceLogs24h: number;
+  requests: { today: number; last24h: number; total: number };
+  usersByDay: Record<string, number>;
+  ordersByDay: Record<string, number>;
+  revenueByDay: Record<string, number>;
 }
 
 export interface AdminUser {
@@ -88,10 +102,29 @@ export interface GlobalSearchResult {
 export async function globalSearch(q: string): Promise<ApiResponse<GlobalSearchResult>> {
   const { data } = await api.get<ApiResponse<GlobalSearchResult>>("/admin/search", { params: { q } });
   return data;
+}export async function getStats(): Promise<ApiResponse<AdminStats>> {
+  const { data } = await api.get<ApiResponse<AdminStats>>("/admin/stats");
+  return data;
 }
 
-export async function getStats(): Promise<ApiResponse<AdminStats>> {
-  const { data } = await api.get<ApiResponse<AdminStats>>("/admin/stats");
+export interface SiteSettingsPayload {
+  siteName?: string;
+  supportEmail?: string;
+  supportPhone?: string;
+  supportAddress?: string;
+  supportHours?: string;
+  brandColor?: string;
+}
+
+export async function getAdminSettings(): Promise<ApiResponse<SiteSettingsPayload & { supportHours: string }>> {
+  const { data } = await api.get("/admin/settings");
+  return data;
+}
+
+export async function updateAdminSettings(patch: SiteSettingsPayload): Promise<
+  ApiResponse<SiteSettingsPayload & { supportHours: string }>
+> {
+  const { data } = await api.put("/admin/settings", patch);
   return data;
 }
 

@@ -25,9 +25,16 @@ import { Warranty } from "./pages/Warranty";
 import { Support } from "./pages/Support";
 import { Install } from "./pages/Install";
 import { getInstallStatus } from "./api/install";
+import { useSiteStore } from "./stores/site";
 
 export default function App() {
   useRealtime();
+  const loadSite = useSiteStore((s) => s.load);
+
+  // Site-wide settings (brand color, contact info) — login se pehle bhi apply ho jaye
+  useEffect(() => {
+    void loadSite();
+  }, [loadSite]);
 
   // First-run gate: DB/tables nahi hain to pura app ki jagah install wizard.
   const [installState, setInstallState] = useState<"checking" | "installed" | "setup">("checking");

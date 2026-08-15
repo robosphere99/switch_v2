@@ -709,7 +709,7 @@ async function listNotifications(userId, args = {}) {
   }
   if (args.type && args.type !== "all") where.type = args.type;
   if (args.unread) where.readAt = null;
-  const [raw, total] = await Promise.all([
+  const [raw, total2] = await Promise.all([
     prisma.notification.findMany({
       where,
       orderBy: { createdAt: "desc" },
@@ -719,7 +719,7 @@ async function listNotifications(userId, args = {}) {
     prisma.notification.count({ where })
   ]);
   const items = raw.map((n) => ({ ...n, category: normalizeCategory(n.category, n.title) }));
-  return { items, total, page, pageSize, totalPages: Math.max(1, Math.ceil(total / pageSize)) };
+  return { items, total: total2, page, pageSize, totalPages: Math.max(1, Math.ceil(total2 / pageSize)) };
 }
 async function remove2(userId, notificationId) {
   await prisma.notification.deleteMany({ where: { id: notificationId, userId } });
@@ -2751,6 +2751,7 @@ assistantRouter.get("/chats/:chatId/messages", requireAuth, validateParams(chatP
 
 // src/routes/admin.routes.ts
 import { Router as Router11 } from "express";
+import { z as z12 } from "zod";
 import multer from "multer";
 import path4 from "node:path";
 import fs3 from "node:fs";
@@ -2820,14 +2821,14 @@ async function createOrder(input) {
   });
   if (!products.length) throw new AppError("NOT_FOUND", "No valid products in cart");
   const productMap = new Map(products.map((p) => [p.id, p]));
-  let total = 0;
+  let total2 = 0;
   for (const it of input.items) {
     const prod = productMap.get(it.productId);
     if (!prod) throw new AppError("NOT_FOUND", `Product ${it.productId} not found`);
     if (!Number.isInteger(it.quantity) || it.quantity < 1) {
       throw new AppError("BAD_REQUEST", `Invalid quantity for ${prod.name}`);
     }
-    total += Number(prod.price) * it.quantity;
+    total2 += Number(prod.price) * it.quantity;
   }
   const wifiPasswordEnc = input.wifi?.password ? encryptSecret(input.wifi.password) : null;
   const order = await prisma.$transaction(async (tx) => {
@@ -2837,7 +2838,7 @@ async function createOrder(input) {
         userId: input.userId,
         paymentMethod: input.paymentMethod,
         paymentStatus: input.paymentMethod === "cod" ? "pending" : "unpaid",
-        totalAmount: total,
+        totalAmount: total2,
         shippingName: input.shipping.name,
         shippingPhone: input.shipping.phone,
         shippingAddress: input.shipping.address,
@@ -2951,6 +2952,125 @@ async function updateOrderStatus(orderId, status) {
 
 // src/routes/admin.routes.ts
 init_firmware_service();
+
+// src/lib/requestTracker.ts
+init_prisma();
+var DAY_MS = 24 * 60 * 60 * 1e3;
+var STORE_KEY = "req_tracker";
+var hourly = /* @__PURE__ */ new Map();
+var daily = /* @__PURE__ */ new Map();
+var total = 0;
+var loaded = false;
+function dayKey(d) {
+  return d.toISOString().slice(0, 10);
+}
+function hourKey(d) {
+  return d.toISOString().slice(0, 13);
+}
+function trackRequest() {
+  const now = /* @__PURE__ */ new Date();
+  const hk = hourKey(now);
+  const dk = dayKey(now);
+  hourly.set(hk, (hourly.get(hk) ?? 0) + 1);
+  daily.set(dk, (daily.get(dk) ?? 0) + 1);
+  total++;
+}
+function getRequestStats() {
+  const now = /* @__PURE__ */ new Date();
+  const cutoff = now.getTime() - DAY_MS;
+  let last24h = 0;
+  for (const [k, v] of hourly) {
+    const t = (/* @__PURE__ */ new Date(`${k}:00:00.000Z`)).getTime();
+    if (t >= cutoff) last24h += v;
+  }
+  return { today: daily.get(dayKey(now)) ?? 0, last24h, total };
+}
+async function loadRequestTracker() {
+  if (loaded) return;
+  try {
+    const row = await prisma.appMeta.findUnique({ where: { key: STORE_KEY } });
+    if (row?.value) {
+      const p = JSON.parse(row.value);
+      for (const [k, v] of Object.entries(p.hourly ?? {})) hourly.set(k, v);
+      for (const [k, v] of Object.entries(p.daily ?? {})) daily.set(k, v);
+      total = p.total ?? Object.values(p.daily ?? {}).reduce((a, b) => a + b, 0);
+      const cutoff = Date.now() - 40 * DAY_MS;
+      for (const k of [...hourly.keys()]) {
+        if ((/* @__PURE__ */ new Date(`${k}:00:00.000Z`)).getTime() < cutoff) hourly.delete(k);
+      }
+      for (const k of [...daily.keys()]) {
+        if ((/* @__PURE__ */ new Date(`${k}T00:00:00.000Z`)).getTime() < cutoff) daily.delete(k);
+      }
+    }
+  } catch {
+  }
+  loaded = true;
+}
+var flushTimer = null;
+function startRequestFlush(intervalMs = 6e4) {
+  if (flushTimer) return;
+  flushTimer = setInterval(() => {
+    void flushRequestTracker();
+  }, intervalMs);
+  flushTimer.unref?.();
+}
+async function flushRequestTracker() {
+  try {
+    await prisma.appMeta.upsert({
+      where: { key: STORE_KEY },
+      create: {
+        key: STORE_KEY,
+        value: JSON.stringify({
+          hourly: Object.fromEntries(hourly),
+          daily: Object.fromEntries(daily),
+          total
+        })
+      },
+      update: {
+        value: JSON.stringify({
+          hourly: Object.fromEntries(hourly),
+          daily: Object.fromEntries(daily),
+          total
+        })
+      }
+    });
+  } catch {
+  }
+}
+
+// src/services/siteSettings.service.ts
+init_prisma();
+var DEFAULT_SITE_SETTINGS = {
+  siteName: "SwitchNest",
+  supportEmail: "support@switchnest.in",
+  supportPhone: "+91 98765 43210",
+  supportAddress: "SwitchNest Labs, Sector 62, Noida, UP 201309",
+  supportHours: "Mon\u2013Sat \xB7 9:00 AM \u2013 7:00 PM",
+  brandColor: "#2563eb"
+};
+var KEY2 = "site_settings";
+async function getSiteSettings() {
+  try {
+    const row = await prisma.appMeta.findUnique({ where: { key: KEY2 } });
+    if (row?.value) {
+      return { ...DEFAULT_SITE_SETTINGS, ...JSON.parse(row.value) };
+    }
+  } catch {
+  }
+  return DEFAULT_SITE_SETTINGS;
+}
+async function updateSiteSettings(patch) {
+  const current = await getSiteSettings();
+  const next = { ...current, ...patch };
+  await prisma.appMeta.upsert({
+    where: { key: KEY2 },
+    create: { key: KEY2, value: JSON.stringify(next) },
+    update: { value: JSON.stringify(next) }
+  });
+  return next;
+}
+
+// src/routes/admin.routes.ts
 var adminRouter = Router11();
 function requireAdmin(req, _res, next) {
   if (req.user?.role !== "system_admin") {
@@ -2959,10 +3079,41 @@ function requireAdmin(req, _res, next) {
   next();
 }
 adminRouter.use(requireAuth, requireAdmin);
+var DAY_MS2 = 24 * 60 * 60 * 1e3;
+function dayKey2(d) {
+  return d.toISOString().slice(0, 10);
+}
 adminRouter.get("/stats", async (_req, res) => {
-  const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1e3);
+  const dayAgo = new Date(Date.now() - DAY_MS2);
+  const weekAgo = new Date(Date.now() - 7 * DAY_MS2);
   const twoMin = new Date(Date.now() - 12e4);
-  const [users, homes, devices, activeToday, onlineDevices, pendingCommands2, apiKeys, auditCount, espBoards, offlineBoards] = await Promise.all([
+  const monthStart = /* @__PURE__ */ new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+  const [
+    users,
+    homes,
+    devices,
+    activeToday,
+    onlineDevices,
+    pendingCommands2,
+    apiKeys,
+    auditCount,
+    espBoards,
+    offlineBoards,
+    orders,
+    pendingOrders,
+    ordersToday,
+    ordersThisMonth,
+    revenueTotal,
+    revenueThisMonth,
+    newUsers7d,
+    supportMessages,
+    contactMessages,
+    deviceLogs24h,
+    usersRecent,
+    ordersRecent
+  ] = await Promise.all([
     prisma.user.count(),
     prisma.home.count(),
     prisma.device.count(),
@@ -2972,9 +3123,76 @@ adminRouter.get("/stats", async (_req, res) => {
     prisma.apiKey.count(),
     prisma.auditLog.count(),
     prisma.espDevice.count(),
-    prisma.espDevice.count({ where: { OR: [{ offline: true }, { lastSeen: { lt: twoMin } }] } })
+    prisma.espDevice.count({ where: { OR: [{ offline: true }, { lastSeen: { lt: twoMin } }] } }),
+    prisma.order.count(),
+    prisma.order.count({ where: { status: "pending" } }),
+    prisma.order.count({ where: { createdAt: { gte: dayAgo } } }),
+    prisma.order.count({ where: { createdAt: { gte: monthStart } } }),
+    prisma.order.aggregate({ _sum: { totalAmount: true }, where: { paidAt: { not: null } } }),
+    prisma.order.aggregate({ _sum: { totalAmount: true }, where: { paidAt: { not: null }, createdAt: { gte: monthStart } } }),
+    prisma.user.count({ where: { createdAt: { gte: weekAgo } } }),
+    prisma.supportMessage.count(),
+    prisma.contactMessage.count(),
+    prisma.deviceLog.count({ where: { createdAt: { gte: dayAgo } } }),
+    prisma.user.findMany({ where: { createdAt: { gte: weekAgo } }, select: { createdAt: true } }),
+    prisma.order.findMany({ where: { createdAt: { gte: weekAgo } }, select: { createdAt: true, totalAmount: true, paidAt: true } })
   ]);
-  ok(res, { users, homes, devices, activeToday, onlineDevices, pendingCommands: pendingCommands2, apiKeys, auditCount, espBoards, offlineBoards });
+  const usersByDay = {};
+  for (const u of usersRecent) {
+    const k = dayKey2(u.createdAt);
+    usersByDay[k] = (usersByDay[k] ?? 0) + 1;
+  }
+  const ordersByDay = {};
+  const revenueByDay = {};
+  for (const o of ordersRecent) {
+    const k = dayKey2(o.createdAt);
+    ordersByDay[k] = (ordersByDay[k] ?? 0) + 1;
+    if (o.paidAt) {
+      const pk = dayKey2(o.paidAt);
+      revenueByDay[pk] = (revenueByDay[pk] ?? 0) + Number(o.totalAmount);
+    }
+  }
+  ok(res, {
+    users,
+    homes,
+    devices,
+    activeToday,
+    onlineDevices,
+    pendingCommands: pendingCommands2,
+    apiKeys,
+    auditCount,
+    espBoards,
+    offlineBoards,
+    orders,
+    pendingOrders,
+    ordersToday,
+    ordersThisMonth,
+    revenueTotal: Number(revenueTotal._sum.totalAmount ?? 0),
+    revenueThisMonth: Number(revenueThisMonth._sum.totalAmount ?? 0),
+    newUsers7d,
+    supportMessages,
+    contactMessages,
+    deviceLogs24h,
+    requests: getRequestStats(),
+    usersByDay,
+    ordersByDay,
+    revenueByDay
+  });
+});
+var settingsSchema = z12.object({
+  siteName: z12.string().min(1).max(60).optional(),
+  supportEmail: z12.string().email().max(100).optional(),
+  supportPhone: z12.string().min(1).max(30).optional(),
+  supportAddress: z12.string().min(1).max(200).optional(),
+  supportHours: z12.string().min(1).max(100).optional(),
+  brandColor: z12.string().regex(/^#[0-9a-fA-F]{6}$/, "Hex color (#RRGGBB)").optional()
+}).refine((d) => Object.keys(d).length > 0, { message: "At least one field to update" });
+adminRouter.get("/settings", async (_req, res) => {
+  ok(res, await getSiteSettings());
+});
+adminRouter.put("/settings", validateBody(settingsSchema), async (req, res) => {
+  ok(res, await updateSiteSettings(req.body));
+  void audit(req.user.sub, "settings.update", { entity: "site", meta: { fields: Object.keys(req.body) } });
 });
 adminRouter.get("/users", async (req, res) => {
   const q = String(req.query.q ?? "").trim();
@@ -4492,6 +4710,9 @@ init_prisma();
 import { Router as Router15 } from "express";
 init_audit_service();
 var publicRouter = Router15();
+publicRouter.get("/site-settings", async (_req, res) => {
+  ok(res, await getSiteSettings());
+});
 var CHIPS = [
   "Kis board ki zaroorat hai?",
   "Site kaise kaam karti hai?",
@@ -4672,15 +4893,15 @@ publicRouter.post("/support", requireAuth, async (req, res) => {
 
 // src/routes/support.routes.ts
 import { Router as Router16 } from "express";
-import { z as z12 } from "zod";
+import { z as z13 } from "zod";
 init_prisma();
 var supportRouter = Router16();
 var MAX_ATTACHMENT_BYTES = 2 * 1024 * 1024;
 var ALLOWED_TYPES = /^(image\/(png|jpe?g|gif|webp|heic)|application\/pdf|text\/plain)$/;
 var attachmentFields = {
-  attachmentName: z12.string().trim().min(1).max(255).optional(),
-  attachmentType: z12.string().trim().min(1).max(100).optional(),
-  attachmentData: z12.string().min(1).optional()
+  attachmentName: z13.string().trim().min(1).max(255).optional(),
+  attachmentType: z13.string().trim().min(1).max(100).optional(),
+  attachmentData: z13.string().min(1).optional()
 };
 function refineAttachment(d, ctx) {
   const hasAny = d.attachmentName != null || d.attachmentType != null || d.attachmentData != null;
@@ -4755,9 +4976,9 @@ supportRouter.get("/admin/messages", requireAuth, async (req, res) => {
   }
   ok(res, { userId, unread, messages: msgs });
 });
-var adminSendSchema = z12.object({
-  userId: z12.number().int().positive(),
-  message: z12.string().trim().max(4e3),
+var adminSendSchema = z13.object({
+  userId: z13.number().int().positive(),
+  message: z13.string().trim().max(4e3),
   ...attachmentFields
 }).superRefine((d, ctx) => {
   if (!d.message && !d.attachmentData) {
@@ -4813,8 +5034,8 @@ supportRouter.get("/messages", requireAuth, async (req, res) => {
   }
   ok(res, { unread: unreadCount2, messages });
 });
-var userSendSchema = z12.object({
-  message: z12.string().trim().max(4e3),
+var userSendSchema = z13.object({
+  message: z13.string().trim().max(4e3),
   ...attachmentFields
 }).superRefine((d, ctx) => {
   if (!d.message && !d.attachmentData) {
@@ -5614,6 +5835,7 @@ function createApp() {
   app.use(express.urlencoded({ extended: true }));
   app.use((req, res, next) => {
     const start = Date.now();
+    trackRequest();
     fileLog(`[req] ${(/* @__PURE__ */ new Date()).toISOString()} START ${req.method} ${req.originalUrl}`);
     res.on("finish", () => {
       fileLog(`[req] ${(/* @__PURE__ */ new Date()).toISOString()} END ${req.method} ${req.originalUrl} -> ${res.statusCode} (${Date.now() - start}ms)`);
@@ -5927,6 +6149,24 @@ async function runLightMigrations() {
         logger.info("\u2705 Migration: support_chat_settings table created");
       }
     });
+    await migration("app_meta.value TEXT", async () => {
+      const am = await prisma.$queryRaw`
+        SELECT COUNT(*) AS c FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'app_meta' AND column_name = 'value'
+      `;
+      if (Number(am[0]?.c ?? 0) > 0) {
+        const typ = await prisma.$queryRaw`
+          SELECT DATA_TYPE AS data_type FROM information_schema.columns
+          WHERE table_schema = DATABASE() AND table_name = 'app_meta' AND column_name = 'value'
+        `;
+        if (typ[0]?.data_type === "varchar") {
+          await prisma.$executeRawUnsafe(
+            "ALTER TABLE `app_meta` MODIFY COLUMN `value` TEXT NOT NULL"
+          );
+          logger.info("\u2705 Migration: app_meta.value -> TEXT");
+        }
+      }
+    });
     await migration("home_members restricted", async () => {
       const rm = await prisma.$queryRaw`
         SELECT COUNT(*) AS c FROM information_schema.columns
@@ -6151,6 +6391,13 @@ async function initDatabase() {
       startOfflineWatcher();
     } catch (err) {
       logger.warn("Offline watcher start skipped/failed", err instanceof Error ? err.message : String(err));
+    }
+    try {
+      await loadRequestTracker();
+      startRequestFlush();
+      boot("request tracker: loaded");
+    } catch (err) {
+      logger.warn("Request tracker start failed", err instanceof Error ? err.message : String(err));
     }
   }
 }

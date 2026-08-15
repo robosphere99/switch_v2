@@ -11,6 +11,7 @@ import { installRouter } from "./routes/install.routes";
 import { isDbReady } from "./lib/dbState";
 import { fileLog } from "./lib/logger";
 import { prisma } from "./lib/prisma";
+import { trackRequest } from "./lib/requestTracker";
 
 /** Health diagnostics — models/tables present hain ya nahi (deploy issue pehchanna). */
 async function schemaDiag() {
@@ -52,6 +53,8 @@ export function createApp() {
   // Koi request process ko maare to last logged line hi culprit hai.
   app.use((req, res, next) => {
     const start = Date.now();
+    // Site usage / traffic monitoring — har API request count hota hai
+    trackRequest();
     fileLog(`[req] ${new Date().toISOString()} START ${req.method} ${req.originalUrl}`);
     res.on("finish", () => {
       fileLog(`[req] ${new Date().toISOString()} END ${req.method} ${req.originalUrl} -> ${res.statusCode} (${Date.now() - start}ms)`);

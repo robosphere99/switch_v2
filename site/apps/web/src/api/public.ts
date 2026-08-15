@@ -1,4 +1,20 @@
+import type { ApiResponse } from "@robosphere/shared";
 import { api } from "./client";
+
+/** Site-wide settings — public (login se pehle bhi), Admin → Settings se edit hote hain. */
+export interface SiteSettings {
+  siteName: string;
+  supportEmail: string;
+  supportPhone: string;
+  supportAddress: string;
+  supportHours: string;
+  brandColor: string;
+}
+
+export async function getPublicSiteSettings(): Promise<ApiResponse<SiteSettings>> {
+  const { data } = await api.get("/public/site-settings");
+  return data;
+}
 
 export interface AssistantSuggestion {
   id: number;

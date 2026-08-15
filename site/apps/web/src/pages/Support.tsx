@@ -15,6 +15,7 @@ import {
   type SupportMessage,
 } from "../api/public";
 import { getMyOrders, type Order } from "../api/shop";
+import { useSiteStore } from "../stores/site";
 import { AttachmentPicker } from "../components/AttachmentPicker";
 import { AttachmentBubble } from "../components/AttachmentBubble";
 
@@ -35,6 +36,7 @@ const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
 };
 
 export function Support() {
+  const siteSettings = useSiteStore((s) => s.settings);
   const [searchParams, setSearchParams] = useSearchParams();
   const [orders, setOrders] = useState<Order[]>([]);
   const [tickets, setTickets] = useState<Array<{ id: number; subject: string; message: string; status: string; createdAt: string }>>([]);
@@ -256,10 +258,10 @@ export function Support() {
           <div className="rounded-xl border border-gray-200 bg-night-800 p-6 text-sm">
             <h2 className="mb-3 text-lg font-semibold">📞 Seedha baat karo</h2>
             <div className="space-y-2 text-gray-600">
-              <p>📧 <span className="text-brand">support@switchnest.in</span></p>
-              <p>📱 WhatsApp: <span className="text-brand">+91 98765 43210</span></p>
-              <p>📍 SwitchNest Labs, Sector 62, Noida, UP 201309</p>
-              <p>🕐 Mon–Sat · 9:00 AM – 7:00 PM</p>
+              <p>📧 <span className="text-brand">{siteSettings.supportEmail}</span></p>
+              <p>📱 WhatsApp: <span className="text-brand">{siteSettings.supportPhone}</span></p>
+              <p>📍 {siteSettings.supportAddress}</p>
+              <p>🕐 {siteSettings.supportHours}</p>
             </div>
           </div>
 

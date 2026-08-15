@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { sendContact } from "../api/public";
+import { useSiteStore } from "../stores/site";
 
 const STEPS = [
   {
@@ -24,12 +25,16 @@ const STEPS = [
   },
 ];
 
-const CONTACT_INFO = [
-  { icon: "📧", label: "Email", value: "support@switchnest.in" },
-  { icon: "📱", label: "Phone / WhatsApp", value: "+91 98765 43210" },
-  { icon: "📍", label: "Address", value: "SwitchNest Labs, Sector 62, Noida, Uttar Pradesh 201309" },
-  { icon: "🕐", label: "Hours", value: "Mon–Sat · 9:00 AM – 7:00 PM" },
-];
+/** Contact info — Admin → Settings se edit hota hai (public site-settings endpoint). */
+function useContactInfo() {
+  const s = useSiteStore((st) => st.settings);
+  return [
+    { icon: "📧", label: "Email", value: s.supportEmail },
+    { icon: "📱", label: "Phone / WhatsApp", value: s.supportPhone },
+    { icon: "📍", label: "Address", value: s.supportAddress },
+    { icon: "🕐", label: "Hours", value: s.supportHours },
+  ];
+}
 
 export function HowItWorksSection() {
   return (
@@ -118,6 +123,7 @@ export function AboutUsSection() {
 }
 
 export function LocateUsSection() {
+  const CONTACT_INFO = useContactInfo();
   return (
     <section className="mx-auto max-w-6xl px-4 py-24">
       <h2 className="mb-12 text-center text-4xl font-bold">
@@ -156,6 +162,7 @@ export function LocateUsSection() {
 }
 
 export function ContactUsSection() {
+  const CONTACT_INFO = useContactInfo();
   const [form, setForm] = useState({ name: "", email: "", phone: "", subject: "Feedback", message: "" });
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
