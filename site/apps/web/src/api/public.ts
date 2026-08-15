@@ -89,9 +89,19 @@ export interface SupportMessage {
   senderRole: "admin" | "user";
   senderName: string;
   message: string;
+  attachmentName: string | null;
+  attachmentType: string | null;
+  attachmentData: string | null;
   readByUser: boolean;
   readByAdmin: boolean;
   createdAt: string;
+}
+
+/** Support chat attachment (optional) — photo/invoice/screenshot. */
+export interface SupportAttachment {
+  name: string;
+  type: string;
+  data: string; // base64
 }
 
 /** User: apna support thread (read mark karta hai). */
@@ -101,7 +111,12 @@ export async function getMySupportChat(): Promise<{ unread: number; messages: Su
 }
 
 /** User: support ko reply karo. */
-export async function sendSupportReply(message: string): Promise<SupportMessage> {
-  const { data } = await api.post("/support/messages", { message });
+export async function sendSupportReply(message: string, attachment?: SupportAttachment | null): Promise<SupportMessage> {
+  const { data } = await api.post("/support/messages", {
+    message,
+    ...(attachment
+      ? { attachmentName: attachment.name, attachmentType: attachment.type, attachmentData: attachment.data }
+      : {}),
+  });
   return data.data;
 }

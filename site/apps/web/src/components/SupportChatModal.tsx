@@ -1,8 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { Send } from "lucide-react";
-import { getSupportMessages, sendSupportMessage } from "../api/admin";
+import { getSupportMessages, sendSupportMessage, type SupportAttachment } from "../api/admin";
 import { Modal } from "./Modal";
+import { AttachmentPicker } from "./AttachmentPicker";
+import { AttachmentBubble } from "./AttachmentBubble";
 
 /** Admin <-> user support chat — find-anything se khulta hai. */
 export function SupportChatModal({
@@ -16,6 +18,7 @@ export function SupportChatModal({
 }) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState("");
+  const [attachment, setAttachment] = useState<SupportAttachment | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const chat = useQuery({
@@ -25,9 +28,11 @@ export function SupportChatModal({
   });
 
   const send = useMutation({
-    mutationFn: (message: string) => sendSupportMessage(userId, message),
+    mutationFn: (args: { message: string; attachment: SupportAttachment | null }) =>
+      sendSupportMessage(userId, args.message, args.attachment),
     onSuccess: () => {
       setDraft("");
+      setAttachment(null);
       queryClient.invalidateQueries({ queryKey: ["admin-support-chat", userId] });
       queryClient.invalidateQueries({ queryKey: ["admin-find"] });
     },
@@ -56,7 +61,10 @@ export function SupportChatModal({
             }`}
           >
             <div className="text-[10px] font-bold uppercase opacity-70">{m.senderName}</div>
-            <div className="whitespace-pre-wrap">{m.message}</div>
+            {m.message && <div className="whitespace-pre-wrap">{m.message}</div>}
+            {m.attachmentName && m.attachmentType && m.attachmentData && (
+              <AttachmentBubble name={m.attachmentName} type={m.attachmentType} data={m.attachmentData} />
+            )}
             <div className="mt-0.5 text-right text-[10px] opacity-60">{new Date(m.createdAt).toLocaleString()}</div>
           </div>
         ))}
@@ -66,10 +74,11 @@ export function SupportChatModal({
         onSubmit={(e) => {
           e.preventDefault();
           const t = draft.trim();
-          if (t) send.mutate(t);
+          if (t || attachment) send.mutate({ message: t, attachment });
         }}
         className="mt-3 flex gap-2"
       >
+        <AttachmentPicker value={attachment} onChange={setAttachment} />
         <input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -78,7 +87,7 @@ export function SupportChatModal({
         />
         <button
           type="submit"
-          disabled={send.isPending || !draft.trim()}
+          disabled={send.isPending || (!draft.trim() && !attachment)}
           className="rounded-lg bg-brand px-4 py-2 text-white disabled:opacity-40"
           title="Bhejo"
         >

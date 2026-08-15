@@ -573,6 +573,9 @@ model SupportMessage {
   senderRole String   @default("admin") @db.VarChar(10) // admin | user
   senderName String   @db.VarChar(100)
   message    String   @db.Text
+  attachmentName String? @db.VarChar(255) @map("attachment_name")
+  attachmentType String? @db.VarChar(100) @map("attachment_type")
+  attachmentData String? @db.MediumText @map("attachment_data")
   readByUser   Boolean @default(false) @map("read_by_user")
   readByAdmin  Boolean @default(true)  @map("read_by_admin")
   createdAt  DateTime @default(now()) @map("created_at")
