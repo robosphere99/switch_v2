@@ -23,7 +23,7 @@ export function Login() {
       if (res.success) {
         setAuth(res.data);
         applyAccountTheme(res.data.user);
-        navigate("/dashboard");
+        navigate(res.data.user.role === "system_admin" ? "/admin" : "/dashboard");
       } else {
         setError(res.error.message);
       }
