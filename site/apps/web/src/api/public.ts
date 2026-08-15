@@ -107,7 +107,8 @@ export interface SupportMessage {
   message: string;
   attachmentName: string | null;
   attachmentType: string | null;
-  attachmentData: string | null;
+  attachmentData: string | null; // legacy: base64 blob (purane messages)
+  attachmentPath: string | null; // naya: disk file (hardware/attachments)
   readByUser: boolean;
   readByAdmin: boolean;
   deletedAt: string | null;

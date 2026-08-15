@@ -108,8 +108,8 @@ import { createServer } from "http";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
-import path6 from "node:path";
-import fs5 from "node:fs";
+import path7 from "node:path";
+import fs6 from "node:fs";
 
 // src/config/env.ts
 import dotenv from "dotenv";
@@ -266,6 +266,7 @@ function findRepoRoot(start) {
 }
 var repoRoot = findRepoRoot(process.cwd());
 var firmwareDir = repoRoot ? path3.join(repoRoot, "hardware", "firmware") : path3.resolve(process.cwd(), "../../../hardware/firmware");
+var attachmentDir = repoRoot ? path3.join(repoRoot, "hardware", "attachments") : path3.resolve(process.cwd(), "../../../hardware/attachments");
 var webDist = repoRoot ? path3.join(repoRoot, "site", "apps", "web", "dist") : path3.resolve(process.cwd(), "../../apps/web/dist");
 
 // src/routes/index.ts
@@ -4894,7 +4895,52 @@ publicRouter.post("/support", requireAuth, async (req, res) => {
 // src/routes/support.routes.ts
 import { Router as Router16 } from "express";
 import { z as z13 } from "zod";
+import jwt4 from "jsonwebtoken";
 init_prisma();
+
+// src/lib/attachmentStore.ts
+import * as fs4 from "fs";
+import * as path5 from "path";
+function extFor(type, name) {
+  const fromName = name.split(".").pop()?.toLowerCase();
+  if (fromName && /^[a-z0-9]{1,8}$/.test(fromName)) return fromName;
+  if (type.startsWith("image/png")) return "png";
+  if (type.startsWith("image/jpeg")) return "jpg";
+  if (type.startsWith("image/gif")) return "gif";
+  if (type.startsWith("image/webp")) return "webp";
+  if (type.startsWith("image/heic")) return "heic";
+  if (type === "application/pdf") return "pdf";
+  if (type === "text/plain") return "txt";
+  return "bin";
+}
+function saveAttachment(base64, type, name) {
+  const buf = Buffer.from(base64, "base64");
+  if (buf.length === 0) throw new Error("Empty file");
+  const filename = `a_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}.${extFor(type, name)}`;
+  fs4.mkdirSync(attachmentDir, { recursive: true });
+  fs4.writeFileSync(path5.join(attachmentDir, filename), buf);
+  return filename;
+}
+function readAttachmentFile(filename) {
+  const safe = path5.basename(filename);
+  if (safe !== filename) return null;
+  try {
+    return fs4.readFileSync(path5.join(attachmentDir, safe));
+  } catch {
+    return null;
+  }
+}
+function deleteAttachmentFile(filename) {
+  if (!filename) return;
+  const safe = path5.basename(filename);
+  if (safe !== filename) return;
+  try {
+    fs4.unlinkSync(path5.join(attachmentDir, safe));
+  } catch {
+  }
+}
+
+// src/routes/support.routes.ts
 var supportRouter = Router16();
 var MAX_ATTACHMENT_BYTES = 2 * 1024 * 1024;
 var ALLOWED_TYPES = /^(image\/(png|jpe?g|gif|webp|heic)|application\/pdf|text\/plain)$/;
@@ -4937,6 +4983,7 @@ var msgSelect = {
   attachmentName: true,
   attachmentType: true,
   attachmentData: true,
+  attachmentPath: true,
   readByUser: true,
   readByAdmin: true,
   deletedAt: true,
@@ -4999,7 +5046,9 @@ supportRouter.post("/admin/messages", requireAuth, validateBody(adminSendSchema)
       message,
       attachmentName: req.body.attachmentName ?? null,
       attachmentType: req.body.attachmentType ?? null,
-      attachmentData: req.body.attachmentData ?? null,
+      // Naya: file disk pe (hardware/attachments), DB me sirf path. Legacy rows me blob (attachment_data) rehta hai.
+      attachmentData: null,
+      attachmentPath: req.body.attachmentData ? saveAttachment(req.body.attachmentData, req.body.attachmentType, req.body.attachmentName) : null,
       readByUser: false,
       readByAdmin: true
     }
@@ -5053,7 +5102,9 @@ supportRouter.post("/messages", requireAuth, validateBody(userSendSchema), async
       message: req.body.message,
       attachmentName: req.body.attachmentName ?? null,
       attachmentType: req.body.attachmentType ?? null,
-      attachmentData: req.body.attachmentData ?? null,
+      // Naya: file disk pe (hardware/attachments), DB me sirf path.
+      attachmentData: null,
+      attachmentPath: req.body.attachmentData ? saveAttachment(req.body.attachmentData, req.body.attachmentType, req.body.attachmentName) : null,
       readByUser: true,
       readByAdmin: false
     }
@@ -5075,6 +5126,37 @@ supportRouter.post("/messages", requireAuth, validateBody(userSendSchema), async
     emitToUser(admin.id, "support:new", { senderRole: "user", message: created });
   }
   ok(res, created, 201);
+});
+supportRouter.get("/attachment/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) throw new AppError("VALIDATION_ERROR", "Invalid attachment id", 400);
+  const header = req.headers.authorization;
+  const qToken = typeof req.query.token === "string" ? req.query.token : null;
+  let payload = null;
+  try {
+    const raw = header?.startsWith("Bearer ") ? header.slice(7) : qToken;
+    if (raw) payload = jwt4.verify(raw, env.JWT_ACCESS_SECRET);
+  } catch {
+  }
+  if (!payload) throw new AppError("UNAUTHORIZED", "Missing bearer token", 401);
+  const msg = await supportModel().findUnique({
+    where: { id },
+    select: { userId: true, attachmentPath: true, attachmentName: true, attachmentType: true, deletedAt: true }
+  });
+  if (!msg || msg.deletedAt || !msg.attachmentPath) throw new AppError("NOT_FOUND", "Attachment not found", 404);
+  if (msg.userId !== payload.sub && payload.role !== "system_admin") {
+    throw new AppError("FORBIDDEN", "Access denied", 403);
+  }
+  const buf = readAttachmentFile(msg.attachmentPath);
+  if (!buf) throw new AppError("NOT_FOUND", "Attachment file missing", 404);
+  const isImage = (msg.attachmentType ?? "").startsWith("image/");
+  res.setHeader("Content-Type", msg.attachmentType || "application/octet-stream");
+  res.setHeader(
+    "Content-Disposition",
+    `${isImage ? "inline" : "attachment"}; filename="${encodeURIComponent(msg.attachmentName || "file")}"`
+  );
+  res.setHeader("Cache-Control", "private, max-age=3600");
+  res.send(buf);
 });
 supportRouter.get("/admin/unread-count", requireAuth, async (req, res) => {
   if (req.user.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
@@ -5281,6 +5363,7 @@ supportRouter.delete("/messages/:id", requireAuth, async (req, res) => {
     throw new AppError("FORBIDDEN", "Sirf apna message delete kar sakte ho", 403);
   }
   await supportModel().update({ where: { id }, data: { deletedAt: /* @__PURE__ */ new Date() } });
+  deleteAttachmentFile(msg.attachmentPath);
   ok(res, { deleted: true });
 });
 supportRouter.delete("/admin/messages/:id", requireAuth, async (req, res) => {
@@ -5289,13 +5372,19 @@ supportRouter.delete("/admin/messages/:id", requireAuth, async (req, res) => {
   const msg = await supportModel().findUnique({ where: { id } });
   if (!msg) throw new AppError("NOT_FOUND", "Message not found", 404);
   await supportModel().update({ where: { id }, data: { deletedAt: /* @__PURE__ */ new Date() } });
+  deleteAttachmentFile(msg.attachmentPath);
   ok(res, { deleted: true });
 });
 supportRouter.delete("/messages", requireAuth, async (req, res) => {
+  const withFiles = await supportModel().findMany({
+    where: { userId: req.user.sub, deletedAt: null },
+    select: { attachmentPath: true }
+  });
   const r = await supportModel().updateMany({
     where: { userId: req.user.sub, deletedAt: null },
     data: { deletedAt: /* @__PURE__ */ new Date() }
   });
+  withFiles.forEach((m) => deleteAttachmentFile(m.attachmentPath));
   ok(res, { cleared: r.count });
 });
 supportRouter.delete("/admin/messages", requireAuth, async (req, res) => {
@@ -5304,10 +5393,15 @@ supportRouter.delete("/admin/messages", requireAuth, async (req, res) => {
   if (!Number.isInteger(userId) || userId <= 0) {
     throw new AppError("VALIDATION_ERROR", "peerUserId required", 400);
   }
+  const withFiles = await supportModel().findMany({
+    where: { userId, deletedAt: null },
+    select: { attachmentPath: true }
+  });
   const r = await supportModel().updateMany({
     where: { userId, deletedAt: null },
     data: { deletedAt: /* @__PURE__ */ new Date() }
   });
+  withFiles.forEach((m) => deleteAttachmentFile(m.attachmentPath));
   ok(res, { cleared: r.count });
 });
 
@@ -5342,8 +5436,8 @@ apiRouter.get("/firmware/current", requireAuth, async (_req, res) => {
 // src/routes/install.routes.ts
 import { Router as Router18 } from "express";
 import mysql from "mysql2/promise";
-import fs4 from "node:fs";
-import path5 from "node:path";
+import fs5 from "node:fs";
+import path6 from "node:path";
 import bcrypt2 from "bcryptjs";
 init_prisma();
 
@@ -5572,7 +5666,7 @@ async function checkOfflineDevicesInner() {
 }
 
 // src/routes/install.routes.ts
-var SCHEMA_SQL = path5.resolve(process.cwd(), "prisma/schema.sql");
+var SCHEMA_SQL = path6.resolve(process.cwd(), "prisma/schema.sql");
 var installRouter = Router18();
 var DEFAULT_PRODUCTS = [
   { name: "2CH WiFi Relay Module", modelCode: "2CH", relayCount: 2, price: "599", description: "Two-channel WiFi relay board for lights and small appliances. 10A per channel, ESP32 based, works with the SwitchNest app and voice assistant.", features: { channels: 2, wifi: true, ota: true, voice: true } },
@@ -5710,14 +5804,14 @@ installRouter.post("/", async (req, res) => {
   } finally {
     await server.end().catch(() => void 0);
   }
-  if (!fs4.existsSync(SCHEMA_SQL)) {
+  if (!fs5.existsSync(SCHEMA_SQL)) {
     throw new AppError(
       "SCHEMA_MISSING",
       "prisma/schema.sql nahi mila \u2014 install package incomplete hai",
       500
     );
   }
-  const schemaSql = fs4.readFileSync(SCHEMA_SQL, "utf-8");
+  const schemaSql = fs5.readFileSync(SCHEMA_SQL, "utf-8");
   let conn;
   try {
     conn = await mysql.createConnection({
@@ -5866,10 +5960,10 @@ function createApp() {
   });
   app.use("/api", apiRouter);
   app.use("/firmware", express.static(firmwareDir));
-  if (fs5.existsSync(path6.join(webDist, "index.html"))) {
+  if (fs6.existsSync(path7.join(webDist, "index.html"))) {
     app.use(express.static(webDist));
     app.get(/^\/(?!api|firmware|socket\.io).*/, (_req, res) => {
-      res.sendFile(path6.join(webDist, "index.html"));
+      res.sendFile(path7.join(webDist, "index.html"));
     });
   }
   app.use((_req, res) => {
@@ -6123,6 +6217,18 @@ async function runLightMigrations() {
           "ALTER TABLE `support_messages` ADD COLUMN `deleted_at` DATETIME(3) NULL"
         );
         logger.info("\u2705 Migration: support_messages.deleted_at added");
+      }
+    });
+    await migration("support_messages.attachment_path", async () => {
+      const ap = await prisma.$queryRaw`
+        SELECT COUNT(*) AS c FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'support_messages' AND column_name = 'attachment_path'
+      `;
+      if (Number(ap[0]?.c ?? 0) === 0) {
+        await prisma.$executeRawUnsafe(
+          "ALTER TABLE `support_messages` ADD COLUMN `attachment_path` VARCHAR(255) NULL"
+        );
+        logger.info("\u2705 Migration: support_messages.attachment_path added");
       }
     });
     await migration("support_chat_settings table", async () => {

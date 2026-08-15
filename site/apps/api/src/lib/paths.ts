@@ -25,6 +25,12 @@ export const firmwareDir = repoRoot
   ? path.join(repoRoot, "hardware", "firmware")
   : path.resolve(process.cwd(), "../../../hardware/firmware");
 
+/** <repo>/hardware/attachments — support chat files (DB me sirf path, blobs yahan disk pe).
+ *  Firmware ki tarah Plesk pe writable. Gitignore me hai (user data — commit nahi hota). */
+export const attachmentDir = repoRoot
+  ? path.join(repoRoot, "hardware", "attachments")
+  : path.resolve(process.cwd(), "../../../hardware/attachments");
+
 /** <repo>/site/apps/web/dist — built Vite app (SPA serving). */
 export const webDist = repoRoot
   ? path.join(repoRoot, "site", "apps", "web", "dist")

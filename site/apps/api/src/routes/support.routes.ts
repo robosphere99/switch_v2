@@ -1,11 +1,15 @@
 import { Router } from "express";
 import { z } from "zod";
+import jwt from "jsonwebtoken";
 import { requireAuth } from "../middleware/auth";
 import { validateBody } from "../middleware/validate";
 import { prisma } from "../lib/prisma";
 import { AppError, ok } from "../lib/response";
 import { createNotification } from "../services/notification.service";
 import { emitToUser } from "../lib/socket";
+import { saveAttachment, readAttachmentFile, deleteAttachmentFile } from "../lib/attachmentStore";
+import { env } from "../config/env";
+import type { AccessTokenPayload } from "@robosphere/shared";
 
 export const supportRouter = Router();
 
@@ -60,6 +64,7 @@ const msgSelect = {
   attachmentName: true,
   attachmentType: true,
   attachmentData: true,
+  attachmentPath: true,
   readByUser: true,
   readByAdmin: true,
   deletedAt: true,
@@ -138,7 +143,11 @@ supportRouter.post("/admin/messages", requireAuth, validateBody(adminSendSchema)
       message,
       attachmentName: req.body.attachmentName ?? null,
       attachmentType: req.body.attachmentType ?? null,
-      attachmentData: req.body.attachmentData ?? null,
+      // Naya: file disk pe (hardware/attachments), DB me sirf path. Legacy rows me blob (attachment_data) rehta hai.
+      attachmentData: null,
+      attachmentPath: req.body.attachmentData
+        ? saveAttachment(req.body.attachmentData, req.body.attachmentType, req.body.attachmentName)
+        : null,
       readByUser: false,
       readByAdmin: true,
     },
@@ -206,7 +215,11 @@ supportRouter.post("/messages", requireAuth, validateBody(userSendSchema), async
       message: req.body.message,
       attachmentName: req.body.attachmentName ?? null,
       attachmentType: req.body.attachmentType ?? null,
-      attachmentData: req.body.attachmentData ?? null,
+      // Naya: file disk pe (hardware/attachments), DB me sirf path.
+      attachmentData: null,
+      attachmentPath: req.body.attachmentData
+        ? saveAttachment(req.body.attachmentData, req.body.attachmentType, req.body.attachmentName)
+        : null,
       readByUser: true,
       readByAdmin: false,
     },
@@ -232,6 +245,44 @@ supportRouter.post("/messages", requireAuth, validateBody(userSendSchema), async
     emitToUser(admin.id, "support:new", { senderRole: "user", message: created });
   }
   ok(res, created, 201);
+});
+
+/** Attachment file serve (disk se) — Authorization header ya ?token= (img src ke liye) dono accept.
+ *  Owner user ya admin hi dekh sakta hai. Legacy rows (blob in DB) yahan nahi aate — wo data-URL se render hote hain. */
+supportRouter.get("/attachment/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) throw new AppError("VALIDATION_ERROR", "Invalid attachment id", 400);
+
+  const header = req.headers.authorization;
+  const qToken = typeof req.query.token === "string" ? req.query.token : null;
+  let payload: AccessTokenPayload | null = null;
+  try {
+    const raw = header?.startsWith("Bearer ") ? header.slice(7) : qToken;
+    if (raw) payload = jwt.verify(raw, env.JWT_ACCESS_SECRET) as unknown as AccessTokenPayload;
+  } catch {
+    /* invalid token → 401 neeche */
+  }
+  if (!payload) throw new AppError("UNAUTHORIZED", "Missing bearer token", 401);
+
+  const msg = await supportModel().findUnique({
+    where: { id },
+    select: { userId: true, attachmentPath: true, attachmentName: true, attachmentType: true, deletedAt: true },
+  });
+  if (!msg || msg.deletedAt || !msg.attachmentPath) throw new AppError("NOT_FOUND", "Attachment not found", 404);
+  if (msg.userId !== payload.sub && payload.role !== "system_admin") {
+    throw new AppError("FORBIDDEN", "Access denied", 403);
+  }
+
+  const buf = readAttachmentFile(msg.attachmentPath);
+  if (!buf) throw new AppError("NOT_FOUND", "Attachment file missing", 404);
+  const isImage = (msg.attachmentType ?? "").startsWith("image/");
+  res.setHeader("Content-Type", msg.attachmentType || "application/octet-stream");
+  res.setHeader(
+    "Content-Disposition",
+    `${isImage ? "inline" : "attachment"}; filename="${encodeURIComponent(msg.attachmentName || "file")}"`,
+  );
+  res.setHeader("Cache-Control", "private, max-age=3600");
+  res.send(buf);
 });
 
 /** Admin: unread support messages count (admin badge). */
@@ -476,6 +527,7 @@ supportRouter.delete("/messages/:id", requireAuth, async (req, res) => {
     throw new AppError("FORBIDDEN", "Sirf apna message delete kar sakte ho", 403);
   }
   await supportModel().update({ where: { id }, data: { deletedAt: new Date() } });
+  deleteAttachmentFile(msg.attachmentPath); // attachment file bhi disk se (soft-delete pe cleanup)
   ok(res, { deleted: true });
 });
 
@@ -486,15 +538,21 @@ supportRouter.delete("/admin/messages/:id", requireAuth, async (req, res) => {
   const msg = await supportModel().findUnique({ where: { id } });
   if (!msg) throw new AppError("NOT_FOUND", "Message not found", 404);
   await supportModel().update({ where: { id }, data: { deletedAt: new Date() } });
+  deleteAttachmentFile(msg.attachmentPath);
   ok(res, { deleted: true });
 });
 
 /** User: apna poora support thread clear (soft). */
 supportRouter.delete("/messages", requireAuth, async (req, res) => {
+  const withFiles = await supportModel().findMany({
+    where: { userId: req.user!.sub, deletedAt: null },
+    select: { attachmentPath: true },
+  });
   const r = await supportModel().updateMany({
     where: { userId: req.user!.sub, deletedAt: null },
     data: { deletedAt: new Date() },
   });
+  withFiles.forEach((m) => deleteAttachmentFile(m.attachmentPath));
   ok(res, { cleared: r.count });
 });
 
@@ -505,9 +563,14 @@ supportRouter.delete("/admin/messages", requireAuth, async (req, res) => {
   if (!Number.isInteger(userId) || userId <= 0) {
     throw new AppError("VALIDATION_ERROR", "peerUserId required", 400);
   }
+  const withFiles = await supportModel().findMany({
+    where: { userId, deletedAt: null },
+    select: { attachmentPath: true },
+  });
   const r = await supportModel().updateMany({
     where: { userId, deletedAt: null },
     data: { deletedAt: new Date() },
   });
+  withFiles.forEach((m) => deleteAttachmentFile(m.attachmentPath));
   ok(res, { cleared: r.count });
 });

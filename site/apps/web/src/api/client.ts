@@ -13,6 +13,17 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+/** Support attachment URL — naya storage: file disk pe, URL me token query (img src ke liye).
+ *  Legacy rows (attachmentData blob) ke liye null → component base64 data-URL use karta hai. */
+export function getAttachmentUrl(msg: {
+  id: number;
+  attachmentPath?: string | null;
+}): string | null {
+  if (!msg.attachmentPath) return null;
+  const token = useAuthStore.getState().accessToken ?? "";
+  return `/api/support/attachment/${msg.id}?token=${encodeURIComponent(token)}`;
+}
+
 // On 401, clear the local session (refresh rotation comes in a later phase).
 api.interceptors.response.use(
   (res) => res,

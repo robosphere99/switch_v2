@@ -39,6 +39,9 @@ out/
 hardware/firmware/*
 !hardware/firmware/*.bin
 
+# Support chat attachment files (user data — DB me path rehta hai, blobs yahan disk pe)
+hardware/attachments/
+
 # Local dev artifacts
 .freebuff/
 *.db-shm
