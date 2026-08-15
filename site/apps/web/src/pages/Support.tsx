@@ -350,11 +350,11 @@ export function Support() {
                     ))}
                 </div>
               </div>
-              {/* Hover — apna message delete */}
+              {/* Apna message delete — desktop pe hover pe, mobile pe hamesha visible (touch pe hover nahi hota) */}
               {m.senderRole === "user" && (
                 <button
                   onClick={() => deleteMessage(m.id)}
-                  className="absolute right-0 top-0 z-10 hidden rounded-md bg-white p-1 text-gray-500 shadow-lg group-hover:block hover:text-red-500"
+                  className="absolute right-0 top-0 z-10 rounded-md bg-white p-1 text-gray-500 shadow-lg opacity-0 transition hover:text-red-500 focus:opacity-100 group-hover:opacity-100 max-md:opacity-100"
                   title="Delete message"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
