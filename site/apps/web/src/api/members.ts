@@ -50,6 +50,32 @@ export async function changeMemberRole(
   return data;
 }
 
+/** Child mode (restricted) + daily usage limit — sirf owner/admin. */
+export async function updateMemberSafety(
+  homeId: number,
+  userId: number,
+  input: { restricted?: boolean; dailyLimitMinutes?: number | null },
+): Promise<ApiResponse<HomeMember>> {
+  const { data } = await api.patch<ApiResponse<HomeMember>>(
+    `/homes/${homeId}/members/${userId}/safety`,
+    input,
+  );
+  return data;
+}
+
+/** Restricted member ke device grants replace karo (kaunse devices control kar sakega). */
+export async function setMemberDeviceAccess(
+  homeId: number,
+  userId: number,
+  deviceIds: number[],
+): Promise<ApiResponse<{ deviceIds: number[] }>> {
+  const { data } = await api.put<ApiResponse<{ deviceIds: number[] }>>(
+    `/homes/${homeId}/members/${userId}/access`,
+    { deviceIds },
+  );
+  return data;
+}
+
 export async function removeMember(
   homeId: number,
   userId: number,

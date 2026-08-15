@@ -1,4 +1,5 @@
 import type { DeviceStatus, DeviceType } from "@robosphere/shared";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { AppError } from "../lib/response";
 import { emitToHome } from "../lib/socket";
@@ -6,9 +7,24 @@ import { audit } from "./audit.service";
 import { createNotification } from "./notification.service";
 import { resolveFirmware } from "./firmware.service";
 
-export async function listDevices(homeId: number) {
+export async function listDevices(homeId: number, viewerId?: number) {
+  const where: Prisma.DeviceWhereInput = { homeId };
+  // Child/restricted member — sirf granted devices dikho
+  if (viewerId) {
+    const membership = await prisma.homeMember.findUnique({
+      where: { homeId_userId: { homeId, userId: viewerId } },
+      select: { restricted: true },
+    });
+    if (membership?.restricted) {
+      const granted = await prisma.deviceAccess.findMany({
+        where: { homeId, userId: viewerId },
+        select: { deviceId: true },
+      });
+      where.id = { in: granted.map((g) => g.deviceId) };
+    }
+  }
   return prisma.device.findMany({
-    where: { homeId },
+    where,
     include: {
       esp: { select: { id: true, name: true, serialCode: true, modelCode: true, firmwareVersion: true, offline: true, lastSeen: true } },
     },
@@ -66,6 +82,20 @@ export async function setDeviceStatus(input: {
     where: { id: input.deviceId, homeId: input.homeId },
   });
   if (!device) throw new AppError("DEVICE_NOT_FOUND", "Device not found in this home", 404);
+
+  // Child/restricted member — sirf granted devices control kar sakta hai
+  const membership = await prisma.homeMember.findUnique({
+    where: { homeId_userId: { homeId: input.homeId, userId: input.actorId } },
+    select: { restricted: true },
+  });
+  if (membership?.restricted) {
+    const granted = await prisma.deviceAccess.findUnique({
+      where: { deviceId_userId: { deviceId: device.id, userId: input.actorId } },
+    });
+    if (!granted) {
+      throw new AppError("FORBIDDEN", "Is device ka access nahi hai (child mode)", 403);
+    }
+  }
 
   await prisma.$transaction([
     prisma.device.update({

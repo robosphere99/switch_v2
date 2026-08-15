@@ -120,6 +120,8 @@ model User {
 
   ownedHomes     Home[]            @relation("HomeOwner")
   memberships    HomeMember[]
+  deviceAccess   DeviceAccess[]
+  usage          DeviceUsage[]
   createdDevices Device[]          @relation("DeviceCreator")
   apiKeys        ApiKey[]
   schedules      Schedule[]
@@ -185,17 +187,21 @@ model Home {
   auditLogs      AuditLog[]
   assistantChats AssistantChat[]
   claimedSerials SerialRegistry[]
+  deviceAccess   DeviceAccess[]
+  usage          DeviceUsage[]
 
   @@index([ownerId])
   @@map("homes")
 }
 
 model HomeMember {
-  id       Int            @id @default(autoincrement())
-  homeId   Int
-  userId   Int
-  role     HomeMemberRole @default(member)
-  joinedAt DateTime       @default(now()) @map("joined_at")
+  id                Int            @id @default(autoincrement())
+  homeId            Int
+  userId            Int
+  role              HomeMemberRole @default(member)
+  restricted        Boolean        @default(false) @map("restricted") // child mode — sirf granted devices
+  dailyLimitMinutes Int?           @map("daily_limit_minutes") // child ka daily ON-time limit
+  joinedAt          DateTime       @default(now()) @map("joined_at")
 
   home Home @relation(fields: [homeId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -203,6 +209,43 @@ model HomeMember {
   @@unique([homeId, userId])
   @@index([userId])
   @@map("home_members")
+}
+
+/** Child/restricted member ko kaunse devices control karne ka access hai. */
+model DeviceAccess {
+  id        Int      @id @default(autoincrement())
+  homeId    Int
+  deviceId  Int
+  userId    Int
+  createdAt DateTime @default(now()) @map("created_at")
+
+  home   Home   @relation(fields: [homeId], references: [id], onDelete: Cascade)
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([deviceId, userId])
+  @@index([homeId])
+  @@index([userId])
+  @@map("device_access")
+}
+
+/** Har user ka har device ka daily ON-time (minutes) — usage tracking + child limits. */
+model DeviceUsage {
+  id        Int      @id @default(autoincrement())
+  homeId    Int
+  deviceId  Int
+  userId    Int
+  date      DateTime @db.Date
+  onMinutes Int      @map("on_minutes")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  home   Home   @relation(fields: [homeId], references: [id], onDelete: Cascade)
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([deviceId, userId, date])
+  @@index([homeId])
+  @@map("device_usage")
 }
 
 model Invitation {
@@ -266,6 +309,8 @@ model Device {
   logs           DeviceLog[]
   commands       DeviceCommand[]
   schedules      Schedule[]
+  access         DeviceAccess[]
+  usage          DeviceUsage[]
 
   @@index([homeId])
   @@index([roomId])

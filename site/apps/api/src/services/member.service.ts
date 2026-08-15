@@ -11,12 +11,27 @@ function generateInviteCode(): string {
   return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
 }
 
-export async function listMembers(homeId: number) {
-  return prisma.homeMember.findMany({
+export async function listMembers(homeId: number, viewerRole?: HomeMemberRole) {
+  const members = await prisma.homeMember.findMany({
     where: { homeId },
     include: { user: { select: { id: true, username: true, email: true } } },
     orderBy: { joinedAt: "asc" },
   });
+  // Device grants sirf owner/admin ko dikhao (member/viewer ko nahi).
+  if (viewerRole === "owner" || viewerRole === "admin") {
+    const grants = await prisma.deviceAccess.findMany({
+      where: { homeId },
+      select: { userId: true, deviceId: true },
+    });
+    const byUser = new Map<number, { deviceId: number }[]>();
+    for (const g of grants) {
+      const arr = byUser.get(g.userId) ?? [];
+      arr.push({ deviceId: g.deviceId });
+      byUser.set(g.userId, arr);
+    }
+    return members.map((m) => ({ ...m, deviceAccess: byUser.get(m.userId) ?? [] }));
+  }
+  return members;
 }
 
 /** Create an invitation (email + invite code) for someone to join the home. */
@@ -141,4 +156,105 @@ export async function removeMember(homeId: number, userId: number) {
   }
 
   await prisma.homeMember.delete({ where: { homeId_userId: { homeId, userId } } });
+}
+
+// ---------- Child safety / device-level access ----------
+
+/**
+ * Child mode (restricted) + daily limit set karo. Sirf owner/admin.
+ * Restricted = sirf granted devices control kar sakta hai; limit cross pe auto-off + parents ko notification.
+ */
+export async function updateMemberSafety(input: {
+  homeId: number;
+  actorId: number;
+  actorRole: HomeMemberRole;
+  targetUserId: number;
+  restricted?: boolean;
+  dailyLimitMinutes?: number | null;
+}) {
+  if (input.actorRole !== "owner" && input.actorRole !== "admin") {
+    throw new AppError("FORBIDDEN", "Only owner/admin can manage member safety", 403);
+  }
+  const member = await prisma.homeMember.findUnique({
+    where: { homeId_userId: { homeId: input.homeId, userId: input.targetUserId } },
+  });
+  if (!member) throw new AppError("NOT_A_MEMBER", "User is not a member of this home", 404);
+  if (member.role === "owner") throw new AppError("BAD_REQUEST", "Owner ko child mode me nahi rakha ja sakta", 400);
+
+  const data: { restricted?: boolean; dailyLimitMinutes?: number | null } = {};
+  if (input.restricted !== undefined) data.restricted = input.restricted;
+  if (input.dailyLimitMinutes !== undefined) {
+    const mins = Number(input.dailyLimitMinutes);
+    data.dailyLimitMinutes = Number.isFinite(mins) && mins > 0 ? Math.floor(mins) : null;
+  }
+  // Child mode off → limit bhi clear
+  if (data.restricted === false) data.dailyLimitMinutes = null;
+
+  const updated = await prisma.homeMember.update({
+    where: { homeId_userId: { homeId: input.homeId, userId: input.targetUserId } },
+    data,
+    include: { user: { select: { id: true, username: true } } },
+  });
+
+  const { audit } = await import("./audit.service");
+  await audit(input.actorId, "member.safety", {
+    homeId: input.homeId,
+    entity: "homeMember",
+    entityId: member.id,
+    meta: { targetUserId: input.targetUserId, ...data },
+  });
+  return updated;
+}
+
+/** Restricted member ko kaunse devices ka control dena hai — grants replace karo. */
+export async function setDeviceAccess(input: {
+  homeId: number;
+  actorId: number;
+  actorRole: HomeMemberRole;
+  targetUserId: number;
+  deviceIds: number[];
+}) {
+  if (input.actorRole !== "owner" && input.actorRole !== "admin") {
+    throw new AppError("FORBIDDEN", "Only owner/admin can manage device access", 403);
+  }
+  const member = await prisma.homeMember.findUnique({
+    where: { homeId_userId: { homeId: input.homeId, userId: input.targetUserId } },
+  });
+  if (!member) throw new AppError("NOT_A_MEMBER", "User is not a member of this home", 404);
+  if (member.role === "owner") throw new AppError("BAD_REQUEST", "Owner pe device access set nahi kar sakte", 400);
+
+  const ids = [...new Set(input.deviceIds)];
+  if (ids.length > 0) {
+    const devices = await prisma.device.findMany({
+      where: { id: { in: ids }, homeId: input.homeId },
+      select: { id: true },
+    });
+    if (devices.length !== ids.length) {
+      throw new AppError("BAD_REQUEST", "Kuch devices is home ke nahi hain", 400);
+    }
+  }
+
+  await prisma.$transaction([
+    prisma.deviceAccess.deleteMany({ where: { homeId: input.homeId, userId: input.targetUserId } }),
+    ...(ids.length > 0
+      ? [
+          prisma.deviceAccess.createMany({
+            data: ids.map((deviceId) => ({
+              homeId: input.homeId,
+              deviceId,
+              userId: input.targetUserId,
+            })),
+          }),
+        ]
+      : []),
+  ]);
+
+  const { audit } = await import("./audit.service");
+  await audit(input.actorId, "member.access", {
+    homeId: input.homeId,
+    entity: "homeMember",
+    entityId: member.id,
+    meta: { targetUserId: input.targetUserId, deviceIds: ids },
+  });
+  return { deviceIds: ids };
 }
