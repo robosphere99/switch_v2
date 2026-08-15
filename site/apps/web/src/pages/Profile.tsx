@@ -1,6 +1,15 @@
 import { useState } from "react";
+import { Monitor, Moon, Save, Sun, User } from "lucide-react";
 import { updateProfile } from "../api/auth";
 import { useAuthStore } from "../stores/auth";
+import { getThemeMode, setThemeMode } from "../lib/theme";
+import type { ThemeMode } from "../lib/theme";
+
+const THEME_OPTIONS: Array<{ mode: ThemeMode; label: string; icon: typeof Sun }> = [
+  { mode: "light", label: "Light", icon: Sun },
+  { mode: "dark", label: "Dark", icon: Moon },
+  { mode: "system", label: "System", icon: Monitor },
+];
 
 export function Profile() {
   const user = useAuthStore((s) => s.user);
@@ -14,6 +23,7 @@ export function Profile() {
   const [newPassword, setNewPassword] = useState("");
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [themeMode, setThemeModeState] = useState<ThemeMode>(getThemeMode());
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -44,7 +54,9 @@ export function Profile() {
 
   return (
     <div className="mx-auto max-w-lg px-4 py-8">
-      <h1 className="mb-8 text-center text-3xl font-bold">👤 My Profile</h1>
+      <h1 className="mb-8 flex items-center justify-center gap-2 text-center text-3xl font-bold">
+        <User className="h-8 w-8 text-brand" /> My Profile
+      </h1>
 
       {message && (
         <p
@@ -109,9 +121,44 @@ export function Profile() {
           disabled={loading}
           className="w-full rounded-lg bg-brand py-2.5 text-sm font-semibold text-white disabled:opacity-60"
         >
-          {loading ? "Saving…" : "💾 Save Changes"}
+          {loading ? (
+            "Saving…"
+          ) : (
+            <span className="inline-flex items-center gap-1.5">
+              <Save className="h-4 w-4" /> Save Changes
+            </span>
+          )}
         </button>
       </form>
+
+      <div className="mt-6 rounded-2xl border border-brand/20 bg-night-800 p-8">
+        <h2 className="mb-1 text-sm font-bold uppercase tracking-wide text-gray-500">
+          Appearance
+        </h2>
+        <p className="mb-4 text-sm text-gray-500">
+          Site ka theme choose karo — System me OS ki setting follow hoti hai.
+        </p>
+        <div className="grid grid-cols-3 gap-2">
+          {THEME_OPTIONS.map(({ mode, label, icon: Icon }) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => {
+                setThemeMode(mode);
+                setThemeModeState(mode);
+              }}
+              className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-semibold transition ${
+                themeMode === mode
+                  ? "border-brand bg-brand text-white"
+                  : "border-brand/20 bg-night-900 text-gray-600 hover:border-brand hover:text-brand"
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
