@@ -50,6 +50,30 @@ async function runLightMigrations(): Promise<void> {
       );
       logger.info("✅ Migration: notifications.category column added");
     }
+    // 3) support_messages - admin <-> user support chat table.
+    const sm = await prisma.$queryRaw<{ c: bigint }[]>`
+      SELECT COUNT(*) AS c FROM information_schema.tables
+      WHERE table_schema = DATABASE() AND table_name = 'support_messages'
+    `;
+    if (Number(sm[0]?.c ?? 0) === 0) {
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE support_messages (
+          id INT NOT NULL AUTO_INCREMENT,
+          userId INT NOT NULL,
+          senderRole VARCHAR(10) NOT NULL DEFAULT 'admin',
+          senderName VARCHAR(100) NOT NULL,
+          message TEXT NOT NULL,
+          read_by_user BOOLEAN NOT NULL DEFAULT FALSE,
+          read_by_admin BOOLEAN NOT NULL DEFAULT TRUE,
+          created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+          PRIMARY KEY (id),
+          INDEX support_messages_userId_createdAt_idx (userId, created_at),
+          INDEX support_messages_readByAdmin_idx (read_by_admin),
+          CONSTRAINT support_messages_userId_fkey FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+      `);
+      logger.info("✅ Migration: support_messages table created");
+    }
   } catch (err) {
     logger.warn("Light migration (esp serial unique) skip/fail", err instanceof Error ? err.message : String(err));
   }

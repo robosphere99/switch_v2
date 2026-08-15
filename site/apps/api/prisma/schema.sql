@@ -398,6 +398,21 @@ CREATE TABLE `contact_messages` (
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- CreateTable
+
+CREATE TABLE `support_messages` (
+    `id` INT NOT NULL AUTO_INCREMENT,
+    `userId` INT NOT NULL,
+    `senderRole` VARCHAR(10) NOT NULL DEFAULT 'admin',
+    `senderName` VARCHAR(100) NOT NULL,
+    `message` TEXT NOT NULL,
+    `read_by_user` BOOLEAN NOT NULL DEFAULT FALSE,
+    `read_by_admin` BOOLEAN NOT NULL DEFAULT TRUE,
+    `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    PRIMARY KEY (`id`),
+    INDEX `support_messages_userId_createdAt_idx`(`userId`, `created_at`),
+    INDEX `support_messages_readByAdmin_idx`(`read_by_admin`),
+    CONSTRAINT `support_messages_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `users`(`id`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 CREATE TABLE `app_meta` (
     `key` VARCHAR(64) NOT NULL,
     `value` VARCHAR(255) NOT NULL,

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileText, Home, KeyRound, LayoutDashboard, Lightbulb, RadioTower, ScrollText, ShoppingCart, Users, type LucideIcon } from "lucide-react";
+import { FileText, Home, KeyRound, LayoutDashboard, Lightbulb, MessageSquare, RadioTower, ScrollText, ShoppingCart, Users, type LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
   getStats,
@@ -36,6 +36,7 @@ import {
 } from "../api/admin";
 import { Modal } from "../components/Modal";
 import { AdminShop } from "../components/AdminShop";
+import { SupportChatModal } from "../components/SupportChatModal";
 import { getSocket } from "../lib/socket";
 
 type Tab = "overview" | "users" | "homes" | "devices" | "keys" | "audit" | "ota" | "shop" | "logs";
@@ -70,6 +71,7 @@ export function Admin() {
   const [findOpen, setFindOpen] = useState(false);
   const [findQ, setFindQ] = useState("");
   const [findIdx, setFindIdx] = useState(0);
+  const [chatUser, setChatUser] = useState<{ id: number; username: string } | null>(null);
   const [gsDebounced, setGsDebounced] = useState("");
   useEffect(() => {
     const t = setTimeout(() => setGsDebounced(gsQ.trim()), 250);
@@ -1420,31 +1422,54 @@ export function Admin() {
                         {row.icon} {row.label} ({count})
                       </div>
                     )}
-                    <button
-                      onMouseEnter={() => setFindIdx(i)}
-                      onClick={() => {
-                        setTab(row.tab);
-                        setQ(findQ.trim());
-                        setFindOpen(false);
-                      }}
-                      ref={active ? (el) => { if (el) el.scrollIntoView({ block: "nearest" }); } : undefined}
-                      className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition ${
-                        active
-                          ? "bg-brand/20 text-brand"
-                          : "text-gray-700 hover:bg-night-800 hover:text-brand"
-                      }`}
-                    >
-                      <span className="truncate font-medium">{findTitle(row.label, item)}</span>
-                      <span className="ml-auto truncate text-[10px] text-gray-500">
-                        {findSubtitle(row.label, item)}
-                      </span>
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onMouseEnter={() => setFindIdx(i)}
+                        onClick={() => {
+                          setTab(row.tab);
+                          setQ(findQ.trim());
+                          setFindOpen(false);
+                        }}
+                        ref={active ? (el) => { if (el) el.scrollIntoView({ block: "nearest" }); } : undefined}
+                        className={`flex flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition ${
+                          active
+                            ? "bg-brand/20 text-brand"
+                            : "text-gray-700 hover:bg-night-800 hover:text-brand"
+                        }`}
+                      >
+                        <span className="truncate font-medium">{findTitle(row.label, item)}</span>
+                        <span className="ml-auto truncate text-[10px] text-gray-500">
+                          {findSubtitle(row.label, item)}
+                        </span>
+                      </button>
+                      {row.label === "Users" && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setChatUser({ id: Number(item.id), username: String(findTitle(row.label, item)) });
+                            setFindOpen(false);
+                          }}
+                          title="Support chat kholo"
+                          className="shrink-0 rounded-lg p-1.5 text-gray-500 transition hover:bg-brand/10 hover:text-brand"
+                        >
+                          <MessageSquare className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 );
               })}
             </div>
           )}
         </Modal>
+      )}
+
+      {chatUser && (
+        <SupportChatModal
+          userId={chatUser.id}
+          username={chatUser.username}
+          onClose={() => setChatUser(null)}
+        />
       )}
     </div>
   );
