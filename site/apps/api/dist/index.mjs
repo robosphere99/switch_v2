@@ -2881,7 +2881,10 @@ adminRouter.post("/devices/:id/status", async (req, res) => {
   const id = Number(req.params.id);
   const status = req.body?.status;
   if (status !== "on" && status !== "off") throw new AppError("VALIDATION_ERROR", "status must be 'on' or 'off'", 400);
-  const device = await prisma.device.findUnique({ where: { id } });
+  const device = await prisma.device.findUnique({
+    where: { id },
+    include: { home: { select: { ownerId: true } } }
+  });
   if (!device) throw new AppError("NOT_FOUND", "Device not found", 404);
   await prisma.$transaction([
     prisma.device.update({ where: { id }, data: { status } }),
@@ -2897,6 +2900,11 @@ adminRouter.post("/devices/:id/status", async (req, res) => {
     entity: "device",
     entityId: id,
     meta: { name: device.name, status }
+  });
+  await createNotification(device.home.ownerId, {
+    type: "info",
+    title: `Support ne ${device.name} ${status === "on" ? "ON" : "OFF"} kiya`,
+    body: `Admin ne aapke device "${device.name}" ko ${status === "on" ? "chalu (ON)" : "band (OFF)"} kiya. Agar yeh galat hai to turant support ko batayein.`
   });
   ok(res, { id, status });
 });
@@ -2943,7 +2951,10 @@ adminRouter.get("/devices/:id/support", async (req, res) => {
 });
 adminRouter.post("/devices/:id/clear-commands", async (req, res) => {
   const id = Number(req.params.id);
-  const device = await prisma.device.findUnique({ where: { id } });
+  const device = await prisma.device.findUnique({
+    where: { id },
+    include: { home: { select: { ownerId: true } } }
+  });
   if (!device) throw new AppError("NOT_FOUND", "Device not found", 404);
   const cleared = await prisma.deviceCommand.updateMany({
     where: { deviceId: id, status: "pending" },
@@ -2958,11 +2969,21 @@ adminRouter.post("/devices/:id/clear-commands", async (req, res) => {
     entityId: id,
     meta: { name: device.name, cleared: cleared.count }
   });
+  if (cleared.count > 0) {
+    await createNotification(device.home.ownerId, {
+      type: "warning",
+      title: `Support ne "${device.name}" ke stuck commands clear kiye`,
+      body: `${cleared.count} pending command(s) clear kiye gaye. Device ab dobara responsive hoga.`
+    });
+  }
   ok(res, { cleared: cleared.count });
 });
 adminRouter.post("/devices/:id/push-ota", async (req, res) => {
   const id = Number(req.params.id);
-  const device = await prisma.device.findUnique({ where: { id } });
+  const device = await prisma.device.findUnique({
+    where: { id },
+    include: { home: { select: { ownerId: true } } }
+  });
   if (!device) throw new AppError("NOT_FOUND", "Device not found", 404);
   const esp = device.espId ? await prisma.espDevice.findUnique({ where: { id: device.espId } }) : null;
   const current = await resolveFirmware(esp?.modelCode);
@@ -2986,6 +3007,11 @@ adminRouter.post("/devices/:id/push-ota", async (req, res) => {
     entity: "device",
     entityId: id,
     meta: { version: current.version, model: esp?.modelCode ?? null }
+  });
+  await createNotification(device.home.ownerId, {
+    type: "info",
+    title: `Support ne "${device.name}" ke liye firmware update push kiya`,
+    body: `Naya firmware v${current.version} aapke device pe agle heartbeat pe install hoga.`
   });
   ok(res, {
     deviceId: id,
@@ -3016,6 +3042,25 @@ adminRouter.post("/devices/push-ota-all", async (req, res) => {
     entity: "device",
     meta: { version: current.version, count }
   });
+  const homeIds = /* @__PURE__ */ new Set();
+  if (homeId) {
+    homeIds.add(homeId);
+  } else {
+    (await prisma.espDevice.findMany({ select: { homeId: true } })).forEach((r) => r.homeId && homeIds.add(r.homeId));
+    (await prisma.device.findMany({ where: { espId: null }, select: { homeId: true } })).forEach((r) => r.homeId && homeIds.add(r.homeId));
+  }
+  const ownerIds = new Set(
+    (await prisma.home.findMany({ where: { id: { in: [...homeIds] } }, select: { ownerId: true } })).map((h) => h.ownerId)
+  );
+  await Promise.all(
+    [...ownerIds].map(
+      (ownerId) => createNotification(ownerId, {
+        type: "info",
+        title: "Support ne firmware update push kiya",
+        body: `Aapke ${count} device(s) ke liye naya firmware v${current.version} available hai \u2014 agle heartbeat pe auto-install hoga.`
+      })
+    )
+  );
   ok(res, { count, version: current.version });
 });
 adminRouter.get("/esp/:id/probe", async (req, res) => {
