@@ -63,7 +63,7 @@ export default function App() {
           <Route
             path="/checkout"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute customerOnly>
                 <Checkout />
               </ProtectedRoute>
             }
@@ -71,7 +71,7 @@ export default function App() {
           <Route
             path="/orders"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute customerOnly>
                 <Orders />
               </ProtectedRoute>
             }
@@ -87,7 +87,7 @@ export default function App() {
           <Route
             path="/warranty"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute customerOnly>
                 <Warranty />
               </ProtectedRoute>
             }
@@ -95,7 +95,7 @@ export default function App() {
           <Route
             path="/activate"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute customerOnly>
                 <Activate />
               </ProtectedRoute>
             }
@@ -103,7 +103,7 @@ export default function App() {
           <Route
             path="/dashboard"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute customerOnly>
                 <Dashboard />
               </ProtectedRoute>
             }
@@ -111,7 +111,7 @@ export default function App() {
           <Route
             path="/members"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute customerOnly>
                 <Members />
               </ProtectedRoute>
             }
@@ -119,7 +119,7 @@ export default function App() {
           <Route
             path="/keys"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute customerOnly>
                 <DeviceKeys />
               </ProtectedRoute>
             }
@@ -127,7 +127,7 @@ export default function App() {
           <Route
             path="/homes"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute customerOnly>
                 <Homes />
               </ProtectedRoute>
             }
@@ -135,7 +135,7 @@ export default function App() {
           <Route
             path="/boards"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute customerOnly>
                 <MyBoards />
               </ProtectedRoute>
             }
@@ -151,7 +151,7 @@ export default function App() {
           <Route
             path="/assistant"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute customerOnly>
                 <Assistant />
               </ProtectedRoute>
             }

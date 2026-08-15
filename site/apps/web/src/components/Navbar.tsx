@@ -42,10 +42,17 @@ const NAV_LINKS: Array<{ to: string; label: string; icon: typeof Home }> = [
   { to: "/notifications", label: "Center", icon: Bell },
 ];
 
+/** Admin (system_admin) sirf site administration dekhta hai — customer links nahi. */
+const ADMIN_LINKS: Array<{ to: string; label: string; icon: typeof Home }> = [
+  { to: "/support", label: "Support", icon: Wrench },
+];
+
 function toggleTheme(setDark: (d: boolean) => void) {
   changeTheme(resolvedDark() ? "light" : "dark");
   setDark(resolvedDark());
 }
+
+const isSystemAdmin = (role?: string) => role === "system_admin";
 
 export function Navbar() {
   const user = useAuthStore((s) => s.user);
@@ -75,7 +82,7 @@ export function Navbar() {
 
         {user ? (
           <nav className="hidden items-center gap-x-5 gap-y-2 text-sm md:flex">
-            {NAV_LINKS.map(({ to, label, icon: Icon }) => (
+            {(isSystemAdmin(user.role) ? ADMIN_LINKS : NAV_LINKS).map(({ to, label, icon: Icon }) => (
               <Link
                 key={to}
                 to={to}
@@ -171,7 +178,7 @@ export function Navbar() {
           <div className="mx-auto max-w-7xl space-y-1 px-4 py-3">
             {user ? (
               <>
-                {NAV_LINKS.map(({ to, label, icon: Icon }) => (
+                {(isSystemAdmin(user.role) ? ADMIN_LINKS : NAV_LINKS).map(({ to, label, icon: Icon }) => (
                   <Link key={to} to={to} className={mobileLinkCls} onClick={() => setMobileOpen(false)}>
                     <Icon className="h-4 w-4 text-brand" />
                     {label}
