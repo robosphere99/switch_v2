@@ -64,6 +64,18 @@ export async function deleteDevice(
   return data;
 }
 
+export async function renameEsp(
+  homeId: number,
+  espId: number,
+  name: string,
+): Promise<ApiResponse<{ id: number; name: string }>> {
+  const { data } = await api.patch<ApiResponse<{ id: number; name: string }>>(
+    `/homes/${homeId}/esp/${espId}`,
+    { name },
+  );
+  return data;
+}
+
 export async function getDeviceLogs(
   homeId: number,
   deviceId: number,

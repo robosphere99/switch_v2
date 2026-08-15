@@ -51,3 +51,14 @@ export async function remove(req: Request, res: Response) {
   await deviceService.deleteDevice(Number(req.params.homeId), Number(req.params.deviceId));
   ok(res, { message: "Device deleted" });
 }
+
+/** User apne home ke ESP board ka naam badal sakta hai (unique naam rule ke saath). */
+export async function renameEsp(req: Request, res: Response) {
+  const board = await deviceService.renameEsp(
+    Number(req.params.homeId),
+    Number(req.params.espId),
+    String(req.body?.name ?? "").trim().slice(0, 60),
+    req.user!.sub,
+  );
+  ok(res, board);
+}
