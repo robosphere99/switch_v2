@@ -4,7 +4,8 @@
 
 @layer base {
   :root {
-    --night-950: 15 23 42; /* dark text */
+    --brand: 37 99 235; /* default blue #2563eb — Admin settings se change hota hai */
+    --brand-light: 96 165 250;
     --night-900: 241 245 249; /* page bg */
     --night-800: 255 255 255; /* cards */
     --night-700: 232 238 246; /* inputs / hover */

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileText, Home, KeyRound, LayoutDashboard, Lightbulb, MessageSquare, RadioTower, ScrollText, ShoppingCart, Users, type LucideIcon } from "lucide-react";
+import { FileText, Home, KeyRound, LayoutDashboard, Lightbulb, MessageSquare, RadioTower, ScrollText, Settings, ShoppingCart, Users, type LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
@@ -38,10 +38,11 @@ import {
 import { Modal } from "../components/Modal";
 import { AdminShop } from "../components/AdminShop";
 import { AdminSupport } from "../components/AdminSupport";
+import { AdminSettings } from "../components/AdminSettings";
 import { SupportChatModal } from "../components/SupportChatModal";
 import { getSocket } from "../lib/socket";
 
-type Tab = "overview" | "users" | "homes" | "devices" | "ota" | "shop" | "keys" | "audit" | "logs" | "support";
+type Tab = "overview" | "users" | "homes" | "devices" | "ota" | "shop" | "keys" | "audit" | "logs" | "support" | "settings";
 
 const TABS: Array<{ id: Tab; label: string; icon: LucideIcon }> = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
@@ -54,6 +55,7 @@ const TABS: Array<{ id: Tab; label: string; icon: LucideIcon }> = [
   { id: "audit", label: "Audit Log", icon: ScrollText },
   { id: "logs", label: "Logs", icon: FileText },
   { id: "support", label: "Support", icon: MessageSquare },
+  { id: "settings", label: "Settings", icon: Settings },
 ];
 
 function Badge({ children, color }: { children: React.ReactNode; color: string }) {
@@ -295,13 +297,18 @@ export function Admin() {
   const s = stats.data?.success ? stats.data.data : null;
   const statCards = s
     ? [
-        { label: "Total Users", value: s.users, icon: "👤", sub: `${s.activeToday} active today` },
+        { label: "Total Users", value: s.users, icon: "👤", sub: `${s.activeToday} active today · ${s.newUsers7d} new (7d)` },
+        { label: "Revenue", value: `₹${s.revenueTotal.toLocaleString("en-IN")}`, icon: "💰", sub: `₹${s.revenueThisMonth.toLocaleString("en-IN")} this month` },
+        { label: "Orders", value: s.orders, icon: "🛒", sub: `${s.pendingOrders} pending · ${s.ordersToday} today` },
         { label: "Homes", value: s.homes, icon: "🏠", sub: "platform-wide" },
         { label: "Devices", value: s.devices, icon: "💡", sub: `${s.onlineDevices} online now` },
-        { label: "Offline Boards", value: s.offlineBoards, icon: "📡", sub: `${s.espBoards} total boards` },
+        { label: "ESP Boards", value: `${s.espBoards - s.offlineBoards}/${s.espBoards}`, icon: "📡", sub: `${s.offlineBoards} offline` },
+        { label: "API Requests (24h)", value: s.requests.last24h.toLocaleString("en-IN"), icon: "📨", sub: `${s.requests.today.toLocaleString("en-IN")} today · ${s.requests.total.toLocaleString("en-IN")} all-time` },
+        { label: "Support Messages", value: s.supportMessages, icon: "🛠️", sub: `${s.contactMessages} contact msgs` },
         { label: "Pending Commands", value: s.pendingCommands, icon: "⚡", sub: "awaiting ESP32" },
         { label: "API Keys", value: s.apiKeys, icon: "🔑", sub: "device access" },
         { label: "Audit Events", value: s.auditCount, icon: "📜", sub: "tracked actions" },
+        { label: "ESP Logs (24h)", value: s.deviceLogs24h.toLocaleString("en-IN"), icon: "🗄️", sub: "device activity" },
       ]
     : [];
 
@@ -468,6 +475,63 @@ export function Admin() {
               </div>
             ))}
           </div>
+
+          {/* 7-day trend — signups, orders, revenue */}
+          {(() => {
+            if (!s) return null;
+            const days: Array<{ k: string; label: string }> = [];
+            for (let i = 6; i >= 0; i--) {
+              const d = new Date(Date.now() - i * 86_400_000);
+              days.push({
+                k: d.toISOString().slice(0, 10),
+                label: d.toLocaleDateString([], { weekday: "short" }),
+              });
+            }
+            const maxUsers = Math.max(1, ...days.map((d) => s.usersByDay[d.k] ?? 0));
+            const maxOrders = Math.max(1, ...days.map((d) => s.ordersByDay[d.k] ?? 0));
+            return (
+              <div className="mb-8 rounded-xl border border-gray-200 bg-night-800 p-5">
+                <h2 className="font-semibold">📈 Last 7 days — signups, orders & revenue</h2>
+                <p className="mb-4 text-xs text-gray-500">Business trend — daily growth dekhne ke liye</p>
+                <div className="grid gap-6 sm:grid-cols-2">
+                  <div>
+                    <p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-gray-500">New signups</p>
+                    <div className="flex h-28 items-end gap-2">
+                      {days.map((d) => (
+                        <div key={d.k} className="flex flex-1 flex-col items-center gap-1">
+                          <span className="text-[10px] font-semibold text-gray-500">{s.usersByDay[d.k] ?? 0}</span>
+                          <div
+                            className="w-full rounded-t-md bg-brand/70"
+                            style={{ height: `${((s.usersByDay[d.k] ?? 0) / maxUsers) * 84}px` }}
+                          />
+                          <span className="text-[10px] text-gray-500">{d.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                      Orders · ₹{(s.revenueByDay[days[6].k] ?? 0).toLocaleString("en-IN")} today
+                    </p>
+                    <div className="flex h-28 items-end gap-2">
+                      {days.map((d) => (
+                        <div key={d.k} className="flex flex-1 flex-col items-center gap-1">
+                          <span className="text-[10px] font-semibold text-gray-500">
+                            {s.ordersByDay[d.k] ?? 0}
+                          </span>
+                          <div
+                            className="w-full rounded-t-md bg-amber-500/70"
+                            style={{ height: `${((s.ordersByDay[d.k] ?? 0) / maxOrders) * 84}px` }}
+                          />
+                          <span className="text-[10px] text-gray-500">{d.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Fleet-wide offline boards */}
           {(() => {
@@ -1498,6 +1562,8 @@ export function Admin() {
       {tab === "support" && (
         <AdminSupport selectedUserId={supportUserId} onSelectUser={selectSupportUser} />
       )}
+
+      {tab === "settings" && <AdminSettings />}
 
       {chatUser && (
         <SupportChatModal

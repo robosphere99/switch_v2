@@ -76,7 +76,12 @@ export function Navbar() {
   return (
     <header className="sticky top-0 z-20 border-b border-gray-200 bg-white/95 backdrop-blur">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3">
-        <Link to="/" className="shrink-0" onClick={() => setMobileOpen(false)}>
+        {/* Admin login pe logo → Admin Overview (stats); warna home page */}
+        <Link
+          to={user?.role === "system_admin" ? "/admin" : "/"}
+          className="shrink-0"
+          onClick={() => setMobileOpen(false)}
+        >
           <Logo />
         </Link>
 

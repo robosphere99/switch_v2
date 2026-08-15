@@ -14,8 +14,10 @@ export default {
           500: "rgb(var(--night-500) / <alpha-value>)",
         },
         brand: {
-          DEFAULT: "#2563eb",
-          light: "#60a5fa",
+          // Runtime-configurable — Admin → Settings se brand color change hota hai
+          // (stores/site.ts applyBrandColor --brand/--brand-light CSS var set karta hai).
+          DEFAULT: "rgb(var(--brand) / <alpha-value>)",
+          light: "rgb(var(--brand-light) / <alpha-value>)",
         },
       },
       fontFamily: {

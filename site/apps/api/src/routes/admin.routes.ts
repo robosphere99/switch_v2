@@ -1,9 +1,11 @@
 import type { NextFunction, Request, Response } from "express";
 import { Router } from "express";
+import { z } from "zod";
 import multer from "multer";
 import path from "node:path";
 import fs from "node:fs";
 import { requireAuth } from "../middleware/auth";
+import { validateBody } from "../middleware/validate";
 import { prisma } from "../lib/prisma";
 import { AppError, ok } from "../lib/response";
 import { audit } from "../services/audit.service";
@@ -14,6 +16,8 @@ import { decryptSecret } from "../lib/crypto";
 import { resolveFirmware } from "../services/firmware.service";
 import { firmwareDir } from "../lib/paths";
 import { logFilePath } from "../lib/logger";
+import { getRequestStats } from "../lib/requestTracker";
+import { getSiteSettings, updateSiteSettings } from "../services/siteSettings.service";
 
 export const adminRouter = Router();
 
@@ -29,23 +33,133 @@ adminRouter.use(requireAuth, requireAdmin);
 
 // ---------- Stats ----------
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function dayKey(d: Date) {
+  return d.toISOString().slice(0, 10);
+}
+
 adminRouter.get("/stats", async (_req, res) => {
-  const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const dayAgo = new Date(Date.now() - DAY_MS);
+  const weekAgo = new Date(Date.now() - 7 * DAY_MS);
   const twoMin = new Date(Date.now() - 120_000);
-  const [users, homes, devices, activeToday, onlineDevices, pendingCommands, apiKeys, auditCount, espBoards, offlineBoards] =
-    await Promise.all([
-      prisma.user.count(),
-      prisma.home.count(),
-      prisma.device.count(),
-      prisma.user.count({ where: { lastLoginAt: { gte: dayAgo } } }),
-      prisma.device.count({ where: { lastSeen: { gte: dayAgo } } }),
-      prisma.deviceCommand.count({ where: { status: "pending" } }),
-      prisma.apiKey.count(),
-      prisma.auditLog.count(),
-      prisma.espDevice.count(),
-      prisma.espDevice.count({ where: { OR: [{ offline: true }, { lastSeen: { lt: twoMin } }] } }),
-    ]);
-  ok(res, { users, homes, devices, activeToday, onlineDevices, pendingCommands, apiKeys, auditCount, espBoards, offlineBoards });
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+
+  const [
+    users,
+    homes,
+    devices,
+    activeToday,
+    onlineDevices,
+    pendingCommands,
+    apiKeys,
+    auditCount,
+    espBoards,
+    offlineBoards,
+    orders,
+    pendingOrders,
+    ordersToday,
+    ordersThisMonth,
+    revenueTotal,
+    revenueThisMonth,
+    newUsers7d,
+    supportMessages,
+    contactMessages,
+    deviceLogs24h,
+    usersRecent,
+    ordersRecent,
+  ] = await Promise.all([
+    prisma.user.count(),
+    prisma.home.count(),
+    prisma.device.count(),
+    prisma.user.count({ where: { lastLoginAt: { gte: dayAgo } } }),
+    prisma.device.count({ where: { lastSeen: { gte: dayAgo } } }),
+    prisma.deviceCommand.count({ where: { status: "pending" } }),
+    prisma.apiKey.count(),
+    prisma.auditLog.count(),
+    prisma.espDevice.count(),
+    prisma.espDevice.count({ where: { OR: [{ offline: true }, { lastSeen: { lt: twoMin } }] } }),
+    prisma.order.count(),
+    prisma.order.count({ where: { status: "pending" } }),
+    prisma.order.count({ where: { createdAt: { gte: dayAgo } } }),
+    prisma.order.count({ where: { createdAt: { gte: monthStart } } }),
+    prisma.order.aggregate({ _sum: { totalAmount: true }, where: { paidAt: { not: null } } }),
+    prisma.order.aggregate({ _sum: { totalAmount: true }, where: { paidAt: { not: null }, createdAt: { gte: monthStart } } }),
+    prisma.user.count({ where: { createdAt: { gte: weekAgo } } }),
+    prisma.supportMessage.count(),
+    prisma.contactMessage.count(),
+    prisma.deviceLog.count({ where: { createdAt: { gte: dayAgo } } }),
+    prisma.user.findMany({ where: { createdAt: { gte: weekAgo } }, select: { createdAt: true } }),
+    prisma.order.findMany({ where: { createdAt: { gte: weekAgo } }, select: { createdAt: true, totalAmount: true, paidAt: true } }),
+  ]);
+
+  // Last 7 din (aaj samet) — signup + revenue trend (Admin Overview chart ke liye)
+  const usersByDay: Record<string, number> = {};
+  for (const u of usersRecent) {
+    const k = dayKey(u.createdAt);
+    usersByDay[k] = (usersByDay[k] ?? 0) + 1;
+  }
+  const ordersByDay: Record<string, number> = {};
+  const revenueByDay: Record<string, number> = {};
+  for (const o of ordersRecent) {
+    const k = dayKey(o.createdAt);
+    ordersByDay[k] = (ordersByDay[k] ?? 0) + 1;
+    if (o.paidAt) {
+      const pk = dayKey(o.paidAt);
+      revenueByDay[pk] = (revenueByDay[pk] ?? 0) + Number(o.totalAmount);
+    }
+  }
+
+  ok(res, {
+    users,
+    homes,
+    devices,
+    activeToday,
+    onlineDevices,
+    pendingCommands,
+    apiKeys,
+    auditCount,
+    espBoards,
+    offlineBoards,
+    orders,
+    pendingOrders,
+    ordersToday,
+    ordersThisMonth,
+    revenueTotal: Number(revenueTotal._sum.totalAmount ?? 0),
+    revenueThisMonth: Number(revenueThisMonth._sum.totalAmount ?? 0),
+    newUsers7d,
+    supportMessages,
+    contactMessages,
+    deviceLogs24h,
+    requests: getRequestStats(),
+    usersByDay,
+    ordersByDay,
+    revenueByDay,
+  });
+});
+
+// ---------- Site settings ----------
+
+const settingsSchema = z
+  .object({
+    siteName: z.string().min(1).max(60).optional(),
+    supportEmail: z.string().email().max(100).optional(),
+    supportPhone: z.string().min(1).max(30).optional(),
+    supportAddress: z.string().min(1).max(200).optional(),
+    supportHours: z.string().min(1).max(100).optional(),
+    brandColor: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Hex color (#RRGGBB)").optional(),
+  })
+  .refine((d) => Object.keys(d).length > 0, { message: "At least one field to update" });
+
+adminRouter.get("/settings", async (_req, res) => {
+  ok(res, await getSiteSettings());
+});
+
+adminRouter.put("/settings", validateBody(settingsSchema), async (req, res) => {
+  ok(res, await updateSiteSettings(req.body));
+  void audit(req.user!.sub, "settings.update", { entity: "site", meta: { fields: Object.keys(req.body) } });
 });
 
 // ---------- Users ----------
