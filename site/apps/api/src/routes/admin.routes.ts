@@ -490,7 +490,7 @@ adminRouter.get("/logs", async (_req, res) => {
     path: string | null;
     totalLines: number;
     lines: string[];
-    crashes: string[];
+    crashes: Array<{ line: string; count: number }>;
     iisnodeLogs: Array<{ name: string; path: string; size: number; lines: string[] }>;
   } = { path: logFilePath ?? null, totalLines: 0, lines: [], crashes: [], iisnodeLogs: [] };
 
@@ -499,7 +499,26 @@ adminRouter.get("/logs", async (_req, res) => {
     const lines = raw.split(/\r?\n/).filter(Boolean).slice(-n);
     result.lines = lines;
     result.totalLines = lines.length;
-    result.crashes = lines.filter((l) => /crashguard|unhandled|error|fail|exception/i.test(l)).slice(-40);
+    // Crash/error lines — same error (timestamps/pids ko hatake) baar-baar na dikhe.
+    // Har unique error ek baar, uske saath kitni baar repeat hua (count).
+    const crashMap = new Map<string, { line: string; count: number }>();
+    for (const l of lines) {
+      if (!/crashguard|unhandled|error|fail|exception/i.test(l)) continue;
+      const key = l
+        .replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z?/g, " ")
+        .replace(/pid=\d+/g, "pid=N")
+        .replace(/uptime=\d+s/g, "uptime=N")
+        .replace(/rss=\d+MB/g, "rss=N")
+        .replace(/\[(boot|req|hb|scheduler|offline)\]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .toLowerCase();
+      if (!key) continue;
+      const cur = crashMap.get(key);
+      if (cur) cur.count += 1;
+      else crashMap.set(key, { line: l, count: 1 });
+    }
+    result.crashes = [...crashMap.values()];
   }
 
   // iisnode apne stdout/stderr yahan likhta hai — native crash dump (jo JS

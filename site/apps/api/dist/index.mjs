@@ -3129,7 +3129,16 @@ adminRouter.get("/logs", async (_req, res) => {
     const lines = raw.split(/\r?\n/).filter(Boolean).slice(-n);
     result.lines = lines;
     result.totalLines = lines.length;
-    result.crashes = lines.filter((l) => /crashguard|unhandled|error|fail|exception/i.test(l)).slice(-40);
+    const crashMap = /* @__PURE__ */ new Map();
+    for (const l of lines) {
+      if (!/crashguard|unhandled|error|fail|exception/i.test(l)) continue;
+      const key = l.replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z?/g, " ").replace(/pid=\d+/g, "pid=N").replace(/uptime=\d+s/g, "uptime=N").replace(/rss=\d+MB/g, "rss=N").replace(/\[(boot|req|hb|scheduler|offline)\]/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
+      if (!key) continue;
+      const cur = crashMap.get(key);
+      if (cur) cur.count += 1;
+      else crashMap.set(key, { line: l, count: 1 });
+    }
+    result.crashes = [...crashMap.values()];
   }
   const dirs = /* @__PURE__ */ new Set();
   if (logFilePath) dirs.add(path4.dirname(logFilePath));
