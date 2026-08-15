@@ -2,7 +2,7 @@
 REM ============================================================
 REM RoboSphere v2 - Plesk post-deploy script (Windows / IIS + iisnode)
 REM
-REM Wire this up in Plesk:  Git -> switch_v2 -> Deployment settings
+REM Wire this up in Plesk (verified applied 16-Aug):  Git -> switch_v2 -> Deployment settings
 REM   -> enable "Additional deployment actions" and enter:
 REM        site\deploy.cmd
 REM
