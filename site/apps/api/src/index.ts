@@ -5,6 +5,7 @@ import { prisma } from "./lib/prisma";
 import { logger, fileLog, logFilePath } from "./lib/logger";
 import { initSocket } from "./lib/socket";
 import { startScheduler } from "./services/scheduler.service";
+import { startFamilySafety } from "./services/familySafety.service";
 import { startOfflineWatcher } from "./services/offline.service";
 import { setDbReady } from "./lib/dbState";
 
@@ -107,6 +108,65 @@ async function runLightMigrations(): Promise<void> {
         "ALTER TABLE `support_messages` ADD COLUMN `attachment_name` VARCHAR(255) NULL, ADD COLUMN `attachment_type` VARCHAR(100) NULL, ADD COLUMN `attachment_data` MEDIUMTEXT NULL",
       );
       logger.info("✅ Migration: support_messages.attachment_* columns added");
+    }
+    // 6) Family safety — child mode: home_members.restricted + daily_limit_minutes,
+    //    device_access (member → granted devices), device_usage (daily ON-time).
+    const rm = await prisma.$queryRaw<{ c: bigint }[]>`
+      SELECT COUNT(*) AS c FROM information_schema.columns
+      WHERE table_schema = DATABASE() AND table_name = 'home_members' AND column_name = 'restricted'
+    `;
+    if (Number(rm[0]?.c ?? 0) === 0) {
+      await prisma.$executeRawUnsafe(
+        "ALTER TABLE `home_members` ADD COLUMN `restricted` BOOLEAN NOT NULL DEFAULT FALSE, ADD COLUMN `daily_limit_minutes` INT NULL",
+      );
+      logger.info("✅ Migration: home_members.restricted + daily_limit_minutes added");
+    }
+    const da = await prisma.$queryRaw<{ c: bigint }[]>`
+      SELECT COUNT(*) AS c FROM information_schema.tables
+      WHERE table_schema = DATABASE() AND table_name = 'device_access'
+    `;
+    if (Number(da[0]?.c ?? 0) === 0) {
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE device_access (
+          id INT NOT NULL AUTO_INCREMENT,
+          homeId INT NOT NULL,
+          deviceId INT NOT NULL,
+          userId INT NOT NULL,
+          created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+          PRIMARY KEY (id),
+          UNIQUE INDEX device_access_deviceId_userId_key (deviceId, userId),
+          INDEX device_access_homeId_idx (homeId),
+          INDEX device_access_userId_idx (userId),
+          CONSTRAINT device_access_homeId_fkey FOREIGN KEY (homeId) REFERENCES homes(id) ON DELETE CASCADE ON UPDATE CASCADE,
+          CONSTRAINT device_access_deviceId_fkey FOREIGN KEY (deviceId) REFERENCES devices(id) ON DELETE CASCADE ON UPDATE CASCADE,
+          CONSTRAINT device_access_userId_fkey FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+      `);
+      logger.info("✅ Migration: device_access table created");
+    }
+    const du = await prisma.$queryRaw<{ c: bigint }[]>`
+      SELECT COUNT(*) AS c FROM information_schema.tables
+      WHERE table_schema = DATABASE() AND table_name = 'device_usage'
+    `;
+    if (Number(du[0]?.c ?? 0) === 0) {
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE device_usage (
+          id INT NOT NULL AUTO_INCREMENT,
+          homeId INT NOT NULL,
+          deviceId INT NOT NULL,
+          userId INT NOT NULL,
+          date DATE NOT NULL,
+          on_minutes INT NOT NULL,
+          updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+          PRIMARY KEY (id),
+          UNIQUE INDEX device_usage_deviceId_userId_date_key (deviceId, userId, date),
+          INDEX device_usage_homeId_idx (homeId),
+          CONSTRAINT device_usage_homeId_fkey FOREIGN KEY (homeId) REFERENCES homes(id) ON DELETE CASCADE ON UPDATE CASCADE,
+          CONSTRAINT device_usage_deviceId_fkey FOREIGN KEY (deviceId) REFERENCES devices(id) ON DELETE CASCADE ON UPDATE CASCADE,
+          CONSTRAINT device_usage_userId_fkey FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+      `);
+      logger.info("✅ Migration: device_usage table created");
     }
   } catch (err) {
     logger.warn("Light migration (esp serial unique) skip/fail", err instanceof Error ? err.message : String(err));
@@ -257,6 +317,7 @@ async function initDatabase(): Promise<void> {
   if (dbReady) {
     try {
       startScheduler();
+      startFamilySafety();
     } catch (err) {
       logger.warn("Scheduler start skipped/failed", err instanceof Error ? err.message : String(err));
     }

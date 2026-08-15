@@ -129,6 +129,20 @@ export async function createSchedule(input: CreateScheduleInput) {
   });
   if (!device) throw new AppError("DEVICE_NOT_FOUND", "Device not found in this home", 404);
 
+  // Child/restricted member — sirf granted devices ka schedule bana sakta hai
+  const membership = await prisma.homeMember.findUnique({
+    where: { homeId_userId: { homeId: input.homeId, userId: input.actorId } },
+    select: { restricted: true },
+  });
+  if (membership?.restricted) {
+    const granted = await prisma.deviceAccess.findUnique({
+      where: { deviceId_userId: { deviceId: input.deviceId, userId: input.actorId } },
+    });
+    if (!granted) {
+      throw new AppError("FORBIDDEN", "Is device ka access nahi hai (child mode)", 403);
+    }
+  }
+
   let runAt: Date | null = input.runAt ? new Date(input.runAt) : null;
   if (input.type !== "once" && input.type !== "cron" && runAt) {
     // Normalize daily/weekly to the next occurrence from now.

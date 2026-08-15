@@ -48,6 +48,33 @@ var init_prisma = __esm({
   }
 });
 
+// src/services/audit.service.ts
+var audit_service_exports = {};
+__export(audit_service_exports, {
+  audit: () => audit
+});
+async function audit(actorId, action, opts = {}) {
+  try {
+    const data = {
+      actorId,
+      homeId: opts.homeId ?? null,
+      action,
+      entity: opts.entity ?? null,
+      entityId: opts.entityId ?? null
+    };
+    if (opts.meta) data.meta = opts.meta;
+    await prisma.auditLog.create({ data });
+  } catch (err) {
+    console.error("[audit] failed to write audit log:", err);
+  }
+}
+var init_audit_service = __esm({
+  "src/services/audit.service.ts"() {
+    "use strict";
+    init_prisma();
+  }
+});
+
 // src/services/firmware.service.ts
 var firmware_service_exports = {};
 __export(firmware_service_exports, {
@@ -644,23 +671,8 @@ function emitToHome(homeId, event, payload) {
   io?.to(`home:${homeId}`).emit(event, payload);
 }
 
-// src/services/audit.service.ts
-init_prisma();
-async function audit(actorId, action, opts = {}) {
-  try {
-    const data = {
-      actorId,
-      homeId: opts.homeId ?? null,
-      action,
-      entity: opts.entity ?? null,
-      entityId: opts.entityId ?? null
-    };
-    if (opts.meta) data.meta = opts.meta;
-    await prisma.auditLog.create({ data });
-  } catch (err) {
-    console.error("[audit] failed to write audit log:", err);
-  }
-}
+// src/services/device.service.ts
+init_audit_service();
 
 // src/services/notification.service.ts
 init_prisma();
@@ -719,9 +731,23 @@ async function markAllRead(userId) {
 
 // src/services/device.service.ts
 init_firmware_service();
-async function listDevices(homeId) {
+async function listDevices(homeId, viewerId) {
+  const where = { homeId };
+  if (viewerId) {
+    const membership2 = await prisma.homeMember.findUnique({
+      where: { homeId_userId: { homeId, userId: viewerId } },
+      select: { restricted: true }
+    });
+    if (membership2?.restricted) {
+      const granted = await prisma.deviceAccess.findMany({
+        where: { homeId, userId: viewerId },
+        select: { deviceId: true }
+      });
+      where.id = { in: granted.map((g) => g.deviceId) };
+    }
+  }
   return prisma.device.findMany({
-    where: { homeId },
+    where,
     include: {
       esp: { select: { id: true, name: true, serialCode: true, modelCode: true, firmwareVersion: true, offline: true, lastSeen: true } }
     },
@@ -758,6 +784,18 @@ async function setDeviceStatus(input) {
     where: { id: input.deviceId, homeId: input.homeId }
   });
   if (!device) throw new AppError("DEVICE_NOT_FOUND", "Device not found in this home", 404);
+  const membership2 = await prisma.homeMember.findUnique({
+    where: { homeId_userId: { homeId: input.homeId, userId: input.actorId } },
+    select: { restricted: true }
+  });
+  if (membership2?.restricted) {
+    const granted = await prisma.deviceAccess.findUnique({
+      where: { deviceId_userId: { deviceId: device.id, userId: input.actorId } }
+    });
+    if (!granted) {
+      throw new AppError("FORBIDDEN", "Is device ka access nahi hai (child mode)", 403);
+    }
+  }
   await prisma.$transaction([
     prisma.device.update({
       where: { id: device.id },
@@ -948,7 +986,10 @@ async function requestOta(homeId, deviceId, actorId) {
 
 // src/controllers/device.controller.ts
 async function list2(req, res) {
-  const devices = await listDevices(Number(req.params.homeId));
+  const devices = await listDevices(
+    Number(req.params.homeId),
+    req.user?.sub
+  );
   ok(res, devices);
 }
 async function create2(req, res) {
@@ -1095,12 +1136,26 @@ function generateInviteCode() {
   const bytes = crypto2.randomBytes(8);
   return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
 }
-async function listMembers(homeId) {
-  return prisma.homeMember.findMany({
+async function listMembers(homeId, viewerRole) {
+  const members = await prisma.homeMember.findMany({
     where: { homeId },
     include: { user: { select: { id: true, username: true, email: true } } },
     orderBy: { joinedAt: "asc" }
   });
+  if (viewerRole === "owner" || viewerRole === "admin") {
+    const grants = await prisma.deviceAccess.findMany({
+      where: { homeId },
+      select: { userId: true, deviceId: true }
+    });
+    const byUser = /* @__PURE__ */ new Map();
+    for (const g of grants) {
+      const arr = byUser.get(g.userId) ?? [];
+      arr.push({ deviceId: g.deviceId });
+      byUser.set(g.userId, arr);
+    }
+    return members.map((m) => ({ ...m, deviceAccess: byUser.get(m.userId) ?? [] }));
+  }
+  return members;
 }
 async function createInvitation(input) {
   const existingUser = await prisma.user.findUnique({ where: { email: input.email } });
@@ -1199,10 +1254,83 @@ async function removeMember(homeId, userId) {
   }
   await prisma.homeMember.delete({ where: { homeId_userId: { homeId, userId } } });
 }
+async function updateMemberSafety(input) {
+  if (input.actorRole !== "owner" && input.actorRole !== "admin") {
+    throw new AppError("FORBIDDEN", "Only owner/admin can manage member safety", 403);
+  }
+  const member = await prisma.homeMember.findUnique({
+    where: { homeId_userId: { homeId: input.homeId, userId: input.targetUserId } }
+  });
+  if (!member) throw new AppError("NOT_A_MEMBER", "User is not a member of this home", 404);
+  if (member.role === "owner") throw new AppError("BAD_REQUEST", "Owner ko child mode me nahi rakha ja sakta", 400);
+  const data = {};
+  if (input.restricted !== void 0) data.restricted = input.restricted;
+  if (input.dailyLimitMinutes !== void 0) {
+    const mins = Number(input.dailyLimitMinutes);
+    data.dailyLimitMinutes = Number.isFinite(mins) && mins > 0 ? Math.floor(mins) : null;
+  }
+  if (data.restricted === false) data.dailyLimitMinutes = null;
+  const updated = await prisma.homeMember.update({
+    where: { homeId_userId: { homeId: input.homeId, userId: input.targetUserId } },
+    data,
+    include: { user: { select: { id: true, username: true } } }
+  });
+  const { audit: audit2 } = await Promise.resolve().then(() => (init_audit_service(), audit_service_exports));
+  await audit2(input.actorId, "member.safety", {
+    homeId: input.homeId,
+    entity: "homeMember",
+    entityId: member.id,
+    meta: { targetUserId: input.targetUserId, ...data }
+  });
+  return updated;
+}
+async function setDeviceAccess(input) {
+  if (input.actorRole !== "owner" && input.actorRole !== "admin") {
+    throw new AppError("FORBIDDEN", "Only owner/admin can manage device access", 403);
+  }
+  const member = await prisma.homeMember.findUnique({
+    where: { homeId_userId: { homeId: input.homeId, userId: input.targetUserId } }
+  });
+  if (!member) throw new AppError("NOT_A_MEMBER", "User is not a member of this home", 404);
+  if (member.role === "owner") throw new AppError("BAD_REQUEST", "Owner pe device access set nahi kar sakte", 400);
+  const ids = [...new Set(input.deviceIds)];
+  if (ids.length > 0) {
+    const devices = await prisma.device.findMany({
+      where: { id: { in: ids }, homeId: input.homeId },
+      select: { id: true }
+    });
+    if (devices.length !== ids.length) {
+      throw new AppError("BAD_REQUEST", "Kuch devices is home ke nahi hain", 400);
+    }
+  }
+  await prisma.$transaction([
+    prisma.deviceAccess.deleteMany({ where: { homeId: input.homeId, userId: input.targetUserId } }),
+    ...ids.length > 0 ? [
+      prisma.deviceAccess.createMany({
+        data: ids.map((deviceId) => ({
+          homeId: input.homeId,
+          deviceId,
+          userId: input.targetUserId
+        }))
+      })
+    ] : []
+  ]);
+  const { audit: audit2 } = await Promise.resolve().then(() => (init_audit_service(), audit_service_exports));
+  await audit2(input.actorId, "member.access", {
+    homeId: input.homeId,
+    entity: "homeMember",
+    entityId: member.id,
+    meta: { targetUserId: input.targetUserId, deviceIds: ids }
+  });
+  return { deviceIds: ids };
+}
 
 // src/controllers/member.controller.ts
 async function list3(req, res) {
-  const members = await listMembers(Number(req.params.homeId));
+  const members = await listMembers(
+    Number(req.params.homeId),
+    req.homeMembership?.role
+  );
   ok(res, members);
 }
 async function invite(req, res) {
@@ -1244,6 +1372,27 @@ async function remove4(req, res) {
   await removeMember(Number(req.params.homeId), Number(req.params.userId));
   ok(res, { message: "Member removed" });
 }
+async function updateSafety(req, res) {
+  const member = await updateMemberSafety({
+    homeId: Number(req.params.homeId),
+    actorId: req.user.sub,
+    actorRole: req.homeMembership.role,
+    targetUserId: Number(req.params.userId),
+    restricted: req.body.restricted,
+    dailyLimitMinutes: req.body.dailyLimitMinutes
+  });
+  ok(res, member);
+}
+async function updateAccess(req, res) {
+  const result = await setDeviceAccess({
+    homeId: Number(req.params.homeId),
+    actorId: req.user.sub,
+    actorRole: req.homeMembership.role,
+    targetUserId: Number(req.params.userId),
+    deviceIds: req.body.deviceIds
+  });
+  ok(res, result);
+}
 
 // src/routes/member.routes.ts
 var memberRouter = Router3();
@@ -1259,6 +1408,13 @@ var inviteSchema = z4.object({
 });
 var acceptSchema = z4.object({ inviteCode: z4.string().min(6).max(12) });
 var roleSchema = z4.object({ role: z4.enum(["admin", "member", "viewer"]) });
+var safetySchema = z4.object({
+  restricted: z4.boolean().optional(),
+  dailyLimitMinutes: z4.coerce.number().int().min(1).max(1440).nullable().optional()
+});
+var accessSchema = z4.object({
+  deviceIds: z4.array(z4.number().int().positive()).max(100)
+});
 memberRouter.get(
   "/:homeId/members",
   requireAuth,
@@ -1307,6 +1463,22 @@ memberRouter.delete(
   validateParams(memberParams),
   requireHomeMember("admin"),
   remove4
+);
+memberRouter.patch(
+  "/:homeId/members/:userId/safety",
+  requireAuth,
+  validateParams(memberParams),
+  requireHomeMember("admin"),
+  validateBody(safetySchema),
+  updateSafety
+);
+memberRouter.put(
+  "/:homeId/members/:userId/access",
+  requireAuth,
+  validateParams(memberParams),
+  requireHomeMember("admin"),
+  validateBody(accessSchema),
+  updateAccess
 );
 memberRouter.post("/invitations/accept", requireAuth, validateBody(acceptSchema), accept);
 
@@ -1640,10 +1812,10 @@ async function heartbeat(key, input, baseUrl) {
   }
   const { resolveFirmware: resolveFirmware2 } = await Promise.resolve().then(() => (init_firmware_service(), firmware_service_exports));
   const current = await resolveFirmware2(esp?.modelCode);
-  const running2 = fw ?? updated.firmwareVersion ?? device.firmwareVersion;
+  const running3 = fw ?? updated.firmwareVersion ?? device.firmwareVersion;
   const pendingNow = esp ? esp.otaPendingVersion : updated.otaPendingVersion ?? device.otaPendingVersion;
   let ota = null;
-  if (pendingNow && current && running2 !== current.version) {
+  if (pendingNow && current && running3 !== current.version) {
     ota = {
       version: current.version,
       url: baseUrl + current.url,
@@ -2017,6 +2189,18 @@ async function createSchedule(input) {
     where: { id: input.deviceId, homeId: input.homeId }
   });
   if (!device) throw new AppError("DEVICE_NOT_FOUND", "Device not found in this home", 404);
+  const membership2 = await prisma.homeMember.findUnique({
+    where: { homeId_userId: { homeId: input.homeId, userId: input.actorId } },
+    select: { restricted: true }
+  });
+  if (membership2?.restricted) {
+    const granted = await prisma.deviceAccess.findUnique({
+      where: { deviceId_userId: { deviceId: input.deviceId, userId: input.actorId } }
+    });
+    if (!granted) {
+      throw new AppError("FORBIDDEN", "Is device ka access nahi hai (child mode)", 403);
+    }
+  }
   let runAt = input.runAt ? new Date(input.runAt) : null;
   if (input.type !== "once" && input.type !== "cron" && runAt) {
     const now = /* @__PURE__ */ new Date();
@@ -2178,6 +2362,7 @@ init_prisma();
 
 // src/services/assistant.service.ts
 init_prisma();
+init_audit_service();
 var ON_PATTERNS = [
   /\b(turn\s+)?on\b/,
   /\bstart\b/,
@@ -2556,6 +2741,7 @@ import multer from "multer";
 import path4 from "node:path";
 import fs3 from "node:fs";
 init_prisma();
+init_audit_service();
 
 // src/services/shop.service.ts
 init_prisma();
@@ -3643,7 +3829,7 @@ adminRouter.get("/esp/:id/probe", async (req, res) => {
   const url = `http://${ip}/`;
   const started = Date.now();
   const controller = new AbortController();
-  const timer3 = setTimeout(() => controller.abort(), 3e3);
+  const timer4 = setTimeout(() => controller.abort(), 3e3);
   try {
     const r = await fetch(url, {
       signal: controller.signal,
@@ -3654,7 +3840,7 @@ adminRouter.get("/esp/:id/probe", async (req, res) => {
   } catch {
     return ok(res, { reachable: false, reason: "unreachable", latencyMs: Date.now() - started });
   } finally {
-    clearTimeout(timer3);
+    clearTimeout(timer4);
   }
 });
 adminRouter.get("/products", async (_req, res) => {
@@ -3947,6 +4133,7 @@ adminRouter.delete("/contact/:id", async (req, res) => {
 // src/routes/shop.routes.ts
 import { Router as Router12 } from "express";
 init_prisma();
+init_audit_service();
 
 // src/services/payment.service.ts
 import crypto6 from "node:crypto";
@@ -4112,6 +4299,7 @@ shopRouter.post("/orders/:id/pay/demo", requireAuth, async (req, res) => {
 // src/routes/claim.routes.ts
 import { Router as Router13 } from "express";
 init_prisma();
+init_audit_service();
 var claimRouter = Router13();
 claimRouter.use(requireAuth);
 var TYPE_BY_MODEL = {
@@ -4288,6 +4476,7 @@ warrantyRouter.get("/mine", async (req, res) => {
 // src/routes/public.routes.ts
 init_prisma();
 import { Router as Router15 } from "express";
+init_audit_service();
 var publicRouter = Router15();
 var CHIPS = [
   "Kis board ki zaroorat hai?",
@@ -4839,6 +5028,7 @@ function isDbReady() {
 
 // src/services/scheduler.service.ts
 init_prisma();
+init_audit_service();
 var timer = null;
 var running = false;
 var CHECK_INTERVAL_MS = 1e4;
@@ -5339,6 +5529,141 @@ function createApp() {
 
 // src/index.ts
 init_prisma();
+
+// src/services/familySafety.service.ts
+init_prisma();
+var CHECK_INTERVAL_MS3 = 6e4;
+var timer3 = null;
+var running2 = false;
+function startFamilySafety() {
+  if (timer3) return;
+  timer3 = setInterval(() => void runSafetyCheck(), CHECK_INTERVAL_MS3);
+  fileLog("[family-safety] monitor started (60s)");
+}
+async function usageMinutesToday(deviceId, userId) {
+  const start = /* @__PURE__ */ new Date();
+  start.setHours(0, 0, 0, 0);
+  const logs2 = await prisma.deviceLog.findMany({
+    where: {
+      deviceId,
+      actorId: userId,
+      logType: "status_change",
+      createdAt: { gte: start }
+    },
+    orderBy: { createdAt: "asc" },
+    select: { createdAt: true, logMessage: true }
+  });
+  let minutes = 0;
+  let onAt = null;
+  for (const l of logs2) {
+    if (l.logMessage.includes("turned on")) {
+      onAt = l.createdAt;
+    } else if (l.logMessage.includes("turned off") && onAt) {
+      minutes += Math.round((l.createdAt.getTime() - onAt.getTime()) / 6e4);
+      onAt = null;
+    }
+  }
+  if (onAt) {
+    const device = await prisma.device.findUnique({
+      where: { id: deviceId },
+      select: { status: true }
+    });
+    if (device?.status === "on") {
+      minutes += Math.round((Date.now() - onAt.getTime()) / 6e4);
+    }
+  }
+  return minutes;
+}
+async function autoOffDevice(deviceId, homeId) {
+  await prisma.$transaction([
+    prisma.device.update({ where: { id: deviceId }, data: { status: "off" } }),
+    prisma.deviceCommand.create({
+      data: { deviceId, actorId: null, command: "set_status:off" }
+    }),
+    prisma.deviceLog.create({
+      data: {
+        deviceId,
+        actorId: null,
+        logType: "child_safety",
+        logMessage: "Auto-off by child safety daily limit"
+      }
+    })
+  ]);
+  const updated = await prisma.device.findUnique({ where: { id: deviceId } });
+  if (updated) emitToHome(homeId, "device:updated", updated);
+}
+async function runSafetyCheck() {
+  if (running2) return;
+  running2 = true;
+  try {
+    const members = await prisma.homeMember.findMany({
+      where: { restricted: true, dailyLimitMinutes: { not: null } },
+      include: { home: { select: { ownerId: true, name: true } } }
+    });
+    if (members.length === 0) return;
+    const today = /* @__PURE__ */ new Date();
+    today.setHours(0, 0, 0, 0);
+    for (const m of members) {
+      const limit = m.dailyLimitMinutes;
+      const grants = await prisma.deviceAccess.findMany({
+        where: { homeId: m.homeId, userId: m.userId },
+        select: { deviceId: true }
+      });
+      for (const acc of grants) {
+        const usage = await usageMinutesToday(acc.deviceId, m.userId);
+        await prisma.deviceUsage.upsert({
+          where: {
+            deviceId_userId_date: { deviceId: acc.deviceId, userId: m.userId, date: today }
+          },
+          create: {
+            homeId: m.homeId,
+            deviceId: acc.deviceId,
+            userId: m.userId,
+            date: today,
+            onMinutes: usage
+          },
+          update: { onMinutes: usage }
+        });
+        if (usage < limit) continue;
+        const device = await prisma.device.findUnique({
+          where: { id: acc.deviceId },
+          select: { name: true, status: true }
+        });
+        if (!device || device.status !== "on") continue;
+        await autoOffDevice(acc.deviceId, m.homeId);
+        const already = await prisma.deviceLog.findFirst({
+          where: { deviceId: acc.deviceId, logType: "child_safety", createdAt: { gte: today } }
+        });
+        if (already) continue;
+        const child = await prisma.user.findUnique({
+          where: { id: m.userId },
+          select: { username: true }
+        });
+        const who = child?.username ?? "Member";
+        const msg = `${who} ne aaj "${device.name}" ${limit} min se zyada ON rakha \u2014 safety limit khatam, humne band kar diya.`;
+        await createNotification(m.home.ownerId, {
+          category: "device",
+          type: "warning",
+          title: `\u{1F476} Child safety: "${device.name}" band kiya`,
+          body: msg
+        });
+        await createNotification(m.userId, {
+          category: "device",
+          type: "warning",
+          title: `\u23F3 "${device.name}" ka time khatam`,
+          body: `Aaj ka ${limit} min limit poora ho gaya \u2014 device band kar diya gaya.`
+        });
+        fileLog(`[family-safety] auto-off ${device.name} for user ${m.userId} (${usage}min >= ${limit}min)`);
+      }
+    }
+  } catch (err) {
+    fileLog(`[family-safety] ERROR: ${err instanceof Error ? err.message : String(err)}`);
+  } finally {
+    running2 = false;
+  }
+}
+
+// src/index.ts
 async function runLightMigrations() {
   try {
     await prisma.$executeRawUnsafe(
@@ -5422,6 +5747,63 @@ async function runLightMigrations() {
         "ALTER TABLE `support_messages` ADD COLUMN `attachment_name` VARCHAR(255) NULL, ADD COLUMN `attachment_type` VARCHAR(100) NULL, ADD COLUMN `attachment_data` MEDIUMTEXT NULL"
       );
       logger.info("\u2705 Migration: support_messages.attachment_* columns added");
+    }
+    const rm = await prisma.$queryRaw`
+      SELECT COUNT(*) AS c FROM information_schema.columns
+      WHERE table_schema = DATABASE() AND table_name = 'home_members' AND column_name = 'restricted'
+    `;
+    if (Number(rm[0]?.c ?? 0) === 0) {
+      await prisma.$executeRawUnsafe(
+        "ALTER TABLE `home_members` ADD COLUMN `restricted` BOOLEAN NOT NULL DEFAULT FALSE, ADD COLUMN `daily_limit_minutes` INT NULL"
+      );
+      logger.info("\u2705 Migration: home_members.restricted + daily_limit_minutes added");
+    }
+    const da = await prisma.$queryRaw`
+      SELECT COUNT(*) AS c FROM information_schema.tables
+      WHERE table_schema = DATABASE() AND table_name = 'device_access'
+    `;
+    if (Number(da[0]?.c ?? 0) === 0) {
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE device_access (
+          id INT NOT NULL AUTO_INCREMENT,
+          homeId INT NOT NULL,
+          deviceId INT NOT NULL,
+          userId INT NOT NULL,
+          created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+          PRIMARY KEY (id),
+          UNIQUE INDEX device_access_deviceId_userId_key (deviceId, userId),
+          INDEX device_access_homeId_idx (homeId),
+          INDEX device_access_userId_idx (userId),
+          CONSTRAINT device_access_homeId_fkey FOREIGN KEY (homeId) REFERENCES homes(id) ON DELETE CASCADE ON UPDATE CASCADE,
+          CONSTRAINT device_access_deviceId_fkey FOREIGN KEY (deviceId) REFERENCES devices(id) ON DELETE CASCADE ON UPDATE CASCADE,
+          CONSTRAINT device_access_userId_fkey FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+      `);
+      logger.info("\u2705 Migration: device_access table created");
+    }
+    const du = await prisma.$queryRaw`
+      SELECT COUNT(*) AS c FROM information_schema.tables
+      WHERE table_schema = DATABASE() AND table_name = 'device_usage'
+    `;
+    if (Number(du[0]?.c ?? 0) === 0) {
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE device_usage (
+          id INT NOT NULL AUTO_INCREMENT,
+          homeId INT NOT NULL,
+          deviceId INT NOT NULL,
+          userId INT NOT NULL,
+          date DATE NOT NULL,
+          on_minutes INT NOT NULL,
+          updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+          PRIMARY KEY (id),
+          UNIQUE INDEX device_usage_deviceId_userId_date_key (deviceId, userId, date),
+          INDEX device_usage_homeId_idx (homeId),
+          CONSTRAINT device_usage_homeId_fkey FOREIGN KEY (homeId) REFERENCES homes(id) ON DELETE CASCADE ON UPDATE CASCADE,
+          CONSTRAINT device_usage_deviceId_fkey FOREIGN KEY (deviceId) REFERENCES devices(id) ON DELETE CASCADE ON UPDATE CASCADE,
+          CONSTRAINT device_usage_userId_fkey FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+      `);
+      logger.info("\u2705 Migration: device_usage table created");
     }
   } catch (err) {
     logger.warn("Light migration (esp serial unique) skip/fail", err instanceof Error ? err.message : String(err));
@@ -5535,6 +5917,7 @@ async function initDatabase() {
   if (dbReady) {
     try {
       startScheduler();
+      startFamilySafety();
     } catch (err) {
       logger.warn("Scheduler start skipped/failed", err instanceof Error ? err.message : String(err));
     }

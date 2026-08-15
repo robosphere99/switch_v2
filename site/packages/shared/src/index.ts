@@ -63,6 +63,10 @@ export interface HomeMember {
   homeId: number;
   userId: number;
   role: HomeMemberRole;
+  /** Child mode — sirf granted devices control kar sakta hai + daily limit. */
+  restricted?: boolean;
+  dailyLimitMinutes?: number | null;
+  deviceAccess?: Array<{ deviceId: number }>;
   joinedAt: string;
   user?: User;
 }

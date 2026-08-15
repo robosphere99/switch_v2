@@ -3,7 +3,10 @@ import { ok } from "../lib/response";
 import * as deviceService from "../services/device.service";
 
 export async function list(req: Request, res: Response) {
-  const devices = await deviceService.listDevices(Number(req.params.homeId));
+  const devices = await deviceService.listDevices(
+    Number(req.params.homeId),
+    req.user?.sub,
+  );
   ok(res, devices);
 }
 

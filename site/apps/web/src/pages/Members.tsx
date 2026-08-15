@@ -1,8 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import type { ApiResponse, Home } from "@robosphere/shared";
+import type { ApiResponse, Home, HomeMember } from "@robosphere/shared";
 import { listHomes, listMembers } from "../api/homes";
-import { inviteMember, listInvitations, revokeInvitation, changeMemberRole, removeMember, acceptInvite } from "../api/members";
+import { listDevices } from "../api/devices";
+import {
+  inviteMember,
+  listInvitations,
+  revokeInvitation,
+  changeMemberRole,
+  removeMember,
+  acceptInvite,
+  updateMemberSafety,
+  setMemberDeviceAccess,
+} from "../api/members";
 import { useAuthStore } from "../stores/auth";
 
 const ROLE_COLORS: Record<string, string> = {
@@ -74,6 +84,12 @@ export function Members() {
 
   const remove = useMutation({
     mutationFn: (userId: number) => removeMember(homeId!, userId),
+    onSuccess: invalidate,
+  });
+
+  const safety = useMutation({
+    mutationFn: (input: { userId: number; restricted?: boolean; dailyLimitMinutes?: number | null }) =>
+      updateMemberSafety(homeId!, input.userId, input),
     onSuccess: invalidate,
   });
 
@@ -249,6 +265,52 @@ export function Members() {
                   </>
                 )}
               </div>
+
+              {/* Child mode — device-level access + daily limit (owner/admin) */}
+              {canInvite && m.role !== "owner" && (
+                <div className="w-full border-t border-gray-200 pt-3">
+                  <label className="flex cursor-pointer items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={!!m.restricted}
+                      onChange={(e) =>
+                        safety.mutate({ userId: m.userId, restricted: e.target.checked })
+                      }
+                      className="h-4 w-4 accent-brand"
+                    />
+                    <span className="font-medium">👶 Child mode</span>
+                    <span className="text-xs text-gray-500">
+                      — sirf granted devices ka control, daily limit ke saath
+                    </span>
+                  </label>
+
+                  {m.restricted && (
+                    <div className="mt-3 space-y-3 pl-6">
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="text-xs text-gray-500">⏱️ Daily limit:</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={1440}
+                          defaultValue={m.dailyLimitMinutes ?? 60}
+                          onBlur={(e) => {
+                            const v = Number(e.target.value);
+                            if (Number.isFinite(v) && v > 0 && v !== m.dailyLimitMinutes) {
+                              safety.mutate({ userId: m.userId, dailyLimitMinutes: v });
+                            }
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                          }}
+                          className="w-20 rounded-lg border border-gray-300 bg-night-900 px-2 py-1 text-sm outline-none focus:border-brand"
+                        />
+                        <span className="text-xs text-gray-500">min/day — cross hone pe auto band + parents ko notification</span>
+                      </div>
+                      <DeviceAccessPicker homeId={homeId!} member={m} />
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ))}
       </div>
@@ -285,6 +347,84 @@ export function Members() {
             )}
           </p>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** Child ko kaunse devices ka control dena hai — checkbox list + save. */
+function DeviceAccessPicker({ homeId, member }: { homeId: number; member: HomeMember }) {
+  const queryClient = useQueryClient();
+  const devices = useQuery({
+    queryKey: ["devices", homeId],
+    queryFn: () => listDevices(homeId),
+  });
+  const [selected, setSelected] = useState<Set<number>>(
+    () => new Set((member.deviceAccess ?? []).map((d) => d.deviceId)),
+  );
+  const [saved, setSaved] = useState(true);
+
+  const toggle = (id: number) => {
+    setSaved(false);
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const save = useMutation({
+    mutationFn: () => setMemberDeviceAccess(homeId, member.userId, [...selected]),
+    onSuccess: () => {
+      setSaved(true);
+      queryClient.invalidateQueries({ queryKey: ["members", homeId] });
+    },
+  });
+
+  const list = devices.data?.success ? devices.data.data : [];
+
+  return (
+    <div className="rounded-lg border border-gray-200 bg-night-900 p-3">
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-xs font-semibold text-gray-500">
+          🔓 Devices access ({list.length > 0 ? `${selected.size}/${list.length}` : "…"})
+        </p>
+        <button
+          onClick={() => save.mutate()}
+          disabled={save.isPending || saved || list.length === 0}
+          className="rounded-lg bg-brand px-3 py-1 text-xs font-semibold text-white transition enabled:hover:brightness-110 disabled:opacity-40"
+        >
+          {save.isPending ? "Saving…" : saved ? "✓ Saved" : "💾 Save access"}
+        </button>
+      </div>
+      {devices.isLoading && <p className="text-xs text-gray-500">Devices loading…</p>}
+      {!devices.isLoading && list.length === 0 && (
+        <p className="text-xs text-gray-500">Is home me abhi koi device nahi.</p>
+      )}
+      <div className="grid gap-1.5 sm:grid-cols-2">
+        {list.map((d) => (
+          <label
+            key={d.id}
+            className={`flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1.5 text-sm transition ${
+              selected.has(d.id)
+                ? "border-brand/50 bg-brand/10 text-gray-700"
+                : "border-gray-200 text-gray-500 hover:border-brand/30"
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={selected.has(d.id)}
+              onChange={() => toggle(d.id)}
+              className="h-3.5 w-3.5 accent-brand"
+            />
+            <span className="flex h-5 w-5 items-center justify-center text-xs">
+              {d.type === "bulb" ? "💡" : d.type === "fan" ? "🌀" : d.type === "tv" ? "📺" : d.type === "ac" ? "❄️" : d.type === "plug" ? "🔌" : "🔘"}
+            </span>
+            <span className="truncate">{d.name}</span>
+            {d.status === "on" && <span className="ml-auto h-2 w-2 rounded-full bg-emerald-400" />}
+          </label>
+        ))}
       </div>
     </div>
   );

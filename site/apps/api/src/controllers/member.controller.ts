@@ -3,7 +3,10 @@ import { ok } from "../lib/response";
 import * as memberService from "../services/member.service";
 
 export async function list(req: Request, res: Response) {
-  const members = await memberService.listMembers(Number(req.params.homeId));
+  const members = await memberService.listMembers(
+    Number(req.params.homeId),
+    req.homeMembership?.role,
+  );
   ok(res, members);
 }
 
@@ -51,4 +54,29 @@ export async function changeRole(req: Request, res: Response) {
 export async function remove(req: Request, res: Response) {
   await memberService.removeMember(Number(req.params.homeId), Number(req.params.userId));
   ok(res, { message: "Member removed" });
+}
+
+/** Child mode + daily limit set karo. */
+export async function updateSafety(req: Request, res: Response) {
+  const member = await memberService.updateMemberSafety({
+    homeId: Number(req.params.homeId),
+    actorId: req.user!.sub,
+    actorRole: req.homeMembership!.role,
+    targetUserId: Number(req.params.userId),
+    restricted: req.body.restricted,
+    dailyLimitMinutes: req.body.dailyLimitMinutes,
+  });
+  ok(res, member);
+}
+
+/** Restricted member ke device grants replace karo. */
+export async function updateAccess(req: Request, res: Response) {
+  const result = await memberService.setDeviceAccess({
+    homeId: Number(req.params.homeId),
+    actorId: req.user!.sub,
+    actorRole: req.homeMembership!.role,
+    targetUserId: Number(req.params.userId),
+    deviceIds: req.body.deviceIds,
+  });
+  ok(res, result);
 }
