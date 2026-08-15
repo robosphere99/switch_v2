@@ -5,7 +5,7 @@
 //==================================================
 
 constexpr char FIRMWARE_NAME[]    = "SwitchNest IoT";
-constexpr char FIRMWARE_VERSION[] = "1.0.10";
+constexpr char FIRMWARE_VERSION[] = "1.0.11";
 
 // Per-model build: platformio envs ise override karte hain (-DMODEL_CODE="8CH" etc.)
 #ifndef MODEL_CODE

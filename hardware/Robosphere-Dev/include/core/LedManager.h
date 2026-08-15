@@ -30,4 +30,7 @@ namespace LedManager
     void disable();
 
     bool isEnabled();
+
+    /** Web panel se toggle — preference me persist hota hai. */
+    void setUserEnabled(bool enabled);
 }

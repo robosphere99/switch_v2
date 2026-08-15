@@ -43,7 +43,8 @@ String SystemPage(
     const String &otaStatus,
     const String &releaseNotes,
     int otaProgress,
-    const String &otaUrl)
+    const String &otaUrl,
+    bool ledEnabled)
 {
     String html;
 
@@ -73,6 +74,24 @@ String SystemPage(
     html += "</span></div>";
 
     html += R"rawliteral(
+<h3 class="sectionTitle">💡 Status LED</h3>
+<p class="hint">Board ki status LED — connectivity blinks dikhata hai. Chaho toh band kar do (raat me dim light pasand nahi aati).</p>
+<div class="btn-row">
+)rawliteral";
+    if (ledEnabled)
+    {
+        html += "<span class=\"badge-green\">🟢 LED ON</span> ";
+        html += "<button class=\"orange\" onclick=\"toggleLed(false)\">🔴 Turn Off</button>";
+    }
+    else
+    {
+        html += "<span class=\"badge-red\">⚫ LED OFF</span> ";
+        html += "<button class=\"green\" onclick=\"toggleLed(true)\">🟢 Turn On</button>";
+    }
+    html += R"rawliteral(
+</div>
+<div id="ledResult"></div>
+
 <h3 class="sectionTitle">📦 Firmware Update (OTA)</h3>
 
 <div class="info"><b>Current Version</b><span id="currentVersion">)rawliteral";
@@ -178,6 +197,25 @@ function downloadConfig()
     encodeURIComponent(fileName);
 }
 
+
+    async function toggleLed(on)
+    {
+        const res = await fetch("/system/led", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ enabled: on })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (data.success)
+        {
+            location.reload();
+        }
+        else
+        {
+            document.getElementById("ledResult").innerHTML =
+            '<p style="color:red">Failed to toggle LED</p>';
+        }
+    }
 
     async function uploadConfig()
 {

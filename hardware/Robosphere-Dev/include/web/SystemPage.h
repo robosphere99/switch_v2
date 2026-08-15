@@ -18,5 +18,6 @@ String SystemPage(
     const String &otaStatus,
     const String &releaseNotes,
     int otaProgress,
-    const String &otaUrl
+    const String &otaUrl,
+    bool ledEnabled
 );

@@ -69,6 +69,16 @@ namespace PreferencesManager
 
     int getSwitchMode();
 
+    // Status LED: false = user ne band kiya (no blinks at all)
+    void saveLedEnabled(bool enabled);
+
+    bool getLedEnabled();
+
+    // Status LED: false = user ne band kiya (no blinks at all)
+    void saveLedEnabled(bool enabled);
+
+    bool getLedEnabled();
+
     void saveSerialCode(const String& code);
 
     String getSerialCode();
