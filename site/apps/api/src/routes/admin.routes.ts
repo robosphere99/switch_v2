@@ -548,7 +548,21 @@ adminRouter.get("/devices/:id/support", async (req, res) => {
         },
       },
       room: { select: { name: true } },
-      esp: true,
+      esp: {
+        include: {
+          devices: {
+            select: {
+              id: true,
+              name: true,
+              type: true,
+              status: true,
+              customValue: true,
+              lastSeen: true,
+            },
+            orderBy: { id: "asc" },
+          },
+        },
+      },
       logs: { orderBy: { createdAt: "desc" }, take: 20 },
       commands: { orderBy: { createdAt: "desc" }, take: 20 },
     },

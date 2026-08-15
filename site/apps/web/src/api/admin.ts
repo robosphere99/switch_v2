@@ -310,6 +310,7 @@ export interface AdminDeviceSupport {
     otaPendingVersion: string | null;
     otaProgress: number | null;
     otaStatus: string | null;
+    devices: Array<{ id: number; name: string; type: string; status: string; customValue: string | null; lastSeen: string | null }>;
   } | null;
   logs: Array<{ id: number; logType: string; logMessage: string; createdAt: string; actor: { username: string } | null }>;
   commands: Array<{ id: number; command: string; status: string; createdAt: string; executedAt: string | null }>;
