@@ -26,6 +26,9 @@ import {
   type AdminHomeDetail,
   type EspBoard,
   getAdminLogs,
+  getDeviceSupport,
+  adminSetDeviceStatus,
+  clearDeviceCommands,
 } from "../api/admin";
 import { Modal } from "../components/Modal";
 import { AdminShop } from "../components/AdminShop";
@@ -58,6 +61,7 @@ export function Admin() {
   const [tab, setTab] = useState<Tab>("overview");
   const [q, setQ] = useState("");
   const [copied, setCopied] = useState(false);
+  const [selectedDevice, setSelectedDevice] = useState<number | null>(null);
   const [viewHome, setViewHome] = useState<AdminHomeDetail | null>(null);
   const [fwFile, setFwFile] = useState<File | null>(null);
   const [fwVersion, setFwVersion] = useState("");
@@ -405,29 +409,37 @@ export function Admin() {
           <div className="space-y-2">
             {devices.data?.success &&
               devices.data.data.map((d) => (
-                <div key={d.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-700 bg-night-900 px-4 py-2.5 text-sm">
-                  <div>
-                    <span className="font-semibold">{d.name}</span>
-                    <span className="ml-2 text-xs text-gray-500">
-                      #{d.id} · {d.type}
-                      {d.room ? ` · ${d.room.name}` : ""} · home: {d.home.name} ({d.home.owner.username})
-                    </span>
-                    <span className={`ml-2 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${
-                      d.status === "on" ? "border-emerald-500/40 text-emerald-400" : "border-gray-600 text-gray-400"
-                    }`}>
-                      {d.status}
-                    </span>
-                    {d.serialNumber && <span className="ml-2 text-[10px] text-gray-600">S/N {d.serialNumber}</span>}
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Badge color={d.online ? "border-emerald-500/40 text-emerald-400" : "border-red-500/40 text-red-400"}>
-                      {d.online ? "ONLINE" : "OFFLINE"}
-                    </Badge>
-                    <span className="text-[11px] text-gray-500">
-                      {d._count.commands} cmds · {d._count.logs} logs
-                      {d.lastSeen ? ` · ${new Date(d.lastSeen).toLocaleString()}` : ""}
-                    </span>
-                  </div>
+                <div key={d.id} className="overflow-hidden rounded-lg border border-gray-700 bg-night-900">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDevice(selectedDevice === d.id ? null : d.id)}
+                    className="flex w-full flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-left text-sm hover:bg-night-800"
+                  >
+                    <div>
+                      <span className="font-semibold">{d.name}</span>
+                      <span className="ml-2 text-xs text-gray-500">
+                        #{d.id} · {d.type}
+                        {d.room ? ` · ${d.room.name}` : ""} · home: {d.home.name} ({d.home.owner.username})
+                      </span>
+                      <span className={`ml-2 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${
+                        d.status === "on" ? "border-emerald-500/40 text-emerald-400" : "border-gray-600 text-gray-400"
+                      }`}>
+                        {d.status}
+                      </span>
+                      {d.serialNumber && <span className="ml-2 text-[10px] text-gray-600">S/N {d.serialNumber}</span>}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Badge color={d.online ? "border-emerald-500/40 text-emerald-400" : "border-red-500/40 text-red-400"}>
+                        {d.online ? "ONLINE" : "OFFLINE"}
+                      </Badge>
+                      <span className="text-[11px] text-gray-500">
+                        {d._count.commands} cmds · {d._count.logs} logs
+                        {d.lastSeen ? ` · ${new Date(d.lastSeen).toLocaleString()}` : ""}
+                      </span>
+                      <span className="text-xs text-gray-500">{selectedDevice === d.id ? "▲" : "▼"}</span>
+                    </div>
+                  </button>
+                  {selectedDevice === d.id && <DeviceSupportPanel deviceId={d.id} />}
                 </div>
               ))}
             {devices.data?.success && devices.data.data.length === 0 && (
@@ -1064,6 +1076,146 @@ export function Admin() {
       )}
 
       {tab === "shop" && <AdminShop />}
+    </div>
+  );
+}
+
+function DeviceSupportPanel({ deviceId }: { deviceId: number }) {
+  const queryClient = useQueryClient();
+  const support = useQuery({
+    queryKey: ["admin-device-support", deviceId],
+    queryFn: () => getDeviceSupport(deviceId),
+    refetchInterval: 8000,
+  });
+  const setStatus = useMutation({
+    mutationFn: (status: "on" | "off") => adminSetDeviceStatus(deviceId, status),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-device-support", deviceId] });
+      queryClient.invalidateQueries({ queryKey: ["admin-devices"] });
+    },
+  });
+  const clearCmds = useMutation({
+    mutationFn: () => clearDeviceCommands(deviceId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-device-support", deviceId] }),
+  });
+  const ota = useMutation({
+    mutationFn: () => pushOta(deviceId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin-device-support", deviceId] }),
+  });
+
+  if (support.isLoading) return <div className="px-4 py-3 text-xs text-gray-500">Loading support data…</div>;
+  if (!support.data?.success || !support.data.data) {
+    return <div className="px-4 py-3 text-xs text-red-400">Failed to load device support data.</div>;
+  }
+
+  const d = support.data.data;
+  const pending = d.commands.filter((c) => c.status === "pending").length;
+
+  return (
+    <div className="border-t border-gray-700 bg-night-900 px-4 py-4 text-sm">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <span className="font-semibold text-gray-300">🛠️ Support: {d.name}</span>
+        <Badge color={d.status === "on" ? "border-emerald-500/40 text-emerald-400" : "border-gray-600 text-gray-400"}>{d.status}</Badge>
+        <Badge color={d.online ? "border-emerald-500/40 text-emerald-400" : "border-red-500/40 text-red-400"}>
+          {d.online ? "ONLINE" : "OFFLINE"}
+        </Badge>
+        {pending > 0 && <Badge color="border-amber-500/40 text-amber-400">{pending} pending cmd</Badge>}
+        <span className="ml-auto flex gap-2">
+          <button type="button" disabled={setStatus.isPending} onClick={() => setStatus.mutate("on")}
+            className="rounded-lg border border-emerald-500/40 px-3 py-1 text-xs font-semibold text-emerald-400 hover:bg-emerald-500/10 disabled:opacity-50">⏻ ON</button>
+          <button type="button" disabled={setStatus.isPending} onClick={() => setStatus.mutate("off")}
+            className="rounded-lg border border-red-500/40 px-3 py-1 text-xs font-semibold text-red-400 hover:bg-red-500/10 disabled:opacity-50">⏻ OFF</button>
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-x-6 gap-y-1 rounded-lg border border-gray-700 bg-night-800 p-3 text-xs md:grid-cols-4">
+        <Info label="ID" value={`#${d.id}`} />
+        <Info label="Type" value={d.type} />
+        <Info label="Serial" value={d.serialNumber ?? "—"} />
+        <Info label="Firmware" value={d.firmwareVersion ?? "—"} />
+        <Info label="IP" value={d.ipAddress ?? "—"} />
+        <Info label="Last seen" value={d.lastSeen ? new Date(d.lastSeen).toLocaleString() : "—"} />
+        <Info label="Home" value={`${d.home.name} (${d.home.owner.username})`} />
+        <Info label="Room" value={d.room?.name ?? "—"} />
+        {d.home.apiKeys[0] && <Info label="API key" value={`${d.home.apiKeys[0].keyPrefix}…`} />}
+        <Info label="Owner email" value={d.home.owner.email} />
+      </div>
+      {d.esp && (
+        <div className="mt-3 rounded-lg border border-sky-500/30 bg-night-800 p-3 text-xs">
+          <div className="mb-2 font-semibold text-sky-400">🔌 ESP Board {d.esp.name ? `· ${d.esp.name}` : ""}</div>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-1 md:grid-cols-4">
+            <Info label="MAC" value={d.esp.macAddress} />
+            <Info label="SSID" value={d.esp.ssid ?? "—"} />
+            <Info label="Model" value={d.esp.modelCode ?? "—"} />
+            <Info label="Serial" value={d.esp.serialCode ?? "—"} />
+            <Info label="IP" value={d.esp.ipAddress ?? "—"} />
+            <Info label="FW" value={d.esp.firmwareVersion ?? "—"} />
+            <Info label="Board last seen" value={d.esp.lastSeen ? new Date(d.esp.lastSeen).toLocaleString() : "—"} />
+            <Info label="OTA" value={d.esp.otaStatus ?? (d.esp.otaProgress != null ? `${d.esp.otaProgress}%` : "—")} />
+          </div>
+        </div>
+      )}
+
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        <div className="rounded-lg border border-gray-700 bg-night-800 p-3">
+          <div className="mb-2 text-xs font-semibold text-gray-300">📨 Commands (last 20)</div>
+          {d.commands.length === 0 && <p className="text-xs text-gray-600">No commands yet.</p>}
+          <div className="max-h-44 space-y-1 overflow-y-auto">
+            {d.commands.map((c) => (
+              <div key={c.id} className="flex items-center justify-between rounded bg-night-900 px-2 py-1 text-[11px]">
+                <span className="font-mono text-gray-400">{c.command}</span>
+                <span className="flex items-center gap-2">
+                  <Badge
+                    color={
+                      c.status === "executed"
+                        ? "border-emerald-500/40 text-emerald-400"
+                        : c.status === "pending"
+                          ? "border-amber-500/40 text-amber-400"
+                          : "border-gray-600 text-gray-400"
+                    }
+                  >
+                    {c.status}
+                  </Badge>
+                  <span className="text-gray-600">{new Date(c.createdAt).toLocaleTimeString()}</span>
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="rounded-lg border border-gray-700 bg-night-800 p-3">
+          <div className="mb-2 text-xs font-semibold text-gray-300">📜 Device Logs (last 20)</div>
+          {d.logs.length === 0 && <p className="text-xs text-gray-600">No logs yet.</p>}
+          <div className="max-h-44 space-y-1 overflow-y-auto">
+            {d.logs.map((l) => (
+              <div key={l.id} className="rounded bg-night-900 px-2 py-1 text-[11px]">
+                <span className="text-gray-500">{new Date(l.createdAt).toLocaleString()}</span>
+                <span className="ml-2 text-gray-300">{l.logMessage}</span>
+                {l.actor && <span className="ml-1 text-gray-600">by {l.actor.username}</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button type="button" disabled={clearCmds.isPending} onClick={() => clearCmds.mutate()}
+          className="rounded-lg border border-amber-500/40 px-3 py-1 text-xs font-semibold text-amber-400 hover:bg-amber-500/10 disabled:opacity-50">
+          🧹 Clear stuck commands{clearCmds.data?.success ? ` (cleared ${clearCmds.data.data.cleared})` : ""}
+        </button>
+        <button type="button" disabled={ota.isPending} onClick={() => ota.mutate()}
+          className="rounded-lg border border-sky-500/40 px-3 py-1 text-xs font-semibold text-sky-400 hover:bg-sky-500/10 disabled:opacity-50">
+          🚀 Push OTA update{ota.data?.success ? ` → ${ota.data.data.version}` : ""}
+        </button>
+        <span className="text-[11px] text-gray-600">ON/OFF → command enqueue (board agle poll pe apply karega, ~5-10s)</span>
+      </div>
+    </div>
+  );
+}
+
+function Info({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="truncate">
+      <span className="text-gray-600">{label}: </span>
+      <span className="text-gray-300">{value}</span>
     </div>
   );
 }

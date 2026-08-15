@@ -2761,6 +2761,75 @@ adminRouter.post("/firmware/:id/activate", async (req, res) => {
   });
   ok(res, { id, version: fw.version, isCurrent: true });
 });
+adminRouter.post("/devices/:id/status", async (req, res) => {
+  const id = Number(req.params.id);
+  const status = req.body?.status;
+  if (status !== "on" && status !== "off") throw new AppError("VALIDATION_ERROR", "status must be 'on' or 'off'", 400);
+  const device = await prisma.device.findUnique({ where: { id } });
+  if (!device) throw new AppError("NOT_FOUND", "Device not found", 404);
+  await prisma.$transaction([
+    prisma.device.update({ where: { id }, data: { status } }),
+    prisma.deviceCommand.create({
+      data: { deviceId: id, actorId: req.user.sub, command: `set_status:${status}` }
+    }),
+    prisma.deviceLog.create({
+      data: { deviceId: id, actorId: req.user.sub, logType: "status_change", logMessage: `Admin turned device ${status}` }
+    })
+  ]);
+  await audit(req.user.sub, "admin.device.control", {
+    homeId: device.homeId,
+    entity: "device",
+    entityId: id,
+    meta: { name: device.name, status }
+  });
+  ok(res, { id, status });
+});
+adminRouter.get("/devices/:id/support", async (req, res) => {
+  const id = Number(req.params.id);
+  const device = await prisma.device.findUnique({
+    where: { id },
+    include: {
+      home: {
+        select: {
+          id: true,
+          name: true,
+          owner: { select: { id: true, username: true, email: true } },
+          apiKeys: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: { keyPrefix: true, label: true, createdAt: true }
+          }
+        }
+      },
+      room: { select: { name: true } },
+      esp: true,
+      logs: { orderBy: { createdAt: "desc" }, take: 20 },
+      commands: { orderBy: { createdAt: "desc" }, take: 20 }
+    }
+  });
+  if (!device) throw new AppError("NOT_FOUND", "Device not found", 404);
+  const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1e3);
+  ok(res, { ...device, online: device.lastSeen !== null && device.lastSeen.getTime() > dayAgo.getTime() });
+});
+adminRouter.post("/devices/:id/clear-commands", async (req, res) => {
+  const id = Number(req.params.id);
+  const device = await prisma.device.findUnique({ where: { id } });
+  if (!device) throw new AppError("NOT_FOUND", "Device not found", 404);
+  const cleared = await prisma.deviceCommand.updateMany({
+    where: { deviceId: id, status: "pending" },
+    data: { status: "failed", executedAt: /* @__PURE__ */ new Date() }
+  });
+  await prisma.deviceLog.create({
+    data: { deviceId: id, actorId: req.user.sub, logType: "support", logMessage: `Admin cleared ${cleared.count} stuck command(s)` }
+  });
+  await audit(req.user.sub, "admin.device.fix", {
+    homeId: device.homeId,
+    entity: "device",
+    entityId: id,
+    meta: { name: device.name, cleared: cleared.count }
+  });
+  ok(res, { cleared: cleared.count });
+});
 adminRouter.post("/devices/:id/push-ota", async (req, res) => {
   const id = Number(req.params.id);
   const device = await prisma.device.findUnique({ where: { id } });
