@@ -11,6 +11,14 @@ import { useAuthStore } from "../stores/auth";
 
 const DEVICE_TYPES: DeviceType[] = ["bulb", "fan", "ac", "tv", "plug", "custom"];
 
+
+function apiErrMsg(e: unknown): string {
+  return (
+    (e as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ??
+    "Kuch galat ho gaya"
+  );
+}
+
 export function Dashboard() {
   const user = useAuthStore((s) => s.user);
   const queryClient = useQueryClient();
@@ -71,7 +79,7 @@ export function Dashboard() {
       setAddForm({ name: "", type: "bulb", roomId: "" });
       invalidate();
     },
-    onError: () => setError("Failed to add device"),
+    onError: (e) => setError(apiErrMsg(e)),
   });
 
   const addRoom = useMutation({
