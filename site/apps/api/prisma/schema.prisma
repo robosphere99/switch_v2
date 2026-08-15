@@ -136,6 +136,7 @@ model User {
   warrantyClaims WarrantyClaim[]
   contactMessages ContactMessage[]
   supportMessages SupportMessage[]
+  chatSettings    SupportChatSettings[]
 
   @@map("users")
 }
@@ -623,12 +624,30 @@ model SupportMessage {
   attachmentData String? @db.MediumText @map("attachment_data")
   readByUser   Boolean @default(false) @map("read_by_user")
   readByAdmin  Boolean @default(true)  @map("read_by_admin")
+  deletedAt    DateTime? @map("deleted_at") // soft delete (WhatsApp-style)
   createdAt  DateTime @default(now()) @map("created_at")
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
   @@index([readByAdmin])
   @@map("support_messages")
+}
+
+/** Per-view chat settings — mute + pin. userId = setting ka owner (user ya admin), peerUserId = baat karne wala. */
+model SupportChatSettings {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  peerUserId Int      @map("peer_user_id")
+  mutedAt    DateTime? @map("muted_at")
+  pinnedAt   DateTime? @map("pinned_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, peerUserId])
+  @@index([userId])
+  @@map("support_chat_settings")
 }
 
 model AppMeta {

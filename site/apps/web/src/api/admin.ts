@@ -462,7 +462,44 @@ export interface SupportMessage {
   attachmentData: string | null;
   readByUser: boolean;
   readByAdmin: boolean;
+  deletedAt: string | null;
   createdAt: string;
+}
+
+/** Per-conversation settings — mute (🔕) + pin (📌). */
+export interface SupportChatSetting {
+  peerUserId: number;
+  mutedAt: string | null;
+  pinnedAt: string | null;
+}
+
+/** Admin: meri chat settings (har user ke liye). */
+export async function getSupportSettings(): Promise<ApiResponse<{ settings: SupportChatSetting[] }>> {
+  const { data } = await api.get<ApiResponse<{ settings: SupportChatSetting[] }>>("/support/settings");
+  return data;
+}
+
+/** Admin: kisi user ki conversation mute/pin karo. */
+export async function setSupportSettings(
+  peerUserId: number,
+  input: { muted?: boolean; pinned?: boolean },
+): Promise<ApiResponse<SupportChatSetting>> {
+  const { data } = await api.put<ApiResponse<SupportChatSetting>>(`/support/settings/${peerUserId}`, input);
+  return data;
+}
+
+/** Admin: koi bhi message delete (moderation). */
+export async function deleteSupportMessage(id: number): Promise<ApiResponse<{ deleted: boolean }>> {
+  const { data } = await api.delete<ApiResponse<{ deleted: boolean }>>(`/support/admin/messages/${id}`);
+  return data;
+}
+
+/** Admin: kisi user ka poora thread clear. */
+export async function clearSupportConversation(userId: number): Promise<ApiResponse<{ cleared: number }>> {
+  const { data } = await api.delete<ApiResponse<{ cleared: number }>>(`/support/admin/messages`, {
+    params: { peerUserId: userId },
+  });
+  return data;
 }
 
 /** Support chat attachment (optional) — photo/invoice/screenshot. */

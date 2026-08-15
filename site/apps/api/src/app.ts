@@ -19,6 +19,7 @@ async function schemaDiag() {
       deviceAccess: typeof (prisma as unknown as Record<string, unknown>).deviceAccess === "object",
       deviceUsage: typeof (prisma as unknown as Record<string, unknown>).deviceUsage === "object",
       homeMemberRestricted: typeof (prisma as unknown as Record<string, unknown>).homeMember === "object",
+      supportChatSettings: typeof (prisma as unknown as Record<string, unknown>).supportChatSettings === "object",
     };
     const table = async (t: string) => {
       const r = await prisma.$queryRaw<{ c: bigint }[]>`

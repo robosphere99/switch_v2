@@ -1,11 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CheckCheck, Inbox, Search, Send, UserRound } from "lucide-react";
+import { Bell, BellOff, CheckCheck, Copy, Inbox, Pin, PinOff, Search, Send, Trash2, UserRound } from "lucide-react";
 import {
+  clearSupportConversation,
+  deleteSupportMessage,
   getSupportConversations,
   getSupportMessages,
+  getSupportSettings,
   markAllSupportRead,
   sendSupportMessage,
+  setSupportSettings,
   type SupportAttachment,
   type SupportConversation,
 } from "../api/admin";
@@ -62,6 +66,19 @@ export function AdminSupport({
     refetchInterval: 10_000,
   });
 
+  // Chat settings — mute/pin per user
+  const chatSettings = useQuery({
+    queryKey: ["support", "admin", "settings"],
+    queryFn: getSupportSettings,
+  });
+  const settingsMap = useMemo(() => {
+    const m = new Map<number, { mutedAt: string | null; pinnedAt: string | null }>();
+    (chatSettings.data?.success ? chatSettings.data.data.settings : []).forEach((s) =>
+      m.set(s.peerUserId, { mutedAt: s.mutedAt, pinnedAt: s.pinnedAt }),
+    );
+    return m;
+  }, [chatSettings.data]);
+
   // Realtime — user naya message bheje to list turant refresh
   useEffect(() => {
     const socket = getSocket();
@@ -78,16 +95,25 @@ export function AdminSupport({
   const filtered = useMemo(() => {
     if (!list) return [];
     const needle = q.trim().toLowerCase();
-    if (!needle) return list.conversations;
-    return list.conversations.filter(
-      (c) =>
-        c.username.toLowerCase().includes(needle) ||
-        (c.email ?? "").toLowerCase().includes(needle),
-    );
-  }, [list, q]);
+    const base = needle
+      ? list.conversations.filter(
+          (c) =>
+            c.username.toLowerCase().includes(needle) ||
+            (c.email ?? "").toLowerCase().includes(needle),
+        )
+      : list.conversations;
+    // Pinned pehle, phir latest message ke hisaab se
+    return [...base].sort((a, b) => {
+      const pa = settingsMap.get(a.userId)?.pinnedAt ? 1 : 0;
+      const pb = settingsMap.get(b.userId)?.pinnedAt ? 1 : 0;
+      if (pa !== pb) return pb - pa;
+      return new Date(b.lastAt).getTime() - new Date(a.lastAt).getTime();
+    });
+  }, [list, q, settingsMap]);
 
   const selected: SupportConversation | null =
     list?.conversations.find((c) => c.userId === selectedUserId) ?? null;
+  const set = selectedUserId != null ? settingsMap.get(selectedUserId) : undefined;
 
   const chat = useQuery({
     queryKey: ["support", "admin", "chat", selectedUserId],
@@ -125,6 +151,30 @@ export function AdminSupport({
     mutationFn: markAllSupportRead,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["support", "admin", "unread"] });
+      queryClient.invalidateQueries({ queryKey: ["support", "admin", "conversations"] });
+    },
+  });
+
+  const setSettings = useMutation({
+    mutationFn: (input: { peerUserId: number; muted?: boolean; pinned?: boolean }) =>
+      setSupportSettings(input.peerUserId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["support", "admin", "settings"] });
+    },
+  });
+
+  const deleteMsg = useMutation({
+    mutationFn: (id: number) => deleteSupportMessage(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["support", "admin", "chat", selectedUserId] });
+      queryClient.invalidateQueries({ queryKey: ["support", "admin", "conversations"] });
+    },
+  });
+
+  const clearChat = useMutation({
+    mutationFn: (userId: number) => clearSupportConversation(userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["support", "admin", "chat", selectedUserId] });
       queryClient.invalidateQueries({ queryKey: ["support", "admin", "conversations"] });
     },
   });
@@ -182,6 +232,7 @@ export function AdminSupport({
             {filtered.map((c) => {
               const active = c.userId === selectedUserId;
               const body = parseNotificationBody(c.lastPreview);
+              const set = settingsMap.get(c.userId);
               return (
                 <button
                   key={c.userId}
@@ -199,8 +250,12 @@ export function AdminSupport({
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between gap-2">
-                      <span className="truncate text-sm font-semibold text-gray-700">
-                        {c.username}
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        {set?.pinnedAt && <Pin className="h-3 w-3 shrink-0 text-brand" />}
+                        {set?.mutedAt && <BellOff className="h-3 w-3 shrink-0 text-gray-500" />}
+                        <span className="truncate text-sm font-semibold text-gray-700">
+                          {c.username}
+                        </span>
                       </span>
                       <span className="shrink-0 text-[10px] text-gray-500">
                         {formatTime(c.lastAt)}
@@ -264,6 +319,38 @@ export function AdminSupport({
                   {chat.data.data.unread} unread
                 </span>
               )}
+              {/* Pin + Mute + Clear — WhatsApp-style chat actions */}
+              <div className="flex shrink-0 items-center gap-1">
+                <button
+                  onClick={() => setSettings.mutate({ peerUserId: selectedUserId, pinned: !set?.pinnedAt })}
+                  className={`rounded-lg p-1.5 transition ${
+                    set?.pinnedAt ? "bg-brand/15 text-brand" : "text-gray-500 hover:bg-night-700 hover:text-brand"
+                  }`}
+                  title={set?.pinnedAt ? "Unpin" : "Pin — sabse upar rakho"}
+                >
+                  {set?.pinnedAt ? <Pin className="h-4 w-4" /> : <PinOff className="h-4 w-4" />}
+                </button>
+                <button
+                  onClick={() => setSettings.mutate({ peerUserId: selectedUserId, muted: !set?.mutedAt })}
+                  className={`rounded-lg p-1.5 transition ${
+                    set?.mutedAt ? "bg-brand/15 text-brand" : "text-gray-500 hover:bg-night-700 hover:text-brand"
+                  }`}
+                  title={set?.mutedAt ? "Unmute — notifications wapas" : "Mute — is user ki notifications band"}
+                >
+                  {set?.mutedAt ? <BellOff className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
+                </button>
+                <button
+                  onClick={() => {
+                    if (confirm(`Saara chat ${selected?.username ?? "is user"} ke saath clear karein?`)) {
+                      clearChat.mutate(selectedUserId);
+                    }
+                  }}
+                  className="rounded-lg p-1.5 text-gray-500 transition hover:bg-red-500/10 hover:text-red-400"
+                  title="Clear chat — poora thread hat jayega"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
               <button
                 onClick={() => setShowContext((v) => !v)}
                 className={`hidden shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition md:flex ${
@@ -289,27 +376,55 @@ export function AdminSupport({
                 </p>
               )}
               {msgs.map((m) => (
-                <div
-                  key={m.id}
-                  className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm shadow-sm ${
-                    m.senderRole === "admin"
-                      ? "ml-auto rounded-br-sm bg-brand text-white"
-                      : "mr-auto rounded-bl-sm border border-gray-200 bg-night-800 text-gray-200"
-                  }`}
-                >
-                  <div className="text-[10px] font-bold uppercase opacity-70">
-                    {m.senderRole === "admin" ? "Admin" : m.senderName || "User"}
+                <div key={m.id} className="group relative">
+                  <div
+                    className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm shadow-sm ${
+                      m.senderRole === "admin"
+                        ? "ml-auto rounded-br-sm bg-brand text-white"
+                        : "mr-auto rounded-bl-sm border border-gray-200 bg-night-800 text-gray-200"
+                    }`}
+                  >
+                    <div className="text-[10px] font-bold uppercase opacity-70">
+                      {m.senderRole === "admin" ? "Admin" : m.senderName || "User"}
+                    </div>
+                    {m.message && <div className="whitespace-pre-wrap">{m.message}</div>}
+                    {m.attachmentName && m.attachmentType && m.attachmentData && (
+                      <AttachmentBubble name={m.attachmentName} type={m.attachmentType} data={m.attachmentData} />
+                    )}
+                    <div className={`mt-0.5 flex items-center justify-end gap-1 text-right text-[10px] opacity-60`}>
+                      {new Date(m.createdAt).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                      {/* Read receipt — single ✓ = sent, double ✓✓ = user ne padha */}
+                      {m.senderRole === "admin" &&
+                        (m.readByUser ? (
+                          <CheckCheck className="h-3 w-3 text-blue-300" />
+                        ) : (
+                          <CheckCheck className="h-3 w-3 opacity-70" />
+                        ))}
+                    </div>
                   </div>
-                  {m.message && <div className="whitespace-pre-wrap">{m.message}</div>}
-                  {m.attachmentName && m.attachmentType && m.attachmentData && (
-                    <AttachmentBubble name={m.attachmentName} type={m.attachmentType} data={m.attachmentData} />
-                  )}
-                  <div className={`mt-0.5 flex items-center justify-end gap-1 text-right text-[10px] opacity-60`}>
-                    {new Date(m.createdAt).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                    {m.senderRole === "admin" && <CheckCheck className="h-3 w-3" />}
+                  {/* Hover actions — copy + delete (admin koi bhi delete kar sakta hai) */}
+                  <div className="absolute right-0 top-0 z-10 hidden items-center gap-1 rounded-lg bg-night-800/95 p-1 shadow-lg group-hover:flex">
+                    {m.message && (
+                      <button
+                        onClick={() => navigator.clipboard?.writeText(m.message)}
+                        className="rounded-md bg-night-700 p-1 text-gray-400 shadow hover:text-brand"
+                        title="Copy"
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        if (confirm("Message delete karein? (dono side se gayab)")) deleteMsg.mutate(m.id);
+                      }}
+                      className="rounded-md bg-night-700 p-1 text-gray-400 shadow hover:text-red-400"
+                      title="Delete"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
                   </div>
                 </div>
               ))}

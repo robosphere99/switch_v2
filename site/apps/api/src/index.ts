@@ -18,6 +18,14 @@ import { execFileSync } from "node:child_process";
  *  purane (already-installed) DBs ke liye yahan idempotent patches chalao.
  *  Fail hone pe app crash mat karo — bas log karo (agle boot pe dobara try). */
 async function runLightMigrations(): Promise<void> {
+  // Har migration apne try/catch me — koi fail ho to baaki skip na ho.
+  const migration = async (label: string, fn: () => Promise<unknown>) => {
+    try {
+      await fn();
+    } catch (err) {
+      logger.warn(`Migration skip/fail (${label})`, err instanceof Error ? err.message : String(err));
+    }
+  };
   try {
     // 1) ESP serial code unique — tracking/security: ek serial sirf ek board pe.
     //    Pehle duplicates (agar koi ho) me se sirf sabse naya wala rakho.
@@ -56,15 +64,15 @@ async function runLightMigrations(): Promise<void> {
     // 2b) Backfill: schedule notifications category fix — pehle (bina category ke)
     //     default 'system' me banti thi, ab 'schedule' me aati hain. Purani wali ko
     //     bhi fix karo taaki Schedule filter me dikhen. (Idempotent — ek baar update,
-    //     dobara kuch match nahi karega.)
+    //     dobara kuch match nahi karega.) Broad LIKE rakha hai (emoji format ke
+    //     fark se bachne ke liye) — read-time normalization bhi hai (notification
+    //     service), isliye double protection.
     const fixed = await prisma.$executeRawUnsafe(`
       UPDATE notifications
       SET category = 'schedule'
-      WHERE category = 'system' AND title LIKE '⏰ Schedule fired:%'
+      WHERE category = 'system' AND (title LIKE '⏰ Schedule fired:%' OR title LIKE '%Schedule fired:%')
     `);
-    if (Number(fixed) > 0) {
-      logger.info(`✅ Backfill: ${fixed} schedule notification(s) category → schedule`);
-    }
+    logger.info(`✅ Backfill: ${fixed} schedule notification(s) category → schedule`);
     // 3) support_messages - admin <-> user support chat table.
     const sm = await prisma.$queryRaw<{ c: bigint }[]>`
       SELECT COUNT(*) AS c FROM information_schema.tables
@@ -111,16 +119,46 @@ async function runLightMigrations(): Promise<void> {
       );
       logger.info("✅ Migration: support_messages.attachment_* columns added");
     }
+    // 5b) support_messages.deleted_at — chat delete (soft delete, WhatsApp-style).
+    await migration("support_messages.deleted_at", async () => {
+      const dl = await prisma.$queryRaw<{ c: bigint }[]>`
+        SELECT COUNT(*) AS c FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'support_messages' AND column_name = 'deleted_at'
+      `;
+      if (Number(dl[0]?.c ?? 0) === 0) {
+        await prisma.$executeRawUnsafe(
+          "ALTER TABLE `support_messages` ADD COLUMN `deleted_at` DATETIME(3) NULL",
+        );
+        logger.info("✅ Migration: support_messages.deleted_at added");
+      }
+    });
+    // 5c) support_chat_settings — mute/pin per conversation (user ya admin ka apna view).
+    await migration("support_chat_settings table", async () => {
+      const cs = await prisma.$queryRaw<{ c: bigint }[]>`
+        SELECT COUNT(*) AS c FROM information_schema.tables
+        WHERE table_schema = DATABASE() AND table_name = 'support_chat_settings'
+      `;
+      if (Number(cs[0]?.c ?? 0) === 0) {
+        await prisma.$executeRawUnsafe(`
+          CREATE TABLE support_chat_settings (
+            id INT NOT NULL AUTO_INCREMENT,
+            userId INT NOT NULL,
+            peer_user_id INT NOT NULL,
+            muted_at DATETIME(3) NULL,
+            pinned_at DATETIME(3) NULL,
+            created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+            updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+            PRIMARY KEY (id),
+            UNIQUE INDEX support_chat_settings_userId_peerUserId_key (userId, peer_user_id),
+            INDEX support_chat_settings_userId_idx (userId),
+            CONSTRAINT support_chat_settings_userId_fkey FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        `);
+        logger.info("✅ Migration: support_chat_settings table created");
+      }
+    });
     // 6) Family safety — child mode: home_members.restricted + daily_limit_minutes,
     //    device_access (member → granted devices), device_usage (daily ON-time).
-    //    Har ek apne try/catch me — koi fail ho to baaki skip na ho.
-    const migration = async (label: string, fn: () => Promise<unknown>) => {
-      try {
-        await fn();
-      } catch (err) {
-        logger.warn(`Migration skip/fail (${label})`, err instanceof Error ? err.message : String(err));
-      }
-    };
     await migration("home_members restricted", async () => {
       const rm = await prisma.$queryRaw<{ c: bigint }[]>`
         SELECT COUNT(*) AS c FROM information_schema.columns
@@ -313,8 +351,8 @@ const HEAL_LAST_KEY = "prisma_selfheal_last";
  */
 async function selfHealPrismaClient(): Promise<void> {
   const p = prisma as unknown as Record<string, unknown>;
-  if (p.deviceAccess && p.deviceUsage) return;
-  fileLog("[boot] prisma client stale (deviceAccess/deviceUsage missing) — self-heal try");
+  if (p.deviceAccess && p.deviceUsage && p.supportChatSettings) return;
+  fileLog("[boot] prisma client stale (deviceAccess/deviceUsage/supportChatSettings missing) — self-heal try");
 
   const last = await prisma.appMeta
     .findUnique({ where: { key: HEAL_LAST_KEY } })
