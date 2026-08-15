@@ -37,8 +37,65 @@ async function checkOfflineDevices(): Promise<void> {
 
 async function checkOfflineDevicesInner(): Promise<void> {
   const cutoff = new Date(Date.now() - OFFLINE_THRESHOLD_MS);
+
+  // ===================== ESP BOARDS (root cause) =====================
+  // Board offline = uske NICHE saare devices bhi dead. Board ek hi notification
+  // bhejta hai (har device ki alag nahi) — user ko seedha board ka pata chalta hai.
+  const staleBoards = await prisma.espDevice.findMany({
+    where: { lastSeen: { lt: cutoff }, offline: false },
+    include: { home: { include: { members: { where: { role: { in: ["owner", "admin"] } } } } } },
+    take: 50,
+  });
+  const anyStaleBoardIds = new Set(
+    (await prisma.espDevice.findMany({ where: { lastSeen: { lt: cutoff } }, select: { id: true } })).map((b) => b.id),
+  );
+
+  for (const board of staleBoards) {
+    await prisma.espDevice.update({ where: { id: board.id }, data: { offline: true } });
+    emitToHome(board.homeId, "esp:updated", { id: board.id, offline: true });
+    const boardName = board.name ?? board.serialCode ?? `ESP-${board.macAddress.slice(-6).toUpperCase()}`;
+    for (const m of board.home.members) {
+      await createNotification(m.userId, {
+        category: "device",
+        type: "warning",
+        title: `📡 Board offline: ${boardName}`,
+        body: `${boardName} ne 2+ min se sync nahi kiya — WiFi/power check karo.`,
+      });
+    }
+    console.log(`[offline] board ${boardName} (${board.id}) marked offline`);
+  }
+
+  // Boards that came back online
+  const backBoards = await prisma.espDevice.findMany({
+    where: { offline: true, lastSeen: { gte: cutoff } },
+    include: { home: { include: { members: { where: { role: { in: ["owner", "admin"] } } } } } },
+    take: 50,
+  });
+  for (const board of backBoards) {
+    await prisma.espDevice.update({ where: { id: board.id }, data: { offline: false } });
+    emitToHome(board.homeId, "esp:updated", { id: board.id, offline: false });
+    const boardName = board.name ?? board.serialCode ?? `ESP-${board.macAddress.slice(-6).toUpperCase()}`;
+    for (const m of board.home.members) {
+      await createNotification(m.userId, {
+        category: "device",
+        type: "info",
+        title: `✅ Board online: ${boardName}`,
+        body: `${boardName} wapas connected ho gaya.`,
+      });
+    }
+    console.log(`[offline] board ${boardName} (${board.id}) back online`);
+  }
+
+  // ===================== DEVICES =====================
+  // Sirf un devices ko flag karo jo kisi offline/stale board ke under NAHI hain
+  // (board wale ka root cause board hai — board notification kaafi hai).
   const stale = await prisma.device.findMany({
-    where: { lastSeen: { lt: cutoff } },
+    where: {
+      lastSeen: { lt: cutoff },
+      ...(anyStaleBoardIds.size
+        ? { OR: [{ espId: null }, { espId: { notIn: [...anyStaleBoardIds] } }] }
+        : {}),
+    },
     include: { home: { include: { members: { where: { role: { in: ["owner", "admin"] } } } } } },
     take: 50,
   });

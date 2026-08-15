@@ -10,6 +10,8 @@ export interface AdminStats {
   pendingCommands: number;
   apiKeys: number;
   auditCount: number;
+  espBoards: number;
+  offlineBoards: number;
 }
 
 export interface AdminUser {

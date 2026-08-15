@@ -2558,7 +2558,8 @@ function requireAdmin(req, _res, next) {
 adminRouter.use(requireAuth, requireAdmin);
 adminRouter.get("/stats", async (_req, res) => {
   const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1e3);
-  const [users, homes, devices, activeToday, onlineDevices, pendingCommands2, apiKeys, auditCount] = await Promise.all([
+  const twoMin = new Date(Date.now() - 12e4);
+  const [users, homes, devices, activeToday, onlineDevices, pendingCommands2, apiKeys, auditCount, espBoards, offlineBoards] = await Promise.all([
     prisma.user.count(),
     prisma.home.count(),
     prisma.device.count(),
@@ -2566,9 +2567,11 @@ adminRouter.get("/stats", async (_req, res) => {
     prisma.device.count({ where: { lastSeen: { gte: dayAgo } } }),
     prisma.deviceCommand.count({ where: { status: "pending" } }),
     prisma.apiKey.count(),
-    prisma.auditLog.count()
+    prisma.auditLog.count(),
+    prisma.espDevice.count(),
+    prisma.espDevice.count({ where: { OR: [{ offline: true }, { lastSeen: { lt: twoMin } }] } })
   ]);
-  ok(res, { users, homes, devices, activeToday, onlineDevices, pendingCommands: pendingCommands2, apiKeys, auditCount });
+  ok(res, { users, homes, devices, activeToday, onlineDevices, pendingCommands: pendingCommands2, apiKeys, auditCount, espBoards, offlineBoards });
 });
 adminRouter.get("/users", async (req, res) => {
   const q = String(req.query.q ?? "").trim();
@@ -4275,8 +4278,52 @@ async function checkOfflineDevices() {
 }
 async function checkOfflineDevicesInner() {
   const cutoff = new Date(Date.now() - OFFLINE_THRESHOLD_MS);
+  const staleBoards = await prisma.espDevice.findMany({
+    where: { lastSeen: { lt: cutoff }, offline: false },
+    include: { home: { include: { members: { where: { role: { in: ["owner", "admin"] } } } } } },
+    take: 50
+  });
+  const anyStaleBoardIds = new Set(
+    (await prisma.espDevice.findMany({ where: { lastSeen: { lt: cutoff } }, select: { id: true } })).map((b) => b.id)
+  );
+  for (const board of staleBoards) {
+    await prisma.espDevice.update({ where: { id: board.id }, data: { offline: true } });
+    emitToHome(board.homeId, "esp:updated", { id: board.id, offline: true });
+    const boardName = board.name ?? board.serialCode ?? `ESP-${board.macAddress.slice(-6).toUpperCase()}`;
+    for (const m of board.home.members) {
+      await createNotification(m.userId, {
+        category: "device",
+        type: "warning",
+        title: `\u{1F4E1} Board offline: ${boardName}`,
+        body: `${boardName} ne 2+ min se sync nahi kiya \u2014 WiFi/power check karo.`
+      });
+    }
+    console.log(`[offline] board ${boardName} (${board.id}) marked offline`);
+  }
+  const backBoards = await prisma.espDevice.findMany({
+    where: { offline: true, lastSeen: { gte: cutoff } },
+    include: { home: { include: { members: { where: { role: { in: ["owner", "admin"] } } } } } },
+    take: 50
+  });
+  for (const board of backBoards) {
+    await prisma.espDevice.update({ where: { id: board.id }, data: { offline: false } });
+    emitToHome(board.homeId, "esp:updated", { id: board.id, offline: false });
+    const boardName = board.name ?? board.serialCode ?? `ESP-${board.macAddress.slice(-6).toUpperCase()}`;
+    for (const m of board.home.members) {
+      await createNotification(m.userId, {
+        category: "device",
+        type: "info",
+        title: `\u2705 Board online: ${boardName}`,
+        body: `${boardName} wapas connected ho gaya.`
+      });
+    }
+    console.log(`[offline] board ${boardName} (${board.id}) back online`);
+  }
   const stale = await prisma.device.findMany({
-    where: { lastSeen: { lt: cutoff } },
+    where: {
+      lastSeen: { lt: cutoff },
+      ...anyStaleBoardIds.size ? { OR: [{ espId: null }, { espId: { notIn: [...anyStaleBoardIds] } }] } : {}
+    },
     include: { home: { include: { members: { where: { role: { in: ["owner", "admin"] } } } } } },
     take: 50
   });

@@ -218,6 +218,7 @@ export function Admin() {
         { label: "Total Users", value: s.users, icon: "👤", sub: `${s.activeToday} active today` },
         { label: "Homes", value: s.homes, icon: "🏠", sub: "platform-wide" },
         { label: "Devices", value: s.devices, icon: "💡", sub: `${s.onlineDevices} online now` },
+        { label: "Offline Boards", value: s.offlineBoards, icon: "📡", sub: `${s.espBoards} total boards` },
         { label: "Pending Commands", value: s.pendingCommands, icon: "⚡", sub: "awaiting ESP32" },
         { label: "API Keys", value: s.apiKeys, icon: "🔑", sub: "device access" },
         { label: "Audit Events", value: s.auditCount, icon: "📜", sub: "tracked actions" },
@@ -351,6 +352,41 @@ export function Admin() {
               </div>
             ))}
           </div>
+
+          {/* Fleet-wide offline boards */}
+          {(() => {
+            const twoMin = Date.now() - 120_000;
+            const offline = (esp.data?.success ? esp.data.data.esps : []).filter(
+              (e) => e.offline || (e.lastSeen ? new Date(e.lastSeen).getTime() < twoMin : true),
+            );
+            if (offline.length === 0) return null;
+            return (
+              <div className="rounded-xl border border-red-500/30 bg-red-500/5 p-5">
+                <h2 className="mb-1 font-semibold text-red-400">
+                  📡 {offline.length} board{offline.length === 1 ? "" : "s"} offline{" "}
+                  <span className="text-xs font-normal text-gray-500">
+                    — 2+ min se sync nahi kiya (fleet-wide)
+                  </span>
+                </h2>
+                <div className="mt-3 grid gap-2 md:grid-cols-2">
+                  {offline.map((e) => (
+                    <div key={e.id} className="flex items-center justify-between gap-3 rounded-lg border border-gray-800 bg-night-900 px-3 py-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-gray-200">
+                          {e.name ?? "ESP"} {e.serialCode ? <span className="font-mono text-[10px] text-gray-500">· {e.serialCode}</span> : null}
+                        </p>
+                        <p className="truncate text-[11px] text-gray-500">
+                          🏠 {e.home.name} · {e.home.owner?.username}
+                          {e.ipAddress ? ` · ${e.ipAddress}` : ""}
+                        </p>
+                      </div>
+                      <span className="shrink-0 text-[10px] font-semibold uppercase text-red-400">offline</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Recent audit activity */}
           <div className="rounded-xl border border-gray-700 bg-night-800 p-5">
