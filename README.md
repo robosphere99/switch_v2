@@ -27,6 +27,25 @@ npm run dev                       # API on :4000 + web on :5173
 
 See [`site/README.md`](./site/README.md) for details.
 
+## Deploy flow (dev → main)
+
+- **`dev`** — development branch. Changes yahan land karti hain, CI (typecheck + build) har push pe chalta hai. **Koi deploy nahi hota.**
+- **`main`** — production. `dev` ko `main` me merge karo → webhook → Plesk → auto-deploy to `onlineswitch.bhartitechnical.com`.
+
+```bash
+# 1) Kaam dev pe
+git checkout dev
+git push origin dev            # CI check, koi deploy nahi
+
+# 2) Production pe bhejna ho to main me merge karo
+git checkout main
+git pull origin main
+git merge dev
+git push origin main          # → auto-deploy live
+```
+
+> Plesk sirf `main` branch pe deploy karta hai — `dev` pushes webhook ko jaati hain par production restart nahi hota.
+
 ## Status
 
 - [x] PHP v1 analyzed → `PROJECT_ANALYSIS.md`
