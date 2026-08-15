@@ -267,6 +267,7 @@ export interface AdminLogsResponse {
   totalLines: number;
   lines: string[];
   crashes: string[];
+  iisnodeLogs: Array<{ name: string; path: string; size: number; lines: string[] }>;
 }
 
 export async function getAdminLogs(): Promise<ApiResponse<AdminLogsResponse>> {
