@@ -3,6 +3,7 @@ import { computeNextRun } from "./schedule.service";
 import { audit } from "./audit.service";
 import { emitToHome } from "../lib/socket";
 import { createNotification } from "./notification.service";
+import { fileLog } from "../lib/logger";
 
 let timer: NodeJS.Timeout | null = null;
 let running = false;
@@ -16,6 +17,7 @@ export function startScheduler(): void {
   // Kick off once immediately so newly created schedules fire fast in tests.
   void runDueSchedules();
   console.log("[scheduler] started (every 10s)");
+  fileLog("[scheduler] started (every 10s)");
 }
 
 export function stopScheduler(): void {
@@ -28,6 +30,7 @@ export function stopScheduler(): void {
 async function runDueSchedules(): Promise<void> {
   if (running) return;
   running = true;
+  fileLog(`[scheduler] tick ${new Date().toISOString()} start`);
   try {
     const now = new Date();
     const due = await prisma.schedule.findMany({
@@ -45,8 +48,10 @@ async function runDueSchedules(): Promise<void> {
     }
   } catch (err) {
     console.error("[scheduler] tick error:", err);
+    fileLog(`[scheduler] tick ERROR: ${err instanceof Error ? err.message : String(err)}`);
   } finally {
     running = false;
+    fileLog(`[scheduler] tick ${new Date().toISOString()} done`);
   }
 }
 

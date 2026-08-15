@@ -3664,10 +3664,12 @@ function startScheduler() {
   timer = setInterval(runDueSchedules, CHECK_INTERVAL_MS);
   void runDueSchedules();
   console.log("[scheduler] started (every 10s)");
+  fileLog("[scheduler] started (every 10s)");
 }
 async function runDueSchedules() {
   if (running) return;
   running = true;
+  fileLog(`[scheduler] tick ${(/* @__PURE__ */ new Date()).toISOString()} start`);
   try {
     const now = /* @__PURE__ */ new Date();
     const due = await prisma.schedule.findMany({
@@ -3684,8 +3686,10 @@ async function runDueSchedules() {
     }
   } catch (err) {
     console.error("[scheduler] tick error:", err);
+    fileLog(`[scheduler] tick ERROR: ${err instanceof Error ? err.message : String(err)}`);
   } finally {
     running = false;
+    fileLog(`[scheduler] tick ${(/* @__PURE__ */ new Date()).toISOString()} done`);
   }
 }
 async function fireSchedule(scheduleId) {
@@ -3763,12 +3767,17 @@ function startOfflineWatcher() {
   timer2 = setInterval(checkOfflineDevices, CHECK_INTERVAL_MS2);
   void checkOfflineDevices();
   console.log("[offline] watcher started (every 60s)");
+  fileLog("[offline] watcher started (every 60s)");
 }
 async function checkOfflineDevices() {
+  fileLog(`[offline] tick ${(/* @__PURE__ */ new Date()).toISOString()} start`);
   try {
     await checkOfflineDevicesInner();
   } catch (err) {
     console.error("[offline] tick error:", err instanceof Error ? err.message : err);
+    fileLog(`[offline] tick ERROR: ${err instanceof Error ? err.message : String(err)}`);
+  } finally {
+    fileLog(`[offline] tick ${(/* @__PURE__ */ new Date()).toISOString()} done`);
   }
 }
 async function checkOfflineDevicesInner() {
@@ -4053,6 +4062,19 @@ function createApp() {
   );
   app.use(express.json({ limit: "1mb" }));
   app.use(express.urlencoded({ extended: true }));
+  app.use((req, res, next) => {
+    const start = Date.now();
+    fileLog(`[req] ${(/* @__PURE__ */ new Date()).toISOString()} START ${req.method} ${req.originalUrl}`);
+    res.on("finish", () => {
+      fileLog(`[req] ${(/* @__PURE__ */ new Date()).toISOString()} END ${req.method} ${req.originalUrl} -> ${res.statusCode} (${Date.now() - start}ms)`);
+    });
+    res.on("close", () => {
+      if (!res.writableEnded) {
+        fileLog(`[req] ${(/* @__PURE__ */ new Date()).toISOString()} ABORT ${req.method} ${req.originalUrl} (${Date.now() - start}ms) - connection closed before response`);
+      }
+    });
+    next();
+  });
   app.get("/api/health", (_req, res) => {
     res.json({ success: true, data: { status: "ok", ts: (/* @__PURE__ */ new Date()).toISOString() } });
   });
@@ -4108,6 +4130,19 @@ process.on("uncaughtException", (err) => {
   const line = `[crashguard] uncaughtException: ${err instanceof Error ? err.stack : String(err)}`;
   process.stderr.write(line + "\n");
   fileLog(line);
+});
+setInterval(() => {
+  fileLog(
+    `[hb] alive uptime=${Math.round(process.uptime())}s pid=${process.pid} rss=${Math.round(
+      process.memoryUsage().rss / 1048576
+    )}MB`
+  );
+}, 1e4);
+process.on("beforeExit", (code) => {
+  fileLog(`[hb] beforeExit code=${code} uptime=${Math.round(process.uptime())}s`);
+});
+process.on("exit", (code) => {
+  fileLog(`[hb] exit code=${code} uptime=${Math.round(process.uptime())}s`);
 });
 var boot = (...args) => {
   const line = `[boot] ${args.join(" ")}`;
