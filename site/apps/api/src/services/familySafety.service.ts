@@ -134,12 +134,14 @@ export async function runSafetyCheck(): Promise<void> {
         });
         if (!device || device.status !== "on") continue;
 
-        await autoOffDevice(acc.deviceId, m.homeId);
-
-        // Din me ek baar hi notify karo (enforcement har baar chalta hai)
+        // Din me ek baar hi notify karo (enforcement har baar chalta hai).
+        // NOTE: already-check AUTO-OFF se PEHLE — kyunki auto-off khud
+        // 'child_safety' log banata hai (warna notification kabhi na aati).
         const already = await prisma.deviceLog.findFirst({
           where: { deviceId: acc.deviceId, logType: "child_safety", createdAt: { gte: today } },
         });
+
+        await autoOffDevice(acc.deviceId, m.homeId);
         if (already) continue;
 
         const child = await prisma.user.findUnique({

@@ -5657,10 +5657,10 @@ async function runSafetyCheck() {
           select: { name: true, status: true }
         });
         if (!device || device.status !== "on") continue;
-        await autoOffDevice(acc.deviceId, m.homeId);
         const already = await prisma.deviceLog.findFirst({
           where: { deviceId: acc.deviceId, logType: "child_safety", createdAt: { gte: today } }
         });
+        await autoOffDevice(acc.deviceId, m.homeId);
         if (already) continue;
         const child = await prisma.user.findUnique({
           where: { id: m.userId },
