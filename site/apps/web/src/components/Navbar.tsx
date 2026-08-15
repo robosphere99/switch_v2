@@ -17,10 +17,10 @@ import {
   Settings,
   Zap,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Moon, Sun } from "lucide-react";
 import { useAuthStore } from "../stores/auth";
-import { toggleTheme } from "../lib/theme";
+import { onThemeChange, resolvedDark, toggleTheme } from "../lib/theme";
 import { NotificationBell } from "./NotificationBell";
 import { Logo } from "./Logo";
 
@@ -42,7 +42,10 @@ export function Navbar() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const navigate = useNavigate();
-  const [dark, setDark] = useState(() => document.documentElement.classList.contains("dark"));
+  const [dark, setDark] = useState(() => resolvedDark());
+
+  // Profile me theme change ho to yahan bhi sync rahe
+  useEffect(() => onThemeChange(() => setDark(resolvedDark())), []);
 
   function handleLogout() {
     logout();
