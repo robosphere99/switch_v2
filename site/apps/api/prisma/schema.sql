@@ -242,6 +242,7 @@ CREATE TABLE `refresh_tokens` (
 CREATE TABLE `notifications` (
     `id` INTEGER NOT NULL AUTO_INCREMENT,
     `userId` INTEGER NOT NULL,
+    `category` VARCHAR(20) NOT NULL DEFAULT 'system',
     `type` ENUM('info', 'warning', 'error') NOT NULL DEFAULT 'info',
     `title` VARCHAR(255) NOT NULL,
     `body` TEXT NULL,

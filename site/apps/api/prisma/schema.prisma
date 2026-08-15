@@ -396,6 +396,7 @@ model RefreshToken {
 model Notification {
   id        Int              @id @default(autoincrement())
   userId    Int
+  category  String           @default("system") @db.VarChar(20)
   type      NotificationType @default(info)
   title     String           @db.VarChar(255)
   body      String?          @db.Text

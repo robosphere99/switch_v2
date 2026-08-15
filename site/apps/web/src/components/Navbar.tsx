@@ -56,6 +56,9 @@ export function Navbar() {
             <Link to="/homes" className="text-gray-300 hover:text-brand-light">
               Homes
             </Link>
+            <Link to="/notifications" className="text-gray-300 hover:text-brand-light">
+              🔔 Center
+            </Link>
             <NotificationBell />
             <Link to="/profile" className="text-gray-300 hover:text-brand-light">
               Profile

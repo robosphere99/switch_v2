@@ -711,6 +711,7 @@ async function createNotification(userId, input) {
   const notification = await prisma.notification.create({
     data: {
       userId,
+      category: input.category ?? "system",
       type: input.type ?? "info",
       title: input.title,
       body: input.body ?? null
@@ -719,12 +720,27 @@ async function createNotification(userId, input) {
   emitToUser(userId, "notification:new", notification);
   return notification;
 }
-async function listNotifications(userId) {
-  return prisma.notification.findMany({
-    where: { userId },
-    orderBy: { createdAt: "desc" },
-    take: 50
-  });
+async function listNotifications(userId, args = {}) {
+  const page = Math.max(1, Math.floor(args.page ?? 1));
+  const pageSize = Math.min(50, Math.max(1, Math.floor(args.pageSize ?? 20)));
+  const where = { userId };
+  if (args.category && args.category !== "all") where.category = args.category;
+  if (args.type && args.type !== "all") where.type = args.type;
+  if (args.unread) where.readAt = null;
+  const [items, total] = await Promise.all([
+    prisma.notification.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize
+    }),
+    prisma.notification.count({ where })
+  ]);
+  return { items, total, page, pageSize, totalPages: Math.max(1, Math.ceil(total / pageSize)) };
+}
+async function remove2(userId, notificationId) {
+  await prisma.notification.deleteMany({ where: { id: notificationId, userId } });
+  return { ok: true };
 }
 async function unreadCount(userId) {
   return prisma.notification.count({ where: { userId, readAt: null } });
@@ -809,6 +825,7 @@ async function acceptInvitation(inviteCode, userId, userEmail) {
       data: { status: "accepted", acceptedAt: /* @__PURE__ */ new Date() }
     });
     await createNotification(invitation.home.ownerId, {
+      category: "system",
       type: "info",
       title: `\u{1F464} New member joined ${invitation.home.name}`,
       body: `A user joined your home with the ${invitation.role} role.`
@@ -894,7 +911,7 @@ async function changeRole2(req, res) {
   );
   ok(res, member);
 }
-async function remove2(req, res) {
+async function remove3(req, res) {
   await removeMember(Number(req.params.homeId), Number(req.params.userId));
   ok(res, { message: "Member removed" });
 }
@@ -960,7 +977,7 @@ memberRouter.delete(
   requireAuth,
   validateParams(memberParams),
   requireHomeMember("admin"),
-  remove2
+  remove3
 );
 memberRouter.post("/invitations/accept", requireAuth, validateBody(acceptSchema), accept);
 
@@ -1096,7 +1113,7 @@ async function logs(req, res) {
   );
   ok(res, logs2);
 }
-async function remove3(req, res) {
+async function remove4(req, res) {
   await deleteDevice(Number(req.params.homeId), Number(req.params.deviceId));
   ok(res, { message: "Device deleted" });
 }
@@ -1162,7 +1179,7 @@ deviceRouter.delete(
   requireAuth,
   validateParams(deviceParams),
   requireHomeMember("admin"),
-  remove3
+  remove4
 );
 
 // src/routes/deviceApi.routes.ts
@@ -1881,7 +1898,15 @@ import { Router as Router9 } from "express";
 import { z as z10 } from "zod";
 var notificationRouter = Router9();
 notificationRouter.get("/", requireAuth, async (req, res) => {
-  ok(res, await listNotifications(req.user.sub));
+  const page = Number(req.query.page ?? 1);
+  const pageSize = Number(req.query.pageSize ?? 20);
+  const category = String(req.query.category ?? "all");
+  const type = String(req.query.type ?? "all");
+  const unread = req.query.unread === "1" || req.query.unread === "true";
+  ok(
+    res,
+    await listNotifications(req.user.sub, { page, pageSize, category, type, unread })
+  );
 });
 notificationRouter.get("/unread-count", requireAuth, async (req, res) => {
   ok(res, await unreadCount(req.user.sub));
@@ -1892,6 +1917,9 @@ notificationRouter.post("/read-all", requireAuth, async (req, res) => {
 var idParams5 = z10.object({ id: z10.coerce.number().int().positive() });
 notificationRouter.post("/:id/read", requireAuth, validateParams(idParams5), async (req, res) => {
   ok(res, await markRead(req.user.sub, Number(req.params.id)));
+});
+notificationRouter.delete("/:id", requireAuth, validateParams(idParams5), async (req, res) => {
+  ok(res, await remove2(req.user.sub, Number(req.params.id)));
 });
 
 // src/routes/assistant.routes.ts
@@ -2940,6 +2968,7 @@ adminRouter.post("/devices/:id/status", async (req, res) => {
     meta: { name: device.name, status }
   });
   await createNotification(device.home.ownerId, {
+    category: "support",
     type: "info",
     title: `Support ne ${device.name} ${status === "on" ? "ON" : "OFF"} kiya`,
     body: `Admin ne aapke device "${device.name}" ko ${status === "on" ? "chalu (ON)" : "band (OFF)"} kiya. Agar yeh galat hai to turant support ko batayein.`
@@ -3009,6 +3038,7 @@ adminRouter.post("/devices/:id/clear-commands", async (req, res) => {
   });
   if (cleared.count > 0) {
     await createNotification(device.home.ownerId, {
+      category: "support",
       type: "warning",
       title: `Support ne "${device.name}" ke stuck commands clear kiye`,
       body: `${cleared.count} pending command(s) clear kiye gaye. Device ab dobara responsive hoga.`
@@ -3047,6 +3077,7 @@ adminRouter.post("/devices/:id/push-ota", async (req, res) => {
     meta: { version: current.version, model: esp?.modelCode ?? null }
   });
   await createNotification(device.home.ownerId, {
+    category: "support",
     type: "info",
     title: `Support ne "${device.name}" ke liye firmware update push kiya`,
     body: `Naya firmware v${current.version} aapke device pe agle heartbeat pe install hoga.`
@@ -3093,6 +3124,7 @@ adminRouter.post("/devices/push-ota-all", async (req, res) => {
   await Promise.all(
     [...ownerIds].map(
       (ownerId) => createNotification(ownerId, {
+        category: "support",
         type: "info",
         title: "Support ne firmware update push kiya",
         body: `Aapke ${count} device(s) ke liye naya firmware v${current.version} available hai \u2014 agle heartbeat pe auto-install hoga.`
@@ -4067,6 +4099,7 @@ async function fireSchedule(scheduleId) {
   });
   if (sched.createdBy) {
     await createNotification(sched.createdBy, {
+      category: "schedule",
       type: "info",
       title: `\u23F0 Schedule fired: ${sched.device.name} ${sched.action.toUpperCase()}`,
       body: `Schedule #${sched.id} ne ${sched.device.name} ko ${sched.action} kiya.`
@@ -4115,6 +4148,7 @@ async function checkOfflineDevicesInner() {
     const targetIds = device.home.members.map((m) => m.userId);
     for (const userId of targetIds) {
       await createNotification(userId, {
+        category: "device",
         type: "warning",
         title: `\u{1F4E1} ${device.name} offline`,
         body: `${device.name} ne 2+ min se sync nahi kiya. WiFi/device check karo.`
@@ -4132,6 +4166,7 @@ async function checkOfflineDevicesInner() {
     emitToHome(device.homeId, "device:updated", { id: device.id, offline: false });
     for (const userId of device.home.members.map((m) => m.userId)) {
       await createNotification(userId, {
+        category: "device",
         type: "info",
         title: `\u2705 ${device.name} online`,
         body: `${device.name} wapas connected ho gaya.`
@@ -4451,6 +4486,16 @@ async function runLightMigrations() {
         "ALTER TABLE `esp_devices` ADD UNIQUE INDEX `esp_devices_serial_code_key`(`serial_code`)"
       );
       logger.info("\u2705 Migration: esp_devices.serial_code unique index added");
+    }
+    const col = await prisma.$queryRaw`
+      SELECT COUNT(*) AS c FROM information_schema.columns
+      WHERE table_schema = DATABASE() AND table_name = 'notifications' AND column_name = 'category'
+    `;
+    if (Number(col[0]?.c ?? 0) === 0) {
+      await prisma.$executeRawUnsafe(
+        "ALTER TABLE `notifications` ADD COLUMN `category` VARCHAR(20) NOT NULL DEFAULT 'system'"
+      );
+      logger.info("\u2705 Migration: notifications.category column added");
     }
   } catch (err) {
     logger.warn("Light migration (esp serial unique) skip/fail", err instanceof Error ? err.message : String(err));

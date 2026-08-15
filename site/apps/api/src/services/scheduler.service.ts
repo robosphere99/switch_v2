@@ -119,6 +119,7 @@ async function fireSchedule(scheduleId: number): Promise<void> {
 
   if (sched.createdBy) {
     await createNotification(sched.createdBy, {
+      category: "schedule",
       type: "info",
       title: `⏰ Schedule fired: ${sched.device.name} ${sched.action.toUpperCase()}`,
       body: `Schedule #${sched.id} ne ${sched.device.name} ko ${sched.action} kiya.`,

@@ -39,6 +39,17 @@ async function runLightMigrations(): Promise<void> {
       );
       logger.info("✅ Migration: esp_devices.serial_code unique index added");
     }
+    // 2) notifications.category — Notification Center filters (support/device/schedule/system).
+    const col = await prisma.$queryRaw<{ c: bigint }[]>`
+      SELECT COUNT(*) AS c FROM information_schema.columns
+      WHERE table_schema = DATABASE() AND table_name = 'notifications' AND column_name = 'category'
+    `;
+    if (Number(col[0]?.c ?? 0) === 0) {
+      await prisma.$executeRawUnsafe(
+        "ALTER TABLE `notifications` ADD COLUMN `category` VARCHAR(20) NOT NULL DEFAULT 'system'",
+      );
+      logger.info("✅ Migration: notifications.category column added");
+    }
   } catch (err) {
     logger.warn("Light migration (esp serial unique) skip/fail", err instanceof Error ? err.message : String(err));
   }

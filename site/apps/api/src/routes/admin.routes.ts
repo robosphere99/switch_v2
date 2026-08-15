@@ -560,6 +560,7 @@ adminRouter.post("/devices/:id/status", async (req, res) => {
     meta: { name: device.name, status },
   });
   await createNotification(device.home.ownerId, {
+    category: "support",
     type: "info",
     title: `Support ne ${device.name} ${status === "on" ? "ON" : "OFF"} kiya`,
     body: `Admin ne aapke device "${device.name}" ko ${status === "on" ? "chalu (ON)" : "band (OFF)"} kiya. Agar yeh galat hai to turant support ko batayein.`,
@@ -633,6 +634,7 @@ adminRouter.post("/devices/:id/clear-commands", async (req, res) => {
   });
   if (cleared.count > 0) {
     await createNotification(device.home.ownerId, {
+      category: "support",
       type: "warning",
       title: `Support ne "${device.name}" ke stuck commands clear kiye`,
       body: `${cleared.count} pending command(s) clear kiye gaye. Device ab dobara responsive hoga.`,
@@ -678,6 +680,7 @@ adminRouter.post("/devices/:id/push-ota", async (req, res) => {
     meta: { version: current.version, model: esp?.modelCode ?? null },
   });
   await createNotification(device.home.ownerId, {
+    category: "support",
     type: "info",
     title: `Support ne "${device.name}" ke liye firmware update push kiya`,
     body: `Naya firmware v${current.version} aapke device pe agle heartbeat pe install hoga.`,
@@ -729,6 +732,7 @@ adminRouter.post("/devices/push-ota-all", async (req, res) => {
   await Promise.all(
     [...ownerIds].map((ownerId) =>
       createNotification(ownerId, {
+        category: "support",
         type: "info",
         title: "Support ne firmware update push kiya",
         body: `Aapke ${count} device(s) ke liye naya firmware v${current.version} available hai — agle heartbeat pe auto-install hoga.`,
