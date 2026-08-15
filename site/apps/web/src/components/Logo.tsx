@@ -3,7 +3,7 @@ export function Logo({ size = "md" }: { size?: "sm" | "md" | "lg" }) {
   const text = size === "lg" ? "text-2xl" : "text-lg";
   return (
     <span className="inline-flex items-center gap-2">
-      <svg viewBox="0 0 64 64" className={`${box} drop-shadow-md drop-shadow-brand/30`} aria-hidden>
+      <svg viewBox="0 0 64 64" className={`${box} logo-mark drop-shadow-md drop-shadow-brand/30`} aria-hidden>
         <rect x="2" y="2" width="60" height="60" rx="16" fill="#2563eb" />
         {/* House */}
         <path d="M32 12 L53 29 H47 V49 H17 V29 H11 Z" fill="#ffffff" />

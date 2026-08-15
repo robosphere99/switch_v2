@@ -50,6 +50,18 @@
       stroke 0.4s ease !important;
   }
 
+  /* Theme switch pe logo bhi pulse karta hai — html.theme-fade class ke saath
+     rotate + scale, 0.5s (fade ke saath sync). Page load pe nahi chalta. */
+  @keyframes logo-theme-pop {
+    0%   { transform: scale(1) rotate(0deg); }
+    30%  { transform: scale(1.15) rotate(-8deg); }
+    60%  { transform: scale(1.05) rotate(6deg); }
+    100% { transform: scale(1) rotate(0deg); }
+  }
+  html.theme-fade .logo-mark {
+    animation: logo-theme-pop 0.5s ease-in-out;
+  }
+
   /* Utility overrides under .dark — grays/whites jo night palette me nahi hain */
   .dark .bg-white { background-color: rgb(23 27 44); }
   .dark .bg-white\/95 { background-color: rgb(23 27 44 / 0.95); }
