@@ -1,5 +1,6 @@
 import type { Device, DeviceType } from "@robosphere/shared";
 import { isNewerVersion } from "../api/devices";
+import { Switch } from "./Switch";
 
 const ICONS: Record<DeviceType, string> = {
   bulb: "💡",
@@ -120,17 +121,24 @@ export function DeviceCard({
         )}
       </div>
 
-      <button
-        onClick={() => onToggle(device)}
-        disabled={disabled}
-        className={`w-full rounded-lg py-2 text-sm font-bold uppercase tracking-wide transition ${
-          on
-            ? "bg-red-600/20 text-red-400 hover:bg-red-600/30"
-            : "bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30"
-        } ${disabled ? "cursor-wait opacity-60" : ""}`}
-      >
-        {on ? "Turn Off" : "Turn On"}
-      </button>
+      <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-night-900/60 px-4 py-3 dark:border-night-600">
+        <div className="flex items-center gap-2">
+          <span
+            className={`h-2 w-2 rounded-full transition-colors ${
+              on ? "bg-brand" : "bg-gray-400 dark:bg-night-500"
+            }`}
+          />
+          <span className="text-sm font-bold text-gray-700 dark:text-night-950">
+            {on ? "ON" : "OFF"}
+          </span>
+        </div>
+        <Switch
+          checked={on}
+          onChange={() => onToggle(device)}
+          disabled={disabled}
+          label={`${device.name} ${on ? "band karo" : "chalu karo"}`}
+        />
+      </div>
 
       {canManage && (
         <div className="flex gap-2 text-xs">
