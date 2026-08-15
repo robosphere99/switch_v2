@@ -214,6 +214,112 @@ adminRouter.get("/devices", async (req, res) => {
   );
 });
 
+/** Global admin search — ek query se users/homes/devices/ESPs/orders/serials sab me ek saath. */
+adminRouter.get("/search", async (req, res) => {
+  const q = String(req.query.q ?? "").trim();
+  if (!q) return ok(res, { q, users: [], homes: [], devices: [], esps: [], orders: [], serials: [] });
+  const qUp = q.toUpperCase();
+  const [users, homes, devices, esps, orders, serials] = await Promise.all([
+    prisma.user.findMany({
+      where: { OR: [{ username: { contains: q } }, { email: { contains: q } }] },
+      select: { id: true, username: true, email: true, role: true, status: true, createdAt: true },
+      orderBy: { id: "desc" },
+      take: 5,
+    }),
+    prisma.home.findMany({
+      where: { OR: [{ name: { contains: q } }, { owner: { username: { contains: q } } }] },
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        owner: { select: { username: true } },
+        _count: { select: { devices: true, members: true } },
+      },
+      orderBy: { id: "desc" },
+      take: 5,
+    }),
+    prisma.device.findMany({
+      where: {
+        OR: [
+          { name: { contains: q } },
+          { serialNumber: { contains: q } },
+          { ipAddress: { contains: q } },
+          { home: { name: { contains: q } } },
+        ],
+      },
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        status: true,
+        serialNumber: true,
+        ipAddress: true,
+        home: { select: { name: true } },
+      },
+      orderBy: { id: "desc" },
+      take: 5,
+    }),
+    prisma.espDevice.findMany({
+      where: {
+        OR: [
+          { name: { contains: q } },
+          { serialCode: { contains: q } },
+          { macAddress: { contains: q } },
+          { ipAddress: { contains: q } },
+          { ssid: { contains: q } },
+          { modelCode: { contains: q } },
+        ],
+      },
+      select: {
+        id: true,
+        name: true,
+        serialCode: true,
+        modelCode: true,
+        ipAddress: true,
+        offline: true,
+        home: { select: { name: true } },
+      },
+      orderBy: { id: "desc" },
+      take: 5,
+    }),
+    prisma.order.findMany({
+      where: {
+        OR: [
+          { orderNumber: { contains: qUp } },
+          { shippingName: { contains: q } },
+          { shippingPhone: { contains: q } },
+          { user: { username: { contains: q } } },
+        ],
+      },
+      select: {
+        id: true,
+        orderNumber: true,
+        status: true,
+        paymentStatus: true,
+        totalAmount: true,
+        createdAt: true,
+        user: { select: { username: true } },
+      },
+      orderBy: { id: "desc" },
+      take: 5,
+    }),
+    prisma.serialRegistry.findMany({
+      where: { serialCode: { contains: qUp } },
+      select: {
+        id: true,
+        serialCode: true,
+        status: true,
+        orderId: true,
+        product: { select: { name: true } },
+        user: { select: { username: true } },
+      },
+      orderBy: { id: "desc" },
+      take: 5,
+    }),
+  ]);
+  ok(res, { q, users, homes, devices, esps, orders, serials });
+});
+
 // ---------- API keys ----------
 
 adminRouter.get("/api-keys", async (_req, res) => {

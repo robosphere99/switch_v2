@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import {
   getStats,
+  globalSearch,
   listUsers,
   setUserStatus,
   setUserRole,
@@ -60,6 +61,18 @@ export function Admin() {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<Tab>("overview");
   const [q, setQ] = useState("");
+  const [gsQ, setGsQ] = useState("");
+  const [gsOpen, setGsOpen] = useState(false);
+  const [gsDebounced, setGsDebounced] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setGsDebounced(gsQ.trim()), 250);
+    return () => clearTimeout(t);
+  }, [gsQ]);
+  const global = useQuery({
+    queryKey: ["admin-search", gsDebounced],
+    queryFn: () => globalSearch(gsDebounced),
+    enabled: gsOpen && gsDebounced.length >= 2,
+  });
   const [copied, setCopied] = useState(false);
   const [selectedDevice, setSelectedDevice] = useState<number | null>(null);
   const [viewHome, setViewHome] = useState<AdminHomeDetail | null>(null);
@@ -218,12 +231,95 @@ export function Admin() {
           <h1 className="mb-1 text-3xl font-bold">🛡️ Admin Panel</h1>
           <p className="text-sm text-gray-400">Platform-wide management (system admin only).</p>
         </div>
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="🔍 Search users / homes / devices…"
-          className="w-64 rounded-lg border border-brand/20 bg-night-800 px-3 py-2 text-sm outline-none focus:border-brand"
-        />
+        <div className="relative">
+          <input
+            value={gsQ}
+            onChange={(e) => {
+              setGsQ(e.target.value);
+              setGsOpen(true);
+            }}
+            onFocus={() => setGsOpen(true)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && gsDebounced.length >= 2) {
+                const r = global.data?.success ? global.data.data : null;
+                const first =
+                  r && (r.users[0] || r.homes[0] || r.devices[0] || r.esps[0] || r.orders[0] || r.serials[0]);
+                if (first) {
+                  if (r.users[0]) setTab("users");
+                  else if (r.homes[0]) setTab("homes");
+                  else if (r.devices[0]) setTab("devices");
+                  else if (r.esps[0]) setTab("ota");
+                  else setTab("shop");
+                  setQ(gsDebounced);
+                }
+                setGsOpen(false);
+              }
+            }}
+            placeholder="🔍 Global search… (users / homes / devices / ESPs / orders / serials)"
+            className="w-72 rounded-lg border border-brand/20 bg-night-800 px-3 py-2 text-sm outline-none focus:border-brand"
+          />
+          {gsOpen && gsDebounced.length >= 2 && (
+            <>
+              <div className="fixed inset-0 z-30" onClick={() => setGsOpen(false)} />
+              <div className="absolute right-0 z-40 mt-2 max-h-[28rem] w-96 overflow-y-auto rounded-xl border border-gray-700 bg-night-900 shadow-2xl">
+                {global.isLoading && <p className="px-4 py-6 text-center text-sm text-gray-500">Searching…</p>}
+                {!global.isLoading && global.data?.success && (() => {
+                  const r = global.data.data;
+                  const sections: Array<{ label: string; icon: string; count: number; items: unknown[]; tab: Tab }> = [
+                    { label: "Users", icon: "👤", count: r.users.length, items: r.users, tab: "users" },
+                    { label: "Homes", icon: "🏠", count: r.homes.length, items: r.homes, tab: "homes" },
+                    { label: "Devices", icon: "💡", count: r.devices.length, items: r.devices, tab: "devices" },
+                    { label: "ESP Boards", icon: "🛰️", count: r.esps.length, items: r.esps, tab: "ota" },
+                    { label: "Orders", icon: "🛒", count: r.orders.length, items: r.orders, tab: "shop" },
+                    { label: "Serials", icon: "🔑", count: r.serials.length, items: r.serials, tab: "shop" },
+                  ];
+                  const total = sections.reduce((a, x) => a + x.count, 0);
+                  const jump = (tab: Tab) => {
+                    setTab(tab);
+                    setQ(gsDebounced);
+                    setGsOpen(false);
+                  };
+                  return (
+                    <>
+                      <div className="border-b border-gray-700 px-4 py-2.5 text-xs text-gray-400">
+                        "{gsDebounced}" — {total} result{total === 1 ? "" : "s"}
+                      </div>
+                      {total === 0 && (
+                        <p className="px-4 py-6 text-center text-sm text-gray-500">Kuch nahi mila. 😕</p>
+                      )}
+                      {sections.map((sec) =>
+                        sec.items.length === 0 ? null : (
+                          <div key={sec.label} className="border-b border-gray-800 px-2 py-2">
+                            <div className="px-2 pb-1 text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                              {sec.icon} {sec.label} ({sec.count})
+                            </div>
+                            {sec.items.map((item) => (
+                              <button
+                                key={String((item as { id: number }).id)}
+                                onClick={() => jump(sec.tab)}
+                                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-gray-200 transition hover:bg-night-800 hover:text-brand-light"
+                              >
+                                <span className="truncate font-medium">
+                                  {(item as { name?: string; username?: string; orderNumber?: string; serialCode?: string }).name ??
+                                    (item as { username?: string }).username ??
+                                    (item as { orderNumber?: string }).orderNumber ??
+                                    (item as { serialCode?: string }).serialCode}
+                                </span>
+                                <span className="ml-auto truncate text-[10px] text-gray-500">
+                                  {subtitleFor(sec.label, item)}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        ),
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Tabs */}
@@ -1254,4 +1350,38 @@ function Info({ label, value }: { label: string; value: string }) {
       <span className="text-gray-300">{value}</span>
     </div>
   );
+}
+
+function subtitleFor(section: string, item: unknown): string {
+  const it = item as {
+    email?: string;
+    status?: string;
+    username?: string;
+    serialNumber?: string | null;
+    serialCode?: string | null;
+    macAddress?: string;
+    ipAddress?: string | null;
+    offline?: boolean;
+    paymentStatus?: string;
+    modelCode?: string | null;
+    product?: { name?: string } | null;
+    home?: { name?: string } | null;
+    owner?: { username?: string } | null;
+  };
+  switch (section) {
+    case "Users":
+      return `${it.email ?? ""} · ${it.status ?? ""}`;
+    case "Homes":
+      return `${it.owner?.username ?? ""} · ${it.status ?? ""}`;
+    case "Devices":
+      return `${it.serialNumber ?? ""} · ${it.home?.name ?? ""}`;
+    case "ESP Boards":
+      return `${it.serialCode ?? it.ipAddress ?? ""} · ${it.offline ? "offline" : "online"}`;
+    case "Orders":
+      return `${it.paymentStatus ?? ""}`;
+    case "Serials":
+      return `${it.product?.name ?? ""} · ${it.status ?? ""}`;
+    default:
+      return "";
+  }
 }
