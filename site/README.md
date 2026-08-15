@@ -54,3 +54,26 @@ Authenticate with a **home-scoped API key** (`POST /api/api-keys` with `homeId`,
 - **Schedule / DeviceCommand / DeviceLog** — timers, command queue, audit
 
 See `../ROADMAP.md` for the full plan.
+
+## Production Deployment (Plesk → onlineswitch.bhartitechnical.com)
+
+The live site is served from the **`main` branch** of `robosphere99/switch_v2`, deployed
+automatically by Plesk Git to the `onlineswitch` subdomain:
+
+```
+git push origin main  →  GitHub webhook  →  Plesk pulls + deploys  →  site updates
+```
+
+- **CI** — `.github/workflows/ci.yml`: `npm ci` + typecheck + build on every push to `main`.
+- **CD** — Plesk Git: repo `switch_v2`, branch `main`, mode **Automatic**,
+  server path `onlineswitch.bhartitechnical.com`.
+- **Post-deploy commands** — Plesk → Git → `switch_v2` → Deployment settings →
+  **Additional deployment actions** should run `site\deploy.cmd` (installs the API
+  workspace; `postinstall` regenerates the Prisma client). Without this, a fresh
+  server install fails with `ERR_MODULE_NOT_FOUND: @prisma/client`.
+- **Build artifacts are committed** — Plesk shared hosting can't run esbuild
+  (Access denied on parent dirs), so `apps/api/dist/` and `apps/web/dist/` are
+  committed intentionally (see `site/.gitignore`). Update flow: build locally
+  (`npm run build` + `npm run build:prod -w @robosphere/api`) → commit `dist` →
+  push `main` → Plesk auto-deploys.
+- **Verify** — `GET /api/health` on the live domain.
