@@ -19,7 +19,12 @@ export function Signup() {
     setError("");
     setLoading(true);
     try {
-      const res = await signup({ username, email, password, homeName });
+      const res = await signup({
+        username,
+        email,
+        password,
+        ...(homeName.trim() ? { homeName: homeName.trim() } : {}),
+      });
       if (res.success) {
         setAuth(res.data);
         applyAccountTheme(res.data.user);
