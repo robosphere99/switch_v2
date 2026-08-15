@@ -135,9 +135,9 @@ export function Support() {
           <div className="rounded-xl border border-white/10 bg-white/5 p-6 text-sm">
             <h2 className="mb-3 text-lg font-semibold">📞 Seedha baat karo</h2>
             <div className="space-y-2 text-gray-600">
-              <p>📧 <span className="text-brand">support@robosphere.in</span></p>
+              <p>📧 <span className="text-brand">support@switchnest.in</span></p>
               <p>📱 WhatsApp: <span className="text-brand">+91 98765 43210</span></p>
-              <p>📍 RoboSphere Labs, Sector 62, Noida, UP 201309</p>
+              <p>📍 SwitchNest Labs, Sector 62, Noida, UP 201309</p>
               <p>🕐 Mon–Sat · 9:00 AM – 7:00 PM</p>
             </div>
           </div>
@@ -147,7 +147,7 @@ export function Support() {
             <div className="space-y-3 text-gray-600">
               <div>
                 <p className="font-semibold text-night-950">Board WiFi se connect nahi ho raha?</p>
-                <p className="text-gray-500">Board ke web panel me jao (AP mode me Robosphere-IoT WiFi) → WiFi page se SSID + password daalo.</p>
+                <p className="text-gray-500">Board ke web panel me jao (AP mode me SwitchNest-IoT WiFi) → WiFi page se SSID + password daalo.</p>
               </div>
               <div>
                 <p className="font-semibold text-night-950">Serial activate kaise karein?</p>

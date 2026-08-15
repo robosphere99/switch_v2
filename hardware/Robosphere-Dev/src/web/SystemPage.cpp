@@ -47,7 +47,7 @@ String SystemPage(
 {
     String html;
 
-    html += uiHead("System - Robosphere IoT");
+    html += uiHead("System - SwitchNest IoT");
 
     html += uiNav("/system");
 
@@ -121,7 +121,7 @@ String SystemPage(
 <h3 class="sectionTitle">💾 Backup &amp; Restore</h3>
 
 <label>Backup Name</label>
-<input type="text" id="backupName" placeholder="Robosphere_Config">
+<input type="text" id="backupName" placeholder="SwitchNest_Config">
 
 <button class="blue" onclick="downloadConfig()">⬇ Download Backup</button>
 
@@ -154,7 +154,7 @@ function downloadConfig()
     .trim();
 
     if(name=="")
-        name="Robosphere_Config";
+        name="SwitchNest_Config";
 
     // Remove invalid filename characters
     name=name.replace(/[\\/:*?"<>|]/g,"_");

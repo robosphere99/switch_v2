@@ -19,7 +19,7 @@ String DashboardPage(
 {
     String html;
 
-    html += uiHead("Dashboard - Robosphere IoT");
+    html += uiHead("Dashboard - SwitchNest IoT");
 
     html += uiNav("/dashboard");
 
@@ -97,7 +97,7 @@ String DashboardPage(
 
 <hr>
 
-<p>© Robosphere IoT — Made by Anil Alok</p>
+<p>© SwitchNest IoT — Made by Anil Alok</p>
 
 </div>
 

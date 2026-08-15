@@ -14,7 +14,7 @@ String uiHead(const String &title)
 String uiNav(const String &active)
 {
     String n = "<nav class=\"navbar glass\">";
-    n += "<a class=\"brand\" href=\"/dashboard\">⚡ Robosphere</a>";
+    n += "<a class=\"brand\" href=\"/dashboard\">⚡ SwitchNest</a>";
     n += "<button class=\"nav-toggle\" id=\"navToggle\" aria-label=\"Menu\">☰</button>";
     n += "<div class=\"nav-links\" id=\"navLinks\">";
 

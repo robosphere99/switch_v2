@@ -115,14 +115,14 @@ var envSchema = z.object({
   API_HOST: z.string().default("0.0.0.0"),
   CORS_ORIGINS: z.string().default("http://localhost:5173"),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
-  WIFI_ENC_KEY: z.string().default("robosphere-dev-wifi-key-change-me"),
+  WIFI_ENC_KEY: z.string().default("switchnest-dev-wifi-key-change-me"),
   // Payment gateway (optional) — nahi diya to demo/manual mode chalta hai
   RAZORPAY_KEY_ID: z.string().optional().default(""),
   RAZORPAY_KEY_SECRET: z.string().optional().default(""),
-  UPI_ID: z.string().optional().default("robosphere@upi"),
+  UPI_ID: z.string().optional().default("switchnest@upi"),
   // First-run admin (install route) — hosting pe yahan se set hota hai
   ADMIN_USERNAME: z.string().default("admin"),
-  ADMIN_EMAIL: z.string().default("admin@robosphere.local"),
+  ADMIN_EMAIL: z.string().default("admin@switchnest.local"),
   ADMIN_PASSWORD: z.string().default("admin123"),
   // Install ko lock karne ke liye (installed flag ke saath match karta hai)
   INSTALL_TOKEN: z.string().optional().default("")
@@ -170,7 +170,7 @@ var logFilePath = (() => {
     // site/apps/logs — iisnode yahi likhta hai (writable)
     path2.resolve(process.cwd(), "logs"),
     // site/apps/api/logs
-    path2.join(os.tmpdir(), "robosphere-logs")
+    path2.join(os.tmpdir(), "switchnest-logs")
   ];
   for (const dir of candidates) {
     try {
@@ -1532,7 +1532,7 @@ async function heartbeat(key, input, baseUrl) {
         macAddress: macKey,
         // Unique + searchable naam: serial (product code) pehle, SSID baad me.
         // Serial na ho to MAC-tail se unique `ESP-XXXXXX` fallback.
-        name: attachSerial ? `${attachSerial} \xB7 ${ssid ?? "Robosphere"}` : ssid ? `${ssid} \xB7 ESP-${macTail}` : `ESP-${macTail}`,
+        name: attachSerial ? `${attachSerial} \xB7 ${ssid ?? "SwitchNest"}` : ssid ? `${ssid} \xB7 ESP-${macTail}` : `ESP-${macTail}`,
         ssid,
         serialCode: attachSerial,
         modelCode: model,
@@ -3575,7 +3575,7 @@ adminRouter.get("/esp/:id/probe", async (req, res) => {
     const r = await fetch(url, {
       signal: controller.signal,
       redirect: "follow",
-      headers: { "User-Agent": "RoboSphere-Admin/1.0" }
+      headers: { "User-Agent": "SwitchNest-Admin/1.0" }
     });
     return ok(res, { reachable: true, latencyMs: Date.now() - started, statusCode: r.status });
   } catch {
@@ -3989,7 +3989,7 @@ shopRouter.post("/orders/:id/pay", requireAuth, async (req, res) => {
     });
     ok(res, { mode: "razorpay", razorpayOrderId: rp.id, amount: Number(order.totalAmount), keyId: process.env.RAZORPAY_KEY_ID ?? "" });
   } else {
-    const upiIntent = `upi://pay?pa=robosphere@okaxis&pn=RoboSphere&am=${Number(order.totalAmount).toFixed(2)}&tn=Order%20${order.orderNumber}`;
+    const upiIntent = `upi://pay?pa=switchnest@okaxis&pn=SwitchNest&am=${Number(order.totalAmount).toFixed(2)}&tn=Order%20${order.orderNumber}`;
     await audit(req.user.sub, "shop.payment.initiate", {
       entity: "order",
       entityId: id,
@@ -4228,8 +4228,8 @@ var CHIPS = [
 ];
 var FAQ = [
   {
-    test: /what is robosphere|yeh (kya|site) hai|kya hai ye|about (robosphere|site|company)|introduce|platform (kya|about)/i,
-    reply: "RoboSphere ek smart-home IoT platform hai \u2014 WiFi relay boards (2CH se 8CH), dimmers aur fan regulators bechte hain. Board kharido \u2192 serial code se activate karo \u2192 app se ghar ke lights/fans/appliances ko kisi bhi jagah se control karo. Naya firmware bhi WiFi se hi (OTA) update hota hai \u2014 kabhi USB nahi chahiye."
+    test: /what is switchnest|yeh (kya|site) hai|kya hai ye|about (switchnest|site|company)|introduce|platform (kya|about)/i,
+    reply: "SwitchNest ek smart-home IoT platform hai \u2014 WiFi relay boards (2CH se 8CH), dimmers aur fan regulators bechte hain. Board kharido \u2192 serial code se activate karo \u2192 app se ghar ke lights/fans/appliances ko kisi bhi jagah se control karo. Naya firmware bhi WiFi se hi (OTA) update hota hai \u2014 kabhi USB nahi chahiye."
   },
   {
     test: /how (does )?(it|this|site) (work|kaam)|kaise kaam|kaise chalta|process|flow|kya kaam/i,
@@ -4237,7 +4237,7 @@ var FAQ = [
   },
   {
     test: /wifi|wireless|set up|setup|config|network|connect (karo|karna)|internet/i,
-    reply: "WiFi setup 2 tarike se: (1) Order ke waqt WiFi name + password de do \u2014 board factory me hi pre-configured flash hoke aayega, (2) Ya phir board first-boot pe apna khud ka WiFi (Robosphere-IoT) kholta hai \u2014 phone se connect karke WiFi + server details daal do. Board phir khud connect ho jata hai. WiFi change ho jaye to captive portal se fresh setup ho jata hai."
+    reply: "WiFi setup 2 tarike se: (1) Order ke waqt WiFi name + password de do \u2014 board factory me hi pre-configured flash hoke aayega, (2) Ya phir board first-boot pe apna khud ka WiFi (SwitchNest-IoT) kholta hai \u2014 phone se connect karke WiFi + server details daal do. Board phir khud connect ho jata hai. WiFi change ho jaye to captive portal se fresh setup ho jata hai."
   },
   {
     test: /ota|update|firmware|upgrade|naya version|software/i,
@@ -4261,11 +4261,11 @@ var FAQ = [
   },
   {
     test: /contact|phone|call|email|support|help|baat|number/i,
-    reply: "Contact section me form bharke message bhej sakte ho \u2014 humara team reply karta hai. Email: support@robosphere.in \xB7 Phone/WhatsApp: +91 98765 43210 \xB7 Address: RoboSphere Labs, Noida, UP. Feedback bhi welcome hai!"
+    reply: "Contact section me form bharke message bhej sakte ho \u2014 humara team reply karta hai. Email: support@switchnest.in \xB7 Phone/WhatsApp: +91 98765 43210 \xB7 Address: SwitchNest Labs, Noida, UP. Feedback bhi welcome hai!"
   },
   {
     test: /hello|hi|hey|namaste|namaskar|hii|hola|salaam/i,
-    reply: "Namaste! \u{1F64F} Main RoboSphere ka assistant hoon. Batao aapko kya chahiye \u2014 kitne lights/fans control karne hain, dimmer chahiye, IR remote se control karna hai, ya site ke baare me kuch poochna hai?"
+    reply: "Namaste! \u{1F64F} Main SwitchNest ka assistant hoon. Batao aapko kya chahiye \u2014 kitne lights/fans control karne hain, dimmer chahiye, IR remote se control karna hai, ya site ke baare me kuch poochna hai?"
   }
 ];
 function detectNeed(text, products) {
@@ -4656,7 +4656,7 @@ async function checkOfflineDevicesInner() {
 var SCHEMA_SQL = path5.resolve(process.cwd(), "prisma/schema.sql");
 var installRouter = Router17();
 var DEFAULT_PRODUCTS = [
-  { name: "2CH WiFi Relay Module", modelCode: "2CH", relayCount: 2, price: "599", description: "Two-channel WiFi relay board for lights and small appliances. 10A per channel, ESP32 based, works with the RoboSphere app and voice assistant.", features: { channels: 2, wifi: true, ota: true, voice: true } },
+  { name: "2CH WiFi Relay Module", modelCode: "2CH", relayCount: 2, price: "599", description: "Two-channel WiFi relay board for lights and small appliances. 10A per channel, ESP32 based, works with the SwitchNest app and voice assistant.", features: { channels: 2, wifi: true, ota: true, voice: true } },
   { name: "4CH WiFi Relay Module", modelCode: "4CH", relayCount: 4, price: "799", description: "Four-channel WiFi relay board \u2014 the classic choice for room-wide control. 10A per channel with status LED and manual override switches.", features: { channels: 4, wifi: true, ota: true, voice: true } },
   { name: "5CH WiFi Relay Module", modelCode: "5CH", relayCount: 5, price: "899", description: "Five-channel relay board \u2014 perfect for combining 4 devices plus one spare. ESP32 with OTA updates and two-way sync.", features: { channels: 5, wifi: true, ota: true, voice: true } },
   { name: "6CH WiFi Relay Module", modelCode: "6CH", relayCount: 6, price: "999", description: "Six-channel WiFi relay board for medium-size homes. Control lights, fans and appliances from one compact board.", features: { channels: 6, wifi: true, ota: true, voice: true } },
@@ -4877,7 +4877,7 @@ installRouter.post("/", async (req, res) => {
     installed: true,
     database: parts.name,
     admin: admin.username,
-    message: "RoboSphere installed \u2014 site ab normal chal raha hai"
+    message: "SwitchNest installed \u2014 site ab normal chal raha hai"
   });
 });
 

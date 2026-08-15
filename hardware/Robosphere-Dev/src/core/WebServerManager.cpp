@@ -218,7 +218,7 @@ void handleRoot() {
 void handleSetup() {
   String html;
 
-  html += uiHead("Setup - Robosphere IoT");
+  html += uiHead("Setup - SwitchNest IoT");
 
   html += uiAuthBegin();
 
@@ -251,7 +251,7 @@ void handleSetup() {
   html += R"rawliteral(
 <div class="glass auth-card">
 <div class="logo">⚡</div>
-<h1>Robosphere IoT</h1>
+<h1>SwitchNest IoT</h1>
 <p class="sub">Setup your device</p>
 
 <h3 class="sectionTitle">Restore Previous Configuration</h3>
@@ -391,7 +391,7 @@ async function restoreBackup()
         config.mapping===undefined
     )
     {
-        alert("This is not a Robosphere configuration file.");
+        alert("This is not a SwitchNest configuration file.");
         return;
     }
 
@@ -481,19 +481,19 @@ async function scanWifi()
   server.send(
     200,
     "text/html",
-    "<h1>Robosphere IoT</h1><h2>Device Configured Successfully</h2>");
+    "<h1>SwitchNest IoT</h1><h2>Device Configured Successfully</h2>");
 }
 void handleLogin() {
   String html;
 
-  html += uiHead("Login - Robosphere IoT");
+  html += uiHead("Login - SwitchNest IoT");
 
   html += uiAuthBegin();
 
   html += R"rawliteral(
 <div class="glass auth-card">
 <div class="logo">⚡</div>
-<h1>Robosphere IoT</h1>
+<h1>SwitchNest IoT</h1>
 <p class="sub">Smart Switch Controller</p>
 <form action="/login" method="POST">
 <label>Username</label>
@@ -1022,7 +1022,7 @@ void begin()
     String fileName = server.arg("name");
 
 if(fileName.isEmpty())
-    fileName = "Robosphere_Config";
+    fileName = "SwitchNest_Config";
 
 server.sendHeader(
     "Content-Disposition",

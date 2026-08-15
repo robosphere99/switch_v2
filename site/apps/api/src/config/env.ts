@@ -37,14 +37,14 @@ const envSchema = z.object({
   API_HOST: z.string().default("0.0.0.0"),
   CORS_ORIGINS: z.string().default("http://localhost:5173"),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
-  WIFI_ENC_KEY: z.string().default("robosphere-dev-wifi-key-change-me"),
+  WIFI_ENC_KEY: z.string().default("switchnest-dev-wifi-key-change-me"),
   // Payment gateway (optional) — nahi diya to demo/manual mode chalta hai
   RAZORPAY_KEY_ID: z.string().optional().default(""),
   RAZORPAY_KEY_SECRET: z.string().optional().default(""),
-  UPI_ID: z.string().optional().default("robosphere@upi"),
+  UPI_ID: z.string().optional().default("switchnest@upi"),
   // First-run admin (install route) — hosting pe yahan se set hota hai
   ADMIN_USERNAME: z.string().default("admin"),
-  ADMIN_EMAIL: z.string().default("admin@robosphere.local"),
+  ADMIN_EMAIL: z.string().default("admin@switchnest.local"),
   ADMIN_PASSWORD: z.string().default("admin123"),
   // Install ko lock karne ke liye (installed flag ke saath match karta hai)
   INSTALL_TOKEN: z.string().optional().default(""),

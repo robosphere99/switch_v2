@@ -1,7 +1,7 @@
 #include "web/UIResources.h"
 
 // ==================================================
-// Robosphere IoT - UI Design System
+// SwitchNest IoT - UI Design System
 // Glassmorphism + Light/Dark themes + Responsive
 // ==================================================
 const char *STYLE_CSS = R"rawliteral(
@@ -565,7 +565,7 @@ progress::-webkit-progress-value { background: linear-gradient(135deg,var(--acce
 // ==================================================
 const char *APP_JS = R"rawliteral(
 (function () {
-  var KEY = "robosphere-theme";
+  var KEY = "switchnest-theme";
 
   function getTheme() {
     try { return localStorage.getItem(KEY) || "light"; } catch (e) { return "light"; }

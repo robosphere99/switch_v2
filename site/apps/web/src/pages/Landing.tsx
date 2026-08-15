@@ -80,7 +80,7 @@ export function Landing() {
         <div className="mb-6"><Logo size="lg" /></div>
         <h1 className="max-w-3xl text-5xl font-bold leading-tight">
           <span className="bg-gradient-to-r from-brand-light to-brand bg-clip-text text-transparent">
-            Welcome to RoboSphere
+            Welcome to SwitchNest
           </span>
         </h1>
         <p className="mt-6 max-w-xl text-lg text-gray-500">
@@ -129,7 +129,7 @@ export function Landing() {
       <section className="mx-auto max-w-6xl px-4 pb-24">
         <h2 className="mb-12 text-center text-4xl font-bold">
           <span className="bg-gradient-to-r from-brand-light to-brand bg-clip-text text-transparent">
-            Why RoboSphere?
+            Why SwitchNest?
           </span>
         </h2>
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">

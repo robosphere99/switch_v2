@@ -18,7 +18,7 @@ static String computeHostname()
     String mac = WiFi.macAddress();
     mac.replace(":", "");
     mac.toLowerCase();
-    return "robosphere-" + mac.substring(mac.length() - 6);
+    return "switchnest-" + mac.substring(mac.length() - 6);
 }
 
 static void startMDNS()
@@ -349,7 +349,7 @@ String getSSID() {
 // 192.168.4.1 (AP) aur LAN IP dono pe reachable. Web server 0.0.0.0
 // pe bind hai, isliye dono interface pe kaam karta hai. Isse fresh
 // setup ke baad IP dhoondhne ki zaroorat khatam — phone se AP judke
-// 192.168.4.1 kholo, ya LAN pe robosphere-xxxxxx.local.
+// 192.168.4.1 kholo, ya LAN pe switchnest-xxxxxx.local.
 // ==================================================
 void ensureDualAP()
 {
