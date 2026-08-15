@@ -365,3 +365,87 @@ export async function getEspHistory(espId: number): Promise<ApiResponse<EspRenam
   const { data } = await api.get<ApiResponse<EspRenameEvent[]>>(`/admin/esp/${espId}/history`);
   return data;
 }
+
+export interface FindResult {
+  q: string;
+  users: Array<{
+    id: number;
+    username: string;
+    email: string;
+    role: string;
+    status: string;
+    createdAt: string;
+    _count: { homes: number; devices: number; orders: number };
+  }>;
+  orders: Array<{
+    id: number;
+    orderNumber: string;
+    status: string;
+    shippingName: string;
+    shippingPhone: string;
+    totalAmount: string;
+    createdAt: string;
+    userId: number;
+    user: { username: string; email: string } | null;
+  }>;
+  serials: Array<{
+    id: number;
+    serialCode: string;
+    status: string;
+    warrantyStatus: string;
+    warrantyExpiresAt: string | null;
+    orderId: number | null;
+    userId: number | null;
+    homeId: number | null;
+    product: { name: string; modelCode: string } | null;
+    order: { orderNumber: string } | null;
+    user: { id: number; username: string; email: string } | null;
+    home: { id: number; name: string } | null;
+  }>;
+  boards: Array<{
+    id: number;
+    name: string | null;
+    macAddress: string;
+    serialCode: string | null;
+    modelCode: string | null;
+    offline: boolean;
+    lastSeen: string | null;
+    firmwareVersion: string | null;
+    homeId: number;
+    home: { id: number; name: string; owner: { id: number; username: string; email: string } | null } | null;
+  }>;
+  devices: Array<{
+    id: number;
+    name: string;
+    type: string;
+    status: string;
+    serialNumber: string | null;
+    offline: boolean;
+    home: { id: number; name: string; owner: { id: number; username: string; email: string } | null } | null;
+  }>;
+  messages: Array<{
+    id: number;
+    name: string;
+    phone: string | null;
+    email: string | null;
+    subject: string;
+    status: string;
+    createdAt: string;
+    userId: number | null;
+  }>;
+  claims: Array<{
+    id: number;
+    serialCode: string;
+    reason: string;
+    status: string;
+    createdAt: string;
+    userId: number;
+    user: { id: number; username: string; email: string } | null;
+  }>;
+}
+
+/** Customer support 'find by anything' — phone / order / serial / MAC / naam. */
+export async function findAnything(q: string): Promise<ApiResponse<FindResult>> {
+  const { data } = await api.get<ApiResponse<FindResult>>("/admin/find", { params: { q } });
+  return data;
+}
