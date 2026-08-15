@@ -42,10 +42,13 @@ const NAV_LINKS: Array<{ to: string; label: string; icon: typeof Home }> = [
   { to: "/notifications", label: "Center", icon: Bell },
 ];
 
-/** Admin (system_admin) sirf site administration dekhta hai — customer links nahi. */
-const ADMIN_LINKS: Array<{ to: string; label: string; icon: typeof Home }> = [
-  { to: "/support", label: "Support", icon: Wrench },
-];
+/**
+ * Admin (system_admin) ke liye top-navbar me customer links nahi dikhte —
+ * admin ka kaam Admin panel (Overview/Support inbox/Users/...) me hota hai,
+ * aur vahi "Support" tab asli support inbox hai. /support customer page
+ * admin ke liye bekaar hai — isliye links khaali.
+ */
+const ADMIN_LINKS: Array<{ to: string; label: string; icon: typeof Home }> = [];
 
 function toggleTheme(setDark: (d: boolean) => void) {
   changeTheme(resolvedDark() ? "light" : "dark");
