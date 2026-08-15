@@ -87,7 +87,7 @@ function ProductsSection() {
         <h2 className="text-xl font-bold">Products</h2>
         <button
           onClick={() => setShowForm((v) => !v)}
-          className="rounded-lg bg-gradient-to-r from-brand to-brand-light px-4 py-2 text-sm font-semibold text-white"
+          className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white"
         >
           {showForm ? "Cancel" : "+ New Product"}
         </button>
@@ -103,7 +103,7 @@ function ProductsSection() {
           <input required placeholder="Price ₹ *" type="number" min={1} value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className="rounded border border-night-600 bg-night-900 px-3 py-2 text-sm" />
           <input placeholder="Description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="rounded border border-night-600 bg-night-900 px-3 py-2 text-sm sm:col-span-2" />
           <input placeholder='Features JSON (optional) e.g. {"channels":4,"ir":true}' value={form.features} onChange={(e) => setForm({ ...form, features: e.target.value })} className="rounded border border-night-600 bg-night-900 px-3 py-2 text-sm sm:col-span-2" />
-          <button type="submit" className="rounded-lg bg-gradient-to-r from-brand to-brand-light px-4 py-2 font-semibold text-white sm:col-span-2">
+          <button type="submit" className="rounded-lg bg-brand px-4 py-2 font-semibold text-white sm:col-span-2">
             Create Product
           </button>
         </form>
@@ -265,7 +265,7 @@ function SerialsSection() {
       <div className="mb-4 flex items-center gap-2">
         <button
           onClick={() => window.open("/admin/print", "_blank")}
-          className="rounded-lg bg-gradient-to-r from-brand to-brand-light px-4 py-2 text-sm font-semibold text-white"
+          className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white"
         >
           🖨️ Print Stickers
         </button>
@@ -286,7 +286,7 @@ function SerialsSection() {
           <label className="mb-1 block text-xs text-gray-500">Count</label>
           <input type="number" min={1} max={500} value={count} onChange={(e) => setCount(Number(e.target.value))} className="w-24 rounded border border-night-600 bg-night-900 px-3 py-2 text-sm" />
         </div>
-        <button type="submit" className="rounded-lg bg-gradient-to-r from-brand to-brand-light px-4 py-2 font-semibold text-white">
+        <button type="submit" className="rounded-lg bg-brand px-4 py-2 font-semibold text-white">
           Generate Serials
         </button>
         {genMsg && <span className="text-xs text-gray-500">{genMsg}</span>}

@@ -108,7 +108,7 @@ export function Navbar() {
             </Link>
             <Link
               to="/signup"
-              className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-brand to-brand-light px-4 py-1.5 font-semibold text-white shadow-md shadow-brand/30 transition hover:brightness-110"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-1.5 font-semibold text-white shadow-md shadow-brand/30 transition hover:brightness-110"
             >
               <Zap className="h-4 w-4" />
               Sign Up

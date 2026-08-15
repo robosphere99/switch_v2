@@ -108,7 +108,7 @@ export function Assistant() {
           <button
             onClick={() => newChat.mutate()}
             disabled={!newChatHome}
-            className="rounded-lg bg-gradient-to-r from-brand to-brand-light px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
           >
             + New Chat
           </button>
@@ -187,7 +187,7 @@ export function Assistant() {
                 <button
                   onClick={() => send.mutate(input.trim())}
                   disabled={!input.trim() || send.isPending}
-                  className="rounded-lg bg-gradient-to-r from-brand to-brand-light px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+                  className="rounded-lg bg-brand px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
                 >
                   Send
                 </button>
@@ -225,7 +225,7 @@ function MessageBubble({
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div
         className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm ${
-          isUser ? "rounded-br-sm bg-gradient-to-r from-brand to-brand-light text-white" : "rounded-bl-sm border border-gray-200 bg-night-900 text-gray-700"
+          isUser ? "rounded-br-sm bg-brand text-white" : "rounded-bl-sm border border-gray-200 bg-night-900 text-gray-700"
         }`}
       >
         <div className="whitespace-pre-line">{message.content}</div>
@@ -242,7 +242,7 @@ function MessageBubble({
             <button
               onClick={onConfirm}
               disabled={confirming}
-              className="w-full rounded-lg bg-gradient-to-r from-green-600 to-green-500 py-2 text-sm font-semibold text-night-950 hover:from-green-500 hover:to-green-400 disabled:opacity-50"
+              className="w-full rounded-lg bg-green-600 py-2 text-sm font-semibold text-night-950 hover:bg-green-500 disabled:opacity-50"
             >
               {confirming ? "Executing…" : "✅ Confirm & Execute"}
             </button>

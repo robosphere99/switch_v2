@@ -99,7 +99,7 @@ export function Support() {
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
       <h1 className="mb-2 text-3xl font-bold">
-        <span className="bg-gradient-to-r from-brand-light to-brand bg-clip-text text-transparent">🛠️ Support</span>
+        <span className="text-brand">🛠️ Support</span>
       </h1>
       <p className="mb-6 text-sm text-gray-500">
         Aapke account se seedha humari team ko message — order, warranty, OTA setup, kuch bhi. Ticket number ke saath
@@ -220,7 +220,7 @@ export function Support() {
               key={m.id}
               className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${
                 m.senderRole === "user"
-                  ? "self-end rounded-br-sm bg-gradient-to-r from-brand to-brand-light text-white"
+                  ? "self-end rounded-br-sm bg-brand text-white"
                   : "self-start rounded-bl-sm border border-gray-200 bg-white text-gray-800"
               }`}
             >
@@ -248,7 +248,7 @@ export function Support() {
           <button
             type="submit"
             disabled={chatBusy || !chatDraft.trim()}
-            className="rounded-lg bg-gradient-to-r from-brand to-brand-light px-4 py-2 text-white disabled:opacity-40"
+            className="rounded-lg bg-brand px-4 py-2 text-white disabled:opacity-40"
           >
             Send
           </button>

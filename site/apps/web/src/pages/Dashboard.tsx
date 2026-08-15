@@ -251,7 +251,7 @@ export function Dashboard() {
                 <button
                   onClick={() => addDevice.mutate()}
                   disabled={!addForm.name || addDevice.isPending}
-                  className="w-full rounded-lg bg-gradient-to-r from-brand to-brand-light py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+                  className="w-full rounded-lg bg-brand py-2.5 text-sm font-semibold text-white disabled:opacity-50"
                 >
                   Add Device
                 </button>
@@ -423,7 +423,7 @@ Abhi: v${cur} → Latest: v${next}`)) {
           <button
             onClick={() => saveEdit.mutate()}
             disabled={!editName || saveEdit.isPending}
-            className="w-full rounded-lg bg-gradient-to-r from-brand to-brand-light py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+            className="w-full rounded-lg bg-brand py-2.5 text-sm font-semibold text-white disabled:opacity-50"
           >
             Save Changes
           </button>

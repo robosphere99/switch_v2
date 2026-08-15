@@ -46,7 +46,7 @@ export function Checkout() {
         <div className="mb-4 text-5xl">🛒</div>
         <h1 className="mb-2 text-2xl font-bold">Cart khali hai</h1>
         <p className="mb-6 text-gray-500">Pehle kuch products add karo.</p>
-        <Link to="/shop" className="rounded-lg bg-gradient-to-r from-brand to-brand-light px-6 py-3 font-semibold text-white">
+        <Link to="/shop" className="rounded-lg bg-brand px-6 py-3 font-semibold text-white">
           Shop kholo
         </Link>
       </div>
@@ -56,7 +56,7 @@ export function Checkout() {
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
       <h1 className="mb-6 text-3xl font-bold">
-        <span className="bg-gradient-to-r from-brand-light to-brand bg-clip-text text-transparent">Checkout</span>
+        <span className="text-brand">Checkout</span>
       </h1>
 
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -198,7 +198,7 @@ export function Checkout() {
         <button
           type="submit"
           disabled={submitting}
-          className="w-full rounded-lg bg-gradient-to-r from-brand to-brand-light px-4 py-3 font-semibold text-white transition hover:-translate-y-0.5 disabled:opacity-50"
+          className="w-full rounded-lg bg-brand px-4 py-3 font-semibold text-white transition hover:-translate-y-0.5 disabled:opacity-50"
         >
           {submitting ? "Placing order…" : `Place Order · ₹${total.toLocaleString("en-IN")}`}
         </button>

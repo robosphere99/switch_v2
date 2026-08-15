@@ -46,10 +46,10 @@ export function Activate() {
         </p>
         <code className="rounded bg-night-700 px-3 py-1 text-sm text-brand">{result.serialCode}</code>
         <div className="mt-8 flex justify-center gap-3">
-          <Link to="/dashboard" className="rounded-lg bg-gradient-to-r from-brand to-brand-light px-6 py-3 font-semibold text-white">
+          <Link to="/dashboard" className="rounded-lg bg-brand px-6 py-3 font-semibold text-white">
             Dashboard kholo
           </Link>
-          <Link to="/orders" className="rounded-lg border-2 border-brand-light px-6 py-3 font-semibold text-brand hover:bg-brand-light hover:text-white">
+          <Link to="/orders" className="rounded-lg border-2 border-brand px-6 py-3 font-semibold text-brand hover:bg-brand hover:text-white">
             Orders
           </Link>
         </div>
@@ -60,7 +60,7 @@ export function Activate() {
   return (
     <div className="mx-auto max-w-xl px-4 py-12">
       <h1 className="mb-2 text-3xl font-bold">
-        <span className="bg-gradient-to-r from-brand-light to-brand bg-clip-text text-transparent">🔑 Activate Device</span>
+        <span className="text-brand">🔑 Activate Device</span>
       </h1>
       <p className="mb-8 text-sm text-gray-500">
         Box pe laga sticker se serial code daalo — device aapke home me add ho jayega aur aapke account se permanently linked.
@@ -104,7 +104,7 @@ export function Activate() {
         <button
           type="submit"
           disabled={busy || !homeId}
-          className="w-full rounded-lg bg-gradient-to-r from-brand to-brand-light px-4 py-3 font-semibold text-white transition hover:-translate-y-0.5 disabled:opacity-50"
+          className="w-full rounded-lg bg-brand px-4 py-3 font-semibold text-white transition hover:-translate-y-0.5 disabled:opacity-50"
         >
           {busy ? "Activating…" : "Activate Device"}
         </button>

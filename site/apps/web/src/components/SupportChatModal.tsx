@@ -51,7 +51,7 @@ export function SupportChatModal({
             key={m.id}
             className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${
               m.senderRole === "admin"
-                ? "self-end rounded-br-sm bg-gradient-to-r from-brand to-brand-light text-white"
+                ? "self-end rounded-br-sm bg-brand text-white"
                 : "self-start rounded-bl-sm border border-gray-200 bg-white text-gray-800"
             }`}
           >
@@ -79,7 +79,7 @@ export function SupportChatModal({
         <button
           type="submit"
           disabled={send.isPending || !draft.trim()}
-          className="rounded-lg bg-gradient-to-r from-brand to-brand-light px-4 py-2 text-white disabled:opacity-40"
+          className="rounded-lg bg-brand px-4 py-2 text-white disabled:opacity-40"
           title="Bhejo"
         >
           <Send className="h-4 w-4" />

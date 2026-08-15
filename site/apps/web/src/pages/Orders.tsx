@@ -92,7 +92,7 @@ export function Orders() {
   return (
     <div className="mx-auto max-w-4xl px-4 py-10">
       <h1 className="mb-6 text-3xl font-bold">
-        <span className="bg-gradient-to-r from-brand-light to-brand bg-clip-text text-transparent">My Orders</span>
+        <span className="text-brand">My Orders</span>
       </h1>
 
       {placed && (
@@ -106,7 +106,7 @@ export function Orders() {
         <div className="rounded-xl border border-brand/20 bg-night-800 p-10 text-center">
           <div className="mb-2 text-4xl">🛒</div>
           <p className="text-gray-500">Koi order nahi abhi.</p>
-          <Link to="/shop" className="mt-4 inline-block rounded-lg bg-gradient-to-r from-brand to-brand-light px-6 py-2.5 font-semibold text-white">
+          <Link to="/shop" className="mt-4 inline-block rounded-lg bg-brand px-6 py-2.5 font-semibold text-white">
             Shop kholo
           </Link>
         </div>
@@ -131,7 +131,7 @@ export function Orders() {
                     <button
                       onClick={() => openPay(o.id)}
                       disabled={payBusy}
-                      className="rounded-lg bg-gradient-to-r from-brand to-brand-light px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                      className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
                     >
                       💳 Pay Now
                     </button>
@@ -168,7 +168,7 @@ export function Orders() {
                     {o.status === "delivered" && (
                       <Link
                         to="/activate"
-                        className="ml-auto rounded-lg bg-gradient-to-r from-brand to-brand-light px-4 py-2 text-sm font-semibold text-white"
+                        className="ml-auto rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white"
                       >
                         🔑 Activate Now
                       </Link>
@@ -207,7 +207,7 @@ export function Orders() {
                 <button
                   onClick={() => confirmDemoPay(payingFor)}
                   disabled={payBusy}
-                  className="w-full rounded-lg bg-gradient-to-r from-brand to-brand-light px-4 py-2.5 font-semibold text-white disabled:opacity-50"
+                  className="w-full rounded-lg bg-brand px-4 py-2.5 font-semibold text-white disabled:opacity-50"
                 >
                   {payBusy ? "Verifying…" : "✅ Maine UPI se pay kar diya (Demo verify)"}
                 </button>
@@ -234,7 +234,7 @@ export function Orders() {
                 <button
                   onClick={() => confirmRazorpay(payingFor)}
                   disabled={payBusy}
-                  className="w-full rounded-lg bg-gradient-to-r from-brand to-brand-light px-4 py-2.5 font-semibold text-white disabled:opacity-50"
+                  className="w-full rounded-lg bg-brand px-4 py-2.5 font-semibold text-white disabled:opacity-50"
                 >
                   {payBusy ? "Verifying…" : "Verify & Confirm Payment"}
                 </button>

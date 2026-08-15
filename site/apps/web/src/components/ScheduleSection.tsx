@@ -260,7 +260,7 @@ export function ScheduleSection({
               create.isPending ||
               (form.type === "cron" ? cronInvalid : !form.runAt)
             }
-            className="w-full rounded-lg bg-gradient-to-r from-brand to-brand-light py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+            className="w-full rounded-lg bg-brand py-2.5 text-sm font-semibold text-white disabled:opacity-50"
           >
             {create.isPending ? "Creating…" : "Add Schedule"}
           </button>

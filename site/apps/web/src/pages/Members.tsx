@@ -142,7 +142,7 @@ export function Members() {
             <button
               onClick={() => invite.mutate()}
               disabled={!email || invite.isPending}
-              className="rounded-lg bg-gradient-to-r from-brand to-brand-light px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+              className="rounded-lg bg-brand px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
             >
               Send Invite
             </button>

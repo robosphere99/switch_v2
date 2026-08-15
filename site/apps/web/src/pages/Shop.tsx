@@ -57,7 +57,7 @@ const ProductCard = forwardRef<HTMLDivElement, { p: Product; onAdd: () => void; 
         <span className="text-xl font-bold text-brand">₹{Number(p.price).toLocaleString("en-IN")}</span>
         <button
           onClick={onAdd}
-          className="rounded-lg bg-gradient-to-r from-brand to-brand-light px-4 py-2 text-sm font-semibold text-white transition hover:-translate-y-0.5"
+          className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:-translate-y-0.5"
         >
           Add to Cart
         </button>
@@ -101,7 +101,7 @@ export function Shop() {
       <div className="mb-8 flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">
-            <span className="bg-gradient-to-r from-brand-light to-brand bg-clip-text text-transparent">
+            <span className="text-brand">
               🛒 SwitchNest Shop
             </span>
           </h1>
@@ -111,7 +111,7 @@ export function Shop() {
         </div>
         <button
           onClick={() => setCartOpen(true)}
-          className="relative rounded-lg border-2 border-brand-light px-4 py-2 font-semibold text-brand hover:bg-brand-light hover:text-white"
+          className="relative rounded-lg border-2 border-brand px-4 py-2 font-semibold text-brand hover:bg-brand hover:text-white"
         >
           🛒 Cart ({count})
         </button>
@@ -196,7 +196,7 @@ export function Shop() {
                 </div>
                 <Link
                   to="/checkout"
-                  className="block rounded-lg bg-gradient-to-r from-brand to-brand-light px-4 py-3 text-center font-semibold text-white"
+                  className="block rounded-lg bg-brand px-4 py-3 text-center font-semibold text-white"
                 >
                   Checkout →
                 </Link>
