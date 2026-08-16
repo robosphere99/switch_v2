@@ -52,12 +52,14 @@ const envSchema = z.object({
 
 const parsed = envSchema.safeParse(process.env);
 
+// Invalid env pe process.exit(1) NAHI — iisnode pe exit = startup failure →
+// rapid-fail pool stop → 503 jab tak manual restart na ho. Isliye defaults
+// ke saath zinda rehte hain (galat config ho sakta hai, par site down nahi).
 if (!parsed.success) {
-  console.error("❌ Invalid environment variables:", parsed.error.flatten().fieldErrors);
-  process.exit(1);
+  console.error("⚠️ Invalid environment variables — defaults use kar rahe hain:", parsed.error.flatten().fieldErrors);
 }
 
-export const env = parsed.data;
+export const env = parsed.success ? parsed.data : envSchema.parse({});
 
 // Prisma schema env("DATABASE_URL") use karta hai — granular DB_* vars se
 // built URL ko process.env me bhi set karna zaroori hai, warna PrismaClient
