@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ArrowLeft, Bell, BellOff, CheckCheck, Copy, Inbox, Pin, PinOff, Search, Send, Trash2, UserRound, X } from "lucide-react";
+import { ArrowLeft, Bell, BellOff, CheckCheck, Copy, Inbox, MailOpen, MessageCircle, Pin, PinOff, Search, Send, Trash2, UserRound, X, type LucideIcon } from "lucide-react";
 import {
   clearSupportConversation,
   deleteSupportMessage,
@@ -11,6 +11,7 @@ import {
   markAllSupportRead,
   sendSupportMessage,
   setSupportSettings,
+  setSupportThreadRead,
   type SupportAttachment,
   type SupportConversation,
 } from "../api/admin";
@@ -91,6 +92,10 @@ export function AdminSupport({
   const [attachment, setAttachment] = useState<SupportAttachment | null>(null);
   // Desktop pe right-panel default open; mobile pe drawer default band (chat dikhna chahiye pehle).
   const [showContext, setShowContext] = useState(() => window.matchMedia("(min-width: 768px)").matches);
+  // WhatsApp-style right-click / long-press context menu (avatar ya row pe)
+  const [ctxMenu, setCtxMenu] = useState<{ userId: number; x: number; y: number } | null>(null);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressFired = useRef(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const replyInputRef = useRef<HTMLInputElement>(null);
 
@@ -180,6 +185,16 @@ export function AdminSupport({
     setSearchParams(sp, { replace: true });
   }, [selectedUserId, draftParam, searchParams, setSearchParams]);
 
+  // Context menu — Escape dabao ya bahar click to band
+  useEffect(() => {
+    if (!ctxMenu) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setCtxMenu(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [ctxMenu]);
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [msgs.length, selectedUserId]);
@@ -226,6 +241,44 @@ export function AdminSupport({
       queryClient.invalidateQueries({ queryKey: ["support", "admin", "conversations"] });
     },
   });
+
+  const threadRead = useMutation({
+    mutationFn: (args: { userId: number; read: boolean }) => setSupportThreadRead(args.userId, args.read),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["support", "admin", "conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["support", "admin", "unread"] });
+    },
+  });
+
+  // Right-click / long-press → menu position (viewport se bahar na jaye)
+  const openCtxMenu = (userId: number, clientX: number, clientY: number) => {
+    const w = 240;
+    const h = 280;
+    setCtxMenu({
+      userId,
+      x: Math.max(4, Math.min(clientX, window.innerWidth - w - 8)),
+      y: Math.max(4, Math.min(clientY, window.innerHeight - h - 8)),
+    });
+  };
+
+  const onRowTouchStart = (userId: number, e: React.TouchEvent) => {
+    if (longPressTimer.current) clearTimeout(longPressTimer.current);
+    longPressTimer.current = setTimeout(() => {
+      longPressFired.current = true;
+      openCtxMenu(userId, e.touches[0].clientX, e.touches[0].clientY);
+      // Click (touchend ke baad browser synthesize karta hai) suppress — flag auto-reset
+      setTimeout(() => {
+        longPressFired.current = false;
+      }, 900);
+    }, 550);
+  };
+
+  const cancelLongPress = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  };
 
   return (
     <div className="overflow-hidden rounded-xl border border-gray-200 bg-night-800">
@@ -286,8 +339,21 @@ export function AdminSupport({
               return (
                 <button
                   key={c.userId}
-                  onClick={() => onSelectUser(c.userId)}
-                  className={`flex w-full items-start gap-3 px-3 py-3 text-left transition ${
+                  onClick={() => {
+                    if (longPressFired.current) {
+                      longPressFired.current = false;
+                      return;
+                    }
+                    onSelectUser(c.userId);
+                  }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    openCtxMenu(c.userId, e.clientX, e.clientY);
+                  }}
+                  onTouchStart={(e) => onRowTouchStart(c.userId, e)}
+                  onTouchMove={cancelLongPress}
+                  onTouchEnd={cancelLongPress}
+                  className={`flex w-full select-none items-start gap-3 px-3 py-3 text-left transition ${
                     active
                       ? "bg-brand/15"
                       : "hover:bg-night-700"
@@ -574,7 +640,104 @@ export function AdminSupport({
             )}
           </div>
         )}
+
+        {/* WhatsApp-style context menu (right-click / long-press) */}
+        {ctxMenu && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setCtxMenu(null)} />
+            <div
+              className="fixed z-50 w-60 overflow-hidden rounded-xl border border-gray-200 bg-night-800 py-1 shadow-2xl"
+              style={{ left: ctxMenu.x, top: ctxMenu.y }}
+            >
+              {(() => {
+                const c = list?.conversations.find((x) => x.userId === ctxMenu.userId);
+                const s = settingsMap.get(ctxMenu.userId);
+                if (!c) return null;
+                const pinned = !!s?.pinnedAt;
+                const muted = !!s?.mutedAt;
+                const unread = c.unreadCount > 0;
+                return (
+                  <>
+                    <MenuItem
+                      icon={MessageCircle}
+                      label="Chat kholo"
+                      onClick={() => {
+                        onSelectUser(c.userId);
+                        setCtxMenu(null);
+                      }}
+                    />
+                    <MenuItem
+                      icon={pinned ? PinOff : Pin}
+                      label={pinned ? "Unpin chat" : "Pin chat"}
+                      onClick={() => {
+                        setSettings.mutate({ peerUserId: c.userId, pinned: !pinned });
+                        setCtxMenu(null);
+                      }}
+                    />
+                    <MenuItem
+                      icon={muted ? Bell : BellOff}
+                      label={muted ? "Unmute notifications" : "Mute notifications"}
+                      sub={muted ? "Muted" : undefined}
+                      onClick={() => {
+                        setSettings.mutate({ peerUserId: c.userId, muted: !muted });
+                        setCtxMenu(null);
+                      }}
+                    />
+                    <MenuItem
+                      icon={unread ? CheckCheck : MailOpen}
+                      label={unread ? "Mark as read" : "Mark as unread"}
+                      onClick={() => {
+                        threadRead.mutate({ userId: c.userId, read: unread });
+                        setCtxMenu(null);
+                      }}
+                    />
+                    <div className="my-1 border-t border-gray-200" />
+                    <MenuItem
+                      icon={Trash2}
+                      label="Clear chat"
+                      danger
+                      onClick={() => {
+                        setCtxMenu(null);
+                        if (confirm(`Saara chat ${c.username} ke saath clear karein?`)) {
+                          clearChat.mutate(c.userId);
+                        }
+                      }}
+                    />
+                  </>
+                );
+              })()}
+            </div>
+          </>
+        )}
       </div>
     </div>
+  );
+}
+
+/** Context menu ka ek row — WhatsApp-style icon + label. */
+function MenuItem({
+  icon: Icon,
+  label,
+  sub,
+  danger,
+  onClick,
+}: {
+  icon: LucideIcon;
+  label: string;
+  sub?: string;
+  danger?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition ${
+        danger ? "text-red-400 hover:bg-red-500/10" : "text-gray-300 hover:bg-night-700"
+      }`}
+    >
+      <Icon className="h-4 w-4 shrink-0" />
+      <span className="min-w-0 flex-1">{label}</span>
+      {sub && <span className="shrink-0 text-[10px] text-gray-500">{sub}</span>}
+    </button>
   );
 }
