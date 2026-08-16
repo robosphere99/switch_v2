@@ -166,8 +166,9 @@ export function AdminSettings() {
       {/* Appearance — brand color */}
       <Section title="🎨 Site theme (brand color)">
         <p className="mb-4 text-sm text-gray-500">
-          Poora site (buttons, links, highlights) isi color pe chalta hai — choose karo aur{" "}
-          <b>Save</b> dabao. Save se pehle hi live preview dikhega.
+          Poora site isi color pe chalta hai. Color choose karo,{" "}
+          <b>Preview</b> se pehle dekho, phir <b>Save</b> dabao — confirm ke baad poore
+          site pe apply hoga.
         </p>
         <div className="flex flex-wrap items-center gap-2">
           {BRAND_PRESETS.map((p) => (
@@ -181,14 +182,6 @@ export function AdminSettings() {
               {current.brandColor === p.hex && <Check className="h-4 w-4 text-white" />}
             </button>
           ))}
-          <button
-            onClick={() => setPreviewOpen(true)}
-            className="ml-1 flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-500 transition hover:border-brand hover:text-brand"
-            title="Is color ka poora theme preview dekho"
-          >
-            <Eye className="h-3.5 w-3.5" />
-            Preview
-          </button>
           <label className="ml-2 flex items-center gap-2 rounded-lg border border-gray-200 bg-night-900 px-3 py-2 text-sm">
             <Palette className="h-4 w-4 text-gray-500" />
             <input
@@ -204,47 +197,14 @@ export function AdminSettings() {
               className="w-24 rounded border border-gray-300 bg-night-900 px-2 py-1 font-mono text-xs outline-none focus:border-brand"
             />
           </label>
-        </div>
-
-        {/* Mini live preview — sirf yahan dikhta hai, poora site tabhi badlega jab Save hoga */}
-        <div className="mt-4 rounded-xl border border-gray-200 bg-night-900 p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-sm font-bold text-white"
-                style={{ backgroundColor: current.brandColor }}
-              >
-                S
-              </span>
-              <span className="text-sm font-semibold">SwitchNest</span>
-            </div>
-            <button
-              className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white"
-              style={{ backgroundColor: current.brandColor }}
-            >
-              Control
-            </button>
-          </div>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <button
-              className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white"
-              style={{ backgroundColor: current.brandColor }}
-            >
-              Primary button
-            </button>
-            <span className="text-xs font-semibold underline" style={{ color: current.brandColor }}>
-              Link button
-            </span>
-            <span
-              className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase"
-              style={{ backgroundColor: `${current.brandColor}22`, color: current.brandColor }}
-            >
-              Badge
-            </span>
-            <span className="flex h-6 w-11 items-center rounded-full p-0.5" style={{ backgroundColor: current.brandColor }}>
-              <span className="ml-auto h-5 w-5 rounded-full bg-white shadow" />
-            </span>
-          </div>
+          <button
+            onClick={() => setPreviewOpen(true)}
+            className="ml-auto flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-500 transition hover:border-brand hover:text-brand"
+            title="Is color ka poora theme preview dekho"
+          >
+            <Eye className="h-3.5 w-3.5" />
+            Preview
+          </button>
         </div>
       </Section>
 
