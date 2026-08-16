@@ -3047,7 +3047,16 @@ var DEFAULT_SITE_SETTINGS = {
   supportPhone: "+91 98765 43210",
   supportAddress: "SwitchNest Labs, Sector 62, Noida, UP 201309",
   supportHours: "Mon\u2013Sat \xB7 9:00 AM \u2013 7:00 PM",
-  brandColor: "#2563eb"
+  brandColor: "#2563eb",
+  siteUrl: "https://onlineswitch.bhartitechnical.com",
+  // SMTP defaults yahan empty — asli defaults (587, STARTTLS) email.service me resolve hote hain,
+  // taaki SMTP_* env vars hamesha precedence le saken jab settings me kuch set na ho.
+  smtpHost: "",
+  smtpPort: 0,
+  smtpUser: "",
+  smtpPass: "",
+  smtpFrom: "",
+  smtpSecure: false
 };
 var KEY2 = "site_settings";
 async function getSiteSettings() {
@@ -3060,15 +3069,274 @@ async function getSiteSettings() {
   }
   return DEFAULT_SITE_SETTINGS;
 }
+async function getPublicSiteSettings() {
+  const s = await getSiteSettings();
+  const { smtpHost: _h, smtpPort: _p, smtpUser: _u, smtpPass: _pp, smtpFrom: _f, smtpSecure: _sc, ...pub } = s;
+  return pub;
+}
 async function updateSiteSettings(patch) {
   const current = await getSiteSettings();
   const next = { ...current, ...patch };
+  if (patch.smtpPass !== void 0) {
+    if (patch.smtpPass) next.smtpPass = encryptSecret(patch.smtpPass);
+    else next.smtpPass = current.smtpPass;
+  }
   await prisma.appMeta.upsert({
     where: { key: KEY2 },
     create: { key: KEY2, value: JSON.stringify(next) },
     update: { value: JSON.stringify(next) }
   });
   return next;
+}
+
+// src/lib/email.service.ts
+import * as net from "node:net";
+import * as tls from "node:tls";
+import * as os2 from "node:os";
+async function getSmtpConfig() {
+  const s = await getSiteSettings().catch(() => null);
+  let pass = "";
+  if (s?.smtpPass) {
+    try {
+      pass = decryptSecret(s.smtpPass);
+    } catch {
+      pass = s.smtpPass;
+    }
+  }
+  return {
+    host: s?.smtpHost || process.env.SMTP_HOST || "",
+    port: s?.smtpPort || Number(process.env.SMTP_PORT) || 587,
+    user: s?.smtpUser || process.env.SMTP_USER || "",
+    pass: pass || process.env.SMTP_PASS || "",
+    from: s?.smtpFrom || process.env.SMTP_FROM || s?.supportEmail || env.ADMIN_EMAIL,
+    secure: s?.smtpSecure || process.env.SMTP_SECURE === "true"
+  };
+}
+function isEmailConfigured(cfg) {
+  return !!(cfg.host && cfg.user && cfg.pass);
+}
+function createReader(sock, timeoutMs) {
+  let buf = "";
+  let pending = null;
+  let timer4 = null;
+  const tryResolve = () => {
+    if (!pending || !buf.endsWith("\r\n")) return false;
+    const lines = buf.split("\r\n").filter((l) => l.length > 0);
+    const last = lines[lines.length - 1] ?? "";
+    if (!/^\d{3} /.test(last)) return false;
+    const p = pending;
+    pending = null;
+    if (timer4) clearTimeout(timer4);
+    buf = "";
+    p.resolve(lines);
+    return true;
+  };
+  const onData = (chunk) => {
+    buf += chunk.toString("utf8");
+    tryResolve();
+  };
+  sock.on("data", onData);
+  return {
+    next() {
+      if (pending) return Promise.reject(new Error("SMTP: concurrent read"));
+      return new Promise((resolve3, reject) => {
+        pending = { resolve: resolve3, reject };
+        timer4 = setTimeout(() => {
+          if (pending) {
+            const p = pending;
+            pending = null;
+            p.reject(new Error("SMTP timeout"));
+          }
+        }, timeoutMs);
+        tryResolve();
+      });
+    },
+    detach() {
+      sock.off("data", onData);
+      if (timer4) clearTimeout(timer4);
+    }
+  };
+}
+function send(sock, line) {
+  sock.write(line + "\r\n");
+}
+function encodeHeader(value) {
+  return /[^\x20-\x7E]/.test(value) ? `=?UTF-8?B?${Buffer.from(value, "utf8").toString("base64")}?=` : value;
+}
+function buildMessage(from, to, subject, text, html) {
+  const date = (/* @__PURE__ */ new Date()).toUTCString();
+  const boundary = `----switchnest_${Date.now().toString(36)}`;
+  const head = [
+    `Date: ${date}`,
+    `From: ${encodeHeader("SwitchNest")} <${from}>`,
+    `To: <${to}>`,
+    `Subject: ${encodeHeader(subject)}`,
+    "MIME-Version: 1.0"
+  ];
+  const b64 = (s) => Buffer.from(s, "utf8").toString("base64");
+  const lines = html ? [
+    ...head,
+    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    "",
+    `--${boundary}`,
+    "Content-Type: text/plain; charset=UTF-8",
+    "Content-Transfer-Encoding: base64",
+    "",
+    b64(text),
+    `--${boundary}`,
+    "Content-Type: text/html; charset=UTF-8",
+    "Content-Transfer-Encoding: base64",
+    "",
+    b64(html),
+    `--${boundary}--`,
+    "."
+  ] : [
+    ...head,
+    "Content-Type: text/plain; charset=UTF-8",
+    "Content-Transfer-Encoding: base64",
+    "",
+    b64(text),
+    "."
+  ];
+  return lines.join("\r\n");
+}
+async function sendEmail(opts) {
+  const cfg = await getSmtpConfig().catch(() => null);
+  if (!cfg || !isEmailConfigured(cfg)) {
+    logger.warn(`[email] SMTP configured nahi hai \u2014 email skip (to=${opts.to})`);
+    return { ok: false, skipped: true, error: "SMTP not configured" };
+  }
+  return new Promise((resolve3) => {
+    let sock;
+    try {
+      sock = net.connect({ host: cfg.host, port: cfg.port });
+    } catch (e) {
+      logger.error("[email] connect error", e);
+      return resolve3({ ok: false, error: String(e) });
+    }
+    let reader = createReader(sock, 2e4);
+    let done = false;
+    const fail2 = (msg) => {
+      if (done) return;
+      done = true;
+      try {
+        reader.detach();
+        sock.destroy();
+      } catch {
+      }
+      logger.warn(`[email] SMTP fail (${cfg.host}): ${msg}`);
+      resolve3({ ok: false, error: msg });
+    };
+    const succeed = () => {
+      if (done) return;
+      done = true;
+      try {
+        reader.detach();
+        sock.destroy();
+      } catch {
+      }
+      logger.info(`[email] sent to ${opts.to}`);
+      resolve3({ ok: true });
+    };
+    sock.on("error", (e) => fail2(String(e.message || e)));
+    (async () => {
+      try {
+        let r = await reader.next();
+        if (!r[0]?.startsWith("220")) return fail2(`Greeting: ${r[0] ?? "no response"}`);
+        const ehloName = os2.hostname() || "switchnest";
+        send(sock, `EHLO ${ehloName}`);
+        r = await reader.next();
+        let ehlo = r.join("\r\n");
+        const useTls = cfg.secure || cfg.port === 465;
+        if (!useTls && /STARTTLS/i.test(ehlo)) {
+          send(sock, "STARTTLS");
+          r = await reader.next();
+          if (!r[0]?.startsWith("220")) return fail2(`STARTTLS: ${r[0]}`);
+          reader.detach();
+          sock = tls.connect({ socket: sock, servername: cfg.host });
+          reader = createReader(sock, 2e4);
+          await new Promise((res, rej) => {
+            sock.once("secureConnect", () => res());
+            sock.once("error", rej);
+          });
+          sock.on("error", (e) => fail2(String(e.message || e)));
+          send(sock, `EHLO ${ehloName}`);
+          r = await reader.next();
+          ehlo = r.join("\r\n");
+        }
+        const mech = ehlo.toUpperCase();
+        if (/AUTH/.test(mech) && !/AUTH=NONE/.test(mech)) {
+          if (/LOGIN/.test(mech)) {
+            send(sock, "AUTH LOGIN");
+            r = await reader.next();
+            if (!r[0]?.startsWith("334")) return fail2(`AUTH LOGIN: ${r[0]}`);
+            send(sock, Buffer.from(cfg.user, "utf8").toString("base64"));
+            r = await reader.next();
+            if (!r[0]?.startsWith("334")) return fail2(`AUTH user: ${r[0]}`);
+            send(sock, Buffer.from(cfg.pass, "utf8").toString("base64"));
+            r = await reader.next();
+            if (!r[0]?.startsWith("235")) return fail2(`AUTH pass: ${r[0]}`);
+          } else if (/PLAIN/.test(mech)) {
+            const token = Buffer.from(`\0${cfg.user}\0${cfg.pass}`, "utf8").toString("base64");
+            send(sock, `AUTH PLAIN ${token}`);
+            r = await reader.next();
+            if (!r[0]?.startsWith("235")) return fail2(`AUTH PLAIN: ${r[0]}`);
+          } else {
+            return fail2("No supported AUTH mechanism (LOGIN/PLAIN required)");
+          }
+        }
+        send(sock, `MAIL FROM:<${cfg.from}>`);
+        r = await reader.next();
+        if (!r[0]?.startsWith("250")) return fail2(`MAIL FROM: ${r[0]}`);
+        send(sock, `RCPT TO:<${opts.to}>`);
+        r = await reader.next();
+        if (!r[0]?.startsWith("250")) return fail2(`RCPT TO: ${r[0]}`);
+        send(sock, "DATA");
+        r = await reader.next();
+        if (!r[0]?.startsWith("354")) return fail2(`DATA: ${r[0]}`);
+        send(sock, buildMessage(cfg.from, opts.to, opts.subject, opts.text, opts.html));
+        r = await reader.next();
+        if (!r[0]?.startsWith("250")) return fail2(`send: ${r[0]}`);
+        send(sock, "QUIT");
+        try {
+          r = await reader.next();
+          if (!r[0]?.startsWith("221")) return fail2(`QUIT: ${r[0]}`);
+        } catch {
+        }
+        succeed();
+      } catch (e) {
+        fail2(e instanceof Error ? e.message : String(e));
+      }
+    })();
+  });
+}
+async function sendSupportReplyEmail(opts) {
+  const s = await getSiteSettings().catch(() => null);
+  const siteName = s?.siteName || "SwitchNest";
+  const siteUrl = s?.siteUrl || "";
+  const subject = `\u{1F6E0}\uFE0F ${siteName} Support \u2014 Admin ne reply kiya`;
+  const text = [
+    `Namaste ${opts.userName},`,
+    "",
+    `Aapke support message pe ${siteName} team ne reply kiya hai:`,
+    "",
+    `"${opts.replyText}"`,
+    "",
+    siteUrl ? `Reply dekhne aur jawab dene ke liye: ${siteUrl}` : "Support chat khol kar turant jawab de sakte ho.",
+    "",
+    `\u2014 ${siteName} Support Team`
+  ].join("\n");
+  const html = `
+    <div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;padding:24px">
+      <h2 style="color:#2563eb;margin:0 0 16px">${siteName} Support</h2>
+      <p style="font-size:15px;color:#333">Namaste <b>${opts.userName}</b>,</p>
+      <p style="font-size:15px;color:#333">Aapke support message pe team ne reply kiya hai:</p>
+      <div style="border-left:4px solid #2563eb;background:#f5f7fb;padding:12px 16px;border-radius:8px;color:#333;white-space:pre-wrap">${opts.replyText.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c])}</div>
+      ${siteUrl ? `<p style="font-size:15px;color:#333;margin-top:16px">Reply dekhne aur jawab dene ke liye: <a href="${siteUrl}" style="color:#2563eb">${siteUrl}</a></p>` : ""}
+      <p style="font-size:13px;color:#888;margin-top:24px">\u2014 ${siteName} Support Team</p>
+    </div>
+  `.trim();
+  return sendEmail({ to: opts.to, subject, text, html });
 }
 
 // src/routes/admin.routes.ts
@@ -3186,14 +3454,44 @@ var settingsSchema = z12.object({
   supportPhone: z12.string().min(1).max(30).optional(),
   supportAddress: z12.string().min(1).max(200).optional(),
   supportHours: z12.string().min(1).max(100).optional(),
-  brandColor: z12.string().regex(/^#[0-9a-fA-F]{6}$/, "Hex color (#RRGGBB)").optional()
+  brandColor: z12.string().regex(/^#[0-9a-fA-F]{6}$/, "Hex color (#RRGGBB)").optional(),
+  siteUrl: z12.string().url().max(200).optional().or(z12.literal("")),
+  smtpHost: z12.string().max(150).optional(),
+  smtpPort: z12.number().int().min(1).max(65535).optional(),
+  smtpUser: z12.string().max(150).optional(),
+  smtpPass: z12.string().max(200).optional(),
+  // blank = purana rakho
+  smtpFrom: z12.string().email().max(150).optional().or(z12.literal("")),
+  smtpSecure: z12.boolean().optional()
 }).refine((d) => Object.keys(d).length > 0, { message: "At least one field to update" });
 adminRouter.get("/settings", async (_req, res) => {
-  ok(res, await getSiteSettings());
+  const s = await getSiteSettings();
+  ok(res, { ...s, smtpPass: s.smtpPass ? "********" : "", smtpPassSet: !!s.smtpPass });
 });
 adminRouter.put("/settings", validateBody(settingsSchema), async (req, res) => {
   ok(res, await updateSiteSettings(req.body));
   void audit(req.user.sub, "settings.update", { entity: "site", meta: { fields: Object.keys(req.body) } });
+});
+adminRouter.post("/settings/test-email", async (req, res) => {
+  const me2 = await prisma.user.findUnique({
+    where: { id: req.user.sub },
+    select: { email: true, username: true }
+  });
+  if (!me2?.email) {
+    throw new AppError("VALIDATION_ERROR", "Aapke account pe email set nahi hai \u2014 test bhejne ke liye email chahiye", 400);
+  }
+  const r = await sendEmail({
+    to: me2.email,
+    subject: "\u{1F9EA} SwitchNest test email",
+    text: `Ye test email hai, ${me2.username}. SMTP settings sahi kaam kar rahi hain. \u2705`
+  });
+  if (!r.ok) {
+    if (r.skipped) {
+      throw new AppError("CONFIG_ERROR", "SMTP configured nahi hai \u2014 Settings me host/user/pass daalo aur Save karo", 400);
+    }
+    throw new AppError("SMTP_ERROR", `Email fail: ${r.error ?? "unknown"}`, 500);
+  }
+  ok(res, { sent: true });
 });
 adminRouter.get("/users", async (req, res) => {
   const q = String(req.query.q ?? "").trim();
@@ -4712,7 +5010,7 @@ import { Router as Router15 } from "express";
 init_audit_service();
 var publicRouter = Router15();
 publicRouter.get("/site-settings", async (_req, res) => {
-  ok(res, await getSiteSettings());
+  ok(res, await getPublicSiteSettings());
 });
 var CHIPS = [
   "Kis board ki zaroorat hai?",
@@ -5036,7 +5334,7 @@ var adminSendSchema = z13.object({
 supportRouter.post("/admin/messages", requireAuth, validateBody(adminSendSchema), async (req, res) => {
   if (req.user.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
   const { userId, message } = req.body;
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, username: true } });
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, username: true, email: true } });
   if (!user) throw new AppError("NOT_FOUND", "User not found", 404);
   const created = await supportModel().create({
     data: {
@@ -5062,6 +5360,9 @@ supportRouter.post("/admin/messages", requireAuth, validateBody(adminSendSchema)
     });
   }
   emitToUser(userId, "support:new", { senderRole: "admin", message: created });
+  if (user.email) {
+    void sendSupportReplyEmail({ to: user.email, userName: user.username, replyText: message });
+  }
   ok(res, created, 201);
 });
 supportRouter.get("/messages", requireAuth, async (req, res) => {

@@ -18,6 +18,7 @@ import { firmwareDir } from "../lib/paths";
 import { logFilePath } from "../lib/logger";
 import { getRequestStats } from "../lib/requestTracker";
 import { getSiteSettings, updateSiteSettings } from "../services/siteSettings.service";
+import { sendEmail } from "../lib/email.service";
 
 export const adminRouter = Router();
 
@@ -150,16 +151,48 @@ const settingsSchema = z
     supportAddress: z.string().min(1).max(200).optional(),
     supportHours: z.string().min(1).max(100).optional(),
     brandColor: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Hex color (#RRGGBB)").optional(),
+    siteUrl: z.string().url().max(200).optional().or(z.literal("")),
+    smtpHost: z.string().max(150).optional(),
+    smtpPort: z.number().int().min(1).max(65535).optional(),
+    smtpUser: z.string().max(150).optional(),
+    smtpPass: z.string().max(200).optional(), // blank = purana rakho
+    smtpFrom: z.string().email().max(150).optional().or(z.literal("")),
+    smtpSecure: z.boolean().optional(),
   })
   .refine((d) => Object.keys(d).length > 0, { message: "At least one field to update" });
 
 adminRouter.get("/settings", async (_req, res) => {
-  ok(res, await getSiteSettings());
+  const s = await getSiteSettings();
+  // smtpPass kabhi wapas nahi — sirf flag ki set hai ya nahi (UI placeholder ke liye)
+  ok(res, { ...s, smtpPass: s.smtpPass ? "********" : "", smtpPassSet: !!s.smtpPass });
 });
 
 adminRouter.put("/settings", validateBody(settingsSchema), async (req, res) => {
   ok(res, await updateSiteSettings(req.body));
   void audit(req.user!.sub, "settings.update", { entity: "site", meta: { fields: Object.keys(req.body) } });
+});
+
+/** SMTP settings verify karo — admin ke email pe test mail bhejo. */
+adminRouter.post("/settings/test-email", async (req, res) => {
+  const me = await prisma.user.findUnique({
+    where: { id: req.user!.sub },
+    select: { email: true, username: true },
+  });
+  if (!me?.email) {
+    throw new AppError("VALIDATION_ERROR", "Aapke account pe email set nahi hai — test bhejne ke liye email chahiye", 400);
+  }
+  const r = await sendEmail({
+    to: me.email,
+    subject: "🧪 SwitchNest test email",
+    text: `Ye test email hai, ${me.username}. SMTP settings sahi kaam kar rahi hain. ✅`,
+  });
+  if (!r.ok) {
+    if (r.skipped) {
+      throw new AppError("CONFIG_ERROR", "SMTP configured nahi hai — Settings me host/user/pass daalo aur Save karo", 400);
+    }
+    throw new AppError("SMTP_ERROR", `Email fail: ${r.error ?? "unknown"}`, 500);
+  }
+  ok(res, { sent: true });
 });
 
 // ---------- Users ----------

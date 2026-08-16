@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { Check, Palette } from "lucide-react";
-import { getAdminSettings, updateAdminSettings } from "../api/admin";
+import { Check, Mail, Palette, Send } from "lucide-react";
+import { getAdminSettings, updateAdminSettings, testAdminEmail } from "../api/admin";
 import { updateProfile } from "../api/auth";
 import { useAuthStore } from "../stores/auth";
 import { applyBrandColor, useSiteStore } from "../stores/site";
@@ -42,6 +42,13 @@ export function AdminSettings() {
     supportAddress: string;
     supportHours: string;
     brandColor: string;
+    siteUrl: string;
+    smtpHost: string;
+    smtpPort: number;
+    smtpUser: string;
+    smtpPass: string;
+    smtpFrom: string;
+    smtpSecure: boolean;
   } | null>(null);
   const current = form ?? {
     siteName: s?.siteName ?? "",
@@ -50,7 +57,15 @@ export function AdminSettings() {
     supportAddress: s?.supportAddress ?? "",
     supportHours: s?.supportHours ?? "",
     brandColor: s?.brandColor ?? "#2563eb",
+    siteUrl: s?.siteUrl ?? "",
+    smtpHost: s?.smtpHost ?? "",
+    smtpPort: s?.smtpPort || 587,
+    smtpUser: s?.smtpUser ?? "",
+    smtpPass: "",
+    smtpFrom: s?.smtpFrom ?? "",
+    smtpSecure: s?.smtpSecure ?? false,
   };
+  const smtpPassSet = s?.smtpPassSet ?? false;
 
   // Live preview — color choose karte hi poora site re-color ho jaye (Save se pehle)
   useEffect(() => {
@@ -66,6 +81,14 @@ export function AdminSettings() {
         supportAddress: current.supportAddress,
         supportHours: current.supportHours,
         brandColor: current.brandColor,
+        siteUrl: current.siteUrl,
+        smtpHost: current.smtpHost,
+        smtpPort: current.smtpPort,
+        smtpUser: current.smtpUser,
+        // Naya pass type kiya ho tabhi bhejo — blank = purana rakho
+        ...(current.smtpPass ? { smtpPass: current.smtpPass } : {}),
+        smtpFrom: current.smtpFrom,
+        smtpSecure: current.smtpSecure,
       }),
     onSuccess: (res) => {
       if (res.success) {
@@ -76,6 +99,24 @@ export function AdminSettings() {
       }
     },
     onError: () => setSaved("Save fail — dobara try karo."),
+  });
+
+  // Email test — SMTP settings verify
+  const [mailMsg, setMailMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const testMail = useMutation({
+    mutationFn: () => testAdminEmail(),
+    onSuccess: (res) => {
+      if (res.success) {
+        setMailMsg({ ok: true, text: "Test email bhej diya — inbox check karo. ✅" });
+      } else {
+        setMailMsg({ ok: false, text: res.error.message });
+      }
+    },
+    onError: (e) => {
+      const anyE = e as { response?: { data?: { error?: { message?: string } } } };
+      const msg = anyE.response?.data?.error?.message ?? String((e as Error).message ?? e);
+      setMailMsg({ ok: false, text: msg });
+    },
   });
 
   // Admin account — password change
@@ -176,6 +217,15 @@ export function AdminSettings() {
             />
           </label>
           <label className="block text-sm sm:col-span-2">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Site URL (emails me link ke liye)</span>
+            <input
+              value={current.siteUrl}
+              onChange={(e) => setForm({ ...current, siteUrl: e.target.value })}
+              placeholder="https://onlineswitch.bhartitechnical.com"
+              className="w-full rounded-lg border border-gray-300 bg-night-900 px-3 py-2 outline-none focus:border-brand"
+            />
+          </label>
+          <label className="block text-sm sm:col-span-2">
             <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Support address</span>
             <input
               value={current.supportAddress}
@@ -201,6 +251,92 @@ export function AdminSettings() {
             </button>
           )}
         </div>
+      </Section>
+
+      {/* Email (SMTP) — support replies ke liye */}
+      <Section title="📧 Email notifications (SMTP)">
+        <p className="mb-4 text-sm text-gray-500">
+          Jab admin support chat me reply karta hai, user ko email jata hai (agar SMTP set ho).
+          Koi bhi SMTP provider use karo (Gmail app password, Zoho, Hostinger…) — host/user/pass daalo,
+          Save karo, phir <b>Test email</b> se verify karo.
+        </p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">SMTP host</span>
+            <input
+              value={current.smtpHost}
+              onChange={(e) => setForm({ ...current, smtpHost: e.target.value })}
+              placeholder="smtp.gmail.com"
+              className="w-full rounded-lg border border-gray-300 bg-night-900 px-3 py-2 outline-none focus:border-brand"
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Port</span>
+            <input
+              type="number"
+              value={current.smtpPort}
+              onChange={(e) => setForm({ ...current, smtpPort: Number(e.target.value) || 587 })}
+              className="w-full rounded-lg border border-gray-300 bg-night-900 px-3 py-2 outline-none focus:border-brand"
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Username</span>
+            <input
+              value={current.smtpUser}
+              onChange={(e) => setForm({ ...current, smtpUser: e.target.value })}
+              placeholder="you@gmail.com"
+              autoComplete="off"
+              className="w-full rounded-lg border border-gray-300 bg-night-900 px-3 py-2 outline-none focus:border-brand"
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Password</span>
+            <input
+              type="password"
+              value={current.smtpPass}
+              onChange={(e) => setForm({ ...current, smtpPass: e.target.value })}
+              placeholder={smtpPassSet ? "•••••••• (set hai — blank chhodo to wahi rahega)" : "SMTP password / app password"}
+              autoComplete="new-password"
+              className="w-full rounded-lg border border-gray-300 bg-night-900 px-3 py-2 outline-none focus:border-brand"
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">From email</span>
+            <input
+              value={current.smtpFrom}
+              onChange={(e) => setForm({ ...current, smtpFrom: e.target.value })}
+              placeholder="support@switchnest.in (blank = support email)"
+              className="w-full rounded-lg border border-gray-300 bg-night-900 px-3 py-2 outline-none focus:border-brand"
+            />
+          </label>
+          <label className="flex items-center gap-2 text-sm sm:col-span-2">
+            <input
+              type="checkbox"
+              checked={current.smtpSecure}
+              onChange={(e) => setForm({ ...current, smtpSecure: e.target.checked })}
+              className="h-4 w-4 rounded border-gray-300"
+            />
+            <span>
+              SSL/TLS (port 465) — <span className="text-gray-500">off rahega to STARTTLS (587) try hoga</span>
+            </span>
+          </label>
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button
+            onClick={() => testMail.mutate()}
+            disabled={testMail.isPending}
+            className="flex items-center gap-1.5 rounded-lg border border-brand/40 bg-brand/10 px-4 py-2 text-sm font-semibold text-brand transition hover:bg-brand/20 disabled:opacity-40"
+          >
+            <Send className="h-3.5 w-3.5" />
+            {testMail.isPending ? "Bhej raha hai…" : "Test email bhejo"}
+          </button>
+          <span className="flex items-center gap-1 text-xs text-gray-500">
+            <Mail className="h-3.5 w-3.5" /> Aapke email pe jayega
+          </span>
+        </div>
+        {mailMsg && (
+          <p className={`mt-3 text-sm ${mailMsg.ok ? "text-emerald-600" : "text-red-500"}`}>{mailMsg.text}</p>
+        )}
       </Section>
 
       {/* Admin account */}
