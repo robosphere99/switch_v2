@@ -382,6 +382,22 @@ supportRouter.post("/admin/read-all", requireAuth, async (req, res) => {
   ok(res, { unread: 0 });
 });
 
+/** Admin: kisi EK user ki chat read/unread mark karo (context-menu se). */
+supportRouter.post("/admin/thread-read", requireAuth, async (req, res) => {
+  if (req.user!.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
+  const userId = Number(req.body?.userId);
+  const read = Boolean(req.body?.read);
+  if (!Number.isInteger(userId) || userId <= 0) {
+    throw new AppError("VALIDATION_ERROR", "userId required", 400);
+  }
+  if (!prisma.supportMessage) return ok(res, { updated: 0 });
+  const updated = await supportModel().updateMany({
+    where: { userId, deletedAt: null, readByAdmin: read ? false : true },
+    data: { readByAdmin: read },
+  });
+  ok(res, { updated: updated.count });
+});
+
 /** Admin: support inbox me user ka context — orders, homes, devices, ESP boards. */
 supportRouter.get("/admin/context", requireAuth, async (req, res) => {
   if (req.user!.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
