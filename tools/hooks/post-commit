@@ -1,0 +1,13 @@
+#!/bin/sh
+# Auto-refresh docs/SwitchNest-Project-Context.md after every commit.
+# install-context-hook.bat is file ko .git/hooks/post-commit me copy karta hai.
+#
+# Loop guard: agar is commit ne khud context doc touch kiya ho to skip —
+# warna har commit ke baad doc dirty ho kar phir se commit -> phir se hook...
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+DOC="docs/SwitchNest-Project-Context.md"
+if git diff-tree --no-commit-id --name-only -r HEAD 2>/dev/null | grep -qx "$DOC"; then
+  exit 0
+fi
+node "$ROOT/tools/update-context.mjs" >/dev/null 2>&1 || true
+exit 0
