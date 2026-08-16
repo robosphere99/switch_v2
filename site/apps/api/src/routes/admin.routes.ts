@@ -657,6 +657,13 @@ adminRouter.get("/diagnostics", async (_req, res) => {
     serverErrors: string[];
     stats: { reqEnd: number; reqAbort: number; exitsInTail: number; bootsInTail: number };
     hbSummary: Array<{ pid: number; count: number; firstUptime: number; lastUptime: number; firstRss: number; lastRss: number; rssGrowthPerHour: number }>;
+    webconfig: {
+      path: string | null;
+      iisnode: string | null;
+      httpErrors: string | null;
+      appPoolRecycling: string | null;
+      error?: string;
+    } | null;
   } = {
     logPath: logFilePath ?? null,
     logBytes: 0,
@@ -674,6 +681,7 @@ adminRouter.get("/diagnostics", async (_req, res) => {
     serverErrors: [],
     stats: { reqEnd: 0, reqAbort: 0, exitsInTail: 0, bootsInTail: 0 },
     hbSummary: [],
+    webconfig: null,
   };
 
   if (logFilePath && fs.existsSync(logFilePath)) {
@@ -746,6 +754,41 @@ adminRouter.get("/diagnostics", async (_req, res) => {
 
     } catch (err) {
       result.error = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+
+  // web.config — iisnode settings (nodeProcessCountPerApplication, watchedFiles,
+  // maxConcurrentRequestsPerProcess). Process har ~60s recycle ho raha hai bina
+  // exit line ke — in settings se asli wajah samajh aayegi.
+  for (const cand of [
+    path.resolve(process.cwd(), "web.config"),
+    path.resolve(process.cwd(), "../web.config"),
+    path.resolve(process.cwd(), "../../web.config"),
+  ]) {
+    if (!fs.existsSync(cand)) continue;
+    try {
+      const content = fs.readFileSync(cand, "utf8");
+      const grab = (re: RegExp) => {
+        const m = re.exec(content);
+        return m ? m[0].slice(0, 500) : null;
+      };
+      result.webconfig = {
+        path: cand,
+        iisnode: grab(/<iisnode\b[^>]*>/i),
+        httpErrors: grab(/<httpErrors\b[^>]*>/i),
+        appPoolRecycling: grab(/<recycling\b[\s\S]*?<\/recycling>/i)?.slice(0, 400) ?? null,
+      };
+      break;
+    } catch (err) {
+      result.webconfig = {
+        path: cand,
+        iisnode: null,
+        httpErrors: null,
+        appPoolRecycling: null,
+        error: err instanceof Error ? err.message : String(err),
+      };
+      break;
     }
   }
 
