@@ -341,6 +341,32 @@ export async function getAdminLogs(): Promise<ApiResponse<AdminLogsResponse>> {
   return data;
 }
 
+/** ---------- Startup diagnostics (boot/heartbeat/exit — 503 diagnosis) ---------- */
+
+export interface AdminDiagnostics {
+  logPath: string | null;
+  logBytes: number;
+  error?: string;
+  process: {
+    pid: number;
+    uptimeSec: number;
+    rssMB: number;
+    heapMB: number;
+    node: string;
+    startedAt: string;
+  };
+  boot: string[];
+  exits: string[];
+  crashes: string[];
+  serverErrors: string[];
+  stats: { reqEnd: number; reqAbort: number; exitsInTail: number; bootsInTail: number };
+}
+
+export async function getAdminDiagnostics(): Promise<ApiResponse<AdminDiagnostics>> {
+  const { data } = await api.get<ApiResponse<AdminDiagnostics>>("/admin/diagnostics");
+  return data;
+}
+
 /** ---------- Device support (customer service) ---------- */
 
 export interface AdminDeviceSupport {
