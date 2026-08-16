@@ -193,6 +193,8 @@ export interface AccessTokenPayload {
   username: string;
   email: string;
   role: UserRole;
+  /** Token version — password change / suspend pe bump hota hai, purane tokens turant invalid. */
+  ver: number;
 }
 
 export interface LoginResponse {
