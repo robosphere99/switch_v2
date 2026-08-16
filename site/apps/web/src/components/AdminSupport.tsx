@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ArrowLeft, Bell, BellOff, CheckCheck, Copy, Inbox, Pin, PinOff, Search, Send, Trash2, UserRound } from "lucide-react";
+import { ArrowLeft, Bell, BellOff, CheckCheck, Copy, Inbox, Pin, PinOff, Search, Send, Trash2, UserRound, X } from "lucide-react";
 import {
   clearSupportConversation,
   deleteSupportMessage,
@@ -417,10 +417,10 @@ export function AdminSupport({
                     ? "border-brand/50 bg-brand/15 text-brand"
                     : "border-gray-200 text-gray-500 hover:bg-night-700"
                 }`}
-                title={showContext ? "User info band karo" : "User ka order/home/device context dikhao"}
+                title={showContext ? "Info band karo — dobara dabao to hat jayega" : "User ka order/home/device context dikhao"}
               >
-                <UserRound className="h-3.5 w-3.5" />
-                <span className="hidden md:inline">Info</span>
+                {showContext ? <X className="h-3.5 w-3.5" /> : <UserRound className="h-3.5 w-3.5" />}
+                <span className="hidden md:inline">{showContext ? "Close" : "Info"}</span>
               </button>
             </div>
 
@@ -561,9 +561,12 @@ export function AdminSupport({
                   onClick={() => setShowContext(false)}
                 >
                   <div
-                    className="flex h-full w-full flex-col"
+                    className="absolute inset-x-0 bottom-0 flex h-[85vh] flex-col overflow-hidden rounded-t-2xl border-t border-gray-200 bg-night-900 shadow-2xl"
                     onClick={(e) => e.stopPropagation()}
                   >
+                    <div className="flex shrink-0 justify-center pb-1 pt-2">
+                      <div className="h-1 w-10 rounded-full bg-gray-600" />
+                    </div>
                     <SupportUserContext userId={selectedUserId} onClose={() => setShowContext(false)} />
                   </div>
                 </div>
