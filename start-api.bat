@@ -24,6 +24,18 @@ echo.
 :START
 set PORT=4000
 set API_PORT=4000
+
+REM ---- duplicate instance guard: port 4000 pe pehle se listener ho to exit ----
+REM      (multiple node processes = multiplied memory + duplicate leak/health monitors)
+netstat -ano | findstr ":4000" | findstr "LISTENING" >nul 2>&1
+if %errorlevel%==0 (
+    echo [WARN] Port 4000 pe pehle se API chal raha hai - duplicate instance nahi chalayenge.
+    echo        Naya window band ho raha hai (purana instance continue karega).
+    echo.
+    pause
+    exit /b 0
+)
+
 echo Starting API on port 4000 ...
 echo Board se connect karne ke liye:  http://192.168.1.37:4000
 echo Band karne ke liye:  Ctrl+C

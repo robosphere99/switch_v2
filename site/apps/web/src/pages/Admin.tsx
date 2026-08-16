@@ -519,6 +519,21 @@ export function Admin() {
 
       {tab === "overview" && (
         <div>
+          {stats.data?.success && stats.data.data.leak?.leaking && stats.data.data.leak.detail && (
+            <div className="mb-6 rounded-xl border border-red-500/40 bg-red-500/10 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="font-semibold text-red-400">🧠 Memory leak detected!</h2>
+                <span className="rounded-full bg-red-500/20 px-2 py-0.5 text-xs font-semibold text-red-300">
+                  PID {stats.data.data.leak.detail.pid} · +{Math.round(stats.data.data.leak.detail.growthPct)}%
+                </span>
+              </div>
+              <p className="mt-1 text-sm text-gray-300">
+                RSS +{stats.data.data.leak.detail.growthPct.toFixed(0)}% in last {stats.data.data.leak.detail.spanH.toFixed(1)}h (
+                {stats.data.data.leak.detail.rssFirst.toFixed(0)} → {stats.data.data.leak.detail.rssLast.toFixed(0)} MB) — process consistently
+                badh raha hai. Logs tab me leak monitor + incident history dekh sakte ho.
+              </p>
+            </div>
+          )}
           <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {statCards.map((c) => (
               <div key={c.label} className="rounded-xl border border-gray-200 bg-night-800 p-6">
@@ -1542,12 +1557,78 @@ export function Admin() {
             </div>
 
             {diag.data?.success && (
-              <div className="mb-4">
-                <MemoryTrendChart
-                  series={diag.data.data.hbSeries ?? []}
-                  currentPid={diag.data.data.process.pid}
-                />
-              </div>
+              <>
+                <div className="mb-4">
+                  <MemoryTrendChart
+                    series={diag.data.data.hbSeries ?? []}
+                    currentPid={diag.data.data.process.pid}
+                  />
+                </div>
+
+                <div className={`rounded-xl border p-5 ${diag.data.data.leak?.leaking ? "border-red-500/40 bg-red-500/5" : "border-gray-200 bg-night-800"}`}>
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="font-semibold">🧠 Leak Monitor</h2>
+                  {diag.data.data.leak?.leaking && diag.data.data.leak.detail ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 font-semibold text-red-400">
+                      🔴 LEAK — PID {diag.data.data.leak.detail.pid} · +{Math.round(diag.data.data.leak.detail.growthPct)}%
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 font-semibold text-emerald-500/90">
+                      🟢 No leak ({diag.data.data.leak?.thresholdPct ?? 20}% / {diag.data.data.leak?.windowH ?? 4}h window)
+                    </span>
+                  )}
+                </div>
+                {diag.data.data.leak?.leaking && diag.data.data.leak.detail && (
+                  <div className="mb-3 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="rounded-lg border border-gray-200 bg-night-900 px-3 py-2">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Growth</p>
+                      <p className="mt-0.5 font-semibold text-red-400">+{diag.data.data.leak.detail.growthPct.toFixed(1)}%</p>
+                    </div>
+                    <div className="rounded-lg border border-gray-200 bg-night-900 px-3 py-2">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Window</p>
+                      <p className="mt-0.5 font-semibold text-night-950">{diag.data.data.leak.detail.spanH.toFixed(1)}h</p>
+                    </div>
+                    <div className="rounded-lg border border-gray-200 bg-night-900 px-3 py-2">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">RSS first → last</p>
+                      <p className="mt-0.5 font-semibold text-night-950">
+                        {diag.data.data.leak.detail.rssFirst.toFixed(0)} → {diag.data.data.leak.detail.rssLast.toFixed(0)} MB
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-gray-200 bg-night-900 px-3 py-2">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Process</p>
+                      <p className="mt-0.5 font-mono text-xs font-semibold text-night-950">pid {diag.data.data.leak.detail.pid}</p>
+                    </div>
+                  </div>
+                )}
+                <p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                  🚨 Incidents ({diag.data.data.leak?.incidents.length ?? 0})
+                </p>
+                <div className="space-y-1.5">
+                  {(diag.data.data.leak?.incidents ?? []).length === 0 && (
+                    <p className="text-xs text-gray-500">No leak incidents recorded — memory stable.</p>
+                  )}
+                  {(diag.data.data.leak?.incidents ?? [])
+                    .slice()
+                    .reverse()
+                    .map((inc, i) => (
+                      <div key={i} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 bg-night-900 px-3 py-1.5 text-xs">
+                        <span>
+                          {inc.type === "leak_start" ? (
+                            <span className="font-semibold text-red-400">🔴 leak start</span>
+                          ) : (
+                            <span className="font-semibold text-emerald-500">🟢 leak end</span>
+                          )}
+                          {inc.pid != null && <span className="ml-1 text-gray-500">· pid {String(inc.pid)}</span>}
+                          {inc.growthPct != null && <span className="ml-1 text-gray-500">· +{String(inc.growthPct)}%</span>}
+                        </span>
+                        <span className="text-gray-500">
+                          {new Date(String(inc.ts)).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
             )}
 
             {diag.data?.success && (

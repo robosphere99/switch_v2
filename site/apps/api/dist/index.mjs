@@ -108,8 +108,8 @@ import { createServer } from "http";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
-import path8 from "node:path";
-import fs7 from "node:fs";
+import path10 from "node:path";
+import fs9 from "node:fs";
 
 // src/config/env.ts
 import dotenv from "dotenv";
@@ -283,6 +283,39 @@ import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
 import jwt from "jsonwebtoken";
 init_prisma();
+
+// src/lib/envPersist.ts
+import * as fs3 from "fs";
+import * as path4 from "path";
+function envFilePath() {
+  return path4.resolve(process.cwd(), "../../.env");
+}
+function escapeEnv(v) {
+  return /[\s#"']/.test(v) ? `"${v.replace(/"/g, '\\"')}"` : v;
+}
+function persistEnvKeys(entries) {
+  const envPath = envFilePath();
+  try {
+    let content = "";
+    if (fs3.existsSync(envPath)) content = fs3.readFileSync(envPath, "utf-8");
+    for (const [key, value] of entries) {
+      const line = `${key}=${escapeEnv(value)}`;
+      const re = new RegExp(`^${key}=.*$`, "m");
+      if (re.test(content)) content = content.replace(re, line);
+      else content = (content ? content.replace(/\s*$/, "\n") : "") + line + "\n";
+    }
+    fs3.writeFileSync(envPath, content, "utf-8");
+    return { path: envPath, ok: true };
+  } catch (err) {
+    logger.warn("[envPersist] .env write fail:", err instanceof Error ? err.message : String(err));
+    return { path: envPath, ok: false };
+  }
+}
+function persistEnvKey(key, value) {
+  return persistEnvKeys([[key, value]]);
+}
+
+// src/services/auth.service.ts
 function toAuthUser(user) {
   return { id: user.id, username: user.username, email: user.email, role: user.role, themePref: user.themePref };
 }
@@ -364,6 +397,13 @@ async function updateProfile(userId, input) {
   const updated = await prisma.user.update({ where: { id: userId }, data });
   if (input.newPassword) {
     await prisma.refreshToken.deleteMany({ where: { userId } });
+    if (user.role === "system_admin") {
+      const res = persistEnvKey("ADMIN_PASSWORD", input.newPassword);
+      logger.info(
+        res.ok ? "Admin password changed \u2014 .env ADMIN_PASSWORD synced" : "Admin password changed \u2014 .env sync FAILED",
+        res.ok ? { path: res.path } : void 0
+      );
+    }
   }
   return toAuthUser(updated);
 }
@@ -2908,14 +2948,14 @@ assistantRouter.get("/chats/:chatId/messages", requireAuth, validateParams(chatP
 import { Router as Router11 } from "express";
 import { z as z12 } from "zod";
 import multer from "multer";
-import path5 from "node:path";
-import fs4 from "node:fs";
+import path7 from "node:path";
+import fs6 from "node:fs";
 import { execSync } from "node:child_process";
 init_prisma();
 
 // src/lib/healthMonitor.ts
-import * as fs3 from "fs";
-import * as path4 from "path";
+import * as fs4 from "fs";
+import * as path5 from "path";
 
 // src/lib/dbState.ts
 var ready = true;
@@ -2940,13 +2980,13 @@ var checking = false;
 var activeIncident = null;
 function hcFile() {
   if (!logFilePath) return null;
-  return path4.join(path4.dirname(logFilePath), "health-check.jsonl");
+  return path5.join(path5.dirname(logFilePath), "health-check.jsonl");
 }
 function append(ev) {
   const f = hcFile();
   if (!f) return;
   try {
-    fs3.appendFileSync(f, JSON.stringify(ev) + "\n");
+    fs4.appendFileSync(f, JSON.stringify(ev) + "\n");
   } catch {
   }
 }
@@ -2959,9 +2999,9 @@ function setLastSeenHost(host) {
 }
 function adoptOpenIncident() {
   const f = hcFile();
-  if (!f || !fs3.existsSync(f)) return;
+  if (!f || !fs4.existsSync(f)) return;
   try {
-    const lines = fs3.readFileSync(f, "utf8").split("\n").filter(Boolean).slice(-200);
+    const lines = fs4.readFileSync(f, "utf8").split("\n").filter(Boolean).slice(-200);
     let open = null;
     for (const l of lines) {
       try {
@@ -3054,15 +3094,15 @@ function startHealthMonitor() {
   }, CHECK_INTERVAL_MS);
 }
 function getHealthMonitorState() {
-  const incidents = [];
+  const incidents2 = [];
   const f = hcFile();
-  if (f && fs3.existsSync(f)) {
+  if (f && fs4.existsSync(f)) {
     try {
-      const lines = fs3.readFileSync(f, "utf8").split("\n").filter(Boolean).slice(-500);
+      const lines = fs4.readFileSync(f, "utf8").split("\n").filter(Boolean).slice(-500);
       for (const l of lines) {
         try {
           const e = JSON.parse(l);
-          if (e.type === "incident_start" || e.type === "incident_end") incidents.push(e);
+          if (e.type === "incident_start" || e.type === "incident_end") incidents2.push(e);
         } catch {
         }
       }
@@ -3070,14 +3110,14 @@ function getHealthMonitorState() {
     }
   }
   const ends = /* @__PURE__ */ new Map();
-  for (const e of incidents) {
+  for (const e of incidents2) {
     if (e.type === "incident_end") {
       const endEv = e;
       ends.set(e.id, { ts: e.ts, durationSec: endEv.durationSec ?? 0, recoveredStatus: endEv.recoveredStatus });
     }
   }
   const paired = [];
-  for (const e of incidents) {
+  for (const e of incidents2) {
     if (e.type === "incident_start") {
       paired.push({ ...e, end: ends.get(e.id) ?? null });
     }
@@ -3094,6 +3134,204 @@ function getHealthMonitorState() {
     activeIncident,
     checking,
     incidents: paired.slice(0, 20)
+  };
+}
+
+// src/lib/leakMonitor.ts
+import * as fs5 from "fs";
+import * as path6 from "path";
+var CHECK_INTERVAL_MS2 = 6e4;
+var LEAK_WINDOW_MS = 4 * 36e5;
+var LEAK_MIN_SPAN_MS = 30 * 6e4;
+var LEAK_STALE_MS = 2 * 6e4;
+var LEAK_THRESHOLD_PCT = 20;
+var TAIL_MAX = 5 * 1024 * 1024;
+var startedAt2 = Date.now();
+var lastCheckedAt = null;
+var activeLeak = null;
+var incidents = [];
+function incidentFile() {
+  if (!logFilePath) return null;
+  return path6.join(path6.dirname(logFilePath), "leak-incidents.jsonl");
+}
+function append2(ev) {
+  const f = incidentFile();
+  if (!f) return;
+  try {
+    fs5.appendFileSync(f, JSON.stringify(ev) + "\n");
+  } catch {
+  }
+}
+function loadIncidents() {
+  const f = incidentFile();
+  if (!f || !fs5.existsSync(f)) return;
+  try {
+    const lines = fs5.readFileSync(f, "utf8").split("\n").filter(Boolean).slice(-500);
+    const evs = [];
+    for (const l of lines) {
+      try {
+        evs.push(JSON.parse(l));
+      } catch {
+      }
+    }
+    incidents = evs.slice(-200);
+    for (const e of evs) {
+      if (e.type === "leak_start") {
+        activeLeak = {
+          pid: Number(e.pid),
+          growthPct: Number(e.growthPct ?? 0),
+          spanH: Number(e.spanH ?? 0),
+          rssFirst: Number(e.rssFirst ?? 0),
+          rssLast: Number(e.rssLast ?? 0),
+          firstTs: String(e.firstTs ?? e.ts ?? ""),
+          lastTs: String(e.lastTs ?? e.ts ?? "")
+        };
+      } else if (e.type === "leak_end") {
+        activeLeak = null;
+      }
+    }
+    if (activeLeak) {
+      const pid = activeLeak.pid;
+      const alive = readHeartbeatPoints().some((p) => p.pid === pid && Date.now() - p.ts < LEAK_STALE_MS);
+      if (!alive) activeLeak = null;
+    }
+  } catch {
+  }
+}
+function readHeartbeatPoints() {
+  if (!logFilePath || !fs5.existsSync(logFilePath)) return [];
+  try {
+    const st = fs5.statSync(logFilePath);
+    if (st.size <= 0) return [];
+    const start = Math.max(0, st.size - TAIL_MAX);
+    const len = st.size - start;
+    const fd = fs5.openSync(logFilePath, "r");
+    const buf = Buffer.alloc(len);
+    fs5.readSync(fd, buf, 0, len, start);
+    fs5.closeSync(fd);
+    const text = buf.toString("utf8");
+    const re = /\[hb\] alive ts=([\d:.TZ-]+) uptime=(\d+)s pid=(\d+) rss=(\d+)MB(?: heap=(\d+)MB)?/g;
+    const points = [];
+    let m;
+    while (m = re.exec(text)) {
+      const t = Date.parse(m[1]);
+      if (Number.isNaN(t)) continue;
+      points.push({ ts: t, pid: Number(m[3]), rss: Number(m[4]) });
+    }
+    return points;
+  } catch {
+    return [];
+  }
+}
+function detectLeak() {
+  const points = readHeartbeatPoints();
+  if (points.length < 2) return null;
+  const byPid = /* @__PURE__ */ new Map();
+  for (const p of points) {
+    const arr = byPid.get(p.pid) || [];
+    arr.push({ ts: p.ts, rss: p.rss });
+    byPid.set(p.pid, arr);
+  }
+  let worst = null;
+  for (const [pid, pts] of byPid) {
+    const tEnd = Math.max(...pts.map((p) => p.ts));
+    const tStart = tEnd - LEAK_WINDOW_MS;
+    const win = pts.filter((p) => p.ts >= tStart);
+    if (win.length < 2) continue;
+    const times = win.map((p) => p.ts);
+    const span = Math.max(...times) - Math.min(...times);
+    if (span < LEAK_MIN_SPAN_MS) continue;
+    const sorted = [...win].sort((a, b) => a.ts - b.ts);
+    const first = sorted[0].rss;
+    const last = sorted[sorted.length - 1].rss;
+    if (first <= 0) continue;
+    const pct = (last - first) / first * 100;
+    if (pct >= LEAK_THRESHOLD_PCT && tEnd >= Date.now() - LEAK_STALE_MS) {
+      const cand = {
+        pid,
+        growthPct: pct,
+        spanH: span / 36e5,
+        rssFirst: first,
+        rssLast: last,
+        firstTs: new Date(sorted[0].ts).toISOString(),
+        lastTs: new Date(sorted[sorted.length - 1].ts).toISOString()
+      };
+      if (!worst || cand.growthPct > worst.growthPct) worst = cand;
+    }
+  }
+  return worst;
+}
+function push(ev) {
+  append2(ev);
+  incidents.push(ev);
+  if (incidents.length > 200) incidents = incidents.slice(-200);
+}
+function lastFileEvent() {
+  const f = incidentFile();
+  if (!f || !fs5.existsSync(f)) return null;
+  try {
+    const lines = fs5.readFileSync(f, "utf8").split("\n").filter(Boolean);
+    if (!lines.length) return null;
+    return JSON.parse(lines[lines.length - 1]);
+  } catch {
+    return null;
+  }
+}
+function openLeak(leak) {
+  activeLeak = leak;
+  const last = incidents[incidents.length - 1];
+  const alreadyOpen = last && last.type === "leak_start" && Number(last.pid) === leak.pid;
+  const fileLast = lastFileEvent();
+  const fileOpen = fileLast && fileLast.type === "leak_start" && Number(fileLast.pid) === leak.pid;
+  if (!alreadyOpen && !fileOpen) {
+    push({
+      ts: (/* @__PURE__ */ new Date()).toISOString(),
+      type: "leak_start",
+      pid: leak.pid,
+      growthPct: Number(leak.growthPct.toFixed(1)),
+      spanH: Number(leak.spanH.toFixed(2)),
+      rssFirst: leak.rssFirst,
+      rssLast: leak.rssLast,
+      firstTs: leak.firstTs,
+      lastTs: leak.lastTs
+    });
+  }
+}
+function closeLeak() {
+  if (!activeLeak) return;
+  const fileLast = lastFileEvent();
+  const matches2 = fileLast && fileLast.type === "leak_start" && Number(fileLast.pid) === activeLeak.pid;
+  if (matches2) {
+    push({
+      ts: (/* @__PURE__ */ new Date()).toISOString(),
+      type: "leak_end",
+      pid: activeLeak.pid,
+      growthPct: Number(activeLeak.growthPct.toFixed(1))
+    });
+  }
+  activeLeak = null;
+}
+function tick() {
+  lastCheckedAt = (/* @__PURE__ */ new Date()).toISOString();
+  const leak = detectLeak();
+  if (activeLeak && (!leak || leak.pid !== activeLeak.pid)) closeLeak();
+  if (leak && !activeLeak) openLeak(leak);
+}
+function startLeakMonitor() {
+  loadIncidents();
+  tick();
+  setInterval(tick, CHECK_INTERVAL_MS2);
+}
+function getLeakMonitorState() {
+  return {
+    running: true,
+    startedAt: new Date(startedAt2).toISOString(),
+    lastCheckedAt,
+    leaking: !!activeLeak,
+    detail: activeLeak,
+    thresholdPct: LEAK_THRESHOLD_PCT,
+    windowH: LEAK_WINDOW_MS / 36e5,
+    incidents: incidents.slice(-20)
   };
 }
 
@@ -3480,8 +3718,8 @@ function createReader(sock, timeoutMs) {
   return {
     next() {
       if (pending) return Promise.reject(new Error("SMTP: concurrent read"));
-      return new Promise((resolve3, reject) => {
-        pending = { resolve: resolve3, reject };
+      return new Promise((resolve4, reject) => {
+        pending = { resolve: resolve4, reject };
         timer4 = setTimeout(() => {
           if (pending) {
             const p = pending;
@@ -3547,13 +3785,13 @@ async function sendEmail(opts) {
     logger.warn(`[email] SMTP configured nahi hai \u2014 email skip (to=${opts.to})`);
     return { ok: false, skipped: true, error: "SMTP not configured" };
   }
-  return new Promise((resolve3) => {
+  return new Promise((resolve4) => {
     let sock;
     try {
       sock = net.connect({ host: cfg.host, port: cfg.port });
     } catch (e) {
       logger.error("[email] connect error", e);
-      return resolve3({ ok: false, error: String(e) });
+      return resolve4({ ok: false, error: String(e) });
     }
     let reader = createReader(sock, 2e4);
     let done = false;
@@ -3566,7 +3804,7 @@ async function sendEmail(opts) {
       } catch {
       }
       logger.warn(`[email] SMTP fail (${cfg.host}): ${msg}`);
-      resolve3({ ok: false, error: msg });
+      resolve4({ ok: false, error: msg });
     };
     const succeed = () => {
       if (done) return;
@@ -3577,7 +3815,7 @@ async function sendEmail(opts) {
       } catch {
       }
       logger.info(`[email] sent to ${opts.to}`);
-      resolve3({ ok: true });
+      resolve4({ ok: true });
     };
     sock.on("error", (e) => fail2(String(e.message || e)));
     (async () => {
@@ -3783,6 +4021,7 @@ adminRouter.get("/stats", async (_req, res) => {
     supportMessages,
     contactMessages,
     deviceLogs24h,
+    leak: getLeakMonitorState(),
     requests: getRequestStats(),
     usersByDay,
     ordersByDay,
@@ -4359,10 +4598,10 @@ async function fetchCiStatus(sha) {
 }
 adminRouter.get("/deploy-info", async (_req, res) => {
   let marker = null;
-  const markerPath = path5.resolve(process.cwd(), "../logs/deploy.json");
+  const markerPath = path7.resolve(process.cwd(), "../logs/deploy.json");
   try {
-    if (fs4.existsSync(markerPath)) {
-      marker = JSON.parse(fs4.readFileSync(markerPath, "utf8"));
+    if (fs6.existsSync(markerPath)) {
+      marker = JSON.parse(fs6.readFileSync(markerPath, "utf8"));
     }
   } catch {
   }
@@ -4384,7 +4623,7 @@ adminRouter.get("/deploy-info", async (_req, res) => {
   });
 });
 adminRouter.get("/diagnostics", async (_req, res) => {
-  const TAIL_MAX = 5 * 1024 * 1024;
+  const TAIL_MAX2 = 5 * 1024 * 1024;
   const result = {
     logPath: logFilePath ?? null,
     logBytes: 0,
@@ -4416,23 +4655,24 @@ adminRouter.get("/diagnostics", async (_req, res) => {
       checking: false,
       incidents: []
     },
+    leak: getLeakMonitorState(),
     webconfig: null,
     appPool: null,
     wpEvents: null
   };
-  if (logFilePath && fs4.existsSync(logFilePath)) {
+  if (logFilePath && fs6.existsSync(logFilePath)) {
     try {
-      const st = fs4.statSync(logFilePath);
+      const st = fs6.statSync(logFilePath);
       result.logBytes = st.size;
       let raw = "";
-      if (st.size > TAIL_MAX) {
-        const fd = fs4.openSync(logFilePath, "r");
-        const buf = Buffer.alloc(TAIL_MAX);
-        fs4.readSync(fd, buf, 0, TAIL_MAX, st.size - TAIL_MAX);
-        fs4.closeSync(fd);
+      if (st.size > TAIL_MAX2) {
+        const fd = fs6.openSync(logFilePath, "r");
+        const buf = Buffer.alloc(TAIL_MAX2);
+        fs6.readSync(fd, buf, 0, TAIL_MAX2, st.size - TAIL_MAX2);
+        fs6.closeSync(fd);
         raw = buf.toString("utf8");
       } else {
-        raw = fs4.readFileSync(logFilePath, "utf8");
+        raw = fs6.readFileSync(logFilePath, "utf8");
       }
       const lines = raw.split(/\r?\n/).filter(Boolean);
       const pushCap = (arr, l, cap) => {
@@ -4477,25 +4717,15 @@ adminRouter.get("/diagnostics", async (_req, res) => {
         ...h,
         rssGrowthPerHour: h.lastUptime > h.firstUptime ? Number(((h.lastRss - h.firstRss) / ((h.lastUptime - h.firstUptime) / 3600) || 0).toFixed(1)) : 0
       })).sort((a, b) => b.lastRss - a.lastRss);
-      const hbSeriesRe = /\[hb\] alive(?: ts=([\d:.TZ-]+))? uptime=(\d+)s pid=(\d+) rss=(\d+)MB(?: heap=(\d+)MB)?/;
+      const hbSeriesRe = /\[hb\] alive ts=([\d:.TZ-]+) uptime=(\d+)s pid=(\d+) rss=(\d+)MB(?: heap=(\d+)MB)?/;
       const nowMs = Date.now();
       const dayAgo = nowMs - 24 * 3600 * 1e3;
       const series = [];
-      let lastRealTs = nowMs;
       for (const l of lines) {
         const m = hbSeriesRe.exec(l);
         if (!m) continue;
-        const tsRaw = m[1];
-        let t;
-        if (tsRaw) {
-          t = Date.parse(tsRaw);
-          if (!Number.isNaN(t)) lastRealTs = t;
-          else t = lastRealTs;
-        } else {
-          const up = Number(m[2]);
-          t = nowMs - up * 1e3;
-        }
-        if (t < dayAgo) continue;
+        const t = Date.parse(m[1]);
+        if (Number.isNaN(t) || t < dayAgo) continue;
         series.push({
           ts: new Date(t).toISOString(),
           pid: Number(m[3]),
@@ -4517,14 +4747,15 @@ adminRouter.get("/diagnostics", async (_req, res) => {
     }
   }
   result.healthCheck = getHealthMonitorState();
+  result.leak = getLeakMonitorState();
   for (const cand of [
-    path5.resolve(process.cwd(), "web.config"),
-    path5.resolve(process.cwd(), "../web.config"),
-    path5.resolve(process.cwd(), "../../web.config")
+    path7.resolve(process.cwd(), "web.config"),
+    path7.resolve(process.cwd(), "../web.config"),
+    path7.resolve(process.cwd(), "../../web.config")
   ]) {
-    if (!fs4.existsSync(cand)) continue;
+    if (!fs6.existsSync(cand)) continue;
     try {
-      const content = fs4.readFileSync(cand, "utf8");
+      const content = fs6.readFileSync(cand, "utf8");
       const grab = (re) => {
         const m = re.exec(content);
         return m ? m[0].slice(0, 500) : null;
@@ -4593,8 +4824,8 @@ adminRouter.get("/diagnostics", async (_req, res) => {
 adminRouter.get("/logs", async (_req, res) => {
   const n = Math.min(Number(_req.query.lines ?? 300) || 300, 1e3);
   const result = { path: logFilePath ?? null, totalLines: 0, lines: [], crashes: [], iisnodeLogs: [] };
-  if (logFilePath && fs4.existsSync(logFilePath)) {
-    const raw = fs4.readFileSync(logFilePath, "utf8");
+  if (logFilePath && fs6.existsSync(logFilePath)) {
+    const raw = fs6.readFileSync(logFilePath, "utf8");
     const lines = raw.split(/\r?\n/).filter(Boolean).slice(-n);
     result.lines = lines;
     result.totalLines = lines.length;
@@ -4610,13 +4841,13 @@ adminRouter.get("/logs", async (_req, res) => {
     result.crashes = [...crashMap.values()];
   }
   const dirs = /* @__PURE__ */ new Set();
-  if (logFilePath) dirs.add(path5.dirname(logFilePath));
-  dirs.add(path5.resolve(process.cwd(), "../logs"));
-  dirs.add(path5.resolve(process.cwd(), "../../logs"));
+  if (logFilePath) dirs.add(path7.dirname(logFilePath));
+  dirs.add(path7.resolve(process.cwd(), "../logs"));
+  dirs.add(path7.resolve(process.cwd(), "../../logs"));
   for (const dir of dirs) {
     let entries = [];
     try {
-      entries = fs4.readdirSync(dir, { withFileTypes: true });
+      entries = fs6.readdirSync(dir, { withFileTypes: true });
     } catch {
       continue;
     }
@@ -4624,10 +4855,10 @@ adminRouter.get("/logs", async (_req, res) => {
       if (!e.isFile()) continue;
       const name = e.name;
       if (!/^stdout_/i.test(name) && !/^stderr_/i.test(name) && !/\.log$/i.test(name)) continue;
-      const full = path5.join(dir, name);
+      const full = path7.join(dir, name);
       try {
-        const size = fs4.statSync(full).size;
-        const buf = fs4.readFileSync(full, "utf8");
+        const size = fs6.statSync(full).size;
+        const buf = fs6.readFileSync(full, "utf8");
         const ls = buf.split(/\r?\n/).filter(Boolean).slice(-200);
         result.iisnodeLogs.push({ name, path: full, size, lines: ls });
       } catch {
@@ -4637,7 +4868,7 @@ adminRouter.get("/logs", async (_req, res) => {
   ok(res, result);
 });
 try {
-  fs4.mkdirSync(firmwareDir, { recursive: true });
+  fs6.mkdirSync(firmwareDir, { recursive: true });
 } catch (err) {
   console.warn(`[firmware] cannot create ${firmwareDir}:`, err instanceof Error ? err.message : err);
 }
@@ -4822,11 +5053,11 @@ adminRouter.post("/firmware", upload.single("firmware"), async (req, res) => {
   const filename = modelCode ? `firmware-${modelCode.toLowerCase()}.bin` : "firmware.bin";
   const url = `/firmware/${filename}`;
   if (modelCode && filename !== "firmware.bin") {
-    const uploaded = path5.join(firmwareDir, "firmware.bin");
-    const target = path5.join(firmwareDir, filename);
-    if (fs4.existsSync(uploaded) && uploaded !== target) {
-      if (fs4.existsSync(target)) fs4.unlinkSync(target);
-      fs4.renameSync(uploaded, target);
+    const uploaded = path7.join(firmwareDir, "firmware.bin");
+    const target = path7.join(firmwareDir, filename);
+    if (fs6.existsSync(uploaded) && uploaded !== target) {
+      if (fs6.existsSync(target)) fs6.unlinkSync(target);
+      fs6.renameSync(uploaded, target);
     }
   }
   await prisma.$transaction([
@@ -6128,8 +6359,8 @@ import jwt4 from "jsonwebtoken";
 init_prisma();
 
 // src/lib/attachmentStore.ts
-import * as fs5 from "fs";
-import * as path6 from "path";
+import * as fs7 from "fs";
+import * as path8 from "path";
 function extFor(type, name) {
   const fromName = name.split(".").pop()?.toLowerCase();
   if (fromName && /^[a-z0-9]{1,8}$/.test(fromName)) return fromName;
@@ -6146,25 +6377,25 @@ function saveAttachment(base64, type, name) {
   const buf = Buffer.from(base64, "base64");
   if (buf.length === 0) throw new Error("Empty file");
   const filename = `a_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}.${extFor(type, name)}`;
-  fs5.mkdirSync(attachmentDir, { recursive: true });
-  fs5.writeFileSync(path6.join(attachmentDir, filename), buf);
+  fs7.mkdirSync(attachmentDir, { recursive: true });
+  fs7.writeFileSync(path8.join(attachmentDir, filename), buf);
   return filename;
 }
 function readAttachmentFile(filename) {
-  const safe = path6.basename(filename);
+  const safe = path8.basename(filename);
   if (safe !== filename) return null;
   try {
-    return fs5.readFileSync(path6.join(attachmentDir, safe));
+    return fs7.readFileSync(path8.join(attachmentDir, safe));
   } catch {
     return null;
   }
 }
 function deleteAttachmentFile(filename) {
   if (!filename) return;
-  const safe = path6.basename(filename);
+  const safe = path8.basename(filename);
   if (safe !== filename) return;
   try {
-    fs5.unlinkSync(path6.join(attachmentDir, safe));
+    fs7.unlinkSync(path8.join(attachmentDir, safe));
   } catch {
   }
 }
@@ -6686,8 +6917,8 @@ apiRouter.get("/firmware/current", requireAuth, async (_req, res) => {
 // src/routes/install.routes.ts
 import { Router as Router18 } from "express";
 import mysql from "mysql2/promise";
-import fs6 from "node:fs";
-import path7 from "node:path";
+import fs8 from "node:fs";
+import path9 from "node:path";
 import bcrypt2 from "bcryptjs";
 init_prisma();
 
@@ -6696,10 +6927,10 @@ init_prisma();
 init_audit_service();
 var timer = null;
 var running = false;
-var CHECK_INTERVAL_MS2 = 1e4;
+var CHECK_INTERVAL_MS3 = 1e4;
 function startScheduler() {
   if (timer) return;
-  timer = setInterval(runDueSchedules, CHECK_INTERVAL_MS2);
+  timer = setInterval(runDueSchedules, CHECK_INTERVAL_MS3);
   void runDueSchedules();
   console.log("[scheduler] started (every 10s)");
   fileLog("[scheduler] started (every 10s)");
@@ -6800,10 +7031,10 @@ async function fireSchedule(scheduleId) {
 init_prisma();
 var timer2 = null;
 var OFFLINE_THRESHOLD_MS = 12e4;
-var CHECK_INTERVAL_MS3 = 6e4;
+var CHECK_INTERVAL_MS4 = 6e4;
 function startOfflineWatcher() {
   if (timer2) return;
-  timer2 = setInterval(checkOfflineDevices, CHECK_INTERVAL_MS3);
+  timer2 = setInterval(checkOfflineDevices, CHECK_INTERVAL_MS4);
   void checkOfflineDevices();
   console.log("[offline] watcher started (every 60s)");
   fileLog("[offline] watcher started (every 60s)");
@@ -6907,7 +7138,7 @@ async function checkOfflineDevicesInner() {
 }
 
 // src/routes/install.routes.ts
-var SCHEMA_SQL = path7.resolve(process.cwd(), "prisma/schema.sql");
+var SCHEMA_SQL = path9.resolve(process.cwd(), "prisma/schema.sql");
 var installRouter = Router18();
 var DEFAULT_PRODUCTS = [
   { name: "2CH WiFi Relay Module", modelCode: "2CH", relayCount: 2, price: "599", description: "Two-channel WiFi relay board for lights and small appliances. 10A per channel, ESP32 based, works with the SwitchNest app and voice assistant.", features: { channels: 2, wifi: true, ota: true, voice: true } },
@@ -6978,35 +7209,15 @@ async function probeDb(parts) {
     await conn.end().catch(() => void 0);
   }
 }
-function escapeEnv(v) {
-  return /[\s#"']/.test(v) ? `"${v.replace(/"/g, '\\"')}"` : v;
-}
 function persistDatabaseConfig(p) {
-  const envPath = path7.resolve(process.cwd(), "../../.env");
-  try {
-    let content = "";
-    if (fs6.existsSync(envPath)) content = fs6.readFileSync(envPath, "utf-8");
-    const setKey = (key, value) => {
-      const line = `${key}=${escapeEnv(value)}`;
-      const re = new RegExp(`^${key}=.*$`, "m");
-      if (re.test(content)) content = content.replace(re, line);
-      else content = (content ? content.replace(/\s*$/, "\n") : "") + line + "\n";
-    };
-    setKey("DB_HOST", p.host);
-    setKey("DB_PORT", String(p.port));
-    setKey("DB_USER", p.user);
-    setKey("DB_PASS", p.pass);
-    setKey("DB_NAME", p.name);
-    setKey("DATABASE_URL", `${buildDatabaseUrl2(p)}?connection_limit=2`);
-    fs6.writeFileSync(envPath, content, "utf-8");
-    return { path: envPath, ok: true };
-  } catch (err) {
-    logger.warn(
-      "[install] .env write fail \u2014 restart pe purana config chalega:",
-      err instanceof Error ? err.message : String(err)
-    );
-    return { path: envPath, ok: false };
-  }
+  return persistEnvKeys([
+    ["DB_HOST", p.host],
+    ["DB_PORT", String(p.port)],
+    ["DB_USER", p.user],
+    ["DB_PASS", p.pass],
+    ["DB_NAME", p.name],
+    ["DATABASE_URL", `${buildDatabaseUrl2(p)}?connection_limit=2`]
+  ]);
 }
 async function connectServer(parts) {
   let conn;
@@ -7055,10 +7266,10 @@ async function createDatabase(parts) {
   logger.info(`[install] database ready: ${parts.name} (server ${version.serverVersion})`);
 }
 async function applySchema(parts) {
-  if (!fs6.existsSync(SCHEMA_SQL)) {
+  if (!fs8.existsSync(SCHEMA_SQL)) {
     throw new AppError("SCHEMA_MISSING", "prisma/schema.sql nahi mila \u2014 install package incomplete hai", 500);
   }
-  const schemaSql = fs6.readFileSync(SCHEMA_SQL, "utf-8");
+  const schemaSql = fs8.readFileSync(SCHEMA_SQL, "utf-8");
   let conn;
   try {
     conn = await mysql.createConnection({
@@ -7141,6 +7352,7 @@ async function completeInstall(parts, admin) {
     logger.warn("Offline watcher start skipped/failed", err instanceof Error ? err.message : String(err));
   }
   const persisted = persistDatabaseConfig(parts);
+  persistEnvKey("ADMIN_PASSWORD", admin.password);
   return {
     installed: true,
     database: parts.name,
@@ -7332,10 +7544,10 @@ function createApp() {
   });
   app.use("/api", apiRouter);
   app.use("/firmware", express.static(firmwareDir));
-  if (fs7.existsSync(path8.join(webDist, "index.html"))) {
+  if (fs9.existsSync(path10.join(webDist, "index.html"))) {
     app.use(express.static(webDist));
     app.get(/^\/(?!api|firmware|socket\.io).*/, (_req, res) => {
-      res.sendFile(path8.join(webDist, "index.html"));
+      res.sendFile(path10.join(webDist, "index.html"));
     });
   }
   app.use((_req, res) => {
@@ -7353,12 +7565,12 @@ init_prisma();
 
 // src/services/familySafety.service.ts
 init_prisma();
-var CHECK_INTERVAL_MS4 = 6e4;
+var CHECK_INTERVAL_MS5 = 6e4;
 var timer3 = null;
 var running2 = false;
 function startFamilySafety() {
   if (timer3) return;
-  timer3 = setInterval(() => void runSafetyCheck(), CHECK_INTERVAL_MS4);
+  timer3 = setInterval(() => void runSafetyCheck(), CHECK_INTERVAL_MS5);
   fileLog("[family-safety] monitor started (60s)");
 }
 async function usageMinutesToday(deviceId, userId) {
@@ -7860,6 +8072,7 @@ async function initDatabase() {
       startScheduler();
       startFamilySafety();
       startHealthMonitor();
+      startLeakMonitor();
     } catch (err) {
       logger.warn("Scheduler start skipped/failed", err instanceof Error ? err.message : String(err));
     }

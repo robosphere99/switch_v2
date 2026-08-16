@@ -6,6 +6,8 @@ import type { AuthUser, LoginResponse } from "@robosphere/shared";
 import { env } from "../config/env";
 import { prisma } from "../lib/prisma";
 import { AppError } from "../lib/response";
+import { logger } from "../lib/logger";
+import { persistEnvKey } from "../lib/envPersist";
 
 function toAuthUser(user: User): AuthUser {
   return { id: user.id, username: user.username, email: user.email, role: user.role, themePref: user.themePref };
@@ -127,6 +129,16 @@ export async function updateProfile(
   if (input.newPassword) {
     // Purane refresh tokens bhi revoke — har session (jis device se login tha) logout.
     await prisma.refreshToken.deleteMany({ where: { userId } });
+    // System admin ka password change → site/.env (ADMIN_PASSWORD) me bhi sync
+    // karo — install wizard fallback, seed aur docs har jagah same value rahe.
+    // Best-effort: env write fail ho to sirf log (DB me change ho chuka hai).
+    if (user.role === "system_admin") {
+      const res = persistEnvKey("ADMIN_PASSWORD", input.newPassword);
+      logger.info(
+        res.ok ? "Admin password changed — .env ADMIN_PASSWORD synced" : "Admin password changed — .env sync FAILED",
+        res.ok ? { path: res.path } : undefined,
+      );
+    }
   }
   return toAuthUser(updated);
 }

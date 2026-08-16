@@ -9,6 +9,7 @@ import { setDbReady, isDbReady } from "../lib/dbState";
 import { ok } from "../lib/response";
 import { AppError } from "../lib/response";
 import { logger } from "../lib/logger";
+import { persistEnvKeys, persistEnvKey } from "../lib/envPersist";
 import { startScheduler } from "../services/scheduler.service";
 import { startOfflineWatcher } from "../services/offline.service";
 
@@ -107,44 +108,23 @@ async function probeDb(parts: DbParts): Promise<{ reachable: boolean; tablesRead
   }
 }
 
-/** .env value me special chars (# " space) ho to quote kar do. */
-function escapeEnv(v: string): string {
-  return /[\s#"']/.test(v) ? `"${v.replace(/"/g, '\\"')}"` : v;
-}
-
 /**
  * Wizard jo DB details deta hai unhe site/.env me PERSIST karta hai —
  * isse user ko khud .env banane ki zaroorat nahi. Restart ke baad bhi
  * app sahi DB se judta hai. Best-effort: write fail ho to sirf warn.
+ * (Asli write logic lib/envPersist me — admin password sync bhi wahi.)
  */
 function persistDatabaseConfig(p: DbParts): { path: string; ok: boolean } {
-  const envPath = path.resolve(process.cwd(), "../../.env");
-  try {
-    let content = "";
-    if (fs.existsSync(envPath)) content = fs.readFileSync(envPath, "utf-8");
-    const setKey = (key: string, value: string) => {
-      const line = `${key}=${escapeEnv(value)}`;
-      const re = new RegExp(`^${key}=.*$`, "m");
-      if (re.test(content)) content = content.replace(re, line);
-      else content = (content ? content.replace(/\s*$/, "\n") : "") + line + "\n";
-    };
-    // Granular DB_* vars + explicit DATABASE_URL (env.ts me DATABASE_URL
-    // precedence leta hai — dono ko consistent rakhna zaroori hai).
-    setKey("DB_HOST", p.host);
-    setKey("DB_PORT", String(p.port));
-    setKey("DB_USER", p.user);
-    setKey("DB_PASS", p.pass);
-    setKey("DB_NAME", p.name);
-    setKey("DATABASE_URL", `${buildDatabaseUrl(p)}?connection_limit=2`);
-    fs.writeFileSync(envPath, content, "utf-8");
-    return { path: envPath, ok: true };
-  } catch (err) {
-    logger.warn(
-      "[install] .env write fail — restart pe purana config chalega:",
-      err instanceof Error ? err.message : String(err),
-    );
-    return { path: envPath, ok: false };
-  }
+  // Granular DB_* vars + explicit DATABASE_URL (env.ts me DATABASE_URL
+  // precedence leta hai — dono ko consistent rakhna zaroori hai).
+  return persistEnvKeys([
+    ["DB_HOST", p.host],
+    ["DB_PORT", String(p.port)],
+    ["DB_USER", p.user],
+    ["DB_PASS", p.pass],
+    ["DB_NAME", p.name],
+    ["DATABASE_URL", `${buildDatabaseUrl(p)}?connection_limit=2`],
+  ]);
 }
 
 /** Server se connect karke (bina DB select kiye) connection test + version. */
@@ -308,6 +288,10 @@ async function completeInstall(parts: DbParts, admin: AdminInput) {
 
   // 5) Config persist — restart ke baad bhi yehi DB chale
   const persisted = persistDatabaseConfig(parts);
+
+  // 5b) Admin password bhi .env me sync — taki install fallback / seed /
+  //     docs (ADMIN_PASSWORD) har jagah DB se same value rahe.
+  persistEnvKey("ADMIN_PASSWORD", admin.password);
 
   return {
     installed: true,

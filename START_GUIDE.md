@@ -159,7 +159,7 @@ python flasher_gui.py
 
 | Role | Email | Password |
 |------|-------|----------|
-| **Admin** | `admin@robosphere.local` | `admin123` |
+| **Admin** | `admin@robosphere.local` | `site/.env` ki `ADMIN_PASSWORD` (default `admin123`; site pe profile se change ho to .env auto-sync hota hai) |
 | **Buyer (4CH device wala)** | `testbut2@robosphere.local` | `123456` |
 | Demo user | `demo@robosphere.local` | `demo123` |
 | OTA demo admin | `ota-demo@robosphere.local` | — |
