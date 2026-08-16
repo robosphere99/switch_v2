@@ -677,6 +677,114 @@ init_audit_service();
 
 // src/services/notification.service.ts
 init_prisma();
+
+// ../../packages/shared/src/notificationDraft.ts
+function parseNotificationBody(body) {
+  if (!body) return { text: "" };
+  try {
+    const obj = JSON.parse(body);
+    if (obj && typeof obj === "object" && typeof obj.t === "string") {
+      const o = obj;
+      return {
+        text: o.t,
+        targetUserId: typeof o.u === "number" ? o.u : void 0,
+        draft: typeof o.d === "string" && o.d.length > 0 ? o.d : void 0
+      };
+    }
+  } catch {
+  }
+  return { text: body };
+}
+function buildClientSupportDraft(n) {
+  const title = n.title ?? "";
+  const body = n.body ?? "";
+  if (/Support ne message bheja/.test(title)) return null;
+  if (/User ne support me reply kiya/.test(title)) return null;
+  let m = title.match(/Support ne (.+?) (ON|OFF) kiya/i);
+  if (m) {
+    const on = m[2].toUpperCase() === "ON";
+    return `Aapne mera device "${m[1].trim()}" ${on ? "ON" : "OFF"} kar diya, lekin maine aisa koi action nahi kiya tha. Kya yeh sahi hai? Please check karein.`;
+  }
+  m = title.match(/board renamed kiya: (.+?) → (.+)/i);
+  if (m) {
+    return `Aapne mera board rename kar diya hai (${m[1].trim()} \u2192 ${m[2].trim()}). Mujhe yeh samajh nahi aaya \u2014 kya yeh galat hua?`;
+  }
+  m = title.match(/"(.*?)" ke stuck commands clear/i);
+  if (m) {
+    return `Mera device "${m[1].trim()}" abhi kaam nahi kar raha tha. Ab kya karna hoga? Koi aur dikkat ho toh bata dijiye.`;
+  }
+  m = title.match(/"(.*?)" ke liye firmware update push/i);
+  if (m) {
+    return `Aapne mere device "${m[1].trim()}" pe firmware update push kiya hai \u2014 kya yeh expected tha? Update ke baad koi dikkat aaye toh yahi bataunga.`;
+  }
+  m = title.match(/Board offline: (.+)/i);
+  if (m) return `Mera board "${m[1].trim()}" offline ho gaya hai \u2014 WiFi/power check kar liya, phir bhi connect nahi ho raha. Please help karein.`;
+  m = title.match(/Board online: (.+)/i);
+  if (m) return `Mera board "${m[1].trim()}" wapas online aa gaya hai. Sab theek hai ya kuch aur check karna hai?`;
+  m = title.match(/^📡 (.+?) offline$/i);
+  if (m) return `Mera device "${m[1].trim()}" offline ho gaya hai \u2014 WiFi/power check kar liya, phir bhi nahi aa raha. Please help karein.`;
+  m = title.match(/^✅ (.+?) online$/i);
+  if (m) return `Mera device "${m[1].trim()}" wapas online ho gaya hai. Sab theek hai ya kuch aur check karna hai?`;
+  m = title.match(/"(.*?)" pe firmware update push/i);
+  if (m) return `Mere device "${m[1].trim()}" pe firmware update chal raha hai \u2014 kya yeh sahi hai?`;
+  m = title.match(/Board renamed: (.+?) → (.+)/i);
+  if (m) return `Mera board rename ho gaya hai (${m[1].trim()} \u2192 ${m[2].trim()}). Kya yeh theek hai ya kuch galat hua?`;
+  m = title.match(/Child safety: "(.*?)" band kiya/i);
+  if (m) {
+    return `Mera device "${m[1].trim()}" child safety ke karan band ho gaya \u2014 kya yeh sahi tha? Agar main ab bhi use kar sakta hoon to bata dijiye.`;
+  }
+  m = title.match(/"(.*?)" ka time khatam/i);
+  if (m) {
+    return `Mujhe bataya gaya ki device "${m[1].trim()}" ka aaj ka time khatam ho gaya. Kya main isse dobara ON kar sakta hoon?`;
+  }
+  m = title.match(/Schedule fired: (.+?) (ON|OFF)/i);
+  if (m) return `Mera schedule device "${m[1].trim()}" ko ${m[2].toLowerCase()} kar diya \u2014 kya time aur action sahi tha? Please confirm karein.`;
+  if (/Order placed/.test(title)) {
+    const num = body.match(/Order ([A-Z0-9-]+)/i);
+    return `Mere order${num ? ` ${num[1]}` : ""} ke baare me ek sawal hai \u2014 please madad karein.`;
+  }
+  m = title.match(/New member joined (.+)/i);
+  if (m) return `Mere home "${m[1].trim()}" me koi naya member join hua hai \u2014 kya yeh expected tha?`;
+  const text = body ? ` \u2014 ${body}` : "";
+  return `Mujhe yeh notification mili: "${title}"${text}. Iske baare me madad chahiye.`;
+}
+function buildClientAdminReplyDraft(n) {
+  const title = n.title ?? "";
+  if (!/User ne support me reply kiya/.test(title)) return null;
+  const { text } = parseNotificationBody(n.body);
+  const trimmed = text.trim();
+  if (trimmed) {
+    const quote = trimmed.slice(0, 120);
+    return `Namaste, aapka message padh liya: "${quote}" \u2014 hum isse check kar rahe hain, jald hi update denge. \u{1F64F}`;
+  }
+  return `Namaste, aapka support message note kar liya \u2014 hum jald hi update denge. \u{1F64F}`;
+}
+function buildNotificationDraft(n) {
+  return buildClientSupportDraft(n) ?? buildClientAdminReplyDraft(n);
+}
+
+// ../../packages/shared/src/index.ts
+var HOME_MEMBER_ROLES = ["owner", "admin", "member", "viewer"];
+
+// src/services/notification.service.ts
+function attachDraftToBody(body, title) {
+  const draft = buildNotificationDraft({ category: "", title, body });
+  if (!draft) return body;
+  let parsed2 = {};
+  if (body) {
+    try {
+      const o = JSON.parse(body);
+      if (o && typeof o === "object") parsed2 = o;
+    } catch {
+    }
+  }
+  const t = typeof parsed2.t === "string" ? parsed2.t : body ?? "";
+  return JSON.stringify({
+    t,
+    ...typeof parsed2.u === "number" ? { u: parsed2.u } : {},
+    d: draft
+  });
+}
 async function createNotification(userId, input) {
   const notification = await prisma.notification.create({
     data: {
@@ -684,7 +792,7 @@ async function createNotification(userId, input) {
       category: input.category ?? "system",
       type: input.type ?? "info",
       title: input.title,
-      body: input.body ?? null
+      body: attachDraftToBody(input.body ?? null, input.title)
     }
   });
   emitToUser(userId, "notification:new", notification);
@@ -1068,9 +1176,6 @@ async function requestOta2(req, res) {
   );
   ok(res, data);
 }
-
-// ../../packages/shared/src/index.ts
-var HOME_MEMBER_ROLES = ["owner", "admin", "member", "viewer"];
 
 // src/middleware/requireRole.ts
 init_prisma();

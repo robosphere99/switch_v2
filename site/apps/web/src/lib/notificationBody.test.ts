@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { buildNotificationDraft } from "@robosphere/shared";
 import { buildAdminReplyDraft, buildSupportDraft, parseNotificationBody } from "./notificationBody";
 
 /**
@@ -17,6 +18,20 @@ describe("parseNotificationBody", () => {
     const parsed = parseNotificationBody(JSON.stringify({ u: 42, t: "mera device on nahi ho raha" }));
     expect(parsed.targetUserId).toBe(42);
     expect(parsed.text).toBe("mera device on nahi ho raha");
+  });
+
+  it("JSON {u, t, d} se server-side draft bhi milta hai", () => {
+    const parsed = parseNotificationBody(
+      JSON.stringify({ u: 42, t: "mera device on nahi ho raha", d: "SERVER DRAFT TEXT" }),
+    );
+    expect(parsed.targetUserId).toBe(42);
+    expect(parsed.text).toBe("mera device on nahi ho raha");
+    expect(parsed.draft).toBe("SERVER DRAFT TEXT");
+  });
+
+  it("empty d field → draft undefined", () => {
+    const parsed = parseNotificationBody(JSON.stringify({ t: "x", d: "" }));
+    expect(parsed.draft).toBeUndefined();
   });
 
   it("plain text body → text as-is, no targetUserId", () => {
@@ -196,6 +211,74 @@ describe("buildAdminReplyDraft", () => {
     expect(
       buildAdminReplyDraft({ category: "support", title: "🛠️ Support ne message bheja", body: null }),
     ).toBeNull();
+  });
+
+  it("user-reply title (admin-targeted) → user side null, admin side reply template", () => {
+    const n = {
+      category: "support",
+      title: "📨 User ne support me reply kiya",
+      body: JSON.stringify({ u: 42, t: "mera fan nahi rukta" }),
+    };
+    expect(buildSupportDraft(n)).toBeNull(); // user kabhi nahi dekhta
+    expect(buildAdminReplyDraft(n)).toContain("mera fan nahi rukta");
+    expect(buildAdminReplyDraft(n)).toMatch(/Namaste/);
+  });
+});
+
+describe("buildNotificationDraft (API server-side path)", () => {
+  it("admin-reply notification pe admin template milta hai (generic fallback nahi)", () => {
+    const d = buildNotificationDraft({
+      category: "support",
+      title: "📨 User ne support me reply kiya",
+      body: JSON.stringify({ u: 42, t: "mera fan nahi rukta" }),
+    });
+    expect(d).toContain("mera fan nahi rukta");
+    expect(d).toMatch(/Namaste/);
+    expect(d).not.toContain("Mujhe yeh notification mili");
+  });
+
+  it("device notification pe user template milta hai", () => {
+    const d = buildNotificationDraft({ category: "device", title: "📡 Living TV offline", body: null });
+    expect(d).toContain("Living TV");
+    expect(d).toContain("Mera device");
+  });
+
+  it("admin-message notification pe koi draft nahi (intentional)", () => {
+    expect(
+      buildNotificationDraft({ category: "support", title: "🛠️ Support ne message bheja", body: null }),
+    ).toBeNull();
+  });
+});
+
+// ---------- Server draft priority (body me `d` → wahi use hota hai) ----------
+
+describe("server draft priority — notification body ka `d` wins", () => {
+  it("buildSupportDraft body me server draft ho to wahi return karta hai", () => {
+    const d = buildSupportDraft({
+      category: "device",
+      title: "📡 Living TV offline",
+      body: JSON.stringify({ t: "📡 Living TV offline", d: "SERVER DRAFT X" }),
+    });
+    expect(d).toBe("SERVER DRAFT X");
+  });
+
+  it("buildAdminReplyDraft bhi server draft pehle use karta hai", () => {
+    const d = buildAdminReplyDraft({
+      category: "support",
+      title: "📨 User ne support me reply kiya",
+      body: JSON.stringify({ u: 42, t: "problem hai", d: "SERVER REPLY TEMPLATE" }),
+    });
+    expect(d).toBe("SERVER REPLY TEMPLATE");
+  });
+
+  it("body me d nahi to client fallback chalta hai", () => {
+    const d = buildSupportDraft({
+      category: "device",
+      title: "📡 Living TV offline",
+      body: "📡 Living TV offline",
+    });
+    expect(d).toContain("Living TV");
+    expect(d).toContain("Mera device");
   });
 });
 

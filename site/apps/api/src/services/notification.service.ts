@@ -1,13 +1,42 @@
 import { prisma } from "../lib/prisma";
 import { emitToUser } from "../lib/socket";
 import type { Prisma } from "@prisma/client";
-import type { NotificationCategory, NotificationType } from "@robosphere/shared";
+import {
+  buildNotificationDraft,
+  type NotificationCategory,
+  type NotificationType,
+} from "@robosphere/shared";
 
 export interface CreateNotificationInput {
   category?: NotificationCategory;
   type?: NotificationType;
   title: string;
   body?: string;
+}
+
+/**
+ * Draft text body me hi bhejo — frontend aur backend ek hi source (shared builders).
+ * Body ka shape: {"t": <display text>, "u": <userId>, "d": "<draft>"}
+ * (support notifications me u hota hai; draft nahi bana to purana body as-is rehta hai).
+ */
+export function attachDraftToBody(body: string | null, title: string): string | null {
+  const draft = buildNotificationDraft({ category: "", title, body });
+  if (!draft) return body;
+  let parsed: { u?: unknown; t?: unknown } = {};
+  if (body) {
+    try {
+      const o = JSON.parse(body) as { u?: unknown; t?: unknown };
+      if (o && typeof o === "object") parsed = o;
+    } catch {
+      /* plain text body */
+    }
+  }
+  const t = typeof parsed.t === "string" ? parsed.t : body ?? "";
+  return JSON.stringify({
+    t,
+    ...(typeof parsed.u === "number" ? { u: parsed.u } : {}),
+    d: draft,
+  });
 }
 
 /** Create a notification for a user and push it to their live socket. */
@@ -18,7 +47,7 @@ export async function createNotification(userId: number, input: CreateNotificati
       category: input.category ?? "system",
       type: input.type ?? "info",
       title: input.title,
-      body: input.body ?? null,
+      body: attachDraftToBody(input.body ?? null, input.title),
     },
   });
   emitToUser(userId, "notification:new", notification);

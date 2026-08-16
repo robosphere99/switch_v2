@@ -168,6 +168,16 @@ export interface ApiError {
 
 export type ApiResponse<T> = ApiSuccess<T> | ApiError;
 
+// ---------- Notification drafts (API + web single source) ----------
+
+export {
+  parseNotificationBody,
+  buildClientSupportDraft,
+  buildClientAdminReplyDraft,
+  buildNotificationDraft,
+} from "./notificationDraft";
+export type { ParsedNotificationBody } from "./notificationDraft";
+
 // ---------- Auth payloads ----------
 
 export interface AuthUser {
