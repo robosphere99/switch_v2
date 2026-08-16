@@ -623,6 +623,13 @@ export function Admin() {
                     </span>
                   </div>
                   <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => selectSupportUser(u.id)}
+                      className="rounded-lg border border-brand/40 bg-brand/10 px-2.5 py-1 text-xs font-semibold text-brand transition hover:bg-brand/20"
+                      title={`${u.username} se seedha support chat kholo (feedback / contact support)`}
+                    >
+                      💬 Message
+                    </button>
                     <span className="text-[11px] text-gray-500">
                       joined {new Date(u.createdAt).toLocaleDateString()}
                       {u.lastLoginAt ? ` · last ${new Date(u.lastLoginAt).toLocaleDateString()}` : ""}
