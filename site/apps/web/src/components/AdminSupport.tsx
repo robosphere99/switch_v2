@@ -644,7 +644,14 @@ export function AdminSupport({
         {/* WhatsApp-style context menu (right-click / long-press) */}
         {ctxMenu && (
           <>
-            <div className="fixed inset-0 z-40" onClick={() => setCtxMenu(null)} />
+            <div
+              className="fixed inset-0 z-40"
+              onClick={() => setCtxMenu(null)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setCtxMenu(null);
+              }}
+            />
             <div
               className="fixed z-50 w-60 overflow-hidden rounded-xl border border-gray-200 bg-night-800 py-1 shadow-2xl"
               style={{ left: ctxMenu.x, top: ctxMenu.y }}

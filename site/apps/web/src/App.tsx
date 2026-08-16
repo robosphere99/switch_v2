@@ -36,6 +36,18 @@ export default function App() {
     void loadSite();
   }, [loadSite]);
 
+  // Browser ka default right-click menu (Back/Reload/Save/Inspect etc.) disable —
+  // inputs/textarea chhodkar (wahan paste ke liye chahiye). App ke custom menus khud chalte hain.
+  useEffect(() => {
+    const onContext = (e: MouseEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.closest("input") || t.closest("textarea") || t.closest("[contenteditable='true']"))) return;
+      e.preventDefault();
+    };
+    document.addEventListener("contextmenu", onContext);
+    return () => document.removeEventListener("contextmenu", onContext);
+  }, []);
+
   // First-run gate: DB/tables nahi hain to pura app ki jagah install wizard.
   const [installState, setInstallState] = useState<"checking" | "installed" | "setup">("checking");
 
