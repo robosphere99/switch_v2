@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link, useNavigate } from "react-router-dom";
 import { listNotifications, markRead, markAllRead, unreadCount, type Notification } from "../api/notifications";
 import { useAuthStore } from "../stores/auth";
@@ -11,6 +12,29 @@ export function NotificationBell() {
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === "system_admin";
   const [open, setOpen] = useState(false);
+  const bellRef = useRef<HTMLButtonElement>(null);
+  // Dropdown ko portal se body pe render karte hain — navbar/stacking-context se bahar,
+  // taaki backdrop (blur) saare content ko cover kare aur kahin bhi click pe band ho
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  const toggle = () => {
+    if (!open && bellRef.current) {
+      const r = bellRef.current.getBoundingClientRect();
+      const W = 320; // dropdown width
+      // Bell ke saath align, par screen se bahar kabhi nahi (mobile menu me bell left pe hota hai)
+      const left = Math.max(8, Math.min(r.left, window.innerWidth - W - 8));
+      setPos({ top: r.bottom + 8, left });
+    }
+    setOpen((o) => !o);
+  };
+
+  // Window resize pe dropdown band (position stale na ho)
+  useEffect(() => {
+    if (!open) return;
+    const onResize = () => setOpen(false);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [open]);
 
   // Escape dabao to dropdown band (standard popover behavior)
   useEffect(() => {
@@ -72,7 +96,8 @@ export function NotificationBell() {
   return (
     <div className="relative">
       <button
-        onClick={() => setOpen((o) => !o)}
+        ref={bellRef}
+        onClick={toggle}
         className="relative rounded-lg p-2 text-gray-600 hover:bg-night-700 hover:text-brand"
         title="Notifications"
       >
@@ -84,10 +109,23 @@ export function NotificationBell() {
         )}
       </button>
 
-      {open && (
-        <>
-          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 z-40 mt-2 w-80 overflow-hidden rounded-xl border border-gray-200 bg-night-800 shadow-2xl">
+      {open &&
+        pos &&
+        createPortal(
+          <>
+            {/* Blur + dim overlay — saare content ko cover karta hai, kahin bhi touch/click pe band */}
+            <div
+              className="fixed inset-0 z-[90] bg-black/50 backdrop-blur-sm"
+              onClick={() => setOpen(false)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setOpen(false);
+              }}
+            />
+            <div
+              className="fixed z-[100] w-80 max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl border border-gray-200 bg-night-800 shadow-2xl"
+              style={{ top: pos.top, left: pos.left }}
+            >
             <div className="flex items-center justify-between border-b border-gray-200 px-4 py-2.5">
               <Link to="/notifications" onClick={() => setOpen(false)} className="text-sm font-semibold hover:text-brand">
                 Notifications <span className="text-[10px] font-normal text-gray-500">· View all →</span>
@@ -135,9 +173,10 @@ export function NotificationBell() {
                 })
               )}
             </div>
-          </div>
-        </>
-      )}
+            </div>
+          </>,
+          document.body
+        )}
     </div>
   );
 }
