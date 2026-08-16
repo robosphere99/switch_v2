@@ -66,7 +66,7 @@ export function DeviceCard({
 
   return (
     <div
-      className={`flex flex-col gap-3 rounded-xl border p-5 transition ${
+      className={`flex flex-col gap-3 rounded-xl border p-4 sm:p-5 transition ${
         on
           ? "border-brand bg-brand/10 shadow-lg shadow-brand/20"
           : "border-gray-200 bg-night-800"
@@ -166,19 +166,19 @@ export function DeviceCard({
         <div className="flex gap-2 text-xs">
           <button
             onClick={() => onEdit(device)}
-            className="flex-1 rounded bg-gray-100/60 py-1.5 text-gray-600 hover:bg-gray-200"
+            className="flex-1 rounded bg-gray-100/60 py-2.5 text-gray-600 hover:bg-gray-200"
           >
             ✏️ Edit
           </button>
           <button
             onClick={() => onLogs(device)}
-            className="flex-1 rounded bg-gray-100/60 py-1.5 text-gray-600 hover:bg-gray-200"
+            className="flex-1 rounded bg-gray-100/60 py-2.5 text-gray-600 hover:bg-gray-200"
           >
             📜 Activity
           </button>
           <button
             onClick={() => onDelete(device)}
-            className="flex-1 rounded bg-red-900/40 py-1.5 text-red-400 hover:bg-red-900/60"
+            className="flex-1 rounded bg-red-900/40 py-2.5 text-red-400 hover:bg-red-900/60"
           >
             🗑️ Delete
           </button>

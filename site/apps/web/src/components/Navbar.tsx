@@ -27,6 +27,7 @@ import { changeTheme } from "../lib/themeAccount";
 import { NotificationBell } from "./NotificationBell";
 import { SupportUnreadBadge } from "./SupportUnreadBadge";
 import { Logo } from "./Logo";
+import { BottomTabBar } from "./BottomTabBar";
 
 const NAV_LINKS: Array<{ to: string; label: string; icon: typeof Home }> = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -76,7 +77,11 @@ export function Navbar() {
   const mobileLinkCls =
     "flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm text-gray-700 transition hover:bg-gray-100 hover:text-brand";
 
+  // BottomTabBar header ke BAHAR hona chahiye: header pe backdrop-blur (backdrop-filter)
+  // hai, jo fixed-positioning ke liye containing-block banata hai — andar rakha to
+  // bottom-tab header ke relative render hota, viewport ke bottom pe nahi.
   return (
+    <>
     <header className="sticky top-0 z-20 border-b border-gray-200 bg-white/95 backdrop-blur">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3">
         {/* Admin login pe logo → Admin Overview (stats); warna home page */}
@@ -251,5 +256,9 @@ export function Navbar() {
         </div>
       )}
     </header>
+
+    {/* Mobile bottom tab bar — header se bahar (fixed positioning sahi rahe) */}
+    <BottomTabBar />
+    </>
   );
 }
