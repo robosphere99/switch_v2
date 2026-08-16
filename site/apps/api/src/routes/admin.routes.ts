@@ -9,6 +9,7 @@ import { requireAuth } from "../middleware/auth";
 import { validateBody } from "../middleware/validate";
 import { prisma } from "../lib/prisma";
 import { getHealthMonitorState } from "../lib/healthMonitor";
+import { getLeakMonitorState } from "../lib/leakMonitor";
 import { AppError, ok } from "../lib/response";
 import { audit } from "../services/audit.service";
 import { createNotification } from "../services/notification.service";
@@ -137,6 +138,7 @@ adminRouter.get("/stats", async (_req, res) => {
     supportMessages,
     contactMessages,
     deviceLogs24h,
+    leak: getLeakMonitorState(),
     requests: getRequestStats(),
     usersByDay,
     ordersByDay,
@@ -906,6 +908,24 @@ adminRouter.get("/diagnostics", async (_req, res) => {
         end?: { ts: string; durationSec: number; recoveredStatus?: number | null } | null;
       }>;
     };
+    leak: {
+      running: boolean;
+      startedAt: string;
+      lastCheckedAt: string | null;
+      leaking: boolean;
+      detail: {
+        pid: number;
+        growthPct: number;
+        spanH: number;
+        rssFirst: number;
+        rssLast: number;
+        firstTs: string;
+        lastTs: string;
+      } | null;
+      thresholdPct: number;
+      windowH: number;
+      incidents: Array<Record<string, unknown>>;
+    };
     appPool: string | null;
     wpEvents: string | null;
     webconfig: {
@@ -946,6 +966,7 @@ adminRouter.get("/diagnostics", async (_req, res) => {
       checking: false,
       incidents: [],
     },
+    leak: getLeakMonitorState(),
     webconfig: null,
     appPool: null,
     wpEvents: null,
@@ -1020,28 +1041,18 @@ adminRouter.get("/diagnostics", async (_req, res) => {
         .sort((a, b) => b.lastRss - a.lastRss);
 
       // Time-series (24h) — har 10s [hb] line → {ts, pid, rss, heap}.
-      // Naya format: [hb] alive ts=<ISO> uptime=N pid=N rss=NMB heap=NMB
-      // Purana format (bina ts/heap): uptime-based approximate ts.
-      const hbSeriesRe = /\[hb\] alive(?: ts=([\d:.TZ-]+))? uptime=(\d+)s pid=(\d+) rss=(\d+)MB(?: heap=(\d+)MB)?/;
+      // Sirf REAL ts= wali lines — purana format (bina ts) ko now-uptime se
+      // date karna chronological order ulta kar deta hai (RSS decline ko
+      // growth dikhata tha). Legacy lines chart se bahar rakhi gayi hain.
+      const hbSeriesRe = /\[hb\] alive ts=([\d:.TZ-]+) uptime=(\d+)s pid=(\d+) rss=(\d+)MB(?: heap=(\d+)MB)?/;
       const nowMs = Date.now();
       const dayAgo = nowMs - 24 * 3600 * 1000;
       const series: Array<{ ts: string; pid: number; uptime: number; rss: number; heap: number | null }> = [];
-      let lastRealTs = nowMs;
       for (const l of lines) {
         const m = hbSeriesRe.exec(l);
         if (!m) continue;
-        const tsRaw = m[1];
-        let t: number;
-        if (tsRaw) {
-          t = Date.parse(tsRaw);
-          if (!Number.isNaN(t)) lastRealTs = t;
-          else t = lastRealTs;
-        } else {
-          // purana format — uptime se approximate: uptime chhota = recently booted.
-          const up = Number(m[2]);
-          t = nowMs - up * 1000;
-        }
-        if (t < dayAgo) continue;
+        const t = Date.parse(m[1]);
+        if (Number.isNaN(t) || t < dayAgo) continue;
         series.push({
           ts: new Date(t).toISOString(),
           pid: Number(m[3]),
@@ -1067,6 +1078,7 @@ adminRouter.get("/diagnostics", async (_req, res) => {
 
 
   result.healthCheck = getHealthMonitorState();
+  result.leak = getLeakMonitorState();
 
   // web.config — iisnode settings (nodeProcessCountPerApplication, watchedFiles,
   // maxConcurrentRequestsPerProcess). Process har ~60s recycle ho raha hai bina

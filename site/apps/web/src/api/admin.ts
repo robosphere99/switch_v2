@@ -1,6 +1,25 @@
 import type { ApiResponse, User, UserStatus, Home } from "@robosphere/shared";
 import { api } from "./client";
 
+export interface LeakState {
+  running: boolean;
+  startedAt: string;
+  lastCheckedAt: string | null;
+  leaking: boolean;
+  detail: {
+    pid: number;
+    growthPct: number;
+    spanH: number;
+    rssFirst: number;
+    rssLast: number;
+    firstTs: string;
+    lastTs: string;
+  } | null;
+  thresholdPct: number;
+  windowH: number;
+  incidents: Array<Record<string, unknown>>;
+}
+
 export interface AdminStats {
   users: number;
   homes: number;
@@ -26,6 +45,7 @@ export interface AdminStats {
   usersByDay: Record<string, number>;
   ordersByDay: Record<string, number>;
   revenueByDay: Record<string, number>;
+  leak: LeakState | null;
 }
 
 export interface AdminUser {
@@ -381,6 +401,7 @@ export interface AdminDiagnostics {
       end?: { ts: string; durationSec: number; recoveredStatus?: number | null } | null;
     }>;
   };
+  leak: LeakState | null;
 }
 
 export async function getAdminDiagnostics(): Promise<ApiResponse<AdminDiagnostics>> {

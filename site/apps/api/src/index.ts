@@ -8,6 +8,7 @@ import { startScheduler } from "./services/scheduler.service";
 import { startFamilySafety } from "./services/familySafety.service";
 import { startOfflineWatcher } from "./services/offline.service";
 import { startHealthMonitor } from "./lib/healthMonitor";
+import { startLeakMonitor } from "./lib/leakMonitor";
 import { setDbReady } from "./lib/dbState";
 import { loadRequestTracker, startRequestFlush } from "./lib/requestTracker";
 
@@ -472,6 +473,7 @@ async function initDatabase(): Promise<void> {
       startScheduler();
       startFamilySafety();
       startHealthMonitor();
+      startLeakMonitor();
     } catch (err) {
       logger.warn("Scheduler start skipped/failed", err instanceof Error ? err.message : String(err));
     }

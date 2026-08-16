@@ -83,7 +83,17 @@ echo ================================================
 echo    Sab ready!
 echo      Site:    http://localhost:5173
 echo      API:     http://localhost:4000/api/health
-echo      Login:   admin@robosphere.local / admin123
+
+REM ---- login hint: .env (ADMIN_PASSWORD) se asli password - change ho to yahan bhi sahi dikhe ----
+set "ADMIN_PW=admin123"
+if exist "%SITE%\.env" (
+  for /f "usebackq tokens=1,* delims==" %%a in ("%SITE%\.env") do (
+    if /i "%%a"=="ADMIN_PASSWORD" set "ADMIN_PW=%%b"
+  )
+)
+set "ADMIN_PW=%ADMIN_PW:"=%"
+
+echo      Login:   admin@robosphere.local / %ADMIN_PW%
 echo.
 echo    Band karne ke liye API/Web windows close karo.
 echo ================================================
