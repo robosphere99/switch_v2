@@ -634,11 +634,134 @@ adminRouter.get("/audit", async (req, res) => {
 // ---------- Diagnostics: app log (crash 503 ka asli reason yahan milega) ----------
 
 /** Admin ko app.log ke aakhri N lines dikhao — crashguard / boot lines yahan hain. */
-/**
- * Startup diagnostics — boot/heartbeat/exit lines parsed + live process
- * status. 503 cycle ka pura picture ek jagah: kitni baar process exit hua,
- * kab boot hua, koi crashguard/fatal line, aur abhi wala process ka RSS.
- */
+/** Diagnostics ka full text dump — export (.txt) ke liye. */
+function buildDiagnosticsText(d: {
+  process: { pid: number; uptimeSec: number; rssMB: number; heapMB: number; node: string; startedAt: string };
+  parent: { pid: number; name: string; startTime: string; cmdline: string } | null;
+  boot: string[];
+  exits: string[];
+  crashes: string[];
+  serverErrors: string[];
+  stats: { reqEnd: number; reqAbort: number; exitsInTail: number; bootsInTail: number };
+  hbSummary: Array<{ pid: number; count: number; firstUptime: number; lastUptime: number; firstRss: number; lastRss: number; rssGrowthPerHour: number }>;
+  hbSeries: Array<{ ts: string; pid: number; uptime: number; rss: number; heap: number | null }>;
+  healthCheck: {
+    lastCheck: { ts: string; ok: boolean; status: number | null; ms: number; err: string | null } | null;
+    checksTotal: number;
+    checksOk: number;
+    successRate: number | null;
+    activeIncident: { id: string; startedAt: string; lastStatus: number | null; lastErr: string | null } | null;
+    incidents: Array<{
+      ts: string;
+      id: string;
+      failCount?: number;
+      lastStatus?: number | null;
+      lastErr?: string | null;
+      end?: { ts: string; durationSec: number; recoveredStatus?: number | null } | null;
+    }>;
+  };
+  webconfig: { path: string | null; iisnode: string | null; httpErrors: string | null; appPoolRecycling: string | null } | null;
+  appPool: string | null;
+  wpEvents: string | null;
+  error?: string;
+  logPath: string | null;
+  logBytes: number;
+}): string {  const L: string[] = [];
+  const sec = (t: string) => L.push(`\n${"=".repeat(70)}\n${t}\n${"=".repeat(70)}`);
+  L.push(`SwitchNest Diagnostics Export`);
+  L.push(`Exported: ${new Date().toISOString()}`);
+  L.push(`Log file: ${d.logPath ?? "?"} (${d.logBytes ?? 0} bytes)`);
+  if (d.error) L.push(`Parse error: ${d.error}`);
+
+  sec("PROCESS");
+  L.push(`PID:            ${d.process.pid}`);
+  L.push(`Uptime:         ${Math.floor(d.process.uptimeSec / 60)}m ${d.process.uptimeSec % 60}s`);
+  L.push(`RSS:            ${d.process.rssMB} MB`);
+  L.push(`Heap:           ${d.process.heapMB} MB`);
+  L.push(`Node:           ${d.process.node}`);
+  L.push(`Started at:     ${d.process.startedAt}`);
+  if (d.parent) {
+    L.push(`Parent:         ${d.parent.name} (pid ${d.parent.pid})`);
+    L.push(`Parent start:   ${d.parent.startTime}`);
+    L.push(`Parent cmdline: ${d.parent.cmdline}`);
+  }
+
+  sec("STATS (log tail)");
+  L.push(`Requests (END):   ${d.stats.reqEnd}`);
+  L.push(`Requests (ABORT): ${d.stats.reqAbort}`);
+  L.push(`Boots in tail:    ${d.stats.bootsInTail}`);
+  L.push(`Exits in tail:    ${d.stats.exitsInTail}`);
+
+  sec("HEALTH CHECKER");
+  const hc = d.healthCheck;
+  if (hc.lastCheck) {
+    L.push(`Last check: ${hc.lastCheck.ts}  ${hc.lastCheck.ok ? "OK" : "FAIL"}  status=${hc.lastCheck.status ?? "-"}  ${hc.lastCheck.ms}ms  err=${hc.lastCheck.err ?? "-"}`);
+  } else {
+    L.push(`Last check: (none yet)`);
+  }
+  L.push(`Checks:     ${hc.checksOk}/${hc.checksTotal}  (success ${hc.successRate ?? "-"}%)`);
+  if (hc.activeIncident) {
+    L.push(`ACTIVE INCIDENT: ${hc.activeIncident.id}  since ${hc.activeIncident.startedAt}  last=${hc.activeIncident.lastStatus ?? hc.activeIncident.lastErr}`);
+  }
+  L.push(`Incidents:`);
+  if (hc.incidents.length === 0) L.push(`  (none)`);
+  for (const inc of hc.incidents) {
+    L.push(
+      `  ${inc.ts}  id=${inc.id}  ${inc.lastStatus ? `HTTP ${inc.lastStatus}` : inc.lastErr ?? "?"}` +
+        (inc.end ? `  -> recovered ${inc.end.durationSec}s` : "  -> OPEN"),
+    );
+  }
+
+  sec(`BOOT HISTORY (last ${d.boot.length})`);
+  for (const b of d.boot) L.push(`  ${b}`);
+
+  sec(`EXITS / RESTARTS (tail ${d.exits.length})`);
+  if (d.exits.length === 0) L.push(`  (no exits recorded)`);
+  for (const e of d.exits) L.push(`  ${e}`);
+
+  sec(`CRASHES / FATAL (tail ${d.crashes.length})`);
+  if (d.crashes.length === 0) L.push(`  (no crashguard/fatal lines)`);
+  for (const c of d.crashes) L.push(`  ${c}`);
+
+  sec(`SERVER ERRORS (tail ${d.serverErrors.length})`);
+  if (d.serverErrors.length === 0) L.push(`  (none)`);
+  for (const s of d.serverErrors) L.push(`  ${s}`);
+
+  sec(`HEARTBEAT SUMMARY (per process, ${d.hbSummary.length})`);
+  L.push(`  pid\thb\tfirstUptime\tlastUptime\tfirstRss\tlastRss\tgrowthMB/hr`);
+  for (const h of d.hbSummary.slice(0, 60)) {
+    L.push(`  ${h.pid}\t${h.count}\t${h.firstUptime}\t${h.lastUptime}\t${h.firstRss}\t${h.lastRss}\t${h.rssGrowthPerHour}`);
+  }
+
+  sec(`MEMORY TREND (24h, ${d.hbSeries.length} points — first/last 10)`);
+  const sample = [...d.hbSeries.slice(0, 10), ...d.hbSeries.slice(-10)];
+  L.push(`  ts\tpid\tuptime\trss\theap`);
+  for (const p of sample) {
+    L.push(`  ${p.ts}\t${p.pid}\t${p.uptime}\t${p.rss}\t${p.heap ?? "-"}`);
+  }
+
+  sec("WEB.CONFIG");
+  if (d.webconfig) {
+    L.push(`Path: ${d.webconfig.path}`);
+    if (d.webconfig.iisnode) L.push(`iisnode: ${d.webconfig.iisnode}`);
+    if (d.webconfig.httpErrors) L.push(`httpErrors: ${d.webconfig.httpErrors}`);
+    if (d.webconfig.appPoolRecycling) L.push(`recycling: ${d.webconfig.appPoolRecycling}`);
+  } else {
+    L.push(`(not readable)`);
+  }
+
+  sec("APP POOL (appcmd)");
+  L.push(d.appPool ? d.appPool.slice(0, 3000) : `(unavailable)`);
+
+  if (d.wpEvents) {
+    sec("WORKER PROCESS EVENTS (wevtutil)");
+    L.push(d.wpEvents.slice(0, 2000));
+  }
+
+  L.push(`\n${"=".repeat(70)}`);
+  return L.join("\n");
+}
+
 /**
  * Deploy info — admin panel me "last code update" + current commit.
  * deploy.cmd har deploy pe site/apps/logs/deploy.json likhta hai
@@ -957,6 +1080,15 @@ adminRouter.get("/diagnostics", async (_req, res) => {
     }
   } catch {
     /* wmic unavailable — parent unknown, koi baat nahi */
+  }
+
+  // Export — full dump as .txt (Content-Disposition attachment).
+  if (String(_req.query.download) === "1") {
+    const txt = buildDiagnosticsText(result);
+    const fname = `switchnest-diagnostics-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.txt`;
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${fname}"`);
+    return res.send(txt);
   }
 
   ok(res, result);
