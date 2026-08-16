@@ -9,10 +9,21 @@ Replacing the PHP v1 (`/c/xampp/htdocs/onlineswitch`) with a modern **React + No
 onlineswitch-v2/
 ├── site/                  ← the whole platform (monorepo: web + api + shared)
 ├── hardware/              ← ESP32 / PlatformIO firmware (RoboSphere-Dev)
+├── docs/                  ← project docs (context handoff, guides)
 ├── PROJECT_ANALYSIS.md    ← deep analysis of the PHP v1 project
 ├── ROADMAP.md             ← the rebuild plan (multi-tenant homes + admin + timers + AI)
+├── TESTING.md             ← verification checklist (leak monitor, password sync, instances)
 └── README.md
 ```
+
+## Docs
+
+- [`docs/SwitchNest-Project-Context.md`](./docs/SwitchNest-Project-Context.md) — **complete project context handoff** (idea + history + roadmap + gotchas). Kisi bhi AI agent/model ko yeh file do — wo poora project samajh ke suggestions de payega.
+- [`PROJECT_ANALYSIS.md`](./PROJECT_ANALYSIS.md) — deep analysis of the legacy PHP v1.
+- [`ROADMAP.md`](./ROADMAP.md) — rebuild plan, phases, open questions.
+- [`START_GUIDE.md`](./START_GUIDE.md) — full local setup (XAMPP, firmware, flasher).
+- [`TESTING.md`](./TESTING.md) — verification checklist for recent fixes.
+
 
 ## Quick Start (fresh environment — pehli baar)
 
