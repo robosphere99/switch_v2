@@ -314,7 +314,7 @@ export function Admin() {
     : [];
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8">
+    <div className="mx-auto max-w-[1600px] px-4 py-6">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="mb-1 text-3xl font-bold">🛡️ Admin Panel</h1>

@@ -93,3 +93,12 @@
   .dark .bg-green-50 { background-color: rgb(15 40 30); }
   .dark .bg-red-50 { background-color: rgb(45 18 24); }
 }
+
+/* Scrollbar hide — scroll tohta hai, sirf visual bar nahi (WhatsApp-style clean) */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
