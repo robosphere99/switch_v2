@@ -7,6 +7,7 @@ interface AuthState {
   refreshToken: string | null;
   user: AuthUser | null;
   setAuth: (auth: { accessToken: string; refreshToken: string; user: AuthUser }) => void;
+  setUser: (user: AuthUser) => void;
   logout: () => void;
 }
 
@@ -18,6 +19,7 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       setAuth: ({ accessToken, refreshToken, user }) =>
         set({ accessToken, refreshToken, user }),
+      setUser: (user) => set({ user }),
       logout: () => set({ accessToken: null, refreshToken: null, user: null }),
     }),
     { name: "robosphere-auth" },
