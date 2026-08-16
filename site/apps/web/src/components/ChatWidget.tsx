@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { askAssistant, type AssistantReply } from "../api/public";
+import { askAdminAssistant, askAssistant, type AssistantReply } from "../api/public";
+import { useAuthStore } from "../stores/auth";
+import { RichText } from "./RichText";
 
 interface Msg {
   role: "user" | "bot";
@@ -21,13 +23,37 @@ const WELCOME: Msg = {
   ],
 };
 
+/** Admin ke liye alag assistant — customer sales nahi, Admin panel ka guide. */
+const ADMIN_WELCOME: Msg = {
+  role: "bot",
+  text: "Namaste Admin! 🛡️ Main SwitchNest ka admin assistant hoon. Admin panel ke har feature me guide kar sakta hoon — stats, users, homes, devices, OTA/firmware, API keys, audit logs, support inbox aur settings.",
+  chips: [
+    "Overview stats kaise dekhein?",
+    "User ko block/delete kaise karein?",
+    "Support inbox kaise use karein?",
+    "Firmware OTA kaise push karein?",
+    "API keys kya hain?",
+  ],
+};
+
 export function ChatWidget() {
+  const user = useAuthStore((s) => s.user);
+  const isAdmin = user?.role === "system_admin";
+  const welcome = isAdmin ? ADMIN_WELCOME : WELCOME;
   const [open, setOpen] = useState(false);
-  const [msgs, setMsgs] = useState<Msg[]>([WELCOME]);
+  const [msgs, setMsgs] = useState<Msg[]>([welcome]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const [unread, setUnread] = useState(true);
+
+  // Login/logout hone pe (customer <-> admin) assistant ka mode badlo —
+  // purane customer messages admin ko na dikhein.
+  useEffect(() => {
+    setMsgs([isAdmin ? ADMIN_WELCOME : WELCOME]);
+    setOpen(false);
+    setUnread(true);
+  }, [isAdmin]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -40,7 +66,7 @@ export function ChatWidget() {
     setInput("");
     setBusy(true);
     try {
-      const r = await askAssistant(t);
+      const r = isAdmin ? await askAdminAssistant(t) : await askAssistant(t);
       setMsgs((m) => [...m, { role: "bot", text: r.reply, products: r.products, chips: r.chips }]);
     } catch {
       setMsgs((m) => [...m, { role: "bot", text: "Oops — kuch gadbad ho gayi. Thodi der baad try karo ya contact form bharke bhejo. 🙂" }]);
@@ -92,7 +118,7 @@ export function ChatWidget() {
                       : "max-w-[85%] rounded-2xl rounded-bl-sm border border-brand/20 bg-night-700 px-3 py-2 text-sm text-gray-700"
                   }
                 >
-                  <div className="whitespace-pre-wrap">{m.text}</div>
+                  <RichText text={m.text} className="whitespace-pre-wrap" />
                 </div>
               </div>
             ))}

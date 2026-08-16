@@ -318,7 +318,7 @@ export function AdminSupport({
               />
             </div>
           </div>
-          <div className="no-scrollbar flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto">
             {conversations.isLoading && (
               <p className="px-4 py-8 text-center text-sm text-gray-500">Loading…</p>
             )}
