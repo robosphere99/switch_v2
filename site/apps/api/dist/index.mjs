@@ -156,10 +156,9 @@ var envSchema = z.object({
 });
 var parsed = envSchema.safeParse(process.env);
 if (!parsed.success) {
-  console.error("\u274C Invalid environment variables:", parsed.error.flatten().fieldErrors);
-  process.exit(1);
+  console.error("\u26A0\uFE0F Invalid environment variables \u2014 defaults use kar rahe hain:", parsed.error.flatten().fieldErrors);
 }
-var env = parsed.data;
+var env = parsed.success ? parsed.data : envSchema.parse({});
 if (!process.env.DATABASE_URL) process.env.DATABASE_URL = env.DATABASE_URL;
 var corsOrigins = env.CORS_ORIGINS.split(",").map((s) => s.trim());
 
@@ -6888,8 +6887,8 @@ async function selfHealPrismaClient() {
     create: { key: HEAL_LAST_KEY, value: (/* @__PURE__ */ new Date()).toISOString() },
     update: { value: (/* @__PURE__ */ new Date()).toISOString() }
   }).catch(() => void 0);
-  fileLog("[boot] prisma generate OK \u2014 reboot karke fresh client load karo");
-  setImmediate(() => process.exit(0));
+  fileLog("[boot] prisma generate OK \u2014 45s baad safe reboot (fresh client load)");
+  setTimeout(() => process.exit(0), 45e3);
 }
 async function initDatabase() {
   let dbReady = false;
