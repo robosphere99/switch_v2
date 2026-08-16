@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import { Route, Routes } from "react-router-dom";
 import { Navbar } from "./components/Navbar";
 import { ChatWidget } from "./components/ChatWidget";
@@ -14,7 +14,9 @@ import { Login } from "./pages/Login";
 import { Members } from "./pages/Members";
 import { Profile } from "./pages/Profile";
 import { Signup } from "./pages/Signup";
-import { Admin } from "./pages/Admin";
+// Admin heavy page hai (stats + diagnostics + charts) — lazy-load taaki
+// normal dashboard bundle me na aaye (perceived performance).
+const Admin = lazy(() => import("./pages/Admin").then((m) => ({ default: m.Admin })));
 import { Assistant } from "./pages/Assistant";
 import { Shop } from "./pages/Shop";
 import { Checkout } from "./pages/Checkout";
@@ -187,7 +189,9 @@ export default function App() {
             path="/admin"
             element={
               <ProtectedRoute>
-                <Admin />
+                <Suspense fallback={<div className="p-10 text-center text-gray-500">Loading…</div>}>
+                  <Admin />
+                </Suspense>
               </ProtectedRoute>
             }
           />

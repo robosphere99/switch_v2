@@ -21,6 +21,10 @@ const createSchema = z.object({
 });
 
 const statusSchema = z.object({ status: z.enum(["on", "off"]) });
+const bulkStatusSchema = z.object({
+  deviceIds: z.array(z.number().int().positive()).min(1).max(50),
+  status: z.enum(["on", "off"]),
+});
 const espNameSchema = z.object({ name: z.string().min(1).max(60) });
 const updateSchema = z.object({
   name: z.string().min(1).max(100).optional(),
@@ -41,6 +45,14 @@ deviceRouter.post(
   requireHomeMember("admin"),
   validateBody(createSchema),
   deviceController.create,
+);
+deviceRouter.post(
+  "/:homeId/devices/bulk-status",
+  requireAuth,
+  validateParams(idParams),
+  requireHomeMember("member"),
+  validateBody(bulkStatusSchema),
+  deviceController.bulkSetStatus,
 );
 deviceRouter.patch(
   "/:homeId/devices/:deviceId",

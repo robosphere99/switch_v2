@@ -42,6 +42,18 @@ export async function setDeviceStatus(
   return data;
 }
 
+export async function bulkSetDeviceStatus(
+  homeId: number,
+  deviceIds: number[],
+  status: DeviceStatus,
+): Promise<ApiResponse<Device[]>> {
+  const { data } = await api.post<ApiResponse<Device[]>>(
+    `/homes/${homeId}/devices/bulk-status`,
+    { deviceIds, status },
+  );
+  return data;
+}
+
 export async function updateDevice(
   homeId: number,
   deviceId: number,

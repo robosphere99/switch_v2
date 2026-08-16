@@ -32,6 +32,16 @@ export async function setStatus(req: Request, res: Response) {
   ok(res, device);
 }
 
+export async function bulkSetStatus(req: Request, res: Response) {
+  const updated = await deviceService.bulkSetStatus({
+    homeId: Number(req.params.homeId),
+    actorId: req.user!.sub,
+    deviceIds: req.body.deviceIds,
+    status: req.body.status,
+  });
+  ok(res, updated);
+}
+
 export async function update(req: Request, res: Response) {
   const device = await deviceService.updateDevice(
     Number(req.params.homeId),

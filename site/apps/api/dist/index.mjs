@@ -1033,6 +1033,57 @@ async function setDeviceStatus(input) {
   if (updated) emitToHome(input.homeId, "device:updated", updated);
   return updated;
 }
+async function bulkSetStatus(input) {
+  const ids = [...new Set(input.deviceIds)];
+  let devices = await prisma.device.findMany({
+    where: { id: { in: ids }, homeId: input.homeId }
+  });
+  if (devices.length === 0) {
+    throw new AppError("DEVICE_NOT_FOUND", "Koi device nahi mila is home me", 404);
+  }
+  const membership2 = prisma.deviceAccess ? await prisma.homeMember.findUnique({
+    where: { homeId_userId: { homeId: input.homeId, userId: input.actorId } },
+    select: { restricted: true }
+  }) : null;
+  if (membership2?.restricted && prisma.deviceAccess) {
+    const granted = await prisma.deviceAccess.findMany({
+      where: { userId: input.actorId, deviceId: { in: devices.map((d) => d.id) } },
+      select: { deviceId: true }
+    });
+    const grantedSet = new Set(granted.map((g) => g.deviceId));
+    const allowed = devices.filter((d) => grantedSet.has(d.id));
+    if (allowed.length === 0) {
+      throw new AppError("FORBIDDEN", "In devices ka access nahi hai (child mode)", 403);
+    }
+    devices = allowed;
+  }
+  await prisma.$transaction([
+    prisma.device.updateMany({
+      where: { id: { in: devices.map((d) => d.id) } },
+      data: { status: input.status }
+    }),
+    ...devices.map(
+      (d) => prisma.deviceCommand.create({
+        data: { deviceId: d.id, actorId: input.actorId, command: `set_status:${input.status}` }
+      })
+    ),
+    ...devices.map(
+      (d) => prisma.deviceLog.create({
+        data: {
+          deviceId: d.id,
+          actorId: input.actorId,
+          logType: "status_change",
+          logMessage: `Device turned ${input.status}`
+        }
+      })
+    )
+  ]);
+  const updated = await prisma.device.findMany({
+    where: { id: { in: devices.map((d) => d.id) }, homeId: input.homeId }
+  });
+  for (const d of updated) emitToHome(input.homeId, "device:updated", d);
+  return updated;
+}
 async function updateDevice(homeId, deviceId, patch) {
   const device = await prisma.device.findFirst({ where: { id: deviceId, homeId } });
   if (!device) throw new AppError("DEVICE_NOT_FOUND", "Device not found in this home", 404);
@@ -1223,6 +1274,15 @@ async function setStatus(req, res) {
     status: req.body.status
   });
   ok(res, device);
+}
+async function bulkSetStatus2(req, res) {
+  const updated = await bulkSetStatus({
+    homeId: Number(req.params.homeId),
+    actorId: req.user.sub,
+    deviceIds: req.body.deviceIds,
+    status: req.body.status
+  });
+  ok(res, updated);
 }
 async function update(req, res) {
   const device = await updateDevice(
@@ -1707,6 +1767,10 @@ var createSchema2 = z5.object({
   serialNumber: z5.string().min(1).max(64).optional()
 });
 var statusSchema = z5.object({ status: z5.enum(["on", "off"]) });
+var bulkStatusSchema = z5.object({
+  deviceIds: z5.array(z5.number().int().positive()).min(1).max(50),
+  status: z5.enum(["on", "off"])
+});
 var espNameSchema = z5.object({ name: z5.string().min(1).max(60) });
 var updateSchema = z5.object({
   name: z5.string().min(1).max(100).optional(),
@@ -1726,6 +1790,14 @@ deviceRouter.post(
   requireHomeMember("admin"),
   validateBody(createSchema2),
   create2
+);
+deviceRouter.post(
+  "/:homeId/devices/bulk-status",
+  requireAuth,
+  validateParams(idParams3),
+  requireHomeMember("member"),
+  validateBody(bulkStatusSchema),
+  bulkSetStatus2
 );
 deviceRouter.patch(
   "/:homeId/devices/:deviceId",
