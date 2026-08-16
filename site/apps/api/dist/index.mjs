@@ -7286,35 +7286,32 @@ async function selfHealPrismaClient() {
     create: { key: HEAL_LAST_KEY, value: (/* @__PURE__ */ new Date()).toISOString() },
     update: { value: (/* @__PURE__ */ new Date()).toISOString() }
   }).catch(() => void 0);
-  fileLog("[boot] prisma generate OK \u2014 45s baad safe reboot (fresh client load)");
-  setTimeout(() => process.exit(0), 45e3);
+  const healUptime = Math.round(process.uptime());
+  const healDelayMs = healUptime < 120 ? (120 - healUptime) * 1e3 : 5e3;
+  fileLog(`[boot] prisma generate OK \u2014 ${Math.round(healDelayMs / 1e3)}s baad safe reboot (fresh client load)`);
+  setTimeout(() => process.exit(0), healDelayMs);
 }
 async function initDatabase() {
-  let dbReady = false;
   boot("db probe: connecting...");
-  try {
-    await prisma.$connect();
-    boot("db probe: connected");
+  const probeOnce = async () => {
+    try {
+      await prisma.$connect();
+    } catch (err) {
+      boot("db probe: NOT reachable \u2014", err instanceof Error ? err.message : String(err));
+      return false;
+    }
     if (await dbHasSchema()) {
-      dbReady = true;
       logger.info("\u2705 Database connected (schema ready)");
       await runLightMigrations();
       await selfHealPrismaClient();
-    } else {
-      logger.warn(
-        "\u26A0\uFE0F Database reachable par installed nahi \u2014 setup mode. /api/install se installation karo."
-      );
+      return true;
     }
-  } catch (err) {
-    boot("db probe: NOT reachable \u2014", err instanceof Error ? err.message : String(err));
-    logger.warn(
-      "\u26A0\uFE0F Database not reachable \u2014 setup mode. Visit /api/install/status and run installation."
-    );
-    logger.debug(err instanceof Error ? err.message : String(err));
-  }
-  boot("db probe: schema ready =", dbReady);
-  setDbReady(dbReady);
-  if (dbReady) {
+    logger.warn("\u26A0\uFE0F Database reachable par installed nahi \u2014 setup mode. /api/install se installation karo.");
+    return false;
+  };
+  const finishReady = async () => {
+    boot("db probe: schema ready = true");
+    setDbReady(true);
     try {
       startScheduler();
       startFamilySafety();
@@ -7333,7 +7330,21 @@ async function initDatabase() {
     } catch (err) {
       logger.warn("Request tracker start failed", err instanceof Error ? err.message : String(err));
     }
+  };
+  if (await probeOnce()) {
+    await finishReady();
+    return;
   }
+  boot("db probe: retry loop start (har 15s) \u2014 DB aate hi ready ho jayega");
+  setDbReady(false);
+  const retryTimer = setInterval(async () => {
+    const ok2 = await probeOnce();
+    if (ok2) {
+      clearInterval(retryTimer);
+      await finishReady();
+    }
+  }, 15e3);
+  retryTimer.unref?.();
 }
 main().catch((err) => {
   const line = `[fatal] main() failed: ${err instanceof Error ? err.stack || err.message : String(err)}`;
