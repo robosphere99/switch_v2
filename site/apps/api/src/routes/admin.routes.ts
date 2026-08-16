@@ -8,6 +8,7 @@ import { execSync } from "node:child_process";
 import { requireAuth } from "../middleware/auth";
 import { validateBody } from "../middleware/validate";
 import { prisma } from "../lib/prisma";
+import { getHealthMonitorState } from "../lib/healthMonitor";
 import { AppError, ok } from "../lib/response";
 import { audit } from "../services/audit.service";
 import { createNotification } from "../services/notification.service";
@@ -695,6 +696,26 @@ adminRouter.get("/diagnostics", async (_req, res) => {
     stats: { reqEnd: number; reqAbort: number; exitsInTail: number; bootsInTail: number };
     hbSummary: Array<{ pid: number; count: number; firstUptime: number; lastUptime: number; firstRss: number; lastRss: number; rssGrowthPerHour: number }>;
     hbSeries: Array<{ ts: string; pid: number; uptime: number; rss: number; heap: number | null }>;
+    healthCheck: {
+      running: boolean;
+      intervalSec: number;
+      startedAt: string;
+      lastCheck: { ts: string; ok: boolean; status: number | null; ms: number; err: string | null } | null;
+      checksTotal: number;
+      checksOk: number;
+      successRate: number | null;
+      activeIncident: { id: string; startedAt: string; lastStatus: number | null; lastErr: string | null } | null;
+      checking: boolean;
+      incidents: Array<{
+        ts: string;
+        type: string;
+        id: string;
+        failCount?: number;
+        lastStatus?: number | null;
+        lastErr?: string | null;
+        end?: { ts: string; durationSec: number; recoveredStatus?: number | null } | null;
+      }>;
+    };
     appPool: string | null;
     wpEvents: string | null;
     webconfig: {
@@ -723,6 +744,18 @@ adminRouter.get("/diagnostics", async (_req, res) => {
     stats: { reqEnd: 0, reqAbort: 0, exitsInTail: 0, bootsInTail: 0 },
     hbSummary: [],
     hbSeries: [],
+    healthCheck: {
+      running: false,
+      intervalSec: 30,
+      startedAt: new Date().toISOString(),
+      lastCheck: null,
+      checksTotal: 0,
+      checksOk: 0,
+      successRate: null,
+      activeIncident: null,
+      checking: false,
+      incidents: [],
+    },
     webconfig: null,
     appPool: null,
     wpEvents: null,
@@ -842,6 +875,8 @@ adminRouter.get("/diagnostics", async (_req, res) => {
     }
   }
 
+
+  result.healthCheck = getHealthMonitorState();
 
   // web.config — iisnode settings (nodeProcessCountPerApplication, watchedFiles,
   // maxConcurrentRequestsPerProcess). Process har ~60s recycle ho raha hai bina

@@ -1470,6 +1470,89 @@ export function Admin() {
               </div>
             )}
 
+            {diag.data?.success && (
+              <div className="mb-4 rounded-lg border border-gray-200 bg-night-900 p-3">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs font-bold uppercase tracking-wide text-gray-500">💓 Health Checker</p>
+                  {(() => {
+                    const hc = diag.data!.data.healthCheck;
+                    if (!hc) return <span className="text-xs text-gray-600">…</span>;
+                    if (hc.activeIncident)
+                      return (
+                        <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-xs font-semibold text-red-400">
+                          🔴 Incident since {new Date(hc.activeIncident.startedAt).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hour12: false })}
+                        </span>
+                      );
+                    if (hc.lastCheck?.ok)
+                      return (
+                        <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-semibold text-emerald-400">
+                          🟢 Healthy · {hc.lastCheck.status} · {hc.lastCheck.ms}ms
+                        </span>
+                      );
+                    return <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-semibold text-amber-400">⏳ Checking…</span>;
+                  })()}
+                </div>
+
+                {(() => {
+                  const hc = diag.data!.data.healthCheck;
+                  if (!hc) return <p className="text-xs text-gray-600">Health checker data nahi mila.</p>;
+                  return (
+                    <>
+                      <div className="mb-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Last check</p>
+                          <p className="mt-0.5 font-semibold text-night-950">
+                            {hc.lastCheck
+                              ? new Date(hc.lastCheck.ts).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })
+                              : "—"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Checks</p>
+                          <p className="mt-0.5 font-semibold text-night-950">
+                            {hc.checksOk}/{hc.checksTotal} ok
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Success rate</p>
+                          <p className="mt-0.5 font-semibold text-night-950">{hc.successRate ?? "—"}%</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Every</p>
+                          <p className="mt-0.5 font-semibold text-night-950">{hc.intervalSec}s · full-chain HTTPS</p>
+                        </div>
+                      </div>
+
+                      <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                        🚨 Incident history ({hc.incidents.length})
+                      </p>
+                      {hc.incidents.length === 0 ? (
+                        <p className="text-xs text-emerald-500/80">No incidents recorded — site stable 🎉</p>
+                      ) : (
+                        <div className="max-h-44 space-y-1.5 overflow-auto">
+                          {hc.incidents.map((inc) => (
+                            <div key={inc.id} className="flex flex-wrap items-center gap-x-3 gap-y-0.5 rounded-md bg-night-950 px-2.5 py-1.5 text-xs">
+                              <span className="text-red-400">🔴 {new Date(inc.ts).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false })}</span>
+                              <span className="text-gray-500">
+                                {inc.lastStatus ? `HTTP ${inc.lastStatus}` : inc.lastErr || "unknown"}
+                              </span>
+                              {inc.end ? (
+                                <span className="font-semibold text-emerald-400">
+                                  🟢 recovered · {inc.end.durationSec >= 60 ? `${Math.floor(inc.end.durationSec / 60)}m ${inc.end.durationSec % 60}s` : `${inc.end.durationSec}s`} down
+                                </span>
+                              ) : (
+                                <span className="font-semibold text-amber-400">ongoing…</span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+            )}
+
             <div className="grid gap-3 md:grid-cols-2">
               <div className="rounded-lg border border-gray-200 bg-night-900 p-3">
                 <p className="mb-2 text-xs font-bold uppercase text-gray-500">
