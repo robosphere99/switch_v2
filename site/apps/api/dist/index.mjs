@@ -2910,6 +2910,7 @@ import { z as z12 } from "zod";
 import multer from "multer";
 import path4 from "node:path";
 import fs3 from "node:fs";
+import { execSync } from "node:child_process";
 init_prisma();
 init_audit_service();
 
@@ -4063,6 +4064,7 @@ adminRouter.get("/diagnostics", async (_req, res) => {
       node: process.version,
       startedAt: new Date(Date.now() - process.uptime() * 1e3).toISOString()
     },
+    parent: null,
     boot: [],
     exits: [],
     crashes: [],
@@ -4161,6 +4163,22 @@ adminRouter.get("/diagnostics", async (_req, res) => {
       };
       break;
     }
+  }
+  try {
+    const wm = (cmd) => execSync(cmd, { encoding: "utf8", windowsHide: true, timeout: 1e4 });
+    const out = wm(`wmic process where ProcessId=${process.pid} get ParentProcessId /value`);
+    const m = /ParentProcessId=(\d+)/.exec(out);
+    if (m) {
+      const ppid = Number(m[1]);
+      const p2 = wm(`wmic process where ProcessId=${ppid} get Name,CreationDate,CommandLine /value`);
+      result.parent = {
+        pid: ppid,
+        name: /Name=(.*)/.exec(p2)?.[1] ?? "",
+        startTime: /CreationDate=(.*)/.exec(p2)?.[1] ?? "",
+        cmdline: (/CommandLine=(.*)/.exec(p2)?.[1] ?? "").slice(0, 300)
+      };
+    }
+  } catch {
   }
   ok(res, result);
 });
