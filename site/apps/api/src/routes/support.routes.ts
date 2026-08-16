@@ -291,13 +291,21 @@ supportRouter.get("/attachment/:id", async (req, res) => {
   res.send(buf);
 });
 
-/** Admin: unread support messages count (admin badge). */
+/**
+ * Admin navbar badge — WhatsApp-style: unread CONVERSATIONS count (messages count nahi).
+ * Ek user ne 5 messages bheje to badge "1" dikhega, "5" nahi. Deleted (soft) messages
+ * count nahi hote — warna badge kabhi hat hi na (user delete kare to bhi badha rahta tha).
+ */
 supportRouter.get("/admin/unread-count", requireAuth, async (req, res) => {
   if (req.user!.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
   // Defensive: agar Prisma client purana generate hua ho (model missing) to crash mat karo.
   if (!prisma.supportMessage) return ok(res, { unread: 0 });
-  const unread = await supportModel().count({ where: { readByAdmin: false } });
-  ok(res, { unread });
+  const groups = await supportModel().groupBy({
+    by: ["userId"],
+    where: { readByAdmin: false, deletedAt: null },
+    _count: { _all: true },
+  });
+  ok(res, { unread: groups.length });
 });
 
 /** Admin: support conversations list (WhatsApp-style inbox) — ek row per user. */
