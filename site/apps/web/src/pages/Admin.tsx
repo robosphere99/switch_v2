@@ -31,6 +31,7 @@ import {
   getAdminLogs,
   getAdminDiagnostics,
   getDeployInfo,
+  type DeployInfo,
   getDeviceSupport,
   adminSetDeviceStatus,
   clearDeviceCommands,
@@ -77,6 +78,34 @@ function fmtUptime(sec: number): string {
   if (h > 0) return `${h}h ${m}m`;
   if (m > 0) return `${m}m ${s2}s`;
   return `${s2}s`;
+}
+
+/** CI status badge + details — deploy info cards me (Overview + Logs). */
+function CiStrip({ ci }: { ci: NonNullable<DeployInfo["ci"]> }) {
+  const badge =
+    ci.status === "pass" ? (
+      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 font-semibold text-emerald-500">🟢 pass</span>
+    ) : ci.status === "fail" ? (
+      <span className="inline-flex items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 font-semibold text-red-400">🔴 fail</span>
+    ) : ci.status === "pending" ? (
+      <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 font-semibold text-amber-500">🟡 running</span>
+    ) : (
+      <span className="inline-flex items-center gap-1 rounded-full bg-gray-500/15 px-2 py-0.5 font-semibold text-gray-400">⚪ unknown</span>
+    );
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-gray-200 pt-3 text-xs">
+      <span className="font-bold uppercase tracking-wide text-gray-500">CI</span>
+      {badge}
+      {ci.workflow && <span className="text-gray-500">· {ci.workflow}</span>}
+      {ci.runId && <span className="font-mono text-gray-500">· run #{ci.runId}</span>}
+      {ci.updatedAt && (
+        <span className="text-gray-500">
+          · {new Date(ci.updatedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
+        </span>
+      )}
+      {ci.reason && <span className="text-amber-500">· {ci.reason}</span>}
+    </div>
+  );
 }
 
 export function Admin() {
@@ -547,6 +576,7 @@ export function Admin() {
               ) : (
                 <p className="mt-2 text-xs text-gray-600">Loading deploy info…</p>
               )}
+              {deployInfo.data?.success && deployInfo.data.data.ci && <CiStrip ci={deployInfo.data.data.ci} />}
             </div>
           )}
 
@@ -1488,6 +1518,7 @@ export function Admin() {
                 ) : (
                   <p className="text-xs text-gray-600">Loading deploy info…</p>
                 )}
+                {deployInfo.data?.success && deployInfo.data.data.ci && <CiStrip ci={deployInfo.data.data.ci} />}
               </div>
             )}
 
