@@ -45,10 +45,10 @@ if (!fs.existsSync(docPath)) {
   process.exit(1);
 }
 
-const branch = git("branch --show-current") || "(detached)";
-const dirty = git("status --porcelain");
+const branch = git("branch", "--show-current") || "(detached)";
+const dirty = git("status", "--porcelain");
 const treeState = dirty === "" ? "clean" : `dirty (${dirty.split("\n").length} changes)`;
-const total = git("rev-list --count HEAD") || "?";
+const total = git("rev-list", "--count", "HEAD") || "?";
 const now = new Date().toISOString().slice(0, 16).replace("T", " ");
 
 const stamp = `> _Auto-updated: ${now} UTC · branch \`${branch}\` · tree ${treeState} · ${total} commits_`;
