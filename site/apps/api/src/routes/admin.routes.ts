@@ -4,6 +4,7 @@ import { z } from "zod";
 import multer from "multer";
 import path from "node:path";
 import fs from "node:fs";
+import { execSync } from "node:child_process";
 import { requireAuth } from "../middleware/auth";
 import { validateBody } from "../middleware/validate";
 import { prisma } from "../lib/prisma";
@@ -651,6 +652,12 @@ adminRouter.get("/diagnostics", async (_req, res) => {
       node: string;
       startedAt: string;
     };
+    parent: {
+      pid: number;
+      name: string;
+      startTime: string;
+      cmdline: string;
+    } | null;
     boot: string[];
     exits: string[];
     crashes: string[];
@@ -675,6 +682,7 @@ adminRouter.get("/diagnostics", async (_req, res) => {
       node: process.version,
       startedAt: new Date(Date.now() - process.uptime() * 1000).toISOString(),
     },
+    parent: null,
     boot: [],
     exits: [],
     crashes: [],
@@ -790,6 +798,28 @@ adminRouter.get("/diagnostics", async (_req, res) => {
       };
       break;
     }
+  }
+
+
+  // Parent process — w3wp (app-pool worker) stable hai ya khud recycle
+  // ho raha hai? Agar w3wp bhi har minute naya hai to pool-level recycle
+  // (Plesk config). Agar w3wp purana hai to iisnode node ko khud maarta hai.
+  try {
+    const wm = (cmd: string) => execSync(cmd, { encoding: "utf8", windowsHide: true, timeout: 10_000 });
+    const out = wm(`wmic process where ProcessId=${process.pid} get ParentProcessId /value`);
+    const m = /ParentProcessId=(\d+)/.exec(out);
+    if (m) {
+      const ppid = Number(m[1]);
+      const p2 = wm(`wmic process where ProcessId=${ppid} get Name,CreationDate,CommandLine /value`);
+      result.parent = {
+        pid: ppid,
+        name: /Name=(.*)/.exec(p2)?.[1] ?? "",
+        startTime: /CreationDate=(.*)/.exec(p2)?.[1] ?? "",
+        cmdline: (/CommandLine=(.*)/.exec(p2)?.[1] ?? "").slice(0, 300),
+      };
+    }
+  } catch {
+    /* wmic unavailable — parent unknown, koi baat nahi */
   }
 
   ok(res, result);
