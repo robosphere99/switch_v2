@@ -809,6 +809,28 @@ function buildNotificationDraft(n) {
 // ../../packages/shared/src/index.ts
 var HOME_MEMBER_ROLES = ["owner", "admin", "member", "viewer"];
 
+// src/services/notificationQuery.ts
+var SCHEDULE_TITLE_RE = /Schedule fired/i;
+function normalizeCategory(category, title) {
+  if (category === "system" && SCHEDULE_TITLE_RE.test(title ?? "")) return "schedule";
+  return category;
+}
+function buildNotificationWhere(userId, args = {}) {
+  const where = { userId };
+  if (args.category && args.category !== "all") {
+    if (args.category === "schedule") {
+      where.OR = [{ category: "schedule" }, { category: "system", title: { contains: "Schedule fired" } }];
+    } else if (args.category === "system") {
+      where.OR = [{ category: "system", NOT: { title: { contains: "Schedule fired" } } }];
+    } else {
+      where.category = args.category;
+    }
+  }
+  if (args.type && args.type !== "all") where.type = args.type;
+  if (args.unread) where.readAt = null;
+  return where;
+}
+
 // src/services/notification.service.ts
 function attachDraftToBody(body, title) {
   const draft = buildNotificationDraft({ category: "", title, body });
@@ -841,26 +863,10 @@ async function createNotification(userId, input) {
   emitToUser(userId, "notification:new", notification);
   return notification;
 }
-var SCHEDULE_TITLE_RE = /Schedule fired/i;
-function normalizeCategory(category, title) {
-  if (category === "system" && SCHEDULE_TITLE_RE.test(title ?? "")) return "schedule";
-  return category;
-}
 async function listNotifications(userId, args = {}) {
   const page = Math.max(1, Math.floor(args.page ?? 1));
   const pageSize = Math.min(50, Math.max(1, Math.floor(args.pageSize ?? 20)));
-  const where = { userId };
-  if (args.category && args.category !== "all") {
-    if (args.category === "schedule") {
-      where.OR = [{ category: "schedule" }, { category: "system", title: { contains: "Schedule fired" } }];
-    } else if (args.category === "system") {
-      where.OR = [{ category: "system", NOT: { title: { contains: "Schedule fired" } } }];
-    } else {
-      where.category = args.category;
-    }
-  }
-  if (args.type && args.type !== "all") where.type = args.type;
-  if (args.unread) where.readAt = null;
+  const where = buildNotificationWhere(userId, args);
   const [raw, total2] = await Promise.all([
     prisma.notification.findMany({
       where,
