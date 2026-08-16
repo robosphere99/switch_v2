@@ -83,14 +83,23 @@ async function probeDb(parts: DbParts): Promise<{ reachable: boolean; tablesRead
     // users table hai = data pehle se hai = installed. app_meta flag sirf
     // confirmation hai — purane installs (bina app_meta table ke) bhi
     // installed hi maane jaate hain.
-    let installed = hasUsers;
+    // installed = asli data hai (admin/user rows). app_meta flag confirm
+    // karta hai; flag na ho toh users count decide karta hai — isse factory
+    // reset (sab empty) pe install wizard sahi dikhta hai.
+    let installed = false;
     if (hasUsers) {
       try {
         const [meta] = await conn.query("SELECT value FROM app_meta WHERE `key` = 'installed' LIMIT 1");
         const flag = (meta as Array<{ value: string }>)[0]?.value;
-        if (flag !== undefined) installed = flag === "1";
+        if (flag !== undefined) {
+          installed = flag === "1";
+        } else {
+          const [urows] = await conn.query("SELECT COUNT(*) AS c FROM users");
+          installed = Number((urows as Array<{ c: number }>)[0]?.c ?? 0) > 0;
+        }
       } catch {
         // app_meta table abhi bani nahi — users table hi kaafi hai
+        installed = true;
       }
     }
     return { reachable: true, tablesReady: hasUsers, installed };
@@ -135,7 +144,14 @@ installRouter.get("/status", async (_req, res) => {
  */
 installRouter.post("/", async (req, res) => {
   if (isDbReady()) {
-    throw new AppError("ALREADY_INSTALLED", "Database already installed and connected", 409);
+    // In-memory flag to set hai (process restart pe default true), par asli
+    // check DB me koi admin/data hai ya nahi — factory reset ke baad empty
+    // DB pe install dobara chalta rahe.
+    const parts = parseDatabaseUrl(env.DATABASE_URL);
+    const probe = await probeDb(parts);
+    if (probe.installed) {
+      throw new AppError("ALREADY_INSTALLED", "Database already installed and connected", 409);
+    }
   }
 
   const bodyDb = (req.body?.db ?? {}) as Partial<DbParts>;

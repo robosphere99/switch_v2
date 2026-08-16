@@ -681,3 +681,15 @@ export async function getSupportUserContext(userId: number): Promise<ApiResponse
   });
   return data;
 }
+
+export interface ResetResult {
+  reset: boolean;
+  mode: "data" | "factory";
+  message: string;
+}
+
+/** Danger zone — admin power: site reset (data = test data clear; factory = sab clear + setup mode). */
+export async function resetSite(mode: "data" | "factory"): Promise<ApiResponse<ResetResult>> {
+  const { data } = await api.post("/admin/reset", { mode, confirm: "RESET" });
+  return data;
+}

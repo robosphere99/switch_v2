@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Lock } from "lucide-react";
 import { login } from "../api/auth";
+import { extractApiError } from "../api/client";
 import { useAuthStore } from "../stores/auth";
 import { applyAccountTheme } from "../lib/themeAccount";
 import { Logo } from "../components/Logo";
@@ -28,7 +29,7 @@ export function Login() {
         setError(res.error.message);
       }
     } catch (err) {
-      setError("Connection error. Is the API running?");
+      setError(extractApiError(err).message);
     } finally {
       setLoading(false);
     }

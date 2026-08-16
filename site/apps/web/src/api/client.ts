@@ -34,3 +34,23 @@ api.interceptors.response.use(
     return Promise.reject(error);
   },
 );
+
+/**
+ * Kisi bhi API error se readable message nikalta hai. Kabhi-kabhi proxy/IIS
+ * JSON error ko HTML page se replace kar deta hai — tab fallback message dekar
+ * raw HTML ko UI me dikhne se rokta hai.
+ */
+export function extractApiError(err: unknown): { status: number; message: string; code: string } {
+  const e = err as { response?: { status?: number; data?: unknown } };
+  const status = e.response?.status ?? 0;
+  const data = e.response?.data;
+  if (data && typeof data === "object" && (data as { success?: boolean }).success === false) {
+    const apiErr = (data as { error?: { code?: string; message?: string } }).error;
+    if (apiErr?.message) return { status, message: apiErr.message, code: apiErr.code ?? "ERROR" };
+  }
+  if (status >= 400) {
+    // App ka JSON error nahi mila (HTML/proxy page) — generic friendly message
+    return { status, message: `Request failed (HTTP ${status}) — server ka error page aaya. Thodi der baad try karo.`, code: "HTTP_ERROR" };
+  }
+  return { status, message: "Connection error. Is the API running?", code: "NETWORK" };
+}
