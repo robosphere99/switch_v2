@@ -8,6 +8,7 @@ import { AppError, ok } from "../lib/response";
 import { createNotification } from "../services/notification.service";
 import { emitToUser } from "../lib/socket";
 import { saveAttachment, readAttachmentFile, deleteAttachmentFile } from "../lib/attachmentStore";
+import { sendSupportReplyEmail } from "../lib/email.service";
 import { env } from "../config/env";
 import type { AccessTokenPayload } from "@robosphere/shared";
 
@@ -132,7 +133,7 @@ const adminSendSchema = z
 supportRouter.post("/admin/messages", requireAuth, validateBody(adminSendSchema), async (req, res) => {
   if (req.user!.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
   const { userId, message } = req.body;
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, username: true } });
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, username: true, email: true } });
   if (!user) throw new AppError("NOT_FOUND", "User not found", 404);
 
   const created = await supportModel().create({
@@ -165,6 +166,11 @@ supportRouter.post("/admin/messages", requireAuth, validateBody(adminSendSchema)
     });
   }
   emitToUser(userId, "support:new", { senderRole: "admin", message: created });
+
+  // Email notification — user ko jab admin reply kare (SMTP configured ho to; nahi to skip)
+  if (user.email) {
+    void sendSupportReplyEmail({ to: user.email, userName: user.username, replyText: message });
+  }
 
   ok(res, created, 201);
 });

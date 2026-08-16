@@ -3,14 +3,14 @@ import { prisma } from "../lib/prisma";
 import { ok } from "../lib/response";
 import { requireAuth } from "../middleware/auth";
 import { audit } from "../services/audit.service";
-import { getSiteSettings } from "../services/siteSettings.service";
+import { getPublicSiteSettings } from "../services/siteSettings.service";
 
 export const publicRouter = Router();
 
 // Site-wide public settings (brand color, contact info) — login se pehle bhi
 // chahiye taaki theme + support details har jagah consistent rahe.
 publicRouter.get("/site-settings", async (_req, res) => {
-  ok(res, await getSiteSettings());
+  ok(res, await getPublicSiteSettings());
 });
 
 // ---------------------------------------------------------------------------

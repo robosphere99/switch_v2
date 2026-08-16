@@ -114,17 +114,33 @@ export interface SiteSettingsPayload {
   supportAddress?: string;
   supportHours?: string;
   brandColor?: string;
+  siteUrl?: string;
+  smtpHost?: string;
+  smtpPort?: number;
+  smtpUser?: string;
+  /** Naya password hi bhejo; blank = purana rakho */
+  smtpPass?: string;
+  smtpFrom?: string;
+  smtpSecure?: boolean;
 }
 
-export async function getAdminSettings(): Promise<ApiResponse<SiteSettingsPayload & { supportHours: string }>> {
+export interface AdminSettings extends SiteSettingsPayload {
+  smtpPassSet: boolean;
+}
+
+export async function getAdminSettings(): Promise<ApiResponse<AdminSettings>> {
   const { data } = await api.get("/admin/settings");
   return data;
 }
 
-export async function updateAdminSettings(patch: SiteSettingsPayload): Promise<
-  ApiResponse<SiteSettingsPayload & { supportHours: string }>
-> {
+export async function updateAdminSettings(patch: SiteSettingsPayload): Promise<ApiResponse<AdminSettings>> {
   const { data } = await api.put("/admin/settings", patch);
+  return data;
+}
+
+/** SMTP test mail — admin ke email pe. */
+export async function testAdminEmail(): Promise<ApiResponse<{ sent: boolean }>> {
+  const { data } = await api.post("/admin/settings/test-email");
   return data;
 }
 
