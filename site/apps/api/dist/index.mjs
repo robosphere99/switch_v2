@@ -5573,8 +5573,12 @@ supportRouter.get("/attachment/:id", async (req, res) => {
 supportRouter.get("/admin/unread-count", requireAuth, async (req, res) => {
   if (req.user.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
   if (!prisma.supportMessage) return ok(res, { unread: 0 });
-  const unread = await supportModel().count({ where: { readByAdmin: false } });
-  ok(res, { unread });
+  const groups = await supportModel().groupBy({
+    by: ["userId"],
+    where: { readByAdmin: false, deletedAt: null },
+    _count: { _all: true }
+  });
+  ok(res, { unread: groups.length });
 });
 supportRouter.get("/admin/conversations", requireAuth, async (req, res) => {
   if (req.user.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);

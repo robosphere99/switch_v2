@@ -1,9 +1,14 @@
+import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { getSupportUnread } from "../api/admin";
 import { getSocket } from "../lib/socket";
 
-/** Admin navbar me unread support replies ka live badge — support:new realtime event se update. */
+/**
+ * Admin navbar me unread support CONVERSATIONS ka live badge (WhatsApp-style).
+ * Click → Support inbox (tab=support) — thread kholo ya "Mark all read" se hat jata hai.
+ * support:new realtime event se update.
+ */
 export function SupportUnreadBadge() {
   const queryClient = useQueryClient();
 
@@ -31,8 +36,12 @@ export function SupportUnreadBadge() {
   const count = unread.data ?? 0;
   if (count <= 0) return null;
   return (
-    <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white shadow">
+    <Link
+      to="/admin?tab=support"
+      title={`${count} unread support chat${count === 1 ? "" : "s"} — kholo aur reply karo`}
+      className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white shadow transition hover:bg-red-600"
+    >
       {count > 9 ? "9+" : count}
-    </span>
+    </Link>
   );
 }
