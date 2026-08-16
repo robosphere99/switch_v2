@@ -312,7 +312,9 @@ supportRouter.get("/admin/unread-count", requireAuth, async (req, res) => {
 supportRouter.get("/admin/conversations", requireAuth, async (req, res) => {
   if (req.user!.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
   if (!prisma.supportMessage) return ok(res, { conversations: [], totalUnread: 0 });
+  // Sirf live (non-deleted) messages — deleted wale na list me dikhen, na unread count me.
   const recent = await supportModel().findMany({
+    where: { deletedAt: null },
     select: {
       id: true,
       userId: true,
@@ -320,23 +322,20 @@ supportRouter.get("/admin/conversations", requireAuth, async (req, res) => {
       message: true,
       attachmentName: true,
       readByAdmin: true,
-      deletedAt: true,
       createdAt: true,
     },
     orderBy: { createdAt: "desc" },
     take: 1000,
   });
-  // Ek baar me aggregate — sabse recent message = preview, unread ka count per user.
+  // Ek baar me aggregate — sabse recent live message = preview, unread ka count per user.
   const byUser = new Map<number, { lastPreview: string; lastSenderRole: string; lastAt: Date; unread: number }>();
   for (const m of recent) {
     const cur = byUser.get(m.userId);
-    const preview = m.deletedAt
-      ? "🚫 (deleted)"
-      : m.message?.trim()
-        ? m.message
-        : m.attachmentName
-          ? `📎 ${m.attachmentName}`
-          : "(attachment)";
+    const preview = m.message?.trim()
+      ? m.message
+      : m.attachmentName
+        ? `📎 ${m.attachmentName}`
+        : "(attachment)";
     if (!cur) {
       byUser.set(m.userId, {
         lastPreview: preview,
@@ -377,7 +376,7 @@ supportRouter.post("/admin/read-all", requireAuth, async (req, res) => {
   if (req.user!.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
   if (!prisma.supportMessage) return ok(res, { unread: 0 });
   await supportModel().updateMany({
-    where: { readByAdmin: false },
+    where: { readByAdmin: false, deletedAt: null },
     data: { readByAdmin: true },
   });
   ok(res, { unread: 0 });
