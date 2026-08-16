@@ -4067,7 +4067,8 @@ adminRouter.get("/diagnostics", async (_req, res) => {
     exits: [],
     crashes: [],
     serverErrors: [],
-    stats: { reqEnd: 0, reqAbort: 0, exitsInTail: 0, bootsInTail: 0 }
+    stats: { reqEnd: 0, reqAbort: 0, exitsInTail: 0, bootsInTail: 0 },
+    hbSummary: []
   };
   if (logFilePath && fs3.existsSync(logFilePath)) {
     try {
@@ -4105,6 +4106,27 @@ adminRouter.get("/diagnostics", async (_req, res) => {
           result.stats.reqAbort += 1;
         }
       }
+      const hbRe = /\[hb\] alive uptime=(\d+)s pid=(\d+) rss=(\d+)MB/;
+      const hbMap = /* @__PURE__ */ new Map();
+      for (const l of lines) {
+        const m = hbRe.exec(l);
+        if (!m) continue;
+        const pid = Number(m[2]);
+        const uptime = Number(m[1]);
+        const rss = Number(m[3]);
+        const cur = hbMap.get(pid);
+        if (!cur) {
+          hbMap.set(pid, { pid, count: 1, firstUptime: uptime, lastUptime: uptime, firstRss: rss, lastRss: rss });
+        } else {
+          cur.count += 1;
+          cur.lastUptime = uptime;
+          cur.lastRss = rss;
+        }
+      }
+      result.hbSummary = [...hbMap.values()].map((h) => ({
+        ...h,
+        rssGrowthPerHour: h.lastUptime > h.firstUptime ? Number(((h.lastRss - h.firstRss) / ((h.lastUptime - h.firstUptime) / 3600) || 0).toFixed(1)) : 0
+      })).sort((a, b) => b.lastRss - a.lastRss);
     } catch (err) {
       result.error = err instanceof Error ? err.message : String(err);
     }
