@@ -9,6 +9,7 @@ CREATE TABLE `users` (
     `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `last_login_at` DATETIME(3) NULL,
     `theme_pref` VARCHAR(16) NULL,
+    `token_version` INTEGER NOT NULL DEFAULT 0,
 
     UNIQUE INDEX `users_username_key`(`username`),
     UNIQUE INDEX `users_email_key`(`email`),

@@ -291,13 +291,20 @@ function hashToken(token) {
 }
 function signAccessToken(user) {
   return jwt.sign(
-    { sub: user.id, username: user.username, email: user.email, role: user.role, jti: crypto.randomUUID() },
+    {
+      sub: user.id,
+      username: user.username,
+      email: user.email,
+      role: user.role,
+      ver: user.tokenVersion,
+      jti: crypto.randomUUID()
+    },
     env.JWT_ACCESS_SECRET,
     { expiresIn: env.JWT_ACCESS_EXPIRES }
   );
 }
 function signRefreshToken(user) {
-  return jwt.sign({ sub: user.id, jti: crypto.randomUUID() }, env.JWT_REFRESH_SECRET, {
+  return jwt.sign({ sub: user.id, ver: user.tokenVersion, jti: crypto.randomUUID() }, env.JWT_REFRESH_SECRET, {
     expiresIn: env.JWT_REFRESH_EXPIRES
   });
 }
@@ -352,8 +359,12 @@ async function updateProfile(userId, input) {
       throw new AppError("WRONG_PASSWORD", "Current password is incorrect", 401);
     }
     data.password = await bcrypt.hash(input.newPassword, 10);
+    data.tokenVersion = { increment: 1 };
   }
   const updated = await prisma.user.update({ where: { id: userId }, data });
+  if (input.newPassword) {
+    await prisma.refreshToken.deleteMany({ where: { userId } });
+  }
   return toAuthUser(updated);
 }
 async function updateThemePref(userId, theme) {
@@ -407,6 +418,11 @@ async function refresh(refreshToken) {
   await prisma.refreshToken.update({ where: { id: stored.id }, data: { revokedAt: /* @__PURE__ */ new Date() } });
   const user = await prisma.user.findUnique({ where: { id: payload.sub } });
   if (!user) throw new AppError("USER_NOT_FOUND", "User no longer exists", 401);
+  const tokenVer = payload.ver;
+  if (tokenVer !== user.tokenVersion) {
+    await prisma.refreshToken.updateMany({ where: { tokenHash: hashToken(refreshToken) }, data: { revokedAt: /* @__PURE__ */ new Date() } }).catch(() => void 0);
+    throw new AppError("INVALID_REFRESH_TOKEN", "Session invalidated \u2014 dobara login karo", 401);
+  }
   return issueTokens(user);
 }
 async function logout(refreshToken) {
@@ -457,25 +473,42 @@ async function updateTheme(req, res) {
 
 // src/middleware/auth.ts
 import jwt2 from "jsonwebtoken";
-var requireAuth = (req, _res, next) => {
+init_prisma();
+var requireAuth = async (req, _res, next) => {
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) {
     return next(new AppError("UNAUTHORIZED", "Missing bearer token", 401));
   }
   try {
     const payload = jwt2.verify(header.slice(7), env.JWT_ACCESS_SECRET);
+    const user = await prisma.user.findUnique({
+      where: { id: payload.sub },
+      select: { tokenVersion: true, status: true }
+    });
+    if (!user || payload.ver !== user.tokenVersion) {
+      return next(new AppError("UNAUTHORIZED", "Session invalidated \u2014 dobara login karo", 401));
+    }
+    if (user.status !== "active") {
+      return next(new AppError("ACCOUNT_SUSPENDED", "Account is suspended", 403));
+    }
     req.user = payload;
     next();
   } catch {
     next(new AppError("UNAUTHORIZED", "Invalid or expired token", 401));
   }
 };
-var optionalAuth = (req, _res, next) => {
+var optionalAuth = async (req, _res, next) => {
   const header = req.headers.authorization;
   if (header?.startsWith("Bearer ")) {
     try {
       const payload = jwt2.verify(header.slice(7), env.JWT_ACCESS_SECRET);
-      req.user = payload;
+      const user = await prisma.user.findUnique({
+        where: { id: payload.sub },
+        select: { tokenVersion: true, status: true }
+      });
+      if (user && payload.ver === user.tokenVersion && user.status === "active") {
+        req.user = payload;
+      }
     } catch {
     }
   }
