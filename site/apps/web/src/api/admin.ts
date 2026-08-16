@@ -391,6 +391,14 @@ export async function getAdminDiagnostics(): Promise<ApiResponse<AdminDiagnostic
 export interface DeployInfo {
   marker: { deployedAt?: string; commit?: string; branch?: string } | null;
   git: { commit: string; branch: string } | null;
+  ci: {
+    status: "pass" | "fail" | "pending" | "unknown";
+    runId?: number;
+    workflow?: string;
+    createdAt?: string;
+    updatedAt?: string;
+    reason?: string;
+  } | null;
   processUptimeSec: number;
   startedAt: string;
 }

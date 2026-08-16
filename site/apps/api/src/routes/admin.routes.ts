@@ -768,6 +768,70 @@ function buildDiagnosticsText(d: {
  * (timestamp + commit + branch). Yahan marker + live git state
  * (agar production pe repo clone ho) + process uptime milta hai.
  */
+/** GitHub Actions CI status — latest run for a commit. 5-min cache; GITHUB_TOKEN/GH_TOKEN env se. */
+type CiStatus = {
+  status: "pass" | "fail" | "pending" | "unknown";
+  runId?: number;
+  workflow?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  reason?: string;
+};
+const ciCache: { key: string; at: number; value: CiStatus } = { key: "", at: 0, value: { status: "unknown" } };
+async function fetchCiStatus(sha?: string): Promise<CiStatus> {
+  const cacheKey = sha ?? "latest-main";
+  const now = Date.now();
+  if (ciCache.key === cacheKey && now - ciCache.at < 300_000) return ciCache.value;
+  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+  const q = sha ? `head_sha=${sha}` : "branch=main";
+  const store = (v: CiStatus) => {
+    ciCache.key = cacheKey;
+    ciCache.at = now;
+    ciCache.value = v;
+    return v;
+  };
+  try {
+    const res = await fetch(`https://api.github.com/repos/robosphere99/switch_v2/actions/runs?${q}&per_page=1`, {
+      headers: {
+        Accept: "application/vnd.github+json",
+        "User-Agent": "switchnest-admin",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (res.status === 401 || res.status === 403 || res.status === 404) {
+      return store(
+        token
+          ? { status: "unknown", reason: `GitHub API ${res.status}` }
+          : { status: "unknown", reason: "private repo — GITHUB_TOKEN env me daalo" },
+      );
+    }
+    if (!res.ok) return store({ status: "unknown", reason: `GitHub API ${res.status}` });
+    const data = (await res.json()) as {
+      workflow_runs?: Array<{ id: number; name?: string | null; status: string; conclusion: string | null; created_at: string; updated_at: string }>;
+    };
+    const run = data.workflow_runs?.[0];
+    if (!run) return store({ status: "unknown", reason: "no workflow runs yet" });
+    const conclusion = run.conclusion;
+    return store({
+      status:
+        conclusion === "success"
+          ? "pass"
+          : conclusion === "failure" || conclusion === "cancelled" || conclusion === "timed_out" || conclusion === "action_required"
+            ? "fail"
+            : run.status === "completed"
+              ? "unknown"
+              : "pending",
+      runId: run.id,
+      workflow: run.name ?? undefined,
+      createdAt: run.created_at,
+      updatedAt: run.updated_at,
+    });
+  } catch (e) {
+    return { status: "unknown", reason: e instanceof Error ? e.message : "network error" };
+  }
+}
+
 adminRouter.get("/deploy-info", async (_req, res) => {
   let marker: { deployedAt?: string; commit?: string; branch?: string } | null = null;
   const markerPath = path.resolve(process.cwd(), "../logs/deploy.json");
@@ -784,9 +848,12 @@ adminRouter.get("/deploy-info", async (_req, res) => {
     if (head) git = { commit: head, branch };
   } catch { /* production pe .git nahi ho to — marker hi kaafi hai */ }
 
+  const ciSha = git?.commit || marker?.commit || undefined;
+  const ci = await fetchCiStatus(ciSha);
   ok(res, {
     marker,
     git,
+    ci,
     processUptimeSec: Math.round(process.uptime()),
     startedAt: new Date(Date.now() - process.uptime() * 1000).toISOString(),
   });
