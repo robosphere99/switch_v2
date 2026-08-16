@@ -61,6 +61,8 @@ export function Notifications() {
         type: typeFilter !== "all" ? typeFilter : undefined,
         unread: unreadOnly || undefined,
       }),
+    // Dropdown jaisa live — naye notifications khud aa jayein
+    refetchInterval: 30_000,
   });
 
   const invalidate = () => {
@@ -85,12 +87,13 @@ export function Notifications() {
   const data = list.data?.success ? list.data.data : null;
   const unreadTotal = unread.data?.success ? unread.data.data : 0;
 
+  // Dropdown (NotificationBell) ke EXACT jaisa — page aur popover ek jaisa lage
   const typeStyle = (type: string) =>
     type === "warning"
-      ? "border-amber-500/60 bg-amber-500/10"
+      ? "border-amber-500/50 bg-amber-500/10"
       : type === "error"
-        ? "border-red-500/60 bg-red-500/10"
-        : "border-brand/40 bg-night-900";
+        ? "border-red-500/50 bg-red-500/10"
+        : "border-brand/30 bg-night-900";
 
   const typeBadge = (type: string) =>
     type === "warning" ? "bg-amber-500/20 text-amber-600" : type === "error" ? "bg-red-500/20 text-red-400" : "bg-brand/20 text-brand";
@@ -217,7 +220,7 @@ export function Notifications() {
           return (
             <div
               key={n.id}
-              className={`flex items-start gap-3 rounded-xl border-l-4 px-4 py-3 transition ${typeStyle(n.type)} ${
+              className={`flex items-start gap-3 rounded-xl border-l-2 px-4 py-3 transition hover:bg-night-700 ${typeStyle(n.type)} ${
                 n.readAt ? "opacity-60" : ""
               } ${clickable ? "cursor-pointer" : ""}`}
             >
