@@ -5578,6 +5578,7 @@ supportRouter.get("/admin/conversations", requireAuth, async (req, res) => {
   if (req.user.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
   if (!prisma.supportMessage) return ok(res, { conversations: [], totalUnread: 0 });
   const recent = await supportModel().findMany({
+    where: { deletedAt: null },
     select: {
       id: true,
       userId: true,
@@ -5585,7 +5586,6 @@ supportRouter.get("/admin/conversations", requireAuth, async (req, res) => {
       message: true,
       attachmentName: true,
       readByAdmin: true,
-      deletedAt: true,
       createdAt: true
     },
     orderBy: { createdAt: "desc" },
@@ -5594,7 +5594,7 @@ supportRouter.get("/admin/conversations", requireAuth, async (req, res) => {
   const byUser = /* @__PURE__ */ new Map();
   for (const m of recent) {
     const cur = byUser.get(m.userId);
-    const preview = m.deletedAt ? "\u{1F6AB} (deleted)" : m.message?.trim() ? m.message : m.attachmentName ? `\u{1F4CE} ${m.attachmentName}` : "(attachment)";
+    const preview = m.message?.trim() ? m.message : m.attachmentName ? `\u{1F4CE} ${m.attachmentName}` : "(attachment)";
     if (!cur) {
       byUser.set(m.userId, {
         lastPreview: preview,
@@ -5628,7 +5628,7 @@ supportRouter.post("/admin/read-all", requireAuth, async (req, res) => {
   if (req.user.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
   if (!prisma.supportMessage) return ok(res, { unread: 0 });
   await supportModel().updateMany({
-    where: { readByAdmin: false },
+    where: { readByAdmin: false, deletedAt: null },
     data: { readByAdmin: true }
   });
   ok(res, { unread: 0 });
