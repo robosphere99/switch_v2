@@ -108,8 +108,8 @@ import { createServer } from "http";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
-import path7 from "node:path";
-import fs6 from "node:fs";
+import path8 from "node:path";
+import fs7 from "node:fs";
 
 // src/config/env.ts
 import dotenv from "dotenv";
@@ -2908,10 +2908,196 @@ assistantRouter.get("/chats/:chatId/messages", requireAuth, validateParams(chatP
 import { Router as Router11 } from "express";
 import { z as z12 } from "zod";
 import multer from "multer";
-import path4 from "node:path";
-import fs3 from "node:fs";
+import path5 from "node:path";
+import fs4 from "node:fs";
 import { execSync } from "node:child_process";
 init_prisma();
+
+// src/lib/healthMonitor.ts
+import * as fs3 from "fs";
+import * as path4 from "path";
+
+// src/lib/dbState.ts
+var ready = true;
+function setDbReady(value) {
+  ready = value;
+}
+function isDbReady() {
+  return ready;
+}
+
+// src/lib/healthMonitor.ts
+var CHECK_INTERVAL_MS = 3e4;
+var INCIDENT_THRESHOLD = 2;
+var FETCH_TIMEOUT_MS = 1e4;
+var lastSeenHost = null;
+var startedAt = Date.now();
+var lastCheck = null;
+var checksTotal = 0;
+var checksOk = 0;
+var failStreak = 0;
+var checking = false;
+var activeIncident = null;
+function hcFile() {
+  if (!logFilePath) return null;
+  return path4.join(path4.dirname(logFilePath), "health-check.jsonl");
+}
+function append(ev) {
+  const f = hcFile();
+  if (!f) return;
+  try {
+    fs3.appendFileSync(f, JSON.stringify(ev) + "\n");
+  } catch {
+  }
+}
+function setLastSeenHost(host) {
+  if (!host) return;
+  const h = host.toLowerCase();
+  if (/^(localhost|127\.0\.0\.1|0\.0\.0\.0|::1)/.test(h)) return;
+  if (/^(\d{1,3}\.){3}\d{1,3}(:\d+)?$/.test(h)) return;
+  if (/^[a-z0-9.-]+(:\d+)?$/i.test(h)) lastSeenHost = host;
+}
+function adoptOpenIncident() {
+  const f = hcFile();
+  if (!f || !fs3.existsSync(f)) return;
+  try {
+    const lines = fs3.readFileSync(f, "utf8").split("\n").filter(Boolean).slice(-200);
+    let open = null;
+    for (const l of lines) {
+      try {
+        const e = JSON.parse(l);
+        if (e.type === "incident_start") open = e;
+        else if (e.type === "incident_end" && open && e.id === open.id) open = null;
+      } catch {
+      }
+    }
+    if (open) {
+      activeIncident = {
+        id: open.id,
+        startedAt: open.ts,
+        lastStatus: open.lastStatus ?? null,
+        lastErr: open.lastErr ?? null
+      };
+    }
+  } catch {
+  }
+}
+async function checkOnce() {
+  checking = true;
+  const t0 = Date.now();
+  let ok2 = false;
+  let status = null;
+  let err = null;
+  if (lastSeenHost) {
+    const ctrl = new AbortController();
+    const timer4 = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+    try {
+      const res = await fetch(`https://${lastSeenHost}/api/health`, {
+        signal: ctrl.signal,
+        headers: { "user-agent": "SwitchNestHealthMonitor/1.0" }
+      });
+      status = res.status;
+      ok2 = res.status === 200;
+      if (!ok2) err = `status_${res.status}`;
+    } catch (e) {
+      const anyErr = e;
+      err = anyErr?.name === "AbortError" ? "timeout" : String(anyErr?.cause?.code || anyErr?.name || e);
+      ok2 = false;
+    } finally {
+      clearTimeout(timer4);
+    }
+  } else {
+    ok2 = isDbReady();
+    status = ok2 ? 200 : 503;
+    err = ok2 ? null : "db_not_ready";
+  }
+  const ms = Date.now() - t0;
+  checking = false;
+  checksTotal++;
+  if (ok2) checksOk++;
+  const ev = { ts: (/* @__PURE__ */ new Date()).toISOString(), type: "check", ok: ok2, status, ms: Math.round(ms), err };
+  append(ev);
+  lastCheck = { ts: ev.ts, ok: ok2, status, ms: Math.round(ms), err };
+  if (!ok2) {
+    failStreak++;
+    if (failStreak >= INCIDENT_THRESHOLD && !activeIncident) {
+      activeIncident = { id: `${Date.now()}`, startedAt: ev.ts, lastStatus: status, lastErr: err };
+      append({
+        ts: ev.ts,
+        type: "incident_start",
+        id: activeIncident.id,
+        failCount: failStreak,
+        lastStatus: status,
+        lastErr: err
+      });
+    }
+  } else if (activeIncident) {
+    const durSec = Math.round((Date.now() - Date.parse(activeIncident.startedAt)) / 1e3);
+    append({ ts: ev.ts, type: "incident_end", id: activeIncident.id, durationSec: durSec, recoveredStatus: status });
+    activeIncident = null;
+    failStreak = 0;
+  }
+}
+function startHealthMonitor() {
+  try {
+    const envUrl = process.env.PUBLIC_SITE_URL;
+    if (envUrl) {
+      const u = new URL(envUrl);
+      if (u.host) setLastSeenHost(u.host);
+    }
+  } catch {
+  }
+  adoptOpenIncident();
+  checkOnce().catch(() => void 0);
+  setInterval(() => {
+    checkOnce().catch(() => void 0);
+  }, CHECK_INTERVAL_MS);
+}
+function getHealthMonitorState() {
+  const incidents = [];
+  const f = hcFile();
+  if (f && fs3.existsSync(f)) {
+    try {
+      const lines = fs3.readFileSync(f, "utf8").split("\n").filter(Boolean).slice(-500);
+      for (const l of lines) {
+        try {
+          const e = JSON.parse(l);
+          if (e.type === "incident_start" || e.type === "incident_end") incidents.push(e);
+        } catch {
+        }
+      }
+    } catch {
+    }
+  }
+  const ends = /* @__PURE__ */ new Map();
+  for (const e of incidents) {
+    if (e.type === "incident_end") {
+      const endEv = e;
+      ends.set(e.id, { ts: e.ts, durationSec: endEv.durationSec ?? 0, recoveredStatus: endEv.recoveredStatus });
+    }
+  }
+  const paired = [];
+  for (const e of incidents) {
+    if (e.type === "incident_start") {
+      paired.push({ ...e, end: ends.get(e.id) ?? null });
+    }
+  }
+  paired.reverse();
+  return {
+    running: true,
+    intervalSec: CHECK_INTERVAL_MS / 1e3,
+    startedAt: new Date(startedAt).toISOString(),
+    lastCheck,
+    checksTotal,
+    checksOk,
+    successRate: checksTotal ? Number((checksOk / checksTotal * 100).toFixed(1)) : null,
+    activeIncident,
+    checking,
+    incidents: paired.slice(0, 20)
+  };
+}
+
+// src/routes/admin.routes.ts
 init_audit_service();
 
 // src/services/shop.service.ts
@@ -3242,15 +3428,6 @@ async function updateSiteSettings(patch) {
     update: { value: JSON.stringify(next) }
   });
   return next;
-}
-
-// src/lib/dbState.ts
-var ready = true;
-function setDbReady(value) {
-  ready = value;
-}
-function isDbReady() {
-  return ready;
 }
 
 // src/lib/email.service.ts
@@ -4053,10 +4230,10 @@ adminRouter.get("/audit", async (req, res) => {
 });
 adminRouter.get("/deploy-info", async (_req, res) => {
   let marker = null;
-  const markerPath = path4.resolve(process.cwd(), "../logs/deploy.json");
+  const markerPath = path5.resolve(process.cwd(), "../logs/deploy.json");
   try {
-    if (fs3.existsSync(markerPath)) {
-      marker = JSON.parse(fs3.readFileSync(markerPath, "utf8"));
+    if (fs4.existsSync(markerPath)) {
+      marker = JSON.parse(fs4.readFileSync(markerPath, "utf8"));
     }
   } catch {
   }
@@ -4095,23 +4272,35 @@ adminRouter.get("/diagnostics", async (_req, res) => {
     stats: { reqEnd: 0, reqAbort: 0, exitsInTail: 0, bootsInTail: 0 },
     hbSummary: [],
     hbSeries: [],
+    healthCheck: {
+      running: false,
+      intervalSec: 30,
+      startedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      lastCheck: null,
+      checksTotal: 0,
+      checksOk: 0,
+      successRate: null,
+      activeIncident: null,
+      checking: false,
+      incidents: []
+    },
     webconfig: null,
     appPool: null,
     wpEvents: null
   };
-  if (logFilePath && fs3.existsSync(logFilePath)) {
+  if (logFilePath && fs4.existsSync(logFilePath)) {
     try {
-      const st = fs3.statSync(logFilePath);
+      const st = fs4.statSync(logFilePath);
       result.logBytes = st.size;
       let raw = "";
       if (st.size > TAIL_MAX) {
-        const fd = fs3.openSync(logFilePath, "r");
+        const fd = fs4.openSync(logFilePath, "r");
         const buf = Buffer.alloc(TAIL_MAX);
-        fs3.readSync(fd, buf, 0, TAIL_MAX, st.size - TAIL_MAX);
-        fs3.closeSync(fd);
+        fs4.readSync(fd, buf, 0, TAIL_MAX, st.size - TAIL_MAX);
+        fs4.closeSync(fd);
         raw = buf.toString("utf8");
       } else {
-        raw = fs3.readFileSync(logFilePath, "utf8");
+        raw = fs4.readFileSync(logFilePath, "utf8");
       }
       const lines = raw.split(/\r?\n/).filter(Boolean);
       const pushCap = (arr, l, cap) => {
@@ -4195,14 +4384,15 @@ adminRouter.get("/diagnostics", async (_req, res) => {
       result.error = err instanceof Error ? err.message : String(err);
     }
   }
+  result.healthCheck = getHealthMonitorState();
   for (const cand of [
-    path4.resolve(process.cwd(), "web.config"),
-    path4.resolve(process.cwd(), "../web.config"),
-    path4.resolve(process.cwd(), "../../web.config")
+    path5.resolve(process.cwd(), "web.config"),
+    path5.resolve(process.cwd(), "../web.config"),
+    path5.resolve(process.cwd(), "../../web.config")
   ]) {
-    if (!fs3.existsSync(cand)) continue;
+    if (!fs4.existsSync(cand)) continue;
     try {
-      const content = fs3.readFileSync(cand, "utf8");
+      const content = fs4.readFileSync(cand, "utf8");
       const grab = (re) => {
         const m = re.exec(content);
         return m ? m[0].slice(0, 500) : null;
@@ -4264,8 +4454,8 @@ adminRouter.get("/diagnostics", async (_req, res) => {
 adminRouter.get("/logs", async (_req, res) => {
   const n = Math.min(Number(_req.query.lines ?? 300) || 300, 1e3);
   const result = { path: logFilePath ?? null, totalLines: 0, lines: [], crashes: [], iisnodeLogs: [] };
-  if (logFilePath && fs3.existsSync(logFilePath)) {
-    const raw = fs3.readFileSync(logFilePath, "utf8");
+  if (logFilePath && fs4.existsSync(logFilePath)) {
+    const raw = fs4.readFileSync(logFilePath, "utf8");
     const lines = raw.split(/\r?\n/).filter(Boolean).slice(-n);
     result.lines = lines;
     result.totalLines = lines.length;
@@ -4281,13 +4471,13 @@ adminRouter.get("/logs", async (_req, res) => {
     result.crashes = [...crashMap.values()];
   }
   const dirs = /* @__PURE__ */ new Set();
-  if (logFilePath) dirs.add(path4.dirname(logFilePath));
-  dirs.add(path4.resolve(process.cwd(), "../logs"));
-  dirs.add(path4.resolve(process.cwd(), "../../logs"));
+  if (logFilePath) dirs.add(path5.dirname(logFilePath));
+  dirs.add(path5.resolve(process.cwd(), "../logs"));
+  dirs.add(path5.resolve(process.cwd(), "../../logs"));
   for (const dir of dirs) {
     let entries = [];
     try {
-      entries = fs3.readdirSync(dir, { withFileTypes: true });
+      entries = fs4.readdirSync(dir, { withFileTypes: true });
     } catch {
       continue;
     }
@@ -4295,10 +4485,10 @@ adminRouter.get("/logs", async (_req, res) => {
       if (!e.isFile()) continue;
       const name = e.name;
       if (!/^stdout_/i.test(name) && !/^stderr_/i.test(name) && !/\.log$/i.test(name)) continue;
-      const full = path4.join(dir, name);
+      const full = path5.join(dir, name);
       try {
-        const size = fs3.statSync(full).size;
-        const buf = fs3.readFileSync(full, "utf8");
+        const size = fs4.statSync(full).size;
+        const buf = fs4.readFileSync(full, "utf8");
         const ls = buf.split(/\r?\n/).filter(Boolean).slice(-200);
         result.iisnodeLogs.push({ name, path: full, size, lines: ls });
       } catch {
@@ -4308,7 +4498,7 @@ adminRouter.get("/logs", async (_req, res) => {
   ok(res, result);
 });
 try {
-  fs3.mkdirSync(firmwareDir, { recursive: true });
+  fs4.mkdirSync(firmwareDir, { recursive: true });
 } catch (err) {
   console.warn(`[firmware] cannot create ${firmwareDir}:`, err instanceof Error ? err.message : err);
 }
@@ -4493,11 +4683,11 @@ adminRouter.post("/firmware", upload.single("firmware"), async (req, res) => {
   const filename = modelCode ? `firmware-${modelCode.toLowerCase()}.bin` : "firmware.bin";
   const url = `/firmware/${filename}`;
   if (modelCode && filename !== "firmware.bin") {
-    const uploaded = path4.join(firmwareDir, "firmware.bin");
-    const target = path4.join(firmwareDir, filename);
-    if (fs3.existsSync(uploaded) && uploaded !== target) {
-      if (fs3.existsSync(target)) fs3.unlinkSync(target);
-      fs3.renameSync(uploaded, target);
+    const uploaded = path5.join(firmwareDir, "firmware.bin");
+    const target = path5.join(firmwareDir, filename);
+    if (fs4.existsSync(uploaded) && uploaded !== target) {
+      if (fs4.existsSync(target)) fs4.unlinkSync(target);
+      fs4.renameSync(uploaded, target);
     }
   }
   await prisma.$transaction([
@@ -5799,8 +5989,8 @@ import jwt4 from "jsonwebtoken";
 init_prisma();
 
 // src/lib/attachmentStore.ts
-import * as fs4 from "fs";
-import * as path5 from "path";
+import * as fs5 from "fs";
+import * as path6 from "path";
 function extFor(type, name) {
   const fromName = name.split(".").pop()?.toLowerCase();
   if (fromName && /^[a-z0-9]{1,8}$/.test(fromName)) return fromName;
@@ -5817,25 +6007,25 @@ function saveAttachment(base64, type, name) {
   const buf = Buffer.from(base64, "base64");
   if (buf.length === 0) throw new Error("Empty file");
   const filename = `a_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}.${extFor(type, name)}`;
-  fs4.mkdirSync(attachmentDir, { recursive: true });
-  fs4.writeFileSync(path5.join(attachmentDir, filename), buf);
+  fs5.mkdirSync(attachmentDir, { recursive: true });
+  fs5.writeFileSync(path6.join(attachmentDir, filename), buf);
   return filename;
 }
 function readAttachmentFile(filename) {
-  const safe = path5.basename(filename);
+  const safe = path6.basename(filename);
   if (safe !== filename) return null;
   try {
-    return fs4.readFileSync(path5.join(attachmentDir, safe));
+    return fs5.readFileSync(path6.join(attachmentDir, safe));
   } catch {
     return null;
   }
 }
 function deleteAttachmentFile(filename) {
   if (!filename) return;
-  const safe = path5.basename(filename);
+  const safe = path6.basename(filename);
   if (safe !== filename) return;
   try {
-    fs4.unlinkSync(path5.join(attachmentDir, safe));
+    fs5.unlinkSync(path6.join(attachmentDir, safe));
   } catch {
   }
 }
@@ -6357,8 +6547,8 @@ apiRouter.get("/firmware/current", requireAuth, async (_req, res) => {
 // src/routes/install.routes.ts
 import { Router as Router18 } from "express";
 import mysql from "mysql2/promise";
-import fs5 from "node:fs";
-import path6 from "node:path";
+import fs6 from "node:fs";
+import path7 from "node:path";
 import bcrypt2 from "bcryptjs";
 init_prisma();
 
@@ -6367,10 +6557,10 @@ init_prisma();
 init_audit_service();
 var timer = null;
 var running = false;
-var CHECK_INTERVAL_MS = 1e4;
+var CHECK_INTERVAL_MS2 = 1e4;
 function startScheduler() {
   if (timer) return;
-  timer = setInterval(runDueSchedules, CHECK_INTERVAL_MS);
+  timer = setInterval(runDueSchedules, CHECK_INTERVAL_MS2);
   void runDueSchedules();
   console.log("[scheduler] started (every 10s)");
   fileLog("[scheduler] started (every 10s)");
@@ -6471,10 +6661,10 @@ async function fireSchedule(scheduleId) {
 init_prisma();
 var timer2 = null;
 var OFFLINE_THRESHOLD_MS = 12e4;
-var CHECK_INTERVAL_MS2 = 6e4;
+var CHECK_INTERVAL_MS3 = 6e4;
 function startOfflineWatcher() {
   if (timer2) return;
-  timer2 = setInterval(checkOfflineDevices, CHECK_INTERVAL_MS2);
+  timer2 = setInterval(checkOfflineDevices, CHECK_INTERVAL_MS3);
   void checkOfflineDevices();
   console.log("[offline] watcher started (every 60s)");
   fileLog("[offline] watcher started (every 60s)");
@@ -6578,7 +6768,7 @@ async function checkOfflineDevicesInner() {
 }
 
 // src/routes/install.routes.ts
-var SCHEMA_SQL = path6.resolve(process.cwd(), "prisma/schema.sql");
+var SCHEMA_SQL = path7.resolve(process.cwd(), "prisma/schema.sql");
 var installRouter = Router18();
 var DEFAULT_PRODUCTS = [
   { name: "2CH WiFi Relay Module", modelCode: "2CH", relayCount: 2, price: "599", description: "Two-channel WiFi relay board for lights and small appliances. 10A per channel, ESP32 based, works with the SwitchNest app and voice assistant.", features: { channels: 2, wifi: true, ota: true, voice: true } },
@@ -6653,10 +6843,10 @@ function escapeEnv(v) {
   return /[\s#"']/.test(v) ? `"${v.replace(/"/g, '\\"')}"` : v;
 }
 function persistDatabaseConfig(p) {
-  const envPath = path6.resolve(process.cwd(), "../../.env");
+  const envPath = path7.resolve(process.cwd(), "../../.env");
   try {
     let content = "";
-    if (fs5.existsSync(envPath)) content = fs5.readFileSync(envPath, "utf-8");
+    if (fs6.existsSync(envPath)) content = fs6.readFileSync(envPath, "utf-8");
     const setKey = (key, value) => {
       const line = `${key}=${escapeEnv(value)}`;
       const re = new RegExp(`^${key}=.*$`, "m");
@@ -6669,7 +6859,7 @@ function persistDatabaseConfig(p) {
     setKey("DB_PASS", p.pass);
     setKey("DB_NAME", p.name);
     setKey("DATABASE_URL", `${buildDatabaseUrl2(p)}?connection_limit=2`);
-    fs5.writeFileSync(envPath, content, "utf-8");
+    fs6.writeFileSync(envPath, content, "utf-8");
     return { path: envPath, ok: true };
   } catch (err) {
     logger.warn(
@@ -6726,10 +6916,10 @@ async function createDatabase(parts) {
   logger.info(`[install] database ready: ${parts.name} (server ${version.serverVersion})`);
 }
 async function applySchema(parts) {
-  if (!fs5.existsSync(SCHEMA_SQL)) {
+  if (!fs6.existsSync(SCHEMA_SQL)) {
     throw new AppError("SCHEMA_MISSING", "prisma/schema.sql nahi mila \u2014 install package incomplete hai", 500);
   }
-  const schemaSql = fs5.readFileSync(SCHEMA_SQL, "utf-8");
+  const schemaSql = fs6.readFileSync(SCHEMA_SQL, "utf-8");
   let conn;
   try {
     conn = await mysql.createConnection({
@@ -6957,6 +7147,10 @@ async function schemaDiag() {
 }
 function createApp() {
   const app = express();
+  app.use((req, _res, next) => {
+    if (req.headers.host) setLastSeenHost(req.headers.host);
+    next();
+  });
   app.use(helmet());
   app.use(
     cors({
@@ -6999,10 +7193,10 @@ function createApp() {
   });
   app.use("/api", apiRouter);
   app.use("/firmware", express.static(firmwareDir));
-  if (fs6.existsSync(path7.join(webDist, "index.html"))) {
+  if (fs7.existsSync(path8.join(webDist, "index.html"))) {
     app.use(express.static(webDist));
     app.get(/^\/(?!api|firmware|socket\.io).*/, (_req, res) => {
-      res.sendFile(path7.join(webDist, "index.html"));
+      res.sendFile(path8.join(webDist, "index.html"));
     });
   }
   app.use((_req, res) => {
@@ -7020,12 +7214,12 @@ init_prisma();
 
 // src/services/familySafety.service.ts
 init_prisma();
-var CHECK_INTERVAL_MS3 = 6e4;
+var CHECK_INTERVAL_MS4 = 6e4;
 var timer3 = null;
 var running2 = false;
 function startFamilySafety() {
   if (timer3) return;
-  timer3 = setInterval(() => void runSafetyCheck(), CHECK_INTERVAL_MS3);
+  timer3 = setInterval(() => void runSafetyCheck(), CHECK_INTERVAL_MS4);
   fileLog("[family-safety] monitor started (60s)");
 }
 async function usageMinutesToday(deviceId, userId) {
@@ -7526,6 +7720,7 @@ async function initDatabase() {
     try {
       startScheduler();
       startFamilySafety();
+      startHealthMonitor();
     } catch (err) {
       logger.warn("Scheduler start skipped/failed", err instanceof Error ? err.message : String(err));
     }

@@ -12,6 +12,7 @@ import { isDbReady } from "./lib/dbState";
 import { fileLog } from "./lib/logger";
 import { prisma } from "./lib/prisma";
 import { trackRequest } from "./lib/requestTracker";
+import { setLastSeenHost } from "./lib/healthMonitor";
 
 /** Health diagnostics — models/tables present hain ya nahi (deploy issue pehchanna). */
 async function schemaDiag() {
@@ -37,6 +38,12 @@ async function schemaDiag() {
 
 export function createApp() {
   const app = express();
+
+// Health monitor ko apna public URL batao (admin/ESP requests ka Host header).
+app.use((req, _res, next) => {
+  if (req.headers.host) setLastSeenHost(req.headers.host);
+  next();
+});
 
   app.use(helmet());
   app.use(

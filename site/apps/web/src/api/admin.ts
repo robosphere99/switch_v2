@@ -361,6 +361,26 @@ export interface AdminDiagnostics {
   serverErrors: string[];
   stats: { reqEnd: number; reqAbort: number; exitsInTail: number; bootsInTail: number };
   hbSeries: Array<{ ts: string; pid: number; uptime: number; rss: number; heap: number | null }>;
+  healthCheck: {
+    running: boolean;
+    intervalSec: number;
+    startedAt: string;
+    lastCheck: { ts: string; ok: boolean; status: number | null; ms: number; err: string | null } | null;
+    checksTotal: number;
+    checksOk: number;
+    successRate: number | null;
+    activeIncident: { id: string; startedAt: string; lastStatus: number | null; lastErr: string | null } | null;
+    checking: boolean;
+    incidents: Array<{
+      ts: string;
+      type: string;
+      id: string;
+      failCount?: number;
+      lastStatus?: number | null;
+      lastErr?: string | null;
+      end?: { ts: string; durationSec: number; recoveredStatus?: number | null } | null;
+    }>;
+  };
 }
 
 export async function getAdminDiagnostics(): Promise<ApiResponse<AdminDiagnostics>> {
