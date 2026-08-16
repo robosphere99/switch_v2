@@ -59,10 +59,41 @@ CREATE TABLE `home_members` (
     `homeId` INTEGER NOT NULL,
     `userId` INTEGER NOT NULL,
     `role` ENUM('owner', 'admin', 'member', 'viewer') NOT NULL DEFAULT 'member',
+    `restricted` BOOLEAN NOT NULL DEFAULT false,
+    `daily_limit_minutes` INTEGER NULL,
     `joined_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
 
     INDEX `home_members_userId_idx`(`userId`),
     UNIQUE INDEX `home_members_homeId_userId_key`(`homeId`, `userId`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
+CREATE TABLE `device_access` (
+    `id` INTEGER NOT NULL AUTO_INCREMENT,
+    `homeId` INTEGER NOT NULL,
+    `deviceId` INTEGER NOT NULL,
+    `userId` INTEGER NOT NULL,
+    `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+
+    INDEX `device_access_homeId_idx`(`homeId`),
+    INDEX `device_access_userId_idx`(`userId`),
+    UNIQUE INDEX `device_access_deviceId_userId_key`(`deviceId`, `userId`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
+CREATE TABLE `device_usage` (
+    `id` INTEGER NOT NULL AUTO_INCREMENT,
+    `homeId` INTEGER NOT NULL,
+    `deviceId` INTEGER NOT NULL,
+    `userId` INTEGER NOT NULL,
+    `date` DATE NOT NULL,
+    `on_minutes` INTEGER NOT NULL,
+    `updated_at` DATETIME(3) NOT NULL,
+
+    INDEX `device_usage_homeId_idx`(`homeId`),
+    UNIQUE INDEX `device_usage_deviceId_userId_date_key`(`deviceId`, `userId`, `date`),
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -399,24 +430,42 @@ CREATE TABLE `contact_messages` (
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- CreateTable
-
 CREATE TABLE `support_messages` (
-    `id` INT NOT NULL AUTO_INCREMENT,
-    `userId` INT NOT NULL,
+    `id` INTEGER NOT NULL AUTO_INCREMENT,
+    `userId` INTEGER NOT NULL,
     `senderRole` VARCHAR(10) NOT NULL DEFAULT 'admin',
     `senderName` VARCHAR(100) NOT NULL,
     `message` TEXT NOT NULL,
     `attachment_name` VARCHAR(255) NULL,
     `attachment_type` VARCHAR(100) NULL,
     `attachment_data` MEDIUMTEXT NULL,
-    `read_by_user` BOOLEAN NOT NULL DEFAULT FALSE,
-    `read_by_admin` BOOLEAN NOT NULL DEFAULT TRUE,
+    `attachment_path` VARCHAR(255) NULL,
+    `read_by_user` BOOLEAN NOT NULL DEFAULT false,
+    `read_by_admin` BOOLEAN NOT NULL DEFAULT true,
+    `deleted_at` DATETIME(3) NULL,
     `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    PRIMARY KEY (`id`),
-    INDEX `support_messages_userId_createdAt_idx`(`userId`, `created_at`),
-    INDEX `support_messages_readByAdmin_idx`(`read_by_admin`),
-    CONSTRAINT `support_messages_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `users`(`id`) ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+    INDEX `support_messages_userId_created_at_idx`(`userId`, `created_at`),
+    INDEX `support_messages_read_by_admin_idx`(`read_by_admin`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
+CREATE TABLE `support_chat_settings` (
+    `id` INTEGER NOT NULL AUTO_INCREMENT,
+    `userId` INTEGER NOT NULL,
+    `peer_user_id` INTEGER NOT NULL,
+    `muted_at` DATETIME(3) NULL,
+    `pinned_at` DATETIME(3) NULL,
+    `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `updated_at` DATETIME(3) NOT NULL,
+
+    INDEX `support_chat_settings_userId_idx`(`userId`),
+    UNIQUE INDEX `support_chat_settings_userId_peer_user_id_key`(`userId`, `peer_user_id`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
 CREATE TABLE `app_meta` (
     `key` VARCHAR(64) NOT NULL,
     `value` VARCHAR(255) NOT NULL,
@@ -442,6 +491,24 @@ ALTER TABLE `home_members` ADD CONSTRAINT `home_members_homeId_fkey` FOREIGN KEY
 
 -- AddForeignKey
 ALTER TABLE `home_members` ADD CONSTRAINT `home_members_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `users`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `device_access` ADD CONSTRAINT `device_access_homeId_fkey` FOREIGN KEY (`homeId`) REFERENCES `homes`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `device_access` ADD CONSTRAINT `device_access_deviceId_fkey` FOREIGN KEY (`deviceId`) REFERENCES `devices`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `device_access` ADD CONSTRAINT `device_access_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `users`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `device_usage` ADD CONSTRAINT `device_usage_homeId_fkey` FOREIGN KEY (`homeId`) REFERENCES `homes`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `device_usage` ADD CONSTRAINT `device_usage_deviceId_fkey` FOREIGN KEY (`deviceId`) REFERENCES `devices`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `device_usage` ADD CONSTRAINT `device_usage_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `users`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `invitations` ADD CONSTRAINT `invitations_homeId_fkey` FOREIGN KEY (`homeId`) REFERENCES `homes`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
@@ -529,4 +596,10 @@ ALTER TABLE `warranty_claims` ADD CONSTRAINT `warranty_claims_userId_fkey` FOREI
 
 -- AddForeignKey
 ALTER TABLE `contact_messages` ADD CONSTRAINT `contact_messages_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `users`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `support_messages` ADD CONSTRAINT `support_messages_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `users`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `support_chat_settings` ADD CONSTRAINT `support_chat_settings_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `users`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
