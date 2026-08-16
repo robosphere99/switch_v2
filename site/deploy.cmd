@@ -34,6 +34,8 @@ if "%NODE_MODULES_OK%"=="1" (
   )
   if errorlevel 1 (
     echo [deploy] ERROR: prisma generate failed — purana client chalega
+  ) else (
+    call :touchSelfHealMarker
   )
   echo [deploy] OK
   exit /b 0
@@ -50,5 +52,16 @@ if errorlevel 1 (
   echo [deploy] ERROR: prisma generate failed
   exit /b 1
 )
+call :touchSelfHealMarker
 echo [deploy] install + generate OK
+exit /b 0
+
+REM ============================================================
+REM Self-heal marker touch — naye process ko boot-time prisma
+REM regenerate + 45s reboot se bachata hai. Best-effort (DB pe
+REM depend karta hai — fail ho to deploy chalta rahega).
+REM ============================================================
+:touchSelfHealMarker
+call node -e "require('dotenv').config({ path: '../../.env' }); const { PrismaClient } = require('@prisma/client'); const p = new PrismaClient(); p.appMeta.upsert({ where: { key: 'prisma_selfheal_last' }, create: { key: 'prisma_selfheal_last', value: new Date().toISOString() }, update: { value: new Date().toISOString() } }).catch(() => {}).finally(() => p.$disconnect());" 2>nul
+if errorlevel 1 echo [deploy] WARN: self-heal marker touch fail (ignore)
 exit /b 0
