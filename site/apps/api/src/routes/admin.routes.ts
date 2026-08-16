@@ -656,6 +656,7 @@ adminRouter.get("/diagnostics", async (_req, res) => {
     crashes: string[];
     serverErrors: string[];
     stats: { reqEnd: number; reqAbort: number; exitsInTail: number; bootsInTail: number };
+    hbSummary: Array<{ pid: number; count: number; firstUptime: number; lastUptime: number; firstRss: number; lastRss: number; rssGrowthPerHour: number }>;
   } = {
     logPath: logFilePath ?? null,
     logBytes: 0,
@@ -672,6 +673,7 @@ adminRouter.get("/diagnostics", async (_req, res) => {
     crashes: [],
     serverErrors: [],
     stats: { reqEnd: 0, reqAbort: 0, exitsInTail: 0, bootsInTail: 0 },
+    hbSummary: [],
   };
 
   if (logFilePath && fs.existsSync(logFilePath)) {
@@ -710,6 +712,38 @@ adminRouter.get("/diagnostics", async (_req, res) => {
           result.stats.reqAbort += 1;
         }
       }
+      // Heartbeat RSS series — memory leak trend ke liye (har 10s [hb] line).
+      const hbRe = /\[hb\] alive uptime=(\d+)s pid=(\d+) rss=(\d+)MB/;
+      const hbMap = new Map<
+        number,
+        { pid: number; count: number; firstUptime: number; lastUptime: number; firstRss: number; lastRss: number }
+      >();
+      for (const l of lines) {
+        const m = hbRe.exec(l);
+        if (!m) continue;
+        const pid = Number(m[2]);
+        const uptime = Number(m[1]);
+        const rss = Number(m[3]);
+        const cur = hbMap.get(pid);
+        if (!cur) {
+          hbMap.set(pid, { pid, count: 1, firstUptime: uptime, lastUptime: uptime, firstRss: rss, lastRss: rss });
+        } else {
+          cur.count += 1;
+          cur.lastUptime = uptime;
+          cur.lastRss = rss;
+        }
+      }
+      // Growth rate (MB/hour) — leak detect: consistent positive growth.
+      result.hbSummary = [...hbMap.values()]
+        .map((h) => ({
+          ...h,
+          rssGrowthPerHour:
+            h.lastUptime > h.firstUptime
+              ? Number((((h.lastRss - h.firstRss) / ((h.lastUptime - h.firstUptime) / 3600)) || 0).toFixed(1))
+              : 0,
+        }))
+        .sort((a, b) => b.lastRss - a.lastRss);
+
     } catch (err) {
       result.error = err instanceof Error ? err.message : String(err);
     }
