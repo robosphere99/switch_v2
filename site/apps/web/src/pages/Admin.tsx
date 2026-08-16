@@ -190,8 +190,8 @@ export function Admin() {
   const deployInfo = useQuery({
     queryKey: ["admin-deploy-info"],
     queryFn: getDeployInfo,
-    enabled: tab === "logs",
-    refetchInterval: tab === "logs" ? 60_000 : false,
+    enabled: tab === "logs" || tab === "overview",
+    refetchInterval: tab === "logs" || tab === "overview" ? 60_000 : false,
   });
   const devices = useQuery({ queryKey: ["admin-devices", q], queryFn: () => listAllDevices(q || undefined), refetchInterval: 10_000 });
   const keys = useQuery({ queryKey: ["admin-keys"], queryFn: listAllApiKeys, refetchInterval: 30_000 });
@@ -500,6 +500,55 @@ export function Admin() {
               </div>
             ))}
           </div>
+
+          {/* Deploy info — last code update (Overview pe bhi, Logs tab jaisa) */}
+          {(deployInfo.data?.success || deployInfo.isFetching) && (
+            <div className="mb-8 rounded-xl border border-emerald-500/30 bg-night-800 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-bold uppercase text-emerald-500">🚀 Last code update</p>
+                {deployInfo.data?.success && deployInfo.data.data.marker?.deployedAt && (
+                  <span className="text-[11px] text-gray-500">
+                    {new Date(deployInfo.data.data.marker.deployedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
+                  </span>
+                )}
+              </div>
+              {deployInfo.data?.success ? (
+                <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Commit</p>
+                    <p className="mt-0.5 font-mono text-xs font-semibold text-night-950">
+                      {(deployInfo.data.data.git?.commit || deployInfo.data.data.marker?.commit || "—").slice(0, 12)}
+                      {deployInfo.data.data.git?.commit && deployInfo.data.data.marker?.commit && deployInfo.data.data.git.commit !== deployInfo.data.data.marker.commit
+                        ? " ⚠️ mismatch"
+                        : ""}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Branch</p>
+                    <p className="mt-0.5 font-semibold text-night-950">
+                      {deployInfo.data.data.git?.branch || deployInfo.data.data.marker?.branch || "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">API started</p>
+                    <p className="mt-0.5 font-semibold text-night-950">
+                      {deployInfo.data.data.startedAt
+                        ? new Date(deployInfo.data.data.startedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
+                        : "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Status</p>
+                    <p className="mt-0.5 font-semibold text-night-950">
+                      {deployInfo.data.data.marker?.deployedAt ? "✅ Deployed" : "ℹ️ No deploy marker yet"}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <p className="mt-2 text-xs text-gray-600">Loading deploy info…</p>
+              )}
+            </div>
+          )}
 
           {/* 7-day trend — signups, orders, revenue */}
           {(() => {
