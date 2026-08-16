@@ -71,7 +71,7 @@ export function SupportUserContext({ userId, onClose }: { userId: number; onClos
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto">
         {ctx.isLoading && <p className="px-4 py-8 text-center text-sm text-gray-500">Loading…</p>}
         {!ctx.isLoading && !user && (
           <p className="px-4 py-8 text-center text-sm text-red-400">User context load nahi hua.</p>
