@@ -429,44 +429,41 @@ async function selfHealPrismaClient(): Promise<void> {
   // IMPORTANT: turant process.exit(0) NAHI — iisnode startup ke waqt exit ko
   // "startup failure" maan leta hai → IIS rapid-fail protection pool ko stop
   // kar deta hai → 503 jab tak manual restart na ho (yahi recurring 503 ka
-  // source tha). Ab 45s baad safe reboot — process pehle health check serve
-  // kar chuka hota hai, exit ek normal recycle jaisa dikhta hai, aur 10-min
-  // guard loop hone nahi deta.
-  fileLog("[boot] prisma generate OK — 45s baad safe reboot (fresh client load)");
-  setTimeout(() => process.exit(0), 45_000);
+  // source tha). Reboot ko HAMESHA 120s uptime ke baad rakho — koi bhi exit
+  // iisnode startup window (pehle ~60s) me nahi aata. 10-min guard loop hone
+  // nahi deta.
+  const healUptime = Math.round(process.uptime());
+  const healDelayMs = healUptime < 120 ? (120 - healUptime) * 1000 : 5_000;
+  fileLog(`[boot] prisma generate OK — ${Math.round(healDelayMs / 1000)}s baad safe reboot (fresh client load)`);
+  setTimeout(() => process.exit(0), healDelayMs);
 }
 
 async function initDatabase(): Promise<void> {
-  let dbReady = false;
   boot("db probe: connecting...");
-  try {
-    await prisma.$connect();
-    boot("db probe: connected");
+
+  // Ek probe — DB reachable + schema ready? (install wizard route apna
+  // setDbReady(true) install ke baad khud karta hai.)
+  const probeOnce = async (): Promise<boolean> => {
+    try {
+      await prisma.$connect();
+    } catch (err) {
+      boot("db probe: NOT reachable —", err instanceof Error ? err.message : String(err));
+      return false;
+    }
     if (await dbHasSchema()) {
-      dbReady = true;
       logger.info("✅ Database connected (schema ready)");
       await runLightMigrations();
       // Client sync check — stale ho to regenerate + reboot (Plesk quirk)
       await selfHealPrismaClient();
-    } else {
-      logger.warn(
-        "⚠️ Database reachable par installed nahi — setup mode. /api/install se installation karo.",
-      );
+      return true;
     }
-  } catch (err) {
-    boot("db probe: NOT reachable —", err instanceof Error ? err.message : String(err));
-    logger.warn(
-      "⚠️ Database not reachable — setup mode. Visit /api/install/status and run installation.",
-    );
-    logger.debug(err instanceof Error ? err.message : String(err));
-  }
-  boot("db probe: schema ready =", dbReady);
+    logger.warn("⚠️ Database reachable par installed nahi — setup mode. /api/install se installation karo.");
+    return false;
+  };
 
-  // Probe result hamesha set karo. Fresh install (tables nahi) -> false
-  // -> setup mode. Installed site -> true. (Install route apna
-  // setDbReady(true) probe ke baad hi chalta hai — koi race nahi.)
-  setDbReady(dbReady);
-  if (dbReady) {
+  const finishReady = async () => {
+    boot("db probe: schema ready = true");
+    setDbReady(true);
     try {
       startScheduler();
       startFamilySafety();
@@ -486,7 +483,28 @@ async function initDatabase(): Promise<void> {
     } catch (err) {
       logger.warn("Request tracker start failed", err instanceof Error ? err.message : String(err));
     }
+  };
+
+  if (await probeOnce()) {
+    await finishReady();
+    return;
   }
+
+  // ASLI FIX (recurring 503): pehle ek hi probe tha — DB thoda sa bhi blip
+  // hua (deploy churn, MySQL restart, connection limit spike) to setDbReady
+  // false ho jata tha aur process 503 mode me PHANSA rehta tha jab tak
+  // manual node disable/enable na ho. Ab retry loop — har 15s dobara probe,
+  // DB aate hi ready + services start. Kabhi manual restart nahi chahiye.
+  boot("db probe: retry loop start (har 15s) — DB aate hi ready ho jayega");
+  setDbReady(false);
+  const retryTimer = setInterval(async () => {
+    const ok = await probeOnce();
+    if (ok) {
+      clearInterval(retryTimer);
+      await finishReady();
+    }
+  }, 15_000);
+  retryTimer.unref?.();
 }
 
 main().catch((err) => {
