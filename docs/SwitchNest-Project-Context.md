@@ -7,7 +7,7 @@
 > Repo location (this machine): `C:\Users\robos\OneDrive\Documents\SwitchNest`
 >
 <!-- AUTO:STAMP:START -->
-> _Auto-updated: 2026-08-16 18:40 UTC · branch `main` · tree clean · 168 commits_
+> _Auto-updated: 2026-08-16 18:49 UTC · branch `main` · tree clean · 170 commits_
 <!-- AUTO:STAMP:END -->
 
 ---
@@ -99,6 +99,8 @@ that also serves real ESP32 hardware).
 <!-- AUTO:RECENT_COMMITS:START -->
 Sabse naye 20 commits:
 
+- `05d2922` (2026-08-17) test: targeted unit tests — optimistic rollback, bulk permissions, realtime mapping
+- `a081f1c` (2026-08-17) docs: context doc auto-refresh (mobile-first pass commit sync)
 - `35ab990` (2026-08-17) web: mobile-first pass — bottom tab bar, touch targets, no horizontal scroll
 - `caf2b18` (2026-08-16) fix: update-context.mjs — branch/status/count git calls ko separate args me (stamp ab sahi branch+count dikhata hai)
 - `3981e63` (2026-08-16) docs: context doc auto-refresh — post-commit hook ne naye commits sync kiye
@@ -117,8 +119,6 @@ Sabse naye 20 commits:
 - `cf1c525` (2026-08-16) admin: deploy-info card ab Overview page pe bhi — Logs tab ke saath dashboard pe 'last updated' visible (60s refresh)
 - `ae39182` (2026-08-16) fix: diagnostics export — real newlines/tabs instead of literal \n (download .txt was broken)
 - `3ed2903` (2026-08-16) chore: untrack health-check.jsonl — runtime log, gitignore logs dir
-- `0b40a2e` (2026-08-16) admin: in-app Health Checker — 30s self-check, outage detect, persistent incident history in Diagnostics
-- `09b1b15` (2026-08-16) admin: memory trend chart (RSS/heap time-series, 24h) — heartbeat logs ts+heap, hbSeries endpoint, SVG chart
 <!-- AUTO:RECENT_COMMITS:END -->
 
 - 503 root-cause work: DB probe retry loop so the app self-heals, `nodeProcessCountPerApplication=1`,
