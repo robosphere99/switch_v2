@@ -3243,6 +3243,15 @@ async function updateSiteSettings(patch) {
   return next;
 }
 
+// src/lib/dbState.ts
+var ready = true;
+function setDbReady(value) {
+  ready = value;
+}
+function isDbReady() {
+  return ready;
+}
+
 // src/lib/email.service.ts
 import * as net from "node:net";
 import * as tls from "node:tls";
@@ -4814,6 +4823,73 @@ adminRouter.delete("/contact/:id", async (req, res) => {
   await prisma.contactMessage.delete({ where: { id } });
   ok(res, { deleted: true });
 });
+var resetSchema = z12.object({
+  mode: z12.enum(["data", "factory"]),
+  confirm: z12.literal("RESET")
+});
+adminRouter.post("/reset", validateBody(resetSchema), async (req, res) => {
+  const { mode } = req.body;
+  const ALL_TABLES = [
+    "api_keys",
+    "app_meta",
+    "assistant_chats",
+    "assistant_messages",
+    "audit_logs",
+    "contact_messages",
+    "device_access",
+    "device_commands",
+    "device_configurations",
+    "device_logs",
+    "device_usage",
+    "devices",
+    "esp_devices",
+    "firmware_versions",
+    "home_members",
+    "homes",
+    "invitations",
+    "notifications",
+    "order_items",
+    "orders",
+    "products",
+    "refresh_tokens",
+    "rooms",
+    "schedules",
+    "serial_registry",
+    "support_chat_settings",
+    "support_messages",
+    "users",
+    "warranty_claims"
+  ];
+  const KEEP_IN_DATA = /* @__PURE__ */ new Set(["products", "app_meta", "users", "firmware_versions"]);
+  const tablesToWipe = mode === "factory" ? ALL_TABLES : ALL_TABLES.filter((t) => !KEEP_IN_DATA.has(t));
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe("SET FOREIGN_KEY_CHECKS=0");
+    for (const t of tablesToWipe) {
+      await tx.$executeRawUnsafe(`DELETE FROM \`${t}\``);
+    }
+    if (mode === "data") {
+      await tx.$executeRawUnsafe("DELETE FROM `users` WHERE role <> 'system_admin'");
+    }
+    await tx.$executeRawUnsafe("SET FOREIGN_KEY_CHECKS=1");
+  });
+  if (mode === "factory") {
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe("SET FOREIGN_KEY_CHECKS=0");
+      for (const t of ALL_TABLES) {
+        await tx.$executeRawUnsafe(`DROP TABLE IF EXISTS \`${t}\``);
+      }
+      await tx.$executeRawUnsafe("SET FOREIGN_KEY_CHECKS=1");
+    });
+    setDbReady(false);
+  } else {
+    await audit(req.user.sub, "admin.reset", { entity: "platform", meta: { mode } });
+  }
+  ok(res, {
+    reset: true,
+    mode,
+    message: mode === "factory" ? "Factory reset ho gaya \u2014 ab install wizard se fresh setup karo" : "Data reset ho gaya \u2014 admin + catalog rahe, baaki sab clear"
+  });
+});
 
 // src/routes/shop.routes.ts
 import { Router as Router12 } from "express";
@@ -6075,15 +6151,6 @@ import path6 from "node:path";
 import bcrypt2 from "bcryptjs";
 init_prisma();
 
-// src/lib/dbState.ts
-var ready = true;
-function setDbReady(value) {
-  ready = value;
-}
-function isDbReady() {
-  return ready;
-}
-
 // src/services/scheduler.service.ts
 init_prisma();
 init_audit_service();
@@ -6349,13 +6416,19 @@ async function probeDb(parts) {
       [parts.name]
     );
     const hasUsers = Number(rows[0]?.c ?? 0) > 0;
-    let installed = hasUsers;
+    let installed = false;
     if (hasUsers) {
       try {
         const [meta] = await conn.query("SELECT value FROM app_meta WHERE `key` = 'installed' LIMIT 1");
         const flag = meta[0]?.value;
-        if (flag !== void 0) installed = flag === "1";
+        if (flag !== void 0) {
+          installed = flag === "1";
+        } else {
+          const [urows] = await conn.query("SELECT COUNT(*) AS c FROM users");
+          installed = Number(urows[0]?.c ?? 0) > 0;
+        }
       } catch {
+        installed = true;
       }
     }
     return { reachable: true, tablesReady: hasUsers, installed };
@@ -6390,7 +6463,11 @@ installRouter.get("/status", async (_req, res) => {
 });
 installRouter.post("/", async (req, res) => {
   if (isDbReady()) {
-    throw new AppError("ALREADY_INSTALLED", "Database already installed and connected", 409);
+    const parts2 = parseDatabaseUrl(env.DATABASE_URL);
+    const probe = await probeDb(parts2);
+    if (probe.installed) {
+      throw new AppError("ALREADY_INSTALLED", "Database already installed and connected", 409);
+    }
   }
   const bodyDb = req.body?.db ?? {};
   const bodyAdmin = req.body?.admin ?? {};
