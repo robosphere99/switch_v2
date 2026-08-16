@@ -14,12 +14,47 @@ export async function getInstallStatus(): Promise<InstallStatus> {
   return data.data;
 }
 
-export interface RunInstallInput {
-  db?: { host?: string; port?: number; user?: string; pass?: string; name?: string };
-  admin?: { username?: string; email?: string; password?: string };
+export interface DbInput {
+  host?: string;
+  port?: number;
+  user?: string;
+  pass?: string;
+  name?: string;
 }
 
-export async function runInstall(input: RunInstallInput) {
+export interface AdminInput {
+  username?: string;
+  name?: string;
+  email?: string;
+  password?: string;
+}
+
+/** Step 1 — DB connection test + database create. */
+export async function testInstallDb(db: DbInput) {
+  const { data } = await api.post<{
+    data: { connected: boolean; serverVersion: string; database: string; dbCreated: boolean; tablesReady: boolean };
+  }>("/install/connect", { db });
+  return data.data;
+}
+
+/** Step 2 — tables banao. */
+export async function createInstallSchema(db: DbInput) {
+  const { data } = await api.post<{
+    data: { tablesReady: boolean; installed: boolean; database: string; message: string };
+  }>("/install/schema", { db });
+  return data.data;
+}
+
+/** Step 3 — admin account + setup complete. */
+export async function completeInstallAdmin(db: DbInput, admin: AdminInput) {
+  const { data } = await api.post<{
+    data: { installed: boolean; database: string; admin: string; configPersisted: boolean; configPath: string };
+  }>("/install/admin", { db, admin });
+  return data.data;
+}
+
+/** Backward-compatible single-shot install. */
+export async function runInstall(input: { db?: DbInput; admin?: AdminInput }) {
   const { data } = await api.post<{ data: { installed: boolean; database: string; admin: string } }>(
     "/install",
     input,

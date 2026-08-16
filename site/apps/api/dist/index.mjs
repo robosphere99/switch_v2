@@ -6438,62 +6438,40 @@ async function probeDb(parts) {
     await conn.end().catch(() => void 0);
   }
 }
-installRouter.get("/status", async (_req, res) => {
-  const parts = parseDatabaseUrl(env.DATABASE_URL);
-  const probe = await probeDb(parts);
-  ok(res, {
-    installed: probe.installed,
-    dbReachable: probe.reachable,
-    tablesReady: probe.tablesReady,
-    dbConfigured: Boolean(env.DATABASE_URL),
-    // Wizard me pre-fill karne ke liye (password kabhi wapas nahi bhejte)
-    db: {
-      host: parts.host,
-      port: parts.port,
-      user: parts.user,
-      name: parts.name
-    },
-    admin: {
-      username: env.ADMIN_USERNAME,
-      email: env.ADMIN_EMAIL,
-      // password only hint — kya set hoga, value nahi
-      passwordSet: Boolean(env.ADMIN_PASSWORD)
-    }
-  });
-});
-installRouter.post("/", async (req, res) => {
-  if (isDbReady()) {
-    const parts2 = parseDatabaseUrl(env.DATABASE_URL);
-    const probe = await probeDb(parts2);
-    if (probe.installed) {
-      throw new AppError("ALREADY_INSTALLED", "Database already installed and connected", 409);
-    }
-  }
-  const bodyDb = req.body?.db ?? {};
-  const bodyAdmin = req.body?.admin ?? {};
-  const base = parseDatabaseUrl(env.DATABASE_URL);
-  const parts = {
-    host: (bodyDb.host ?? base.host).trim(),
-    port: Number(bodyDb.port ?? base.port) || 3306,
-    user: (bodyDb.user ?? base.user).trim(),
-    pass: bodyDb.pass ?? base.pass,
-    name: (bodyDb.name ?? base.name).trim()
-  };
-  if (!parts.host || !parts.name || !parts.user) {
-    throw new AppError("BAD_REQUEST", "DB host, user aur name required hain", 400);
-  }
-  const admin = {
-    username: (bodyAdmin.username ?? env.ADMIN_USERNAME).trim(),
-    email: (bodyAdmin.email ?? env.ADMIN_EMAIL).trim().toLowerCase(),
-    password: bodyAdmin.password ?? env.ADMIN_PASSWORD
-  };
-  if (!admin.username || !admin.email || !admin.password) {
-    throw new AppError("BAD_REQUEST", "Admin username, email aur password required hain", 400);
-  }
-  const dbName = escIdent(parts.name);
-  let server;
+function escapeEnv(v) {
+  return /[\s#"']/.test(v) ? `"${v.replace(/"/g, '\\"')}"` : v;
+}
+function persistDatabaseConfig(p) {
+  const envPath = path6.resolve(process.cwd(), "../../.env");
   try {
-    server = await mysql.createConnection({
+    let content = "";
+    if (fs5.existsSync(envPath)) content = fs5.readFileSync(envPath, "utf-8");
+    const setKey = (key, value) => {
+      const line = `${key}=${escapeEnv(value)}`;
+      const re = new RegExp(`^${key}=.*$`, "m");
+      if (re.test(content)) content = content.replace(re, line);
+      else content = (content ? content.replace(/\s*$/, "\n") : "") + line + "\n";
+    };
+    setKey("DB_HOST", p.host);
+    setKey("DB_PORT", String(p.port));
+    setKey("DB_USER", p.user);
+    setKey("DB_PASS", p.pass);
+    setKey("DB_NAME", p.name);
+    setKey("DATABASE_URL", `${buildDatabaseUrl2(p)}?connection_limit=2`);
+    fs5.writeFileSync(envPath, content, "utf-8");
+    return { path: envPath, ok: true };
+  } catch (err) {
+    logger.warn(
+      "[install] .env write fail \u2014 restart pe purana config chalega:",
+      err instanceof Error ? err.message : String(err)
+    );
+    return { path: envPath, ok: false };
+  }
+}
+async function connectServer(parts) {
+  let conn;
+  try {
+    conn = await mysql.createConnection({
       host: parts.host,
       port: parts.port,
       user: parts.user,
@@ -6502,25 +6480,43 @@ installRouter.post("/", async (req, res) => {
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    throw new AppError(
-      "DB_CONNECT_FAILED",
-      `Database server se connect nahi ho paya: ${msg}`,
-      502
-    );
+    throw new AppError("DB_CONNECT_FAILED", `Database server se connect nahi ho paya: ${msg}`, 502);
   }
   try {
-    await server.query(
+    const [rows] = await conn.query("SELECT VERSION() AS v");
+    return { serverVersion: String(rows[0]?.v ?? "") };
+  } finally {
+    await conn.end().catch(() => void 0);
+  }
+}
+async function createDatabase(parts) {
+  const dbName = escIdent(parts.name);
+  const version = await connectServer(parts);
+  let conn;
+  try {
+    conn = await mysql.createConnection({
+      host: parts.host,
+      port: parts.port,
+      user: parts.user,
+      password: parts.pass,
+      connectTimeout: 8e3
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new AppError("DB_CONNECT_FAILED", `Database connect failed: ${msg}`, 502);
+  }
+  try {
+    await conn.query(
       `CREATE DATABASE IF NOT EXISTS \`${dbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
     );
   } finally {
-    await server.end().catch(() => void 0);
+    await conn.end().catch(() => void 0);
   }
+  logger.info(`[install] database ready: ${parts.name} (server ${version.serverVersion})`);
+}
+async function applySchema(parts) {
   if (!fs5.existsSync(SCHEMA_SQL)) {
-    throw new AppError(
-      "SCHEMA_MISSING",
-      "prisma/schema.sql nahi mila \u2014 install package incomplete hai",
-      500
-    );
+    throw new AppError("SCHEMA_MISSING", "prisma/schema.sql nahi mila \u2014 install package incomplete hai", 500);
   }
   const schemaSql = fs5.readFileSync(SCHEMA_SQL, "utf-8");
   let conn;
@@ -6542,26 +6538,33 @@ installRouter.post("/", async (req, res) => {
     await conn.query(schemaSql);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    throw new AppError("SCHEMA_FAILED", `Tables create nahi hui: ${msg}`, 500);
+    throw new AppError(
+      "SCHEMA_FAILED",
+      `Tables create nahi hui: ${msg}. Database khali (fresh) hona chahiye \u2014 purana data ho to factory reset karo ya naya DB use karo.`,
+      500
+    );
   } finally {
     await conn.end().catch(() => void 0);
   }
+}
+async function completeInstall(parts, admin) {
   const nextUrl = buildDatabaseUrl2(parts);
   const prisma2 = await resetPrismaClient(nextUrl);
   const existing = await prisma2.user.findFirst({
     where: { OR: [{ username: admin.username }, { email: admin.email }] }
   });
   if (existing) {
-    throw new AppError("ADMIN_EXISTS", "Usernam/email pehle se exist karta hai", 409);
+    throw new AppError("ADMIN_EXISTS", "Username/email pehle se exist karta hai", 409);
   }
   const password = await bcrypt2.hash(admin.password, 10);
+  const homeName = `${(admin.name || admin.username).trim()}${admin.name ? "" : "'s"} Home`;
   await prisma2.$transaction(async (tx) => {
     const user = await tx.user.create({
       data: { username: admin.username, email: admin.email, password, role: "system_admin" }
     });
     await tx.home.create({
       data: {
-        name: `${admin.username}'s Home`,
+        name: homeName,
         ownerId: user.id,
         members: { create: { userId: user.id, role: "owner" } }
       }
@@ -6597,12 +6600,126 @@ installRouter.post("/", async (req, res) => {
   } catch (err) {
     logger.warn("Offline watcher start skipped/failed", err instanceof Error ? err.message : String(err));
   }
-  ok(res, {
+  const persisted = persistDatabaseConfig(parts);
+  return {
     installed: true,
     database: parts.name,
     admin: admin.username,
-    message: "SwitchNest installed \u2014 site ab normal chal raha hai"
+    configPersisted: persisted.ok,
+    configPath: persisted.path
+  };
+}
+function dbFromBody(bodyDb) {
+  const base = parseDatabaseUrl(env.DATABASE_URL);
+  const parts = {
+    host: (bodyDb?.host ?? base.host).trim(),
+    port: Number(bodyDb?.port ?? base.port) || 3306,
+    user: (bodyDb?.user ?? base.user).trim(),
+    pass: bodyDb?.pass ?? base.pass,
+    name: (bodyDb?.name ?? base.name).trim()
+  };
+  if (!parts.host || !parts.name || !parts.user) {
+    throw new AppError("BAD_REQUEST", "DB host, user aur name required hain", 400);
+  }
+  return parts;
+}
+installRouter.get("/status", async (_req, res) => {
+  const parts = parseDatabaseUrl(env.DATABASE_URL);
+  const probe = await probeDb(parts);
+  ok(res, {
+    installed: probe.installed,
+    dbReachable: probe.reachable,
+    tablesReady: probe.tablesReady,
+    dbConfigured: Boolean(env.DATABASE_URL),
+    // Wizard me pre-fill karne ke liye (password kabhi wapas nahi bhejte)
+    db: {
+      host: parts.host,
+      port: parts.port,
+      user: parts.user,
+      name: parts.name
+    },
+    admin: {
+      username: env.ADMIN_USERNAME,
+      email: env.ADMIN_EMAIL,
+      // password only hint — kya set hoga, value nahi
+      passwordSet: Boolean(env.ADMIN_PASSWORD)
+    }
   });
+});
+installRouter.post("/connect", async (req, res) => {
+  const parts = dbFromBody(req.body?.db ?? {});
+  const { serverVersion } = await connectServer(parts);
+  await createDatabase(parts);
+  const probe = await probeDb(parts);
+  ok(res, {
+    connected: true,
+    serverVersion,
+    database: parts.name,
+    dbCreated: probe.reachable,
+    tablesReady: probe.tablesReady
+  });
+});
+installRouter.post("/schema", async (req, res) => {
+  const parts = dbFromBody(req.body?.db ?? {});
+  await createDatabase(parts);
+  await applySchema(parts);
+  const probe = await probeDb(parts);
+  ok(res, {
+    tablesReady: probe.tablesReady,
+    installed: probe.installed,
+    database: parts.name,
+    message: "Saari tables ban gayi \u2014 ab admin account banao"
+  });
+});
+installRouter.post("/admin", async (req, res) => {
+  const parts = dbFromBody(req.body?.db ?? {});
+  const bodyAdmin = req.body?.admin ?? {};
+  const admin = {
+    username: (bodyAdmin.username ?? env.ADMIN_USERNAME).trim(),
+    name: bodyAdmin.name?.trim() || void 0,
+    email: (bodyAdmin.email ?? env.ADMIN_EMAIL).trim().toLowerCase(),
+    password: bodyAdmin.password ?? env.ADMIN_PASSWORD
+  };
+  if (!admin.username || !admin.email || !admin.password) {
+    throw new AppError("BAD_REQUEST", "Admin username, email aur password required hain", 400);
+  }
+  const probe = await probeDb(parts);
+  if (probe.installed) {
+    throw new AppError("ALREADY_INSTALLED", "Database already installed and connected", 409);
+  }
+  if (!probe.tablesReady) {
+    throw new AppError(
+      "SCHEMA_PENDING",
+      "Pehle database + tables step complete karo (users table nahi mili)",
+      400
+    );
+  }
+  const result = await completeInstall(parts, admin);
+  ok(res, result);
+});
+installRouter.post("/", async (req, res) => {
+  if (isDbReady()) {
+    const parts2 = parseDatabaseUrl(env.DATABASE_URL);
+    const probe = await probeDb(parts2);
+    if (probe.installed) {
+      throw new AppError("ALREADY_INSTALLED", "Database already installed and connected", 409);
+    }
+  }
+  const parts = dbFromBody(req.body?.db ?? {});
+  const bodyAdmin = req.body?.admin ?? {};
+  const admin = {
+    username: (bodyAdmin.username ?? env.ADMIN_USERNAME).trim(),
+    name: bodyAdmin.name?.trim() || void 0,
+    email: (bodyAdmin.email ?? env.ADMIN_EMAIL).trim().toLowerCase(),
+    password: bodyAdmin.password ?? env.ADMIN_PASSWORD
+  };
+  if (!admin.username || !admin.email || !admin.password) {
+    throw new AppError("BAD_REQUEST", "Admin username, email aur password required hain", 400);
+  }
+  await createDatabase(parts);
+  await applySchema(parts);
+  const result = await completeInstall(parts, admin);
+  ok(res, result);
 });
 
 // src/app.ts
