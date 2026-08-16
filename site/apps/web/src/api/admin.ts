@@ -360,6 +360,7 @@ export interface AdminDiagnostics {
   crashes: string[];
   serverErrors: string[];
   stats: { reqEnd: number; reqAbort: number; exitsInTail: number; bootsInTail: number };
+  hbSeries: Array<{ ts: string; pid: number; uptime: number; rss: number; heap: number | null }>;
 }
 
 export async function getAdminDiagnostics(): Promise<ApiResponse<AdminDiagnostics>> {

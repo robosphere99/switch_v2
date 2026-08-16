@@ -291,11 +291,14 @@ process.on("uncaughtException", (err) => {
 // --- Diagnostics: heartbeat + exit reason (503 cycle diagnosis) ---
 // Har 10s alive line — agar heartbeats ruk jaayein bina exit line ke,
 // process ko bahar se maara gaya (native crash / pool recycle).
+// ts + heap bhi log hota hai — diagnostics panel 24h memory trend
+// (RSS/heap time-series) isi se banata hai. Purani lines (bina ts/heap)
+// bhi parse hote hain — backward compatible.
 setInterval(() => {
   fileLog(
-    `[hb] alive uptime=${Math.round(process.uptime())}s pid=${process.pid} rss=${Math.round(
+    `[hb] alive ts=${new Date().toISOString()} uptime=${Math.round(process.uptime())}s pid=${process.pid} rss=${Math.round(
       process.memoryUsage().rss / 1048576,
-    )}MB`,
+    )}MB heap=${Math.round(process.memoryUsage().heapUsed / 1048576)}MB`,
   );
 }, 10_000);
 
