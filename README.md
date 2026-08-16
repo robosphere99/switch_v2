@@ -19,6 +19,7 @@ onlineswitch-v2/
 ## Docs
 
 - [`docs/SwitchNest-Project-Context.md`](./docs/SwitchNest-Project-Context.md) — **complete project context handoff** (idea + history + roadmap + gotchas). Kisi bhi AI agent/model ko yeh file do — wo poora project samajh ke suggestions de payega.
+- [`docs/PHASE4-REALTIME.md`](./docs/PHASE4-REALTIME.md) — Phase 4 WebSocket realtime ka concrete implementation plan (events, auth, edge cases, polling fallback).
 - [`PROJECT_ANALYSIS.md`](./PROJECT_ANALYSIS.md) — deep analysis of the legacy PHP v1.
 - [`ROADMAP.md`](./ROADMAP.md) — rebuild plan, phases, open questions.
 - [`START_GUIDE.md`](./START_GUIDE.md) — full local setup (XAMPP, firmware, flasher).
