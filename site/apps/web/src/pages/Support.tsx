@@ -70,7 +70,7 @@ export function Support() {
       chatInputRef.current?.focus();
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [draftFromUrl]);
 
   const refreshChat = () =>
     getMySupportChat()
