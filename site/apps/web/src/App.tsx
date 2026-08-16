@@ -72,10 +72,12 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen">
+    /* overflow-x-clip: mobile pe horizontal scroll na ho; pb-24: bottom tab
+       bar ke neeche content chhupa na rahe (desktop pe koi effect nahi) */
+    <div className="min-h-screen overflow-x-clip">
       <Navbar />
       <ChatWidget />
-      <main>
+      <main className="pb-24 md:pb-0">
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/login" element={<Login />} />
