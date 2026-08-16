@@ -632,6 +632,92 @@ adminRouter.get("/audit", async (req, res) => {
 // ---------- Diagnostics: app log (crash 503 ka asli reason yahan milega) ----------
 
 /** Admin ko app.log ke aakhri N lines dikhao — crashguard / boot lines yahan hain. */
+/**
+ * Startup diagnostics — boot/heartbeat/exit lines parsed + live process
+ * status. 503 cycle ka pura picture ek jagah: kitni baar process exit hua,
+ * kab boot hua, koi crashguard/fatal line, aur abhi wala process ka RSS.
+ */
+adminRouter.get("/diagnostics", async (_req, res) => {
+  const TAIL_MAX = 5 * 1024 * 1024; // 5MB tail enough — poora file nahi padhte
+  const result: {
+    logPath: string | null;
+    logBytes: number;
+    error?: string;
+    process: {
+      pid: number;
+      uptimeSec: number;
+      rssMB: number;
+      heapMB: number;
+      node: string;
+      startedAt: string;
+    };
+    boot: string[];
+    exits: string[];
+    crashes: string[];
+    serverErrors: string[];
+    stats: { reqEnd: number; reqAbort: number; exitsInTail: number; bootsInTail: number };
+  } = {
+    logPath: logFilePath ?? null,
+    logBytes: 0,
+    process: {
+      pid: process.pid,
+      uptimeSec: Math.round(process.uptime()),
+      rssMB: Math.round(process.memoryUsage().rss / 1048576),
+      heapMB: Math.round(process.memoryUsage().heapUsed / 1048576),
+      node: process.version,
+      startedAt: new Date(Date.now() - process.uptime() * 1000).toISOString(),
+    },
+    boot: [],
+    exits: [],
+    crashes: [],
+    serverErrors: [],
+    stats: { reqEnd: 0, reqAbort: 0, exitsInTail: 0, bootsInTail: 0 },
+  };
+
+  if (logFilePath && fs.existsSync(logFilePath)) {
+    try {
+      const st = fs.statSync(logFilePath);
+      result.logBytes = st.size;
+      let raw = "";
+      if (st.size > TAIL_MAX) {
+        const fd = fs.openSync(logFilePath, "r");
+        const buf = Buffer.alloc(TAIL_MAX);
+        fs.readSync(fd, buf, 0, TAIL_MAX, st.size - TAIL_MAX);
+        fs.closeSync(fd);
+        raw = buf.toString("utf8");
+      } else {
+        raw = fs.readFileSync(logFilePath, "utf8");
+      }
+      const lines = raw.split(/\r?\n/).filter(Boolean);
+      const pushCap = (arr: string[], l: string, cap: number) => {
+        if (arr.length >= cap) return;
+        arr.push(l);
+      };
+      for (const l of lines) {
+        if (/^\[boot\]/.test(l)) {
+          result.stats.bootsInTail += 1;
+          pushCap(result.boot, l, 25);
+        } else if (/\[hb\] (exit|beforeExit)/.test(l)) {
+          result.stats.exitsInTail += 1;
+          pushCap(result.exits, l, 25);
+        } else if (/\[crashguard\]|\[fatal\]/.test(l)) {
+          pushCap(result.crashes, l, 25);
+        } else if (/^\[server\]/.test(l)) {
+          pushCap(result.serverErrors, l, 10);
+        } else if (/\[req\].*END/.test(l)) {
+          result.stats.reqEnd += 1;
+        } else if (/\[req\].*ABORT/.test(l)) {
+          result.stats.reqAbort += 1;
+        }
+      }
+    } catch (err) {
+      result.error = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  ok(res, result);
+});
+
 adminRouter.get("/logs", async (_req, res) => {
   const n = Math.min(Number(_req.query.lines ?? 300) || 300, 1000);
   const result: {

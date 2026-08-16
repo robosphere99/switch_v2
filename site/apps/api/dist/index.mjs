@@ -4050,6 +4050,67 @@ adminRouter.get("/audit", async (req, res) => {
   });
   ok(res, logs2);
 });
+adminRouter.get("/diagnostics", async (_req, res) => {
+  const TAIL_MAX = 5 * 1024 * 1024;
+  const result = {
+    logPath: logFilePath ?? null,
+    logBytes: 0,
+    process: {
+      pid: process.pid,
+      uptimeSec: Math.round(process.uptime()),
+      rssMB: Math.round(process.memoryUsage().rss / 1048576),
+      heapMB: Math.round(process.memoryUsage().heapUsed / 1048576),
+      node: process.version,
+      startedAt: new Date(Date.now() - process.uptime() * 1e3).toISOString()
+    },
+    boot: [],
+    exits: [],
+    crashes: [],
+    serverErrors: [],
+    stats: { reqEnd: 0, reqAbort: 0, exitsInTail: 0, bootsInTail: 0 }
+  };
+  if (logFilePath && fs3.existsSync(logFilePath)) {
+    try {
+      const st = fs3.statSync(logFilePath);
+      result.logBytes = st.size;
+      let raw = "";
+      if (st.size > TAIL_MAX) {
+        const fd = fs3.openSync(logFilePath, "r");
+        const buf = Buffer.alloc(TAIL_MAX);
+        fs3.readSync(fd, buf, 0, TAIL_MAX, st.size - TAIL_MAX);
+        fs3.closeSync(fd);
+        raw = buf.toString("utf8");
+      } else {
+        raw = fs3.readFileSync(logFilePath, "utf8");
+      }
+      const lines = raw.split(/\r?\n/).filter(Boolean);
+      const pushCap = (arr, l, cap) => {
+        if (arr.length >= cap) return;
+        arr.push(l);
+      };
+      for (const l of lines) {
+        if (/^\[boot\]/.test(l)) {
+          result.stats.bootsInTail += 1;
+          pushCap(result.boot, l, 25);
+        } else if (/\[hb\] (exit|beforeExit)/.test(l)) {
+          result.stats.exitsInTail += 1;
+          pushCap(result.exits, l, 25);
+        } else if (/\[crashguard\]|\[fatal\]/.test(l)) {
+          pushCap(result.crashes, l, 25);
+        } else if (/^\[server\]/.test(l)) {
+          pushCap(result.serverErrors, l, 10);
+        } else if (/\[req\].*END/.test(l)) {
+          result.stats.reqEnd += 1;
+        } else if (/\[req\].*ABORT/.test(l)) {
+          result.stats.reqAbort += 1;
+        }
+      }
+    } catch (err) {
+      result.error = err instanceof Error ? err.message : String(err);
+    }
+  }
+  ok(res, result);
+});
 adminRouter.get("/logs", async (_req, res) => {
   const n = Math.min(Number(_req.query.lines ?? 300) || 300, 1e3);
   const result = { path: logFilePath ?? null, totalLines: 0, lines: [], crashes: [], iisnodeLogs: [] };
