@@ -38,7 +38,7 @@ export default function MemoryTrendChart({ series, currentPid, maxRss = null }: 
   const [hover, setHover] = useState<HbPoint | null>(null);
   const [range, setRange] = useState<RangeKey>("24h");
   const [zoom, setZoom] = useState<{ t0: number; t1: number } | null>(null);
-  const [showHeap, setShowHeap] = useState(false);
+  const [showHeap, setShowHeap] = useState(true); // default ON — RSS + heap dono ek saath
   // drag logic ref me (synchronous events pe bhi reliable), selection rect state me
   const dragRef = useRef<{ startPx: number; curPx: number } | null>(null);
   const [dragUi, setDragUi] = useState<{ startPx: number; curPx: number } | null>(null);
