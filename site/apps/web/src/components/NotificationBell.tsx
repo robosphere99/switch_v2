@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { listNotifications, markRead, markAllRead, unreadCount, type Notification } from "../api/notifications";
 import { useAuthStore } from "../stores/auth";
@@ -11,6 +11,16 @@ export function NotificationBell() {
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === "system_admin";
   const [open, setOpen] = useState(false);
+
+  // Escape dabao to dropdown band (standard popover behavior)
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
 
   const unread = useQuery({
     queryKey: ["notifications", "unread"],
