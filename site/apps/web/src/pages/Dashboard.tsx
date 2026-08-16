@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Users, Wifi, Home as HomeIcon } from "lucide-react";
 import { useState } from "react";
-import type { ApiResponse, Device, DeviceType } from "@robosphere/shared";
-import { listDevices, setDeviceStatus, bulkSetDeviceStatus, createDevice, updateDevice, deleteDevice, getDeviceLogs, renameEsp, getCurrentFirmware, requestOta } from "../api/devices";
+import type { Device, DeviceType } from "@robosphere/shared";
+import { listDevices, bulkSetDeviceStatus, createDevice, updateDevice, deleteDevice, getDeviceLogs, renameEsp, getCurrentFirmware, requestOta } from "../api/devices";
+import { createToggleOptions } from "../lib/deviceOptimistic";
 import { listHomes, getHomeDetail } from "../api/homes";
 import { createRoom, deleteRoom } from "../api/rooms";
 import { DeviceCard, isOnline } from "../components/DeviceCard";
@@ -88,41 +89,19 @@ export function Dashboard() {
     queryClient.invalidateQueries({ queryKey: ["devices", homeId] });
   };
 
-  const toggle = useMutation({
-    mutationFn: ({ device, status }: { device: Device; status: "on" | "off" }) =>
-      setDeviceStatus(homeId!, device.id, status),
-    // Optimistic: API ka intezaar kiye bina UI turant update + pending state.
-    // Error pe rollback (server truth restore). ESP confirm command:updated
-    // se aata hai — realtime hook devices refetch karta hai.
-    onMutate: async ({ device, status }) => {
-      await queryClient.cancelQueries({ queryKey: ["devices", homeId] });
-      const prev = queryClient.getQueryData<ApiResponse<Device[]>>(["devices", homeId]);
-      queryClient.setQueryData<ApiResponse<Device[]>>(["devices", homeId], (old) =>
-        old?.success
-          ? { ...old, data: old.data.map((d) => (d.id === device.id ? { ...d, status } : d)) }
-          : old,
-      );
-      setPending((p) => ({ ...p, [device.id]: status }));
-      return { prev };
-    },
-    onSuccess: (_r, vars) => {
-      setPending((p) => {
-        const n = { ...p };
-        delete n[vars.device.id];
-        return n;
-      });
-    },
-    onError: (e, vars, ctx) => {
-      if (ctx?.prev) queryClient.setQueryData(["devices", homeId], ctx.prev);
-      setPending((p) => {
-        const n = { ...p };
-        delete n[vars.device.id];
-        return n;
-      });
-      setError(apiErrMsg(e));
-    },
-    onSettled: () => invalidate(),
-  });
+  // Optimistic: API ka intezaar kiye bina UI turant update + pending state.
+  // Error pe rollback (server truth restore). ESP confirm command:updated
+  // se aata hai — realtime hook devices refetch karta hai.
+  // (Logic lib/deviceOptimistic me hai — unit-tested rollback path.)
+  const toggle = useMutation(
+    createToggleOptions({
+      queryClient,
+      homeId: homeId!,
+      setPending,
+      setError,
+      invalidate,
+    }),
+  );
 
   const bulkToggle = useMutation({
     mutationFn: ({ deviceIds, status }: { deviceIds: number[]; status: "on" | "off" }) =>
