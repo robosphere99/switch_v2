@@ -4068,7 +4068,8 @@ adminRouter.get("/diagnostics", async (_req, res) => {
     crashes: [],
     serverErrors: [],
     stats: { reqEnd: 0, reqAbort: 0, exitsInTail: 0, bootsInTail: 0 },
-    hbSummary: []
+    hbSummary: [],
+    webconfig: null
   };
   if (logFilePath && fs3.existsSync(logFilePath)) {
     try {
@@ -4129,6 +4130,36 @@ adminRouter.get("/diagnostics", async (_req, res) => {
       })).sort((a, b) => b.lastRss - a.lastRss);
     } catch (err) {
       result.error = err instanceof Error ? err.message : String(err);
+    }
+  }
+  for (const cand of [
+    path4.resolve(process.cwd(), "web.config"),
+    path4.resolve(process.cwd(), "../web.config"),
+    path4.resolve(process.cwd(), "../../web.config")
+  ]) {
+    if (!fs3.existsSync(cand)) continue;
+    try {
+      const content = fs3.readFileSync(cand, "utf8");
+      const grab = (re) => {
+        const m = re.exec(content);
+        return m ? m[0].slice(0, 500) : null;
+      };
+      result.webconfig = {
+        path: cand,
+        iisnode: grab(/<iisnode\b[^>]*>/i),
+        httpErrors: grab(/<httpErrors\b[^>]*>/i),
+        appPoolRecycling: grab(/<recycling\b[\s\S]*?<\/recycling>/i)?.slice(0, 400) ?? null
+      };
+      break;
+    } catch (err) {
+      result.webconfig = {
+        path: cand,
+        iisnode: null,
+        httpErrors: null,
+        appPoolRecycling: null,
+        error: err instanceof Error ? err.message : String(err)
+      };
+      break;
     }
   }
   ok(res, result);
