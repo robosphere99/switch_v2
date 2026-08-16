@@ -5,6 +5,10 @@
 > next — so it can give informed suggestions without needing to re-discover everything.
 >
 > Repo location (this machine): `C:\Users\robos\OneDrive\Documents\SwitchNest`
+>
+<!-- AUTO:STAMP:START -->
+> _Auto-updated: 2026-08-16 18:10 UTC · branch `(detached)` · tree clean · ? commits_
+<!-- AUTO:STAMP:END -->
 
 ---
 
@@ -91,6 +95,31 @@ Followed the roadmap in `ROADMAP.md`:
 
 Recent theme: **production hardening + observability** (the site runs on a home server
 that also serves real ESP32 hardware).
+
+<!-- AUTO:RECENT_COMMITS:START -->
+Sabse naye 20 commits:
+
+- `64b1eb4` (2026-08-16) docs: Phase 4 realtime (Socket.IO) implementation plan — events, auth, edge cases, polling fallback
+- `2e09304` (2026-08-16) docs: project context handoff ko docs/ me rakha + README me link — kisi bhi AI agent ko pura project context dene ke liye
+- `bae3a61` (2026-08-16) docs: TESTING.md — leak-monitor fix, admin password sync aur instance cleanup ke liye verification checklist
+- `af9e06b` (2026-08-16) tools: API duplicate-instance cleanup script — sirf ek canonical (port 4000) rakhe
+- `8c6cb8d` (2026-08-16) leak-monitor + admin: false leak alerts fix + admin password .env sync
+- `a6d85a7` (2026-08-16) admin: memory chart me heap ab default ON — naya admin pe RSS + heap dono lines turant dikhein
+- `634e968` (2026-08-16) admin: memory chart me heap toggle (dashed amber lines + legend) + current process RSS growth alert badge (4h window, 20%+ = possible leak)
+- `abdeeaa` (2026-08-16) admin: memory chart me time range selector (1h/6h/24h) + drag-to-zoom (ref-based, reset button, window-filtered lines)
+- `98a57a3` (2026-08-16) tools: GitHub repo backup script — mirror fetch + source zip + private GitHub Release upload (weekly offsite backup), retention + .bat launchers + Task Scheduler installer
+- `8320ddb` (2026-08-16) admin: deploy-info me GitHub Actions CI status — pass/fail/pending badge (workflow + run # + time), 5-min cache, GITHUB_TOKEN env se
+- `cf1c525` (2026-08-16) admin: deploy-info card ab Overview page pe bhi — Logs tab ke saath dashboard pe 'last updated' visible (60s refresh)
+- `ae39182` (2026-08-16) fix: diagnostics export — real newlines/tabs instead of literal \n (download .txt was broken)
+- `3ed2903` (2026-08-16) chore: untrack health-check.jsonl — runtime log, gitignore logs dir
+- `0b40a2e` (2026-08-16) admin: in-app Health Checker — 30s self-check, outage detect, persistent incident history in Diagnostics
+- `09b1b15` (2026-08-16) admin: memory trend chart (RSS/heap time-series, 24h) — heartbeat logs ts+heap, hbSeries endpoint, SVG chart
+- `1f7eb4b` (2026-08-16) deploy: normalize deploy.cmd (clean CRLF)
+- `c0c9191` (2026-08-16) admin: deploy info (last update + current commit) — deploy.json marker + /deploy-info + UI card
+- `60dc5a6` (2026-08-16) tools: production health monitor — 30s checks, outage detect + recovery timing, report mode
+- `559ba57` (2026-08-16) deploy: devErrorsEnabled=false on production web.config + cleanup helpers
+- `a9fd229` (2026-08-16) deploy: web.config pe nodeProcessCountPerApplication=1 — single scheduler, no duplicate side-effects
+<!-- AUTO:RECENT_COMMITS:END -->
 
 - 503 root-cause work: DB probe retry loop so the app self-heals, `nodeProcessCountPerApplication=1`,
   recycle probes via appcmd/WP events.
