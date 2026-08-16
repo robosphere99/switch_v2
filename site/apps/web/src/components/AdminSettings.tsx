@@ -122,6 +122,25 @@ export function AdminSettings() {
   // Admin account — password change
   const [pw, setPw] = useState({ current: "", next: "", confirm: "" });
   const [pwMsg, setPwMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // Admin account — email change
+  const setUser = useAuthStore((s) => s.setUser);
+  const [emailEdit, setEmailEdit] = useState(false);
+  const [emailVal, setEmailVal] = useState(user?.email ?? "");
+  const [emailMsg, setEmailMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const changeEmail = useMutation({
+    mutationFn: () => updateProfile({ email: emailVal }),
+    onSuccess: (res) => {
+      if (res.success) {
+        setUser(res.data);
+        setEmailEdit(false);
+        setEmailMsg({ ok: true, text: "Email update ho gaya. ✅" });
+      } else {
+        setEmailMsg({ ok: false, text: res.error.message });
+      }
+    },
+    onError: (e) => setEmailMsg({ ok: false, text: String((e as Error).message ?? e) }),
+  });
   const changePw = useMutation({
     mutationFn: () => updateProfile({ currentPassword: pw.current, newPassword: pw.next }),
     onSuccess: (res) => {
@@ -346,10 +365,50 @@ export function AdminSettings() {
             <span className="text-gray-500">Username:</span>{" "}
             <span className="font-semibold">{user?.username}</span>
           </p>
-          <p className="mt-0.5">
-            <span className="text-gray-500">Email:</span>{" "}
-            <span className="font-semibold">{user?.email}</span>
-          </p>
+          <div className="mt-0.5 flex flex-wrap items-center gap-2">
+            <span className="text-gray-500">Email:</span>
+            {emailEdit ? (
+              <input
+                type="email"
+                value={emailVal}
+                onChange={(e) => setEmailVal(e.target.value)}
+                autoFocus
+                className="w-full max-w-xs rounded-lg border border-gray-300 bg-night-900 px-3 py-1.5 text-sm outline-none focus:border-brand"
+              />
+            ) : (
+              <span className="font-semibold">{user?.email}</span>
+            )}
+            <button
+              onClick={() => {
+                setEmailEdit((v) => !v);
+                setEmailVal(user?.email ?? "");
+                setEmailMsg(null);
+              }}
+              className="rounded-lg border border-gray-300 px-2.5 py-1 text-xs font-semibold text-gray-500 transition hover:border-brand hover:text-brand"
+              title={emailEdit ? "Cancel" : "Email edit karo"}
+            >
+              {emailEdit ? "Cancel" : "✏️ Edit"}
+            </button>
+            {emailEdit && (
+              <button
+                onClick={() => {
+                  if (!emailVal.includes("@") || !emailVal.includes(".")) {
+                    setEmailMsg({ ok: false, text: "Sahi email daalo (jaise naam@example.com)." });
+                    return;
+                  }
+                  setEmailMsg(null);
+                  changeEmail.mutate();
+                }}
+                disabled={changeEmail.isPending || !emailVal.trim()}
+                className="rounded-lg bg-brand px-3 py-1 text-xs font-semibold text-white transition hover:brightness-110 disabled:opacity-40"
+              >
+                {changeEmail.isPending ? "Saving…" : "Save email"}
+              </button>
+            )}
+          </div>
+          {emailMsg && (
+            <p className={`mt-2 text-xs ${emailMsg.ok ? "text-emerald-600" : "text-red-500"}`}>{emailMsg.text}</p>
+          )}
           <p className="mt-0.5 text-xs text-gray-500">
             User management ke liye <b>Users</b> tab dekho.
           </p>
