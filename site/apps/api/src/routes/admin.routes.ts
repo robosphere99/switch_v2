@@ -694,6 +694,7 @@ adminRouter.get("/diagnostics", async (_req, res) => {
     serverErrors: string[];
     stats: { reqEnd: number; reqAbort: number; exitsInTail: number; bootsInTail: number };
     hbSummary: Array<{ pid: number; count: number; firstUptime: number; lastUptime: number; firstRss: number; lastRss: number; rssGrowthPerHour: number }>;
+    hbSeries: Array<{ ts: string; pid: number; uptime: number; rss: number; heap: number | null }>;
     appPool: string | null;
     wpEvents: string | null;
     webconfig: {
@@ -721,6 +722,7 @@ adminRouter.get("/diagnostics", async (_req, res) => {
     serverErrors: [],
     stats: { reqEnd: 0, reqAbort: 0, exitsInTail: 0, bootsInTail: 0 },
     hbSummary: [],
+    hbSeries: [],
     webconfig: null,
     appPool: null,
     wpEvents: null,
@@ -793,6 +795,47 @@ adminRouter.get("/diagnostics", async (_req, res) => {
               : 0,
         }))
         .sort((a, b) => b.lastRss - a.lastRss);
+
+      // Time-series (24h) — har 10s [hb] line → {ts, pid, rss, heap}.
+      // Naya format: [hb] alive ts=<ISO> uptime=N pid=N rss=NMB heap=NMB
+      // Purana format (bina ts/heap): uptime-based approximate ts.
+      const hbSeriesRe = /\[hb\] alive(?: ts=([\d:.TZ-]+))? uptime=(\d+)s pid=(\d+) rss=(\d+)MB(?: heap=(\d+)MB)?/;
+      const nowMs = Date.now();
+      const dayAgo = nowMs - 24 * 3600 * 1000;
+      const series: Array<{ ts: string; pid: number; uptime: number; rss: number; heap: number | null }> = [];
+      let lastRealTs = nowMs;
+      for (const l of lines) {
+        const m = hbSeriesRe.exec(l);
+        if (!m) continue;
+        const tsRaw = m[1];
+        let t: number;
+        if (tsRaw) {
+          t = Date.parse(tsRaw);
+          if (!Number.isNaN(t)) lastRealTs = t;
+          else t = lastRealTs;
+        } else {
+          // purana format — uptime se approximate: uptime chhota = recently booted.
+          const up = Number(m[2]);
+          t = nowMs - up * 1000;
+        }
+        if (t < dayAgo) continue;
+        series.push({
+          ts: new Date(t).toISOString(),
+          pid: Number(m[3]),
+          uptime: Number(m[2]),
+          rss: Number(m[4]),
+          heap: m[5] ? Number(m[5]) : null,
+        });
+      }
+      series.sort((a, b) => a.ts.localeCompare(b.ts));
+      // Cap — zyada points ho to sample (har Nth). Chart pe ~700 points kaafi.
+      const MAX_SERIES = 700;
+      if (series.length > MAX_SERIES) {
+        const step = Math.ceil(series.length / MAX_SERIES);
+        result.hbSeries = series.filter((_, i) => i % step === 0);
+      } else {
+        result.hbSeries = series;
+      }
 
     } catch (err) {
       result.error = err instanceof Error ? err.message : String(err);

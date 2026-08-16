@@ -4094,6 +4094,7 @@ adminRouter.get("/diagnostics", async (_req, res) => {
     serverErrors: [],
     stats: { reqEnd: 0, reqAbort: 0, exitsInTail: 0, bootsInTail: 0 },
     hbSummary: [],
+    hbSeries: [],
     webconfig: null,
     appPool: null,
     wpEvents: null
@@ -4155,6 +4156,41 @@ adminRouter.get("/diagnostics", async (_req, res) => {
         ...h,
         rssGrowthPerHour: h.lastUptime > h.firstUptime ? Number(((h.lastRss - h.firstRss) / ((h.lastUptime - h.firstUptime) / 3600) || 0).toFixed(1)) : 0
       })).sort((a, b) => b.lastRss - a.lastRss);
+      const hbSeriesRe = /\[hb\] alive(?: ts=([\d:.TZ-]+))? uptime=(\d+)s pid=(\d+) rss=(\d+)MB(?: heap=(\d+)MB)?/;
+      const nowMs = Date.now();
+      const dayAgo = nowMs - 24 * 3600 * 1e3;
+      const series = [];
+      let lastRealTs = nowMs;
+      for (const l of lines) {
+        const m = hbSeriesRe.exec(l);
+        if (!m) continue;
+        const tsRaw = m[1];
+        let t;
+        if (tsRaw) {
+          t = Date.parse(tsRaw);
+          if (!Number.isNaN(t)) lastRealTs = t;
+          else t = lastRealTs;
+        } else {
+          const up = Number(m[2]);
+          t = nowMs - up * 1e3;
+        }
+        if (t < dayAgo) continue;
+        series.push({
+          ts: new Date(t).toISOString(),
+          pid: Number(m[3]),
+          uptime: Number(m[2]),
+          rss: Number(m[4]),
+          heap: m[5] ? Number(m[5]) : null
+        });
+      }
+      series.sort((a, b) => a.ts.localeCompare(b.ts));
+      const MAX_SERIES = 700;
+      if (series.length > MAX_SERIES) {
+        const step = Math.ceil(series.length / MAX_SERIES);
+        result.hbSeries = series.filter((_, i) => i % step === 0);
+      } else {
+        result.hbSeries = series;
+      }
     } catch (err) {
       result.error = err instanceof Error ? err.message : String(err);
     }
@@ -7367,9 +7403,9 @@ process.on("uncaughtException", (err) => {
 });
 setInterval(() => {
   fileLog(
-    `[hb] alive uptime=${Math.round(process.uptime())}s pid=${process.pid} rss=${Math.round(
+    `[hb] alive ts=${(/* @__PURE__ */ new Date()).toISOString()} uptime=${Math.round(process.uptime())}s pid=${process.pid} rss=${Math.round(
       process.memoryUsage().rss / 1048576
-    )}MB`
+    )}MB heap=${Math.round(process.memoryUsage().heapUsed / 1048576)}MB`
   );
 }, 1e4);
 process.on("beforeExit", (code) => {

@@ -36,7 +36,8 @@ import {
   clearDeviceCommands,
   getEspHistory,
   findAnything,
-} from "../api/admin";
+} from "../api/admin";import MemoryTrendChart from "../components/MemoryTrendChart";
+
 import { Modal } from "../components/Modal";
 import { AdminShop } from "../components/AdminShop";
 import { AdminSupport } from "../components/AdminSupport";
@@ -1459,6 +1460,15 @@ export function Admin() {
                 </div>
               ))}
             </div>
+
+            {diag.data?.success && (
+              <div className="mb-4">
+                <MemoryTrendChart
+                  series={diag.data.data.hbSeries ?? []}
+                  currentPid={diag.data.data.process.pid}
+                />
+              </div>
+            )}
 
             <div className="grid gap-3 md:grid-cols-2">
               <div className="rounded-lg border border-gray-200 bg-night-900 p-3">
