@@ -30,6 +30,35 @@ const AVATAR_COLORS = [
   "bg-cyan-500",
 ];
 
+/** Common problems ke one-click reply templates — click karo, edit karo, Enter dabao. */
+const QUICK_REPLIES: Array<{ emoji: string; label: string; text: string }> = [
+  {
+    emoji: "📶",
+    label: "WiFi",
+    text: "Namaste, WiFi issue ke liye — board ko 10 sec power off karke on karein aur router ke paas rakhein. Agar ab bhi connect nahi ho raha to bataiye, hum remote check karenge.",
+  },
+  {
+    emoji: "🔄",
+    label: "OTA",
+    text: "Namaste, firmware (OTA) update ke baare me — board naya version khud check karke update ho jata hai. Update ke waqt power OFF na karein (2-3 min lagte hain). Update fail ho to wapas try hoga.",
+  },
+  {
+    emoji: "🛡️",
+    label: "Warranty",
+    text: "Namaste, warranty claim ke liye board ka serial code chahiye hoga (box ke sticker pe ya Order page me). Serial bhejein — hum status check karke claim process shuru kar denge.",
+  },
+  {
+    emoji: "📦",
+    label: "Order",
+    text: "Namaste, order ke baare me — order number bhejein, hum tracking/status check karke update denge.",
+  },
+  {
+    emoji: "📴",
+    label: "Offline",
+    text: "Namaste, device offline issue ke liye — power aur WiFi check karein. Router restart karke dekhein; phir bhi na ho to bataiye, hum board remote se check karte hain.",
+  },
+];
+
 function avatarColor(id: number) {
   return AVATAR_COLORS[id % AVATAR_COLORS.length];
 }
@@ -63,6 +92,7 @@ export function AdminSupport({
   // Desktop pe right-panel default open; mobile pe drawer default band (chat dikhna chahiye pehle).
   const [showContext, setShowContext] = useState(() => window.matchMedia("(min-width: 768px)").matches);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const replyInputRef = useRef<HTMLInputElement>(null);
 
   const conversations = useQuery({
     queryKey: ["support", "admin", "conversations"],
@@ -465,33 +495,55 @@ export function AdminSupport({
               <div ref={bottomRef} />
             </div>
 
-            {/* Input */}
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                const t = draft.trim();
-                if ((t || attachment) && !send.isPending) {
-                  send.mutate({ message: t, attachment });
-                }
-              }}
-              className="flex items-center gap-2 border-t border-gray-200 bg-night-900 p-3"
-            >
-              <AttachmentPicker value={attachment} onChange={setAttachment} />
-              <input
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                placeholder="User ko message likho… (Enter se bhejo)"
-                className="flex-1 rounded-full border border-gray-200 bg-night-800 px-4 py-2 text-sm text-gray-200 outline-none placeholder:text-gray-500 focus:border-brand"
-              />
-              <button
-                type="submit"
-                disabled={send.isPending || (!draft.trim() && !attachment)}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand text-white transition hover:brightness-110 disabled:opacity-40"
-                title="Bhejo"
+            {/* Input — quick replies (ek-click templates) + message box */}
+            <div className="border-t border-gray-200 bg-night-900">
+              <div className="flex flex-wrap items-center gap-1.5 px-3 pt-2">
+                <span className="mr-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                  Quick reply
+                </span>
+                {QUICK_REPLIES.map((qr) => (
+                  <button
+                    key={qr.label}
+                    type="button"
+                    onClick={() => {
+                      setDraft(qr.text);
+                      replyInputRef.current?.focus();
+                    }}
+                    title={qr.text}
+                    className="rounded-full border border-gray-200 bg-night-800 px-2.5 py-1 text-xs text-gray-300 transition hover:border-brand hover:text-brand"
+                  >
+                    {qr.emoji} {qr.label}
+                  </button>
+                ))}
+              </div>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const t = draft.trim();
+                  if ((t || attachment) && !send.isPending) {
+                    send.mutate({ message: t, attachment });
+                  }
+                }}
+                className="flex items-center gap-2 p-3"
               >
-                <Send className="h-4 w-4" />
-              </button>
-            </form>
+                <AttachmentPicker value={attachment} onChange={setAttachment} />
+                <input
+                  ref={replyInputRef}
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  placeholder="User ko message likho… (Enter se bhejo)"
+                  className="flex-1 rounded-full border border-gray-200 bg-night-800 px-4 py-2 text-sm text-gray-200 outline-none placeholder:text-gray-500 focus:border-brand"
+                />
+                <button
+                  type="submit"
+                  disabled={send.isPending || (!draft.trim() && !attachment)}
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand text-white transition hover:brightness-110 disabled:opacity-40"
+                  title="Bhejo"
+                >
+                  <Send className="h-4 w-4" />
+                </button>
+              </form>
+            </div>
             {send.isError && (
               <p className="px-4 pb-2 text-xs text-red-500">Bhejne me dikkat — dobara try karo.</p>
             )}
