@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Check, Eye, Mail, Palette, Send } from "lucide-react";
-import { getAdminSettings, updateAdminSettings, testAdminEmail } from "../api/admin";
+import { getAdminSettings, updateAdminSettings, testAdminEmail, resetSite } from "../api/admin";
 import { updateProfile } from "../api/auth";
 import { useAuthStore } from "../stores/auth";
 import { useSiteStore } from "../stores/site";
@@ -139,6 +139,28 @@ export function AdminSettings() {
       }
     },
     onError: (e) => setEmailMsg({ ok: false, text: String((e as Error).message ?? e) }),
+  });
+  const [resetMode, setResetMode] = useState<"data" | "factory">("data");
+  const [resetConfirm, setResetConfirm] = useState("");
+  const [resetMsg, setResetMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const reset = useMutation({
+    mutationFn: () => resetSite(resetMode),
+    onSuccess: (res) => {
+      if (res.success) {
+        if (res.data.mode === "factory") {
+          // Sab clear (admin bhi) — logout + setup screen
+          useAuthStore.getState().logout();
+          window.location.href = "/";
+        } else {
+          setResetConfirm("");
+          setResetMsg({ ok: true, text: res.data.message });
+          queryClient.invalidateQueries({ queryKey: ["admin-settings"] });
+        }
+      } else {
+        setResetMsg({ ok: false, text: res.error.message });
+      }
+    },
+    onError: (e) => setResetMsg({ ok: false, text: String((e as Error).message ?? e) }),
   });
   const changePw = useMutation({
     mutationFn: () => updateProfile({ currentPassword: pw.current, newPassword: pw.next }),
@@ -528,6 +550,46 @@ export function AdminSettings() {
           className="mt-4 rounded-lg border border-gray-300 px-5 py-2 text-sm font-semibold text-gray-700 transition hover:border-brand hover:text-brand disabled:opacity-40"
         >
           {changePw.isPending ? "Changing…" : "Change password"}
+        </button>
+      </Section>
+
+      <Section title="☢️ Danger Zone — Reset site">
+        <p className="mb-3 text-sm text-gray-500">
+          Test data / testing ke baad site ko fresh karna ho to yahan se kar sakte ho.
+          Confirm ke liye neeche <b>RESET</b> type karo.
+        </p>
+        <div className="mb-3 flex flex-col gap-2 text-sm">
+          <label className="flex items-center gap-2">
+            <input type="radio" checked={resetMode === "data"} onChange={() => setResetMode("data")} className="accent-brand" />
+            <span><b>Data reset</b> — saare users/devices/orders/notifications/support clear; admin + product catalog rahenge (recommended)</span>
+          </label>
+          <label className="flex items-center gap-2">
+            <input type="radio" checked={resetMode === "factory"} onChange={() => setResetMode("factory")} className="accent-brand" />
+            <span><b>Factory reset</b> — SAB kuch clear (admin bhi) → fresh install wizard se setup</span>
+          </label>
+        </div>
+        <input
+          value={resetConfirm}
+          onChange={(e) => setResetConfirm(e.target.value)}
+          placeholder={'Confirm ke liye "RESET" type karo'}
+          className="mb-3 w-full max-w-xs rounded-lg border border-gray-300 bg-night-900 px-3 py-2 text-sm outline-none focus:border-brand"
+        />
+        {resetMsg && (
+          <p className={`mb-3 text-sm ${resetMsg.ok ? "text-emerald-600" : "text-red-500"}`}>{resetMsg.text}</p>
+        )}
+        <button
+          onClick={() => {
+            if (resetConfirm !== "RESET") {
+              setResetMsg({ ok: false, text: 'Confirm field me exactly "RESET" likho.' });
+              return;
+            }
+            setResetMsg(null);
+            reset.mutate();
+          }}
+          disabled={reset.isPending || resetConfirm !== "RESET"}
+          className="rounded-lg border border-red-500/50 bg-red-500/10 px-5 py-2 text-sm font-semibold text-red-500 transition hover:bg-red-500/20 disabled:opacity-40"
+        >
+          {reset.isPending ? "Resetting…" : resetMode === "factory" ? "☢️ Factory reset (sab kuch)" : "🧹 Reset data (test data)"}
         </button>
       </Section>
     </div>
