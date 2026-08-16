@@ -29,6 +29,7 @@ import {
   type AdminHomeDetail,
   type EspBoard,
   getAdminLogs,
+  getAdminDiagnostics,
   getDeviceSupport,
   adminSetDeviceStatus,
   clearDeviceCommands,
@@ -65,6 +66,15 @@ function Badge({ children, color }: { children: React.ReactNode; color: string }
       {children}
     </span>
   );
+}
+
+function fmtUptime(sec: number): string {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s2 = sec % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s2}s`;
+  return `${s2}s`;
 }
 
 export function Admin() {
@@ -166,6 +176,12 @@ export function Admin() {
   const logs = useQuery({
     queryKey: ["admin-logs"],
     queryFn: getAdminLogs,
+    enabled: tab === "logs",
+    refetchInterval: tab === "logs" ? 10_000 : false,
+  });
+  const diag = useQuery({
+    queryKey: ["admin-diag"],
+    queryFn: getAdminDiagnostics,
     enabled: tab === "logs",
     refetchInterval: tab === "logs" ? 10_000 : false,
   });
@@ -1361,7 +1377,81 @@ export function Admin() {
       )}
 
       {tab === "logs" && (
-        <div className="rounded-xl border border-gray-200 bg-night-800 p-5">
+        <div className="space-y-4">
+          <div className="rounded-xl border border-gray-200 bg-night-800 p-5">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="font-semibold">
+                🔬 Startup Diagnostics{" "}
+                <span className="text-sm font-normal text-gray-500">
+                  {diag.data?.success ? `PID ${diag.data.data.process.pid} · up ${fmtUptime(diag.data.data.process.uptimeSec)}` : "…"}
+                </span>
+              </h2>
+              {diag.data?.success && diag.data.data.error && (
+                <span className="text-xs text-red-400">⚠️ {diag.data.data.error}</span>
+              )}
+            </div>
+
+            <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+              {[
+                { label: "PID", value: diag.data?.success ? String(diag.data.data.process.pid) : "—" },
+                { label: "Uptime", value: diag.data?.success ? fmtUptime(diag.data.data.process.uptimeSec) : "—" },
+                { label: "RSS", value: diag.data?.success ? `${diag.data.data.process.rssMB} MB` : "—" },
+                { label: "Heap", value: diag.data?.success ? `${diag.data.data.process.heapMB} MB` : "—" },
+                { label: "Node", value: diag.data?.success ? diag.data.data.process.node : "—" },
+                {
+                  label: "Requests (tail)",
+                  value: diag.data?.success ? diag.data.data.stats.reqEnd.toLocaleString("en-IN") : "—",
+                },
+              ].map((c) => (
+                <div key={c.label} className="rounded-lg border border-gray-200 bg-night-900 px-3 py-2">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">{c.label}</p>
+                  <p className="mt-0.5 text-sm font-semibold text-night-950">{c.value}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="rounded-lg border border-gray-200 bg-night-900 p-3">
+                <p className="mb-2 text-xs font-bold uppercase text-gray-500">
+                  ⏻ Exits / Restarts (tail: {diag.data?.success ? diag.data.data.stats.exitsInTail : "?"})
+                </p>
+                {diag.data?.success && diag.data.data.exits.length > 0 ? (
+                  <pre className="max-h-40 overflow-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-amber-400">
+                    {diag.data.data.exits.join("\n")}
+                  </pre>
+                ) : (
+                  <p className="text-xs text-gray-600">No exits recorded — process stable ✅</p>
+                )}
+              </div>
+              <div className="rounded-lg border border-gray-200 bg-night-900 p-3">
+                <p className="mb-2 text-xs font-bold uppercase text-red-500">
+                  🧨 Crashes / Fatal ({diag.data?.success ? diag.data.data.crashes.length : "?"})
+                </p>
+                {diag.data?.success && diag.data.data.crashes.length > 0 ? (
+                  <pre className="max-h-40 overflow-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-red-400">
+                    {diag.data.data.crashes.join("\n")}
+                  </pre>
+                ) : (
+                  <p className="text-xs text-gray-600">No crashguard/fatal lines — clean ✅</p>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-3 rounded-lg border border-gray-200 bg-night-900 p-3">
+              <p className="mb-2 text-xs font-bold uppercase text-emerald-500">
+                🚀 Boot history (last {diag.data?.success ? diag.data.data.boot.length : "?"})
+              </p>
+              {diag.data?.success && diag.data.data.boot.length > 0 ? (
+                <pre className="max-h-32 overflow-auto whitespace-pre-wrap font-mono text-[10px] leading-relaxed text-emerald-300/80">
+                  {diag.data.data.boot.join("\n")}
+                </pre>
+              ) : (
+                <p className="text-xs text-gray-600">No boot lines found</p>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-gray-200 bg-night-800 p-5">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h2 className="font-semibold">
               🪵 System Logs{" "}
@@ -1469,6 +1559,7 @@ export function Admin() {
               Log load failed: {logs.error instanceof Error ? logs.error.message : String(logs.error)}
             </p>
           )}
+        </div>
         </div>
       )}
 
