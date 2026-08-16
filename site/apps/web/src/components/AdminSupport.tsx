@@ -302,7 +302,7 @@ export function AdminSupport({
         )}
       </div>
 
-      <div className="flex h-[65vh] flex-col md:flex-row">
+      <div className="flex h-[calc(100vh-19rem)] min-h-[460px] flex-col md:flex-row">
         {/* Left — conversation list (mobile: sirf tab jab koi chat na khuli ho — WhatsApp jaisa) */}
         <div
           className={`${selectedUserId == null ? "flex" : "hidden md:flex"} w-full shrink-0 flex-col border-b border-gray-200 md:w-80 md:border-b-0 md:border-r`}
@@ -318,7 +318,7 @@ export function AdminSupport({
               />
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto">
+          <div className="no-scrollbar flex-1 overflow-y-auto">
             {conversations.isLoading && (
               <p className="px-4 py-8 text-center text-sm text-gray-500">Loading…</p>
             )}
@@ -491,7 +491,7 @@ export function AdminSupport({
             </div>
 
             {/* Messages */}
-            <div className="flex-1 space-y-2 overflow-y-auto bg-night-900/60 p-4">
+            <div className="no-scrollbar flex-1 space-y-2 overflow-y-auto bg-night-900/60 p-4">
               {chat.isLoading && (
                 <p className="py-10 text-center text-sm text-gray-500">Loading…</p>
               )}
