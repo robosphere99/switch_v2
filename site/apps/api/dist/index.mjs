@@ -4228,6 +4228,92 @@ adminRouter.get("/audit", async (req, res) => {
   });
   ok(res, logs2);
 });
+function buildDiagnosticsText(d) {
+  const L = [];
+  const sec = (t) => L.push(`
+${"=".repeat(70)}
+${t}
+${"=".repeat(70)}`);
+  L.push(`SwitchNest Diagnostics Export`);
+  L.push(`Exported: ${(/* @__PURE__ */ new Date()).toISOString()}`);
+  L.push(`Log file: ${d.logPath ?? "?"} (${d.logBytes ?? 0} bytes)`);
+  if (d.error) L.push(`Parse error: ${d.error}`);
+  sec("PROCESS");
+  L.push(`PID:            ${d.process.pid}`);
+  L.push(`Uptime:         ${Math.floor(d.process.uptimeSec / 60)}m ${d.process.uptimeSec % 60}s`);
+  L.push(`RSS:            ${d.process.rssMB} MB`);
+  L.push(`Heap:           ${d.process.heapMB} MB`);
+  L.push(`Node:           ${d.process.node}`);
+  L.push(`Started at:     ${d.process.startedAt}`);
+  if (d.parent) {
+    L.push(`Parent:         ${d.parent.name} (pid ${d.parent.pid})`);
+    L.push(`Parent start:   ${d.parent.startTime}`);
+    L.push(`Parent cmdline: ${d.parent.cmdline}`);
+  }
+  sec("STATS (log tail)");
+  L.push(`Requests (END):   ${d.stats.reqEnd}`);
+  L.push(`Requests (ABORT): ${d.stats.reqAbort}`);
+  L.push(`Boots in tail:    ${d.stats.bootsInTail}`);
+  L.push(`Exits in tail:    ${d.stats.exitsInTail}`);
+  sec("HEALTH CHECKER");
+  const hc = d.healthCheck;
+  if (hc.lastCheck) {
+    L.push(`Last check: ${hc.lastCheck.ts}  ${hc.lastCheck.ok ? "OK" : "FAIL"}  status=${hc.lastCheck.status ?? "-"}  ${hc.lastCheck.ms}ms  err=${hc.lastCheck.err ?? "-"}`);
+  } else {
+    L.push(`Last check: (none yet)`);
+  }
+  L.push(`Checks:     ${hc.checksOk}/${hc.checksTotal}  (success ${hc.successRate ?? "-"}%)`);
+  if (hc.activeIncident) {
+    L.push(`ACTIVE INCIDENT: ${hc.activeIncident.id}  since ${hc.activeIncident.startedAt}  last=${hc.activeIncident.lastStatus ?? hc.activeIncident.lastErr}`);
+  }
+  L.push(`Incidents:`);
+  if (hc.incidents.length === 0) L.push(`  (none)`);
+  for (const inc of hc.incidents) {
+    L.push(
+      `  ${inc.ts}  id=${inc.id}  ${inc.lastStatus ? `HTTP ${inc.lastStatus}` : inc.lastErr ?? "?"}` + (inc.end ? `  -> recovered ${inc.end.durationSec}s` : "  -> OPEN")
+    );
+  }
+  sec(`BOOT HISTORY (last ${d.boot.length})`);
+  for (const b of d.boot) L.push(`  ${b}`);
+  sec(`EXITS / RESTARTS (tail ${d.exits.length})`);
+  if (d.exits.length === 0) L.push(`  (no exits recorded)`);
+  for (const e of d.exits) L.push(`  ${e}`);
+  sec(`CRASHES / FATAL (tail ${d.crashes.length})`);
+  if (d.crashes.length === 0) L.push(`  (no crashguard/fatal lines)`);
+  for (const c of d.crashes) L.push(`  ${c}`);
+  sec(`SERVER ERRORS (tail ${d.serverErrors.length})`);
+  if (d.serverErrors.length === 0) L.push(`  (none)`);
+  for (const s of d.serverErrors) L.push(`  ${s}`);
+  sec(`HEARTBEAT SUMMARY (per process, ${d.hbSummary.length})`);
+  L.push(`  pid	hb	firstUptime	lastUptime	firstRss	lastRss	growthMB/hr`);
+  for (const h of d.hbSummary.slice(0, 60)) {
+    L.push(`  ${h.pid}	${h.count}	${h.firstUptime}	${h.lastUptime}	${h.firstRss}	${h.lastRss}	${h.rssGrowthPerHour}`);
+  }
+  sec(`MEMORY TREND (24h, ${d.hbSeries.length} points \u2014 first/last 10)`);
+  const sample = [...d.hbSeries.slice(0, 10), ...d.hbSeries.slice(-10)];
+  L.push(`  ts	pid	uptime	rss	heap`);
+  for (const p of sample) {
+    L.push(`  ${p.ts}	${p.pid}	${p.uptime}	${p.rss}	${p.heap ?? "-"}`);
+  }
+  sec("WEB.CONFIG");
+  if (d.webconfig) {
+    L.push(`Path: ${d.webconfig.path}`);
+    if (d.webconfig.iisnode) L.push(`iisnode: ${d.webconfig.iisnode}`);
+    if (d.webconfig.httpErrors) L.push(`httpErrors: ${d.webconfig.httpErrors}`);
+    if (d.webconfig.appPoolRecycling) L.push(`recycling: ${d.webconfig.appPoolRecycling}`);
+  } else {
+    L.push(`(not readable)`);
+  }
+  sec("APP POOL (appcmd)");
+  L.push(d.appPool ? d.appPool.slice(0, 3e3) : `(unavailable)`);
+  if (d.wpEvents) {
+    sec("WORKER PROCESS EVENTS (wevtutil)");
+    L.push(d.wpEvents.slice(0, 2e3));
+  }
+  L.push(`
+${"=".repeat(70)}`);
+  return L.join("\n");
+}
 adminRouter.get("/deploy-info", async (_req, res) => {
   let marker = null;
   const markerPath = path5.resolve(process.cwd(), "../logs/deploy.json");
@@ -4448,6 +4534,13 @@ adminRouter.get("/diagnostics", async (_req, res) => {
       };
     }
   } catch {
+  }
+  if (String(_req.query.download) === "1") {
+    const txt = buildDiagnosticsText(result);
+    const fname = `switchnest-diagnostics-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace(/[:T]/g, "-")}.txt`;
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${fname}"`);
+    return res.send(txt);
   }
   ok(res, result);
 });

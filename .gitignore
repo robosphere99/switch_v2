@@ -51,3 +51,6 @@ hardware/Robosphere-Dev/.device_map.json
 # Python
 __pycache__/
 *.pyc
+
+# Runtime data
+*.jsonl
