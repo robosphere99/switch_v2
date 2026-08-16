@@ -4071,7 +4071,9 @@ adminRouter.get("/diagnostics", async (_req, res) => {
     serverErrors: [],
     stats: { reqEnd: 0, reqAbort: 0, exitsInTail: 0, bootsInTail: 0 },
     hbSummary: [],
-    webconfig: null
+    webconfig: null,
+    appPool: null,
+    wpEvents: null
   };
   if (logFilePath && fs3.existsSync(logFilePath)) {
     try {
@@ -4163,6 +4165,24 @@ adminRouter.get("/diagnostics", async (_req, res) => {
       };
       break;
     }
+  }
+  const windir = process.env.windir || "C:\\Windows";
+  try {
+    const out = execSync(
+      `"${windir}\\System32\\inetsrv\\appcmd.exe" list apppool /config`,
+      { encoding: "utf8", windowsHide: true, timeout: 15e3 }
+    );
+    result.appPool = out.slice(0, 5e3);
+  } catch (err) {
+    result.appPool = `appcmd unavailable: ${err instanceof Error ? err.message : String(err)}`.slice(0, 500);
+  }
+  try {
+    const out = execSync(
+      `"${windir}\\System32\\wevtutil.exe" qe Microsoft-Windows-IIS-W3SVC-WP/Operational /c:8 /rd:true /f:text`,
+      { encoding: "utf8", windowsHide: true, timeout: 15e3 }
+    );
+    result.wpEvents = out.slice(0, 4e3);
+  } catch {
   }
   try {
     const wm = (cmd) => execSync(cmd, { encoding: "utf8", windowsHide: true, timeout: 1e4 });
