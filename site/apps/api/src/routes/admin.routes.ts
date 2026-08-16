@@ -638,6 +638,36 @@ adminRouter.get("/audit", async (req, res) => {
  * status. 503 cycle ka pura picture ek jagah: kitni baar process exit hua,
  * kab boot hua, koi crashguard/fatal line, aur abhi wala process ka RSS.
  */
+/**
+ * Deploy info — admin panel me "last code update" + current commit.
+ * deploy.cmd har deploy pe site/apps/logs/deploy.json likhta hai
+ * (timestamp + commit + branch). Yahan marker + live git state
+ * (agar production pe repo clone ho) + process uptime milta hai.
+ */
+adminRouter.get("/deploy-info", async (_req, res) => {
+  let marker: { deployedAt?: string; commit?: string; branch?: string } | null = null;
+  const markerPath = path.resolve(process.cwd(), "../logs/deploy.json");
+  try {
+    if (fs.existsSync(markerPath)) {
+      marker = JSON.parse(fs.readFileSync(markerPath, "utf8"));
+    }
+  } catch { /* marker corrupt/nahi — koi baat nahi */ }
+
+  let git: { commit: string; branch: string } | null = null;
+  try {
+    const head = execSync("git rev-parse HEAD", { encoding: "utf8", windowsHide: true, timeout: 8000 }).trim();
+    const branch = execSync("git rev-parse --abbrev-ref HEAD", { encoding: "utf8", windowsHide: true, timeout: 8000 }).trim();
+    if (head) git = { commit: head, branch };
+  } catch { /* production pe .git nahi ho to — marker hi kaafi hai */ }
+
+  ok(res, {
+    marker,
+    git,
+    processUptimeSec: Math.round(process.uptime()),
+    startedAt: new Date(Date.now() - process.uptime() * 1000).toISOString(),
+  });
+});
+
 adminRouter.get("/diagnostics", async (_req, res) => {
   const TAIL_MAX = 5 * 1024 * 1024; // 5MB tail enough — poora file nahi padhte
   const result: {

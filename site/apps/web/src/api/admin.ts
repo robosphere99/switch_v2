@@ -367,6 +367,17 @@ export async function getAdminDiagnostics(): Promise<ApiResponse<AdminDiagnostic
   return data;
 }
 
+export interface DeployInfo {
+  marker: { deployedAt?: string; commit?: string; branch?: string } | null;
+  git: { commit: string; branch: string } | null;
+  processUptimeSec: number;
+  startedAt: string;
+}
+
+export async function getDeployInfo(): Promise<ApiResponse<DeployInfo>> {
+  return api.get("/admin/deploy-info").then((r) => r.data);
+}
+
 /** ---------- Device support (customer service) ---------- */
 
 export interface AdminDeviceSupport {

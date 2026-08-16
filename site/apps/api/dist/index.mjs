@@ -4051,6 +4051,29 @@ adminRouter.get("/audit", async (req, res) => {
   });
   ok(res, logs2);
 });
+adminRouter.get("/deploy-info", async (_req, res) => {
+  let marker = null;
+  const markerPath = path4.resolve(process.cwd(), "../logs/deploy.json");
+  try {
+    if (fs3.existsSync(markerPath)) {
+      marker = JSON.parse(fs3.readFileSync(markerPath, "utf8"));
+    }
+  } catch {
+  }
+  let git = null;
+  try {
+    const head = execSync("git rev-parse HEAD", { encoding: "utf8", windowsHide: true, timeout: 8e3 }).trim();
+    const branch = execSync("git rev-parse --abbrev-ref HEAD", { encoding: "utf8", windowsHide: true, timeout: 8e3 }).trim();
+    if (head) git = { commit: head, branch };
+  } catch {
+  }
+  ok(res, {
+    marker,
+    git,
+    processUptimeSec: Math.round(process.uptime()),
+    startedAt: new Date(Date.now() - process.uptime() * 1e3).toISOString()
+  });
+});
 adminRouter.get("/diagnostics", async (_req, res) => {
   const TAIL_MAX = 5 * 1024 * 1024;
   const result = {
