@@ -71,8 +71,18 @@ export function buildSupportDraft(n: { category: string; title: string; body: st
   m = title.match(/Board renamed: (.+?) → (.+)/i);
   if (m) return `Mera board rename ho gaya hai (${m[1].trim()} → ${m[2].trim()}). Kya yeh theek hai ya kuch galat hua?`;
 
-  // --- Schedule ---
-  m = title.match(/Schedule fired: (.+?) (.+)/i);
+  // --- Family safety ---
+  m = title.match(/Child safety: "(.*?)" band kiya/i);
+  if (m) {
+    return `Mera device "${m[1].trim()}" child safety ke karan band ho gaya — kya yeh sahi tha? Agar main ab bhi use kar sakta hoon to bata dijiye.`;
+  }
+  m = title.match(/"(.*?)" ka time khatam/i);
+  if (m) {
+    return `Mujhe bataya gaya ki device "${m[1].trim()}" ka aaj ka time khatam ho gaya. Kya main isse dobara ON kar sakta hoon?`;
+  }
+
+  // --- Schedule --- (action ON/OFF anchor — device name me spaces ho sakte hain)
+  m = title.match(/Schedule fired: (.+?) (ON|OFF)/i);
   if (m) return `Mera schedule device "${m[1].trim()}" ko ${m[2].toLowerCase()} kar diya — kya time aur action sahi tha? Please confirm karein.`;
 
   // --- Order ---
