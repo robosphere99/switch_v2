@@ -128,6 +128,74 @@ export async function setDeviceStatus(input: {
   return updated;
 }
 
+/**
+ * Bulk status — ek saath kai devices (room all-off / all-lights-off).
+ * Har device pe wahi checks (home scoping + restricted member) — ek
+ * transaction me sab command + log. Web UI room/home bulk actions ke liye.
+ */
+export async function bulkSetStatus(input: {
+  homeId: number;
+  actorId: number;
+  deviceIds: number[];
+  status: DeviceStatus;
+}) {
+  const ids = [...new Set(input.deviceIds)];
+  let devices = await prisma.device.findMany({
+    where: { id: { in: ids }, homeId: input.homeId },
+  });
+  if (devices.length === 0) {
+    throw new AppError("DEVICE_NOT_FOUND", "Koi device nahi mila is home me", 404);
+  }
+
+  // Restricted member (child mode) — sirf granted devices control kar sakta hai.
+  const membership = prisma.deviceAccess
+    ? await prisma.homeMember.findUnique({
+        where: { homeId_userId: { homeId: input.homeId, userId: input.actorId } },
+        select: { restricted: true },
+      })
+    : null;
+  if (membership?.restricted && prisma.deviceAccess) {
+    const granted = await prisma.deviceAccess.findMany({
+      where: { userId: input.actorId, deviceId: { in: devices.map((d) => d.id) } },
+      select: { deviceId: true },
+    });
+    const grantedSet = new Set(granted.map((g) => g.deviceId));
+    const allowed = devices.filter((d) => grantedSet.has(d.id));
+    if (allowed.length === 0) {
+      throw new AppError("FORBIDDEN", "In devices ka access nahi hai (child mode)", 403);
+    }
+    devices = allowed;
+  }
+
+  await prisma.$transaction([
+    prisma.device.updateMany({
+      where: { id: { in: devices.map((d) => d.id) } },
+      data: { status: input.status },
+    }),
+    ...devices.map((d) =>
+      prisma.deviceCommand.create({
+        data: { deviceId: d.id, actorId: input.actorId, command: `set_status:${input.status}` },
+      }),
+    ),
+    ...devices.map((d) =>
+      prisma.deviceLog.create({
+        data: {
+          deviceId: d.id,
+          actorId: input.actorId,
+          logType: "status_change",
+          logMessage: `Device turned ${input.status}`,
+        },
+      }),
+    ),
+  ]);
+
+  const updated = await prisma.device.findMany({
+    where: { id: { in: devices.map((d) => d.id) }, homeId: input.homeId },
+  });
+  for (const d of updated) emitToHome(input.homeId, "device:updated", d);
+  return updated;
+}
+
 /** Update device name and/or move it to a room. */
 export async function updateDevice(
   homeId: number,

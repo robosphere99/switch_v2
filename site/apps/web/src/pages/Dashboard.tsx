@@ -1,12 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Users, Wifi, Home as HomeIcon } from "lucide-react";
 import { useState } from "react";
-import type { Device, DeviceType } from "@robosphere/shared";
-import { listDevices, setDeviceStatus, createDevice, updateDevice, deleteDevice, getDeviceLogs, renameEsp, getCurrentFirmware, requestOta } from "../api/devices";
+import type { ApiResponse, Device, DeviceType } from "@robosphere/shared";
+import { listDevices, setDeviceStatus, bulkSetDeviceStatus, createDevice, updateDevice, deleteDevice, getDeviceLogs, renameEsp, getCurrentFirmware, requestOta } from "../api/devices";
 import { listHomes, getHomeDetail } from "../api/homes";
 import { createRoom, deleteRoom } from "../api/rooms";
 import { DeviceCard, isOnline } from "../components/DeviceCard";
-import { Switch, TYPE_ICONS } from "../components/Switch";
 import { Modal } from "../components/Modal";
 import { ScheduleSection } from "../components/ScheduleSection";
 import { useAuthStore } from "../stores/auth";
@@ -33,6 +32,8 @@ export function Dashboard() {
   const [editRoom, setEditRoom] = useState("");
   const [logsFor, setLogsFor] = useState<Device | null>(null);
   const [error, setError] = useState("");
+  // Per-device pending — optimistic toggle ke waqt switch pulse dikhata hai
+  const [pending, setPending] = useState<Record<number, "on" | "off">>({});
 
   const homes = useQuery({ queryKey: ["homes"], queryFn: listHomes, refetchInterval: 30_000 });
 
@@ -90,7 +91,44 @@ export function Dashboard() {
   const toggle = useMutation({
     mutationFn: ({ device, status }: { device: Device; status: "on" | "off" }) =>
       setDeviceStatus(homeId!, device.id, status),
+    // Optimistic: API ka intezaar kiye bina UI turant update + pending state.
+    // Error pe rollback (server truth restore). ESP confirm command:updated
+    // se aata hai — realtime hook devices refetch karta hai.
+    onMutate: async ({ device, status }) => {
+      await queryClient.cancelQueries({ queryKey: ["devices", homeId] });
+      const prev = queryClient.getQueryData<ApiResponse<Device[]>>(["devices", homeId]);
+      queryClient.setQueryData<ApiResponse<Device[]>>(["devices", homeId], (old) =>
+        old?.success
+          ? { ...old, data: old.data.map((d) => (d.id === device.id ? { ...d, status } : d)) }
+          : old,
+      );
+      setPending((p) => ({ ...p, [device.id]: status }));
+      return { prev };
+    },
+    onSuccess: (_r, vars) => {
+      setPending((p) => {
+        const n = { ...p };
+        delete n[vars.device.id];
+        return n;
+      });
+    },
+    onError: (e, vars, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(["devices", homeId], ctx.prev);
+      setPending((p) => {
+        const n = { ...p };
+        delete n[vars.device.id];
+        return n;
+      });
+      setError(apiErrMsg(e));
+    },
+    onSettled: () => invalidate(),
+  });
+
+  const bulkToggle = useMutation({
+    mutationFn: ({ deviceIds, status }: { deviceIds: number[]; status: "on" | "off" }) =>
+      bulkSetDeviceStatus(homeId!, deviceIds, status),
     onSuccess: invalidate,
+    onError: (e) => setError(apiErrMsg(e)),
   });
 
   const addDevice = useMutation({
@@ -245,52 +283,23 @@ export function Dashboard() {
             </div>
           </div>
 
-          {/* ===== Quick control cards ===== */}
-          {devices.data?.success && devices.data.data.length > 0 && (
-            <div>
-              <h2 className="mb-3 text-lg font-semibold text-night-950">Quick Controls</h2>
-              <div className="flex gap-3 overflow-x-auto pb-2">
-                {devices.data.data.map((device) => {
-                  const on = device.status === "on";
-                  const online = isOnline(device);
-                  return (
-                    <div
-                      key={device.id}
-                      className={`flex w-40 shrink-0 flex-col gap-3 rounded-2xl border p-4 transition ${
-                        on
-                          ? "border-brand bg-brand/10 shadow-md shadow-brand/20"
-                          : "border-gray-200 bg-night-800 dark:border-night-600"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span
-                          className={`text-[10px] font-bold uppercase tracking-wide ${
-                            on ? "text-brand" : "text-gray-400"
-                          }`}
-                        >
-                          {on ? "ON" : "OFF"}
-                        </span>
-                        <span className={`h-2 w-2 rounded-full ${online ? "bg-emerald-400" : "bg-red-400"}`} />
-                      </div>
-                      <span className="text-3xl">{TYPE_ICONS[device.type]}</span>
-                      <div>
-                        <p className="truncate text-sm font-semibold text-night-950">{device.name}</p>
-                        <p className="truncate text-[11px] text-gray-500">
-                          {roomNameFor(device) ?? device.type}
-                        </p>
-                      </div>
-                      <Switch
-                        checked={on}
-                        onChange={() =>
-                          toggle.mutate({ device, status: on ? "off" : "on" })
-                        }
-                        disabled={toggle.isPending}
-                        label={`${device.name} ${on ? "band karo" : "chalu karo"}`}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
+          {/* ===== Quick actions ===== */}
+          {devices.data?.success && devices.data.data.some((d) => d.type === "bulb") && (
+            <div className="flex flex-wrap items-center gap-3">
+              {(() => {
+                const bulbIds = devices.data!.data
+                  .filter((d) => d.type === "bulb" && isOnline(d))
+                  .map((d) => d.id);
+                return (
+                  <button
+                    onClick={() => bulkToggle.mutate({ deviceIds: bulbIds, status: "off" })}
+                    disabled={!bulbIds.length || bulkToggle.isPending}
+                    className="flex items-center gap-2 rounded-full border border-brand/40 bg-brand/10 px-4 py-2 text-sm font-semibold text-brand transition hover:bg-brand/20 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    💡 All lights off
+                  </button>
+                );
+              })()}
             </div>
           )}
 
@@ -311,7 +320,16 @@ export function Dashboard() {
                   className="w-full max-w-xs rounded-lg border border-gray-200 bg-night-800 px-3 py-1.5 text-sm text-gray-700 outline-none focus:border-brand dark:border-night-600"
                 />
               </div>
-              {devices.isLoading && <p className="text-gray-500">Loading devices…</p>}
+              {devices.isLoading && (
+                <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+                  {[0, 1, 2, 3, 4, 5].map((i) => (
+                    <div
+                      key={i}
+                      className="h-44 animate-pulse rounded-xl border border-gray-200 bg-night-800 dark:border-night-600"
+                    />
+                  ))}
+                </div>
+              )}
               {devices.data?.success && devices.data.data.length === 0 && (
                 <p className="text-gray-500">
                   No devices yet{canAdminDevices ? " — add your first device!" : ""}
@@ -319,9 +337,9 @@ export function Dashboard() {
               )}
               {(() => {
                 const q = deviceQ.trim().toLowerCase();
-                const visible = devices.data?.success
-                  ? devices.data.data.filter((d) => {
-                      if (!q) return true;
+                const all = devices.data?.success ? devices.data.data : [];
+                const visible = q
+                  ? all.filter((d) => {
                       const room = roomNameFor(d)?.toLowerCase() ?? "";
                       const board = d.esp?.name?.toLowerCase() ?? "";
                       const boardSerial = d.esp?.serialCode?.toLowerCase() ?? "";
@@ -333,49 +351,105 @@ export function Dashboard() {
                         boardSerial.includes(q)
                       );
                     })
-                  : [];
+                  : all;
                 if (q && visible.length === 0) {
                   return <p className="text-gray-500">No devices match "{deviceQ}".</p>;
                 }
+                // Room-first grouping — har room ka apna section + All off/on
+                const grouped = new Map<number | null, Device[]>();
+                for (const d of visible) {
+                  const key = d.roomId ?? null;
+                  if (!grouped.has(key)) grouped.set(key, []);
+                  grouped.get(key)!.push(d);
+                }
+                const sections = [
+                  ...home.rooms.map((r) => ({
+                    title: r.name,
+                    roomId: r.id as number | null,
+                    list: grouped.get(r.id) ?? [],
+                  })),
+                  { title: "Other devices", roomId: null as number | null, list: grouped.get(null) ?? [] },
+                ].filter((s) => s.list.length > 0);
                 return (
-                  <div className="grid gap-5 sm:grid-cols-2">
-                    {visible.map((device) => (
-                      <DeviceCard
-                        key={device.id}
-                        device={device}
-                        roomName={roomNameFor(device)}
-                        canManage={canManage}
-                        disabled={toggle.isPending}
-                        onToggle={(d) =>
-                          toggle.mutate({
-                            device: d,
-                            status: d.status === "on" ? "off" : "on",
-                          })
-                        }
-                        onEdit={(d) => {
-                          setEditing(d);
-                          setEditName(d.name);
-                          setEditRoom(d.roomId ? String(d.roomId) : "");
-                        }}
-                        onLogs={(d) => setLogsFor(d)}
-                        latestVersion={latestForModel(device.esp?.modelCode)}
-                        onOta={(d) => {
-                          const cur = d.esp?.firmwareVersion ?? "—";
-                          const next = latestForModel(d.esp?.modelCode);
-                          if (next && confirm(`Board "${d.esp?.name}" ka firmware update karein?\nAbhi: v${cur} → Latest: v${next}`)) {
-                            pushOta.mutate(d);
-                          }
-                        }}
-                        onRenameBoard={(esp) => {
-                          const name = window.prompt("ESP board ka naam (unique hona chahiye):", esp.name ?? "");
-                          if (name && name.trim()) renameBoard.mutate({ espId: esp.id, name: name.trim() });
-                        }}
-                        onDelete={(d) => {
-                          if (confirm(`Delete "${d.name}"? This cannot be undone.`)) {
-                            removeDevice.mutate(d.id);
-                          }
-                        }}
-                      />
+                  <div className="space-y-8">
+                    {sections.map((s) => (
+                      <div key={s.roomId ?? "none"}>
+                        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                          <h3 className="flex items-center gap-2 font-semibold text-night-950">
+                            {s.roomId !== null ? `📍 ${s.title}` : "📦 Other devices"}
+                            <span className="text-xs font-normal text-gray-500">({s.list.length})</span>
+                          </h3>
+                          {canManage && (
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() =>
+                                  bulkToggle.mutate({
+                                    deviceIds: s.list.map((d) => d.id),
+                                    status: "off",
+                                  })
+                                }
+                                disabled={bulkToggle.isPending}
+                                className="rounded-full border border-gray-300 px-3 py-1 text-xs font-semibold text-gray-600 transition hover:bg-night-700 dark:border-night-600"
+                              >
+                                All off
+                              </button>
+                              <button
+                                onClick={() =>
+                                  bulkToggle.mutate({
+                                    deviceIds: s.list.map((d) => d.id),
+                                    status: "on",
+                                  })
+                                }
+                                disabled={bulkToggle.isPending}
+                                className="rounded-full border border-brand/40 bg-brand/10 px-3 py-1 text-xs font-semibold text-brand transition hover:bg-brand/20"
+                              >
+                                All on
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+                          {s.list.map((device) => (
+                            <DeviceCard
+                              key={device.id}
+                              device={device}
+                              roomName={s.roomId !== null ? s.title : null}
+                              canManage={canManage}
+                              pending={pending[device.id] !== undefined}
+                              disabled={toggle.isPending && pending[device.id] === undefined}
+                              onToggle={(d) =>
+                                toggle.mutate({
+                                  device: d,
+                                  status: d.status === "on" ? "off" : "on",
+                                })
+                              }
+                              onEdit={(d) => {
+                                setEditing(d);
+                                setEditName(d.name);
+                                setEditRoom(d.roomId ? String(d.roomId) : "");
+                              }}
+                              onLogs={(d) => setLogsFor(d)}
+                              latestVersion={latestForModel(device.esp?.modelCode)}
+                              onOta={(d) => {
+                                const cur = d.esp?.firmwareVersion ?? "—";
+                                const next = latestForModel(d.esp?.modelCode);
+                                if (next && confirm(`Board "${d.esp?.name}" ka firmware update karein?\nAbhi: v${cur} → Latest: v${next}`)) {
+                                  pushOta.mutate(d);
+                                }
+                              }}
+                              onRenameBoard={(esp) => {
+                                const name = window.prompt("ESP board ka naam (unique hona chahiye):", esp.name ?? "");
+                                if (name && name.trim()) renameBoard.mutate({ espId: esp.id, name: name.trim() });
+                              }}
+                              onDelete={(d) => {
+                                if (confirm(`Delete "${d.name}"? This cannot be undone.`)) {
+                                  removeDevice.mutate(d.id);
+                                }
+                              }}
+                            />
+                          ))}
+                        </div>
+                      </div>
                     ))}
                   </div>
                 );

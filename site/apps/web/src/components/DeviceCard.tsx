@@ -21,6 +21,17 @@ export function isOnline(device: Device): boolean {
   return Date.now() - new Date(device.lastSeen).getTime() < 90_000;
 }
 
+/** Human-friendly "last seen" — normal users ke liye, raw timestamps nahi. */
+export function formatLastSeen(iso: string | null | undefined): string {
+  if (!iso) return "Last seen: kabhi nahi";
+  const sec = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (sec < 0) return "Last seen: abhi abhi";
+  if (sec < 60) return "Last seen: abhi abhi";
+  if (sec < 3600) return `Last seen: ${Math.floor(sec / 60)} min ago`;
+  if (sec < 86400) return `Last seen: ${Math.floor(sec / 3600)} hr ago`;
+  return `Last seen: ${new Date(iso).toLocaleDateString()}`;
+}
+
 export function DeviceCard({
   device,
   roomName,
@@ -32,6 +43,7 @@ export function DeviceCard({
   onRenameBoard,
   onOta,
   latestVersion,
+  pending,
   disabled,
 }: {
   device: Device;
@@ -42,9 +54,11 @@ export function DeviceCard({
   onDelete: (device: Device) => void;
   onLogs: (device: Device) => void;
   onRenameBoard?: (esp: NonNullable<Device["esp"]>) => void;
-  /** Is device ke board ke model ka latest published firmware (update badge ke liye). */
+  /** Is device ke board ka model ka latest published firmware (update badge ke liye). */
   latestVersion?: string | null;
   onOta?: (device: Device) => void;
+  /** True = command in-flight (optimistic UI). */
+  pending?: boolean;
   disabled?: boolean;
 }) {
   const on = device.status === "on";
@@ -56,7 +70,7 @@ export function DeviceCard({
         on
           ? "border-brand bg-brand/10 shadow-lg shadow-brand/20"
           : "border-gray-200 bg-night-800"
-      }`}
+      } ${!online ? "opacity-80" : ""}`}
     >
       <div className="flex items-start justify-between">
         <span className="text-3xl">{ICONS[device.type]}</span>
@@ -81,19 +95,16 @@ export function DeviceCard({
 
       <div>
         <h3 className="font-semibold">{device.name}</h3>
-        <p className="text-[11px] text-gray-500">
-          {device.type} · ID {device.id}
-          {device.serialNumber ? ` · ${device.serialNumber}` : ""}
-          {device.ipAddress ? ` · ${device.ipAddress}` : ""}
-        </p>
-        {device.esp && (
+        {!online ? (
+          <p className="mt-0.5 text-[11px] text-red-400/90">{formatLastSeen(device.lastSeen)}</p>
+        ) : (
+          <p className="mt-0.5 text-[11px] text-emerald-400/80">Connected just now</p>
+        )}
+        {/* Board update/rename — sirf affordances, raw serial/model/FW info nahi
+            (consumer card clean rakho; technical detail Boards page pe hai). */}
+        {device.esp && (canManage || isNewerVersion(latestVersion, device.esp.firmwareVersion)) && (
           <p className="mt-1 flex items-center gap-1.5 text-[11px] text-gray-500">
-            <span>
-              🛰️ {device.esp.name ?? "ESP Board"}
-              {device.esp.serialCode ? ` · ${device.esp.serialCode}` : ""}
-              {device.esp.modelCode ? ` · ${device.esp.modelCode}` : ""}
-              {device.esp.firmwareVersion ? ` · FW v${device.esp.firmwareVersion}` : ""}
-            </span>
+            <span>🛰️ {device.esp.name ?? "ESP Board"}</span>
             {isNewerVersion(latestVersion, device.esp.firmwareVersion) && (
               <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 font-bold text-amber-600">
                 ⬆ v{latestVersion}
@@ -125,19 +136,30 @@ export function DeviceCard({
         <div className="flex items-center gap-2">
           <span
             className={`h-2 w-2 rounded-full transition-colors ${
-              on ? "bg-brand" : "bg-gray-400 dark:bg-night-500"
+              pending
+                ? "animate-pulse bg-amber-400"
+                : on
+                  ? "bg-brand"
+                  : "bg-gray-400 dark:bg-night-500"
             }`}
           />
           <span className="text-sm font-bold text-gray-700 dark:text-night-950">
-            {on ? "ON" : "OFF"}
+            {pending ? "PENDING" : on ? "ON" : "OFF"}
           </span>
         </div>
-        <Switch
-          checked={on}
-          onChange={() => onToggle(device)}
-          disabled={disabled}
-          label={`${device.name} ${on ? "band karo" : "chalu karo"}`}
-        />
+        {!online ? (
+          <span className="text-[10px] font-semibold text-red-400/80">
+            Offline — control band
+          </span>
+        ) : (
+          <Switch
+            checked={on}
+            onChange={() => onToggle(device)}
+            disabled={disabled}
+            pending={pending}
+            label={`${device.name} ${on ? "band karo" : "chalu karo"}`}
+          />
+        )}
       </div>
 
       {canManage && (
@@ -152,7 +174,7 @@ export function DeviceCard({
             onClick={() => onLogs(device)}
             className="flex-1 rounded bg-gray-100/60 py-1.5 text-gray-600 hover:bg-gray-200"
           >
-            📜 Logs
+            📜 Activity
           </button>
           <button
             onClick={() => onDelete(device)}
