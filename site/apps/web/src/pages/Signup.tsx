@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { signup } from "../api/auth";
+import { extractApiError } from "../api/client";
 import { useAuthStore } from "../stores/auth";
 import { applyAccountTheme } from "../lib/themeAccount";
 
@@ -33,7 +34,7 @@ export function Signup() {
         setError(res.error.message);
       }
     } catch (err) {
-      setError("Connection error. Is the API running?");
+      setError(extractApiError(err).message);
     } finally {
       setLoading(false);
     }

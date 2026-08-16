@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Monitor, Moon, Save, Sun, User } from "lucide-react";
 import { updateProfile } from "../api/auth";
+import { extractApiError } from "../api/client";
 import { useAuthStore } from "../stores/auth";
 import { getThemeMode } from "../lib/theme";
 import { changeTheme } from "../lib/themeAccount";
@@ -46,8 +47,8 @@ export function Profile() {
       } else {
         setMessage({ ok: false, text: res.error.message });
       }
-    } catch {
-      setMessage({ ok: false, text: "Connection error. Is the API running?" });
+    } catch (err) {
+      setMessage({ ok: false, text: extractApiError(err).message });
     } finally {
       setLoading(false);
     }

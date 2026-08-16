@@ -36,6 +36,7 @@ if "%NODE_MODULES_OK%"=="1" (
     echo [deploy] ERROR: prisma generate failed — purana client chalega
   ) else (
     call :touchSelfHealMarker
+    call node scripts\patch-webconfig.mjs 2>nul
   )
   echo [deploy] OK
   exit /b 0
@@ -53,6 +54,7 @@ if errorlevel 1 (
   exit /b 1
 )
 call :touchSelfHealMarker
+call node scripts\patch-webconfig.mjs 2>nul
 echo [deploy] install + generate OK
 exit /b 0
 

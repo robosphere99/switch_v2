@@ -18,6 +18,7 @@ import { firmwareDir } from "../lib/paths";
 import { logFilePath } from "../lib/logger";
 import { getRequestStats } from "../lib/requestTracker";
 import { getSiteSettings, updateSiteSettings } from "../services/siteSettings.service";
+import { setDbReady } from "../lib/dbState";
 import { sendEmail } from "../lib/email.service";
 
 export const adminRouter = Router();
@@ -1546,4 +1547,73 @@ adminRouter.delete("/contact/:id", async (req, res) => {
   const id = Number(req.params.id);
   await prisma.contactMessage.delete({ where: { id } });
   ok(res, { deleted: true });
+});
+
+// ---------- Danger zone: Site reset ----------
+
+const resetSchema = z.object({
+  mode: z.enum(["data", "factory"]),
+  confirm: z.literal("RESET"),
+});
+
+/**
+ * Admin power: poora test/data saaf karo.
+ *  - mode "data"    — saare users/devices/orders/notifications/support clear;
+ *                    system_admin account + product catalog + firmware versions rahenge.
+ *  - mode "factory" — SAB kuch (admin bhi) clear → app setup mode (install wizard).
+ * Confirm ke liye body me "RESET" type karna zaroori hai.
+ */
+adminRouter.post("/reset", validateBody(resetSchema), async (req, res) => {
+  const { mode } = req.body as { mode: "data" | "factory" };
+
+  const ALL_TABLES = [
+    "api_keys", "app_meta", "assistant_chats", "assistant_messages", "audit_logs",
+    "contact_messages", "device_access", "device_commands", "device_configurations",
+    "device_logs", "device_usage", "devices", "esp_devices", "firmware_versions",
+    "home_members", "homes", "invitations", "notifications", "order_items", "orders",
+    "products", "refresh_tokens", "rooms", "schedules", "serial_registry",
+    "support_chat_settings", "support_messages", "users", "warranty_claims",
+  ];
+  // "data" mode me yeh tables waise ki waise rehti hain (admin login + catalog + firmware).
+  const KEEP_IN_DATA = new Set(["products", "app_meta", "users", "firmware_versions"]);
+
+  const tablesToWipe =
+    mode === "factory" ? ALL_TABLES : ALL_TABLES.filter((t) => !KEEP_IN_DATA.has(t));
+
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe("SET FOREIGN_KEY_CHECKS=0");
+    for (const t of tablesToWipe) {
+      await tx.$executeRawUnsafe(`DELETE FROM \`${t}\``);
+    }
+    if (mode === "data") {
+      // Admin(s) + catalog rehte hain; baaki saare users clear.
+      await tx.$executeRawUnsafe("DELETE FROM `users` WHERE role <> 'system_admin'");
+    }
+    await tx.$executeRawUnsafe("SET FOREIGN_KEY_CHECKS=1");
+  });
+
+  if (mode === "factory") {
+    // Tables bhi drop — install wizard ke liye bilkul clean slate.
+    // (Warna schema.sql ka CREATE TABLE 'users' already exists dega.)
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe("SET FOREIGN_KEY_CHECKS=0");
+      for (const t of ALL_TABLES) {
+        await tx.$executeRawUnsafe(`DROP TABLE IF EXISTS \`${t}\``);
+      }
+      await tx.$executeRawUnsafe("SET FOREIGN_KEY_CHECKS=1");
+    });
+    // Admin bhi gaya → in-memory flag bhi reset, taaki install wizard turant dikhe.
+    setDbReady(false);
+  } else {
+    await audit(req.user!.sub, "admin.reset", { entity: "platform", meta: { mode } });
+  }
+
+  ok(res, {
+    reset: true,
+    mode,
+    message:
+      mode === "factory"
+        ? "Factory reset ho gaya — ab install wizard se fresh setup karo"
+        : "Data reset ho gaya — admin + catalog rahe, baaki sab clear",
+  });
 });
