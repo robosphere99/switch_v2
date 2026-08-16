@@ -31,3 +31,21 @@ export const requireAuth: RequestHandler = (req, _res, next) => {
     next(new AppError("UNAUTHORIZED", "Invalid or expired token", 401));
   }
 };
+
+/**
+ * Optional auth — token diya ho aur valid ho to req.user set karo,
+ * warna bina error ke aage badho (anonymous request). Public endpoints
+ * me use hota hai jahan role ke hisaab se alag jawab dena ho.
+ */
+export const optionalAuth: RequestHandler = (req, _res, next) => {
+  const header = req.headers.authorization;
+  if (header?.startsWith("Bearer ")) {
+    try {
+      const payload = jwt.verify(header.slice(7), env.JWT_ACCESS_SECRET) as unknown as AccessTokenPayload;
+      req.user = payload;
+    } catch {
+      /* invalid/expired token — anonymous hi samjho */
+    }
+  }
+  next();
+};

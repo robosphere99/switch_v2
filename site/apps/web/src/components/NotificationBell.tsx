@@ -13,6 +13,7 @@ export function NotificationBell() {
   const isAdmin = user?.role === "system_admin";
   const [open, setOpen] = useState(false);
   const bellRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   // Dropdown ko portal se body pe render karte hain — navbar/stacking-context se bahar,
   // taaki backdrop (blur) saare content ko cover kare aur kahin bhi click pe band ho
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
@@ -44,6 +45,19 @@ export function NotificationBell() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  // Bell aur dropdown ke bahar kahin bhi mouse/touch/pen dabao to band
+  // (backdrop click ke alawa bhi — mobile webviews me fixed overlay miss ho sakta hai)
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (bellRef.current?.contains(t) || panelRef.current?.contains(t)) return;
+      setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [open]);
 
   const unread = useQuery({
@@ -123,6 +137,7 @@ export function NotificationBell() {
               }}
             />
             <div
+              ref={panelRef}
               className="fixed z-[100] w-80 max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl border border-gray-200 bg-night-800 shadow-2xl"
               style={{ top: pos.top, left: pos.left }}
             >

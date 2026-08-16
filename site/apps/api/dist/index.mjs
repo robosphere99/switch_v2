@@ -470,6 +470,17 @@ var requireAuth = (req, _res, next) => {
     next(new AppError("UNAUTHORIZED", "Invalid or expired token", 401));
   }
 };
+var optionalAuth = (req, _res, next) => {
+  const header = req.headers.authorization;
+  if (header?.startsWith("Bearer ")) {
+    try {
+      const payload = jwt2.verify(header.slice(7), env.JWT_ACCESS_SECRET);
+      req.user = payload;
+    } catch {
+    }
+  }
+  next();
+};
 
 // src/middleware/validate.ts
 function validateBody(schema) {
@@ -5221,9 +5232,12 @@ function detectNeed(text, products) {
   }
   return null;
 }
-publicRouter.post("/assistant", async (req, res) => {
+publicRouter.post("/assistant", optionalAuth, async (req, res) => {
   const text = String(req.body?.message ?? "").trim();
   if (!text) return ok(res, { reply: "Kuch likho \u2014 e.g. '4 lights control karne hain' ya 'dimmer chahiye'.", chips: CHIPS });
+  if (req.user?.role === "system_admin") {
+    return ok(res, await adminAssistantReply(text));
+  }
   const products = await prisma.product.findMany({
     where: { active: true },
     select: { id: true, name: true, modelCode: true, relayCount: true, price: true },
@@ -5242,6 +5256,164 @@ publicRouter.post("/assistant", async (req, res) => {
     products: picks,
     chips: CHIPS
   });
+});
+var ADMIN_CHIPS = [
+  "Kitne users online hain?",
+  "Overview stats kaise dekhein?",
+  "User ko block/delete kaise karein?",
+  "Support inbox kaise use karein?",
+  "Firmware OTA kaise push karein?",
+  "Audit logs kaise check karein?"
+];
+var ADMIN_FAQ = [
+  {
+    test: /overview|stats|statistics|dashboard|report|metrics|trend|kya chal raha/i,
+    reply: "Admin panel ke **Overview** tab me platform ke saare stats milte hain \u2014 total users, active today, revenue, orders, homes, devices, ESP boards, API requests (24h), support messages, pending commands, API keys, audit events aur ESP logs. Neeche last 7 days ka signups/orders graph bhi hai. Koi bhi cheez turant dhundhni ho to top me **\u{1F198} Find anything** use karo."
+  },
+  {
+    test: /user|member|customer|block|ban|delete user|role|kaun kaun/i,
+    reply: "**Users** tab me har user dikhta hai \u2014 status (active/blocked) badal sakte ho, role (user/system_admin) assign kar sakte ho, delete bhi kar sakte ho. Kisi user ke orders, homes, devices aur ESP boards ka poora context **Support** inbox me user select karke **User Info** panel se milta hai."
+  },
+  {
+    test: /support|inbox|chat|conversation|reply|message aaya/i,
+    reply: "**Support** tab WhatsApp-style inbox hai: conversations list left me, chat beech me, aur right me **User Info** panel (orders/homes/devices/boards). Quick replies ready hain (WiFi/OTA/Warranty/Order/Offline), attachments bhej sakte ho, chat mute/pin/clear kar sakte ho. Naya user message aaye to notification + unread badge se pata chal jata hai."
+  },
+  {
+    test: /ota|firmware|push update|flash|update push|version/i,
+    reply: "**OTA / ESP** tab me firmware upload karke activate karte ho. Uske baad kisi ek board pe ya saare boards pe ek saath OTA push kar sakte ho. ESP boards rename karna, probe karna, aur online/offline status dekhna bhi yahin se hota hai."
+  },
+  {
+    test: /api key|api-key|integration|third.party|device access/i,
+    reply: "**API Keys** tab me device-access API keys banate aur delete karte ho \u2014 ESP32 ya third-party integrations ke liye. Har key ka record audit log me bhi track hota hai."
+  },
+  {
+    test: /audit|log|track|history|activity|kisne kya/i,
+    reply: "**Audit Log** tab me har important action track hota hai \u2014 kaun, kis entity pe, kya kiya, kab (user, entity type, meta, timestamp). Suspicious activity check karne ke liye perfect. ESP boards ki history alag se **OTA / ESP** tab me dikhti hai."
+  },
+  {
+    test: /settings|site setting|brand|test email|theme|contact info/i,
+    reply: "**Settings** tab me site-wide settings hain \u2014 site name, support email/phone/address/hours, theme/brand color. **Test email** bhejkar verify bhi kar sakte ho ki email system sahi chal raha hai."
+  },
+  {
+    test: /search|find|dhundo|dhundho|lookup|khojo/i,
+    reply: "Top me **\u{1F198} Find anything** button aur **Global search** dono hain \u2014 users, homes, devices, ESP boards, orders, serials \u2014 jo bhi daalo, turant result. Kisi user ka context chahiye to **Support** inbox kholo."
+  },
+  {
+    test: /order|payment|revenue|sale|sell|shop|kitna bik/i,
+    reply: "**Shop / Orders** tab me saare orders + payment status dikhte hain. **Overview** me revenue stats milte hain. Order cancel karna, payment verify karna \u2014 sab yahin se hota hai."
+  },
+  {
+    test: /hello|hi|hey|namaste|namaskar|hii|hola|salaam/i,
+    reply: "Namaste Admin! \u{1F6E1}\uFE0F Main SwitchNest ka admin assistant hoon. Admin panel ke har feature me guide kar sakta hoon \u2014 stats, users, homes, devices, OTA/firmware, API keys, audit logs, support inbox ya settings. Batao kya karna hai?"
+  }
+];
+var DAY_MS3 = 864e5;
+var FIVE_MIN_MS = 3e5;
+async function adminLiveStats() {
+  const dayAgo = new Date(Date.now() - DAY_MS3);
+  const fiveMinAgo = new Date(Date.now() - FIVE_MIN_MS);
+  const monthStart = /* @__PURE__ */ new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+  const [
+    users,
+    activeToday,
+    onlineNow,
+    homes,
+    devices,
+    onlineDevices,
+    espBoards,
+    offlineBoards,
+    orders,
+    pendingOrders,
+    revenueTotal,
+    revenueMonth,
+    unreadSupport,
+    apiKeys
+  ] = await Promise.all([
+    prisma.user.count(),
+    prisma.user.count({ where: { lastLoginAt: { gte: dayAgo } } }),
+    prisma.user.count({ where: { lastLoginAt: { gte: fiveMinAgo } } }),
+    prisma.home.count(),
+    prisma.device.count(),
+    prisma.device.count({ where: { lastSeen: { gte: dayAgo } } }),
+    prisma.espDevice.count(),
+    prisma.espDevice.count({ where: { OR: [{ offline: true }, { lastSeen: { lt: fiveMinAgo } }] } }),
+    prisma.order.count(),
+    prisma.order.count({ where: { status: "pending" } }),
+    prisma.order.aggregate({ _sum: { totalAmount: true }, where: { paidAt: { not: null } } }),
+    prisma.order.aggregate({ _sum: { totalAmount: true }, where: { paidAt: { not: null }, createdAt: { gte: monthStart } } }),
+    prisma.supportMessage.count({ where: { senderRole: "user", readByAdmin: false, deletedAt: null } }),
+    prisma.apiKey.count()
+  ]);
+  const apiRequests = getRequestStats();
+  return {
+    users,
+    activeToday,
+    onlineNow,
+    homes,
+    devices,
+    onlineDevices,
+    espBoards,
+    offlineBoards,
+    orders,
+    pendingOrders,
+    revenueTotal: Number(revenueTotal._sum.totalAmount ?? 0),
+    revenueMonth: Number(revenueMonth._sum.totalAmount ?? 0),
+    unreadSupport,
+    apiKeys,
+    apiRequests
+  };
+}
+var plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+var ADMIN_LIVE_INTENTS = [
+  {
+    test: /(kitne|kitna|how many|count).{0,15}(user|users|member|log|bande|account)|(user|users|member)s? (online|active)|online (user|users)|active user|kitne log/i,
+    reply: (s) => `Abhi platform pe **${plural(s.onlineNow, "user")} online** hain (last 5 min me active). Aaj (24h) **${plural(s.activeToday, "active user")}** \u2014 total **${plural(s.users, "registered user")}**. Devices: **${plural(s.onlineDevices, "device")}/${s.devices} online**, ESP boards: **${s.espBoards - s.offlineBoards}/${s.espBoards} online**.`
+  },
+  {
+    test: /(kitne|kitna|how many|count|total).{0,15}(order|sale|revenue|paisa|kamai)|revenue (kya|kitna|abhi)|kitna kamaya|total (revenue|orders)/i,
+    reply: (s) => `Total revenue: **\u20B9${s.revenueTotal.toLocaleString("en-IN")}** (is mahine \u20B9${s.revenueMonth.toLocaleString("en-IN")}). Total orders: **${plural(s.orders, "order")}** \u2014 abhi **${plural(s.pendingOrders, "pending")}**.`
+  },
+  {
+    test: /(kitne|kitna|how many|count).{0,15}(device|board|esp)|device(s)? (online|offline)|board(s)? (online|offline)|online (device|board)/i,
+    reply: (s) => `Devices: **${plural(s.onlineDevices, "device")}/${s.devices} online** (24h me active). ESP boards: **${s.espBoards - s.offlineBoards}/${s.espBoards} online** \u2014 **${plural(s.offlineBoards, "board")} offline**. Homes: **${plural(s.homes, "home")}**, API keys: **${s.apiKeys}**.`
+  },
+  {
+    test: /(kitne|kitna|unread).{0,15}(support )?(message|chat)|unread (messages?|chats?)|pending (support|message|chat)/i,
+    reply: (s) => `Support me **${plural(s.unreadSupport, "unread message")}** hain abhi. Saari conversations **Support** tab me hain \u2014 unread badge se naye messages ka pata chal jata hai.`
+  },
+  {
+    test: /api (request|hit|call)|request(s)? (kitne|count|kitte)|kitne (request|hit)|traffic|kitna traffic/i,
+    reply: (s) => `API requests: **${plural(s.apiRequests.today, "request")}** aaj, **${plural(s.apiRequests.last24h, "request")}** last 24h \u2014 total **${plural(s.apiRequests.total, "request")}** all-time.`
+  }
+];
+async function adminAssistantReply(text) {
+  if (!text) {
+    return { reply: "Kya help chahiye? e.g. 'Kitne users online hain?' ya 'Overview stats kaise dekhein?'", products: [], chips: ADMIN_CHIPS };
+  }
+  for (const intent of ADMIN_LIVE_INTENTS) {
+    if (intent.test.test(text)) {
+      const stats = await adminLiveStats();
+      return { reply: intent.reply(stats), products: [], chips: ADMIN_CHIPS };
+    }
+  }
+  for (const faq of ADMIN_FAQ) {
+    if (faq.test.test(text)) {
+      return { reply: faq.reply, products: [], chips: faq.chips ?? ADMIN_CHIPS };
+    }
+  }
+  return {
+    reply: "Yeh sawaal mera clear nahi hua \u{1F642} Main in cheezon me help kar sakta hoon \u2014 live stats (kitne users online, revenue, devices online), Overview, Users, Homes, Devices, OTA/firmware, API keys, Audit logs, Support inbox, Settings aur Global search. Koi ek batao \u2014 main jawab de dunga.",
+    products: [],
+    chips: ADMIN_CHIPS
+  };
+}
+publicRouter.post("/assistant/admin", requireAuth, async (req, res) => {
+  if (req.user.role !== "system_admin") {
+    throw new AppError("FORBIDDEN", "Admin access required", 403);
+  }
+  return ok(res, await adminAssistantReply(String(req.body?.message ?? "").trim()));
 });
 publicRouter.post("/contact", async (req, res) => {
   const name = String(req.body?.name ?? "").trim().slice(0, 100);

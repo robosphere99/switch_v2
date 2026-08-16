@@ -36,6 +36,12 @@ export async function askAssistant(message: string): Promise<AssistantReply> {
   return data.data;
 }
 
+/** Admin assistant — system_admin ke liye alag (Admin panel guide). */
+export async function askAdminAssistant(message: string): Promise<AssistantReply> {
+  const { data } = await api.post("/public/assistant/admin", { message });
+  return data.data;
+}
+
 export async function sendContact(payload: {
   name: string;
   email?: string;
