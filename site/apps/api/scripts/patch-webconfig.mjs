@@ -68,6 +68,9 @@ function patch(content) {
     const next = out.replace(/nodeProcessCountPerApplication\s*=\s*"[^"]*"/gi, 'nodeProcessCountPerApplication="1"');
     changed = changed || next !== out;
     out = next;
+    const dev = out.replace(/devErrorsEnabled\s*=\s*"[^"]*"/gi, 'devErrorsEnabled="false"');
+    changed = changed || dev !== out;
+    out = dev;
   }
 
   if (!changed) return null;
@@ -100,5 +103,5 @@ console.log(`[patch-webconfig] ✅ ${found} — PassThrough + nodeProcessCountPe
 
 // Verify
 const after = fs.readFileSync(found, "utf-8");
-const pass = /existingResponse="PassThrough"/.test(after) && /nodeProcessCountPerApplication="1"/.test(after);
+const pass = /existingResponse="PassThrough"/.test(after) && /nodeProcessCountPerApplication="1"/.test(after) && /devErrorsEnabled="false"/.test(after);
 console.log(`[patch-webconfig] verify: ${pass ? "OK" : "FAIL"}`);
