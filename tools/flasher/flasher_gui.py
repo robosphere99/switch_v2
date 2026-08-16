@@ -12,9 +12,10 @@ Flash ESP32 relay boards and provision them for a specific order:
   6. Mark serial as factory-tested on the server
   7. Next board (batch mode)
 
-Requirements:  pip install requests pyserial   (+ esptool for flashing)
+Requirements:  pip install requests pyserial esptool
 
 Run:           python flasher_gui.py
+Dep check:     python flasher_gui.py --check   (GUI ke bina deps verify)
 """
 
 import io
@@ -28,7 +29,11 @@ import time
 import tkinter as tk
 from tkinter import messagebox, scrolledtext, ttk
 
-import requests
+# Soft imports — missing dep ho to GUI crash na ho, friendly message dikhao.
+try:
+    import requests
+except ImportError:
+    requests = None
 
 try:
     import serial  # pyserial
@@ -39,7 +44,27 @@ MODELS = ["2CH", "4CH", "5CH", "6CH", "8CH", "4CH-IR", "FAN-DIM", "DIM-3S", "DIM
 BAUD = 115200
 FLASH_ADDR = "0x10000"  # ESP32 app partition (standard PlatformIO layout)
 
-APP_VERSION = "1.0"
+INSTALL_CMD = "pip install requests pyserial esptool"
+
+APP_VERSION = "1.1"
+
+
+def check_deps():
+    """Startup dep auto-check — missing pip packages ki list return karta hai.
+
+    Fresh environment me bina crash ke chalta hai: jo dep nahi hai wo sirf
+    report hota hai, app phir bhi khulta hai (disabled features ke saath).
+    """
+    missing = []
+    if requests is None:
+        missing.append("requests")
+    if serial is None:
+        missing.append("pyserial")
+    try:
+        import esptool  # noqa: F401
+    except ImportError:
+        missing.append("esptool")
+    return missing
 
 
 def find_com_ports():
@@ -87,10 +112,20 @@ class FlasherApp:
         self.provision_data = {}     # fetched order ka data (WiFi + apiKey)
         self.generated_serials = []  # is order me pehle se generate serials
 
+        # Startup dep auto-check — UI se pehle taaki banner bana sake
+        self.missing_deps = check_deps()
+
         self._build_ui()
         self._log("RoboSphere Factory Flasher ready.")
-        if serial is None:
-            self._log("[WARN] pyserial not installed — provisioning/test disabled. pip install pyserial")
+        if self.missing_deps:
+            self._log(
+                f"[WARN] Missing dependencies: {', '.join(self.missing_deps)} — "
+                f"kuch features disabled. Install: {INSTALL_CMD}",
+                "warn",
+            )
+            self._log("       (ya upar 'Install now' button dabao)", "warn")
+        else:
+            self._log("Dependencies OK (requests, pyserial, esptool)", "ok")
         self.root.after(100, self._drain_log)
 
     # ---------------- UI ----------------
@@ -126,13 +161,27 @@ class FlasherApp:
         style.map("Primary.TButton", background=[("active", "#2ea043"), ("disabled", "#21262d")])
 
         pad = {"padx": 6, "pady": 4}
+
+        # Row 0 — deps warning banner (sirf missing pe dikhta hai, fresh env friendly)
+        if self.missing_deps:
+            warn = ttk.Frame(self.root, padding=(10, 6))
+            warn.grid(row=0, column=0, sticky="ew")
+            warn.columnconfigure(1, weight=1)
+            ttk.Label(warn, text="⚠️ Missing dependencies: " + ", ".join(self.missing_deps),
+                      foreground="#d29922", font=("Segoe UI", 9, "bold"))\
+                .grid(row=0, column=0, sticky="w")
+            ttk.Label(warn, text="Kuch features disabled — " + INSTALL_CMD,
+                      style="Muted.TLabel").grid(row=0, column=1, sticky="w", padx=10)
+            self.b_install = ttk.Button(warn, text="Install now", command=self.do_install_deps)
+            self.b_install.grid(row=0, column=2, padx=6)
+
         f = ttk.Frame(self.root, padding=10)
-        f.grid(row=0, column=0, sticky="nsew")
+        f.grid(row=1, column=0, sticky="nsew")
         self.root.columnconfigure(0, weight=1)
-        self.root.rowconfigure(0, weight=1)
+        self.root.rowconfigure(1, weight=1)
         f.columnconfigure(0, weight=1)
 
-        # Row 0 — connection
+        # Row 1 — connection
         row = ttk.LabelFrame(f, text=" 1 · Server Connection ", padding=8)
         row.grid(row=0, column=0, sticky="ew", **pad)
         row.columnconfigure(1, weight=3)
@@ -159,7 +208,7 @@ class FlasherApp:
         self.e_esp_server.insert(0, f"http://{detect_lan_ip()}:4000")
         self.e_esp_server.grid(row=1, column=1, padx=4, pady=(6, 0))
 
-        # Row 1 — order + device (wide fields — lamba order number ab pura dikhta hai)
+        # Row 2 — order + device (wide fields — lamba order number ab pura dikhta hai)
         row = ttk.LabelFrame(f, text=" 2 · Order / Device ", padding=10)
         row.grid(row=1, column=0, sticky="ew", **pad)
         row.columnconfigure(1, weight=2)
@@ -195,7 +244,7 @@ class FlasherApp:
         self.l_item = ttk.Label(row, text="", foreground="#7ee787")
         self.l_item.grid(row=2, column=6, padx=4, pady=2)
 
-        # Row 2 — port + actions
+        # Row 3 — port + actions
         row = ttk.LabelFrame(f, text=" 3 · Flash & Provision ", padding=8)
         row.grid(row=2, column=0, sticky="ew", **pad)
         ttk.Label(row, text="COM port").grid(row=0, column=0, sticky="w")
@@ -216,7 +265,7 @@ class FlasherApp:
         self.l_prog = ttk.Label(row, text="Idle", foreground="orange")
         self.l_prog.grid(row=0, column=7, padx=8)
 
-        # Row 3 — log (resize pe expand)
+        # Row 4 — log (resize pe expand)
         row = ttk.LabelFrame(f, text=" Log ", padding=8)
         row.grid(row=3, column=0, sticky="nsew", **pad)
         f.rowconfigure(3, weight=1)
@@ -263,6 +312,8 @@ class FlasherApp:
         self._log(f"Ports: {', '.join(ports) if ports else 'none found'}")
 
     def api(self, method, path, **kw):
+        if requests is None:
+            raise RuntimeError(f"requests not installed — {INSTALL_CMD}")
         if not self.token:
             raise RuntimeError("Not logged in")
         kw.setdefault("headers", {})["Authorization"] = f"Bearer {self.token}"
@@ -278,8 +329,36 @@ class FlasherApp:
 
     # ---------------- actions ----------------
 
+    def do_install_deps(self):
+        """Missing deps ko pip se install karo (background) — fresh env me bhi bina crash ke."""
+        if self.busy:
+            return
+        self.busy = True
+        self._log(f"Installing: {INSTALL_CMD} …", "info")
+        def work():
+            try:
+                import subprocess
+                p = subprocess.run(
+                    [sys.executable, "-m", "pip", "install", "--quiet",
+                     "requests", "pyserial", "esptool"],
+                    capture_output=True, text=True, timeout=300,
+                )
+                if p.returncode == 0:
+                    self._log("Install OK — naye deps load karne ke liye app restart karo.", "ok")
+                else:
+                    tail = (p.stderr or "").strip().splitlines()[-3:]
+                    self._log("Install FAIL: " + (" | ".join(tail) or "pip error"), "err")
+            except Exception as e:
+                self._log(f"Install error: {e}", "err")
+            finally:
+                self.root.after(0, lambda: setattr(self, "busy", False))
+        threading.Thread(target=work, daemon=True).start()
+
     def do_login(self):
         if self.busy:
+            return
+        if requests is None:
+            messagebox.showerror("requests missing", f"Login ke liye requests chahiye.\n\nInstall: {INSTALL_CMD}")
             return
         url = self.e_server.get().rstrip("/")
         self.set_busy(True)
@@ -341,6 +420,9 @@ class FlasherApp:
 
     def do_fetch(self):
         if self.busy:
+            return
+        if requests is None:
+            messagebox.showerror("requests missing", f"Order fetch ke liye requests chahiye.\n\nInstall: {INSTALL_CMD}")
             return
         oid = self.e_order.get().strip()
         if not oid:
@@ -433,7 +515,7 @@ class FlasherApp:
         fail karta hai. Isliye import se PEHLE real stream (NUL) laga dete hain,
         phir StringIO me capture karke GUI log me dikhate hain.
         """
-        ANSI_RE = re.compile(r"\[[0-9;]*[A-Za-z]")
+        ANSI_RE = re.compile(r"\u001b\[[0-9;]*[A-Za-z]")
 
         old_out, old_err = sys.stdout, sys.stderr
         if old_out is None or old_err is None:
@@ -468,6 +550,9 @@ class FlasherApp:
 
     def do_flash(self):
         if self.busy:
+            return
+        if requests is None:
+            self._log(f"Flash disabled — requests missing. Install: {INSTALL_CMD}", "err")
             return
         self.set_busy(True)
         def work():
@@ -662,6 +747,16 @@ class FlasherApp:
 
 
 def main():
+    # CLI dep check — GUI ke bina verify (CI / fresh env diagnostic ke liye)
+    if "--check" in sys.argv:
+        missing = check_deps()
+        if missing:
+            print(f"MISSING: {', '.join(missing)}")
+            print(f"Install: {INSTALL_CMD}")
+            sys.exit(1)
+        print("OK — requests, pyserial, esptool sab present")
+        sys.exit(0)
+
     if sys.platform.startswith("win"):
         try:
             import ctypes

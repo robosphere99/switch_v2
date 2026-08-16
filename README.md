@@ -14,18 +14,26 @@ onlineswitch-v2/
 └── README.md
 ```
 
-## Quick Start (site/)
+## Quick Start (fresh environment — pehli baar)
+
+> Repo location (this machine): `C:\Users\robos\OneDrive\Documents\SwitchNest`
+> Puri step-by-step guide: **[`START_GUIDE.md`](./START_GUIDE.md)**
 
 ```bash
 cd site
-cp .env.example .env
-docker compose up -d mysql        # start MySQL 8
-npm install                       # install all workspaces
-npm run db:migrate                # create tables (Prisma)
-npm run dev                       # API on :4000 + web on :5173
+npm install            # install all workspaces (monorepo: web + api + shared)
+npm run db:generate    # Prisma client (schema se)
+npm run db:migrate     # create tables (agar DB empty ho)
+
+npm run dev:api        # terminal 1 — API on :4000
+npm run dev:web        # terminal 2 — Web on :5173
 ```
 
-See [`site/README.md`](./site/README.md) for details.
+- Browser: **http://localhost:5173** · Health: `curl http://localhost:4000/api/health`
+- `.env` me `DB_NAME=switchnest` set hai — app `switchnest` DB use karta hai (`switch_v2` backup ke roop me safe hai)
+- Hardware (PlatformIO) + Flasher (Python GUI) ke steps ke liye `START_GUIDE.md` dekho
+
+See [`site/README.md`](./site/README.md) for platform details.
 
 ## Deploy flow (dev → main)
 

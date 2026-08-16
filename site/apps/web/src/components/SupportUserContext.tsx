@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { X } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { getSupportUserContext } from "../api/admin";
 
 const AVATAR_COLORS = [
@@ -56,9 +57,17 @@ export function SupportUserContext({ userId, onClose }: { userId: number; onClos
 
   const d = ctx.data?.success ? ctx.data.data : null;
   const user = d?.user;
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Har baar kholne / user badalne / data load hone pe top se shuru karo,
+  // taaki profile section sabse upar dikhe (browser scroll-anchoring se
+  // panel kabhi beech/neeche se na khule).
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: 0 });
+  }, [userId, ctx.dataUpdatedAt]);
 
   return (
-    <div className="flex w-full shrink-0 flex-col border-t border-gray-200 bg-night-900 md:w-80 md:border-l md:border-t-0">
+    <div className="flex h-full min-h-0 w-full flex-col border-t border-gray-200 bg-night-900 md:w-80 md:border-l md:border-t-0">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-gray-200 px-4 py-2.5">
         <p className="text-sm font-semibold">👤 User Info</p>
@@ -71,7 +80,7 @@ export function SupportUserContext({ userId, onClose }: { userId: number; onClos
         </button>
       </div>
 
-      <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto">
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto" style={{ overflowAnchor: "none" }}>
         {ctx.isLoading && <p className="px-4 py-8 text-center text-sm text-gray-500">Loading…</p>}
         {!ctx.isLoading && !user && (
           <p className="px-4 py-8 text-center text-sm text-red-400">User context load nahi hua.</p>

@@ -9,6 +9,7 @@ import {
   type AssistantMessage,
 } from "../api/assistant";
 import { listHomes } from "../api/homes";
+import { RichText } from "../components/RichText";
 
 const EXAMPLES = [
   "turn on the fan",
@@ -228,7 +229,7 @@ function MessageBubble({
           isUser ? "rounded-br-sm bg-brand text-white" : "rounded-bl-sm border border-gray-200 bg-night-900 text-gray-700"
         }`}
       >
-        <div className="whitespace-pre-line">{message.content}</div>
+        <RichText text={message.content} className="whitespace-pre-line" />
         {!isUser && message.proposal && message.proposal.length > 0 && (
           <div className="mt-3 space-y-1.5">
             {message.proposal.map((p) => (
