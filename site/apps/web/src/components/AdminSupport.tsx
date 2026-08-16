@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { ArrowLeft, Bell, BellOff, CheckCheck, Copy, Inbox, Pin, PinOff, Search, Send, Trash2, UserRound } from "lucide-react";
 import {
   clearSupportConversation,
@@ -55,6 +56,7 @@ export function AdminSupport({
   onSelectUser: (id: number | null) => void;
 }) {
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [q, setQ] = useState("");
   const [draft, setDraft] = useState("");
   const [attachment, setAttachment] = useState<SupportAttachment | null>(null);
@@ -133,6 +135,20 @@ export function AdminSupport({
   }, [chat.data, queryClient]);
 
   const msgs = chat.data?.success ? chat.data.data.messages : [];
+
+  // Notification deep-link (…&draft=…)— thread khulte hi reply template pre-fill.
+  // Har user ke liye ek baar hi apply (URL se param hata bhi dete hain — refresh pe dobara nahi).
+  const draftParam = searchParams.get("draft");
+  const draftAppliedFor = useRef<number | null>(null);
+  useEffect(() => {
+    if (selectedUserId == null || !draftParam) return;
+    if (draftAppliedFor.current === selectedUserId) return;
+    draftAppliedFor.current = selectedUserId;
+    setDraft(draftParam);
+    const sp = new URLSearchParams(searchParams);
+    sp.delete("draft");
+    setSearchParams(sp, { replace: true });
+  }, [selectedUserId, draftParam, searchParams, setSearchParams]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
