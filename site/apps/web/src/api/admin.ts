@@ -552,6 +552,15 @@ export async function clearSupportConversation(userId: number): Promise<ApiRespo
   return data;
 }
 
+/** Admin: kisi EK user ki chat read/unread mark (context-menu se). */
+export async function setSupportThreadRead(userId: number, read: boolean): Promise<ApiResponse<{ updated: number }>> {
+  const { data } = await api.post<ApiResponse<{ updated: number }>>(`/support/admin/thread-read`, {
+    userId,
+    read,
+  });
+  return data;
+}
+
 /** Support chat attachment (optional) — photo/invoice/screenshot. */
 export interface SupportAttachment {
   name: string;
