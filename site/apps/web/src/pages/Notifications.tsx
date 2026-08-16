@@ -10,7 +10,7 @@ import {
   type Notification,
 } from "../api/notifications";
 import { useAuthStore } from "../stores/auth";
-import { buildSupportDraft, parseNotificationBody } from "../lib/notificationBody";
+import { buildAdminReplyDraft, buildSupportDraft, parseNotificationBody } from "../lib/notificationBody";
 
 const CATEGORIES: Array<{ id: string; label: string; icon: string }> = [
   { id: "all", label: "All", icon: "🔔" },
@@ -106,7 +106,10 @@ export function Notifications() {
     const parsed = parseNotificationBody(n.body);
     if (isAdmin) {
       if (n.category === "support") {
-        navigate(parsed.targetUserId ? `/admin?tab=support&user=${parsed.targetUserId}` : "/admin?tab=support");
+        // Admin reply template — "User ne reply kiya" notification pe draft ready milta hai
+        const draft = buildAdminReplyDraft(n);
+        const base = parsed.targetUserId ? `/admin?tab=support&user=${parsed.targetUserId}` : "/admin?tab=support";
+        navigate(draft ? `${base}&draft=${encodeURIComponent(draft)}` : base);
       }
       return;
     }
@@ -247,7 +250,7 @@ export function Notifications() {
                     hour: "2-digit",
                     minute: "2-digit",
                   })}
-                  {clickable && <span className="ml-2 text-brand">{isAdmin ? "↪ chat kholo" : "↪ support kholo — draft ready"}</span>}
+                  {clickable && <span className="ml-2 text-brand">{isAdmin ? "↪ chat kholo — draft ready" : "↪ support kholo — draft ready"}</span>}
                 </p>
               </button>
               <button

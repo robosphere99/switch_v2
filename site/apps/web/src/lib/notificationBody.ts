@@ -89,3 +89,21 @@ export function buildSupportDraft(n: { category: string; title: string; body: st
   const text = body ? ` — ${body}` : "";
   return `Mujhe yeh notification mili: "${title}"${text}. Iske baare me madad chahiye.`;
 }
+
+/**
+ * Admin side — support notification click pe reply template (draft).
+ * "User ne reply kiya" → user ka message quote + ready reply, admin sirf
+ * Enter dabayega (edit bhi kar sakta hai).
+ */
+export function buildAdminReplyDraft(n: { category: string; title: string; body: string | null }): string | null {
+  const title = n.title ?? "";
+  // Sirf user-reply notifications ke liye — baaki support notifications pe draft nahi
+  if (!/User ne support me reply kiya/.test(title)) return null;
+  const { text } = parseNotificationBody(n.body);
+  const trimmed = text.trim();
+  if (trimmed) {
+    const quote = trimmed.slice(0, 120);
+    return `Namaste, aapka message padh liya: "${quote}" — hum isse check kar rahe hain, jald hi update denge. 🙏`;
+  }
+  return `Namaste, aapka support message note kar liya — hum jald hi update denge. 🙏`;
+}
