@@ -14,6 +14,9 @@ import { prisma } from "./lib/prisma";
 import { trackRequest } from "./lib/requestTracker";
 import { setLastSeenHost } from "./lib/healthMonitor";
 
+/** Public API version — ops/diagnostics ke liye (health ke build field se sync). */
+const API_VERSION = "2.2.0";
+
 /** Health diagnostics — models/tables present hain ya nahi (deploy issue pehchanna). */
 async function schemaDiag() {
   try {
@@ -77,8 +80,12 @@ app.use((req, _res, next) => {
   app.get("/api/health", async (_req, res) => {
     res.json({
       success: true,
-      data: { status: "ok", ts: new Date().toISOString(), schema: await schemaDiag(), build: "2.2.0" },
+      data: { status: "ok", ts: new Date().toISOString(), schema: await schemaDiag(), build: API_VERSION },
     });
+  });
+
+  app.get("/api/version", (_req, res) => {
+    res.json({ success: true, data: { version: API_VERSION, ts: new Date().toISOString() } });
   });
 
   // Install routes hamesha available — setup mode me bhi.
