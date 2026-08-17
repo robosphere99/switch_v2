@@ -58,22 +58,39 @@ async function ghHead() {
   }
 }
 
-function writeMarker(commit) {
+function writeMarker(commit, source) {
   const out = path.resolve(process.cwd(), "../logs/deploy.json");
   fs.mkdirSync(path.dirname(out), { recursive: true });
-  fs.writeFileSync(out, JSON.stringify({ deployedAt: new Date().toISOString(), commit, branch: BRANCH }, null, 2));
+  fs.writeFileSync(out, JSON.stringify({ deployedAt: new Date().toISOString(), commit, branch: BRANCH, source }, null, 2));
   return out;
 }
 
 async function main() {
-  const out = writeMarker(""); // pehle turant likho — deployedAt kabhi miss na ho
+  const out = writeMarker("", "none"); // pehle turant likho — deployedAt kabhi miss na ho
   const local = gitHead(); // .git ho (dev/local) — exact
-  // GitHub API deploy-time SHA exact hai (build-commit.json parent hota hai,
-  // kyunki build commit se pehle chalta hai) — isliye GitHub primary, build
-  // metadata sirf last resort jab GitHub down/rate-limited ho.
-  const commit = local || (await ghHead()) || buildCommit();
-  if (commit) writeMarker(commit);
-  console.log(`[deploy-marker] wrote ${out} commit=${(commit || "(empty)").slice(0, 7)} branch=${BRANCH}`);
+  let commit = "";
+  let source = "none";
+  if (local) {
+    commit = local;
+    source = "git";
+  } else {
+    // GitHub API deploy-time SHA exact hai (build-commit.json parent hota hai,
+    // kyunki build commit se pehle chalta hai) — isliye GitHub primary, build
+    // metadata sirf last resort jab GitHub down/rate-limited ho.
+    const gh = await ghHead();
+    if (gh) {
+      commit = gh;
+      source = "github";
+    } else {
+      const bc = buildCommit();
+      if (bc) {
+        commit = bc;
+        source = "build"; // parent commit — sync compare ke liye trusted NAHI
+      }
+    }
+  }
+  if (commit) writeMarker(commit, source);
+  console.log(`[deploy-marker] wrote ${out} commit=${(commit || "(empty)").slice(0, 7)} source=${source} branch=${BRANCH}`);
 }
 
 main().catch(() => {});
