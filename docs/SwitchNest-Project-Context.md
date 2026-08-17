@@ -7,7 +7,7 @@
 > Repo location (this machine): `C:\Users\robos\OneDrive\Documents\SwitchNest`
 >
 <!-- AUTO:STAMP:START -->
-> _Auto-updated: 2026-08-16 18:49 UTC · branch `main` · tree clean · 170 commits_
+> _Auto-updated: 2026-08-17 05:27 UTC · branch `main` · tree dirty (2 changes) · 174 commits_
 <!-- AUTO:STAMP:END -->
 
 ---
@@ -109,6 +109,10 @@ that also serves real ESP32 hardware).
 <!-- AUTO:RECENT_COMMITS:START -->
 Sabse naye 20 commits:
 
+- `44d8f26` (2026-08-17) flasher: fix layout — Mode + Guide ko row 1 pe (ESP Server URL ke bagal)
+- `f4e9e70` (2026-08-17) flasher: Mode selector (Live site / Localhost) + Admin Flasher Guide page
+- `c856e4d` (2026-08-17) deploy: Phase 4 realtime + Phase 6 analytics + factory flow v2 (site + firmware + docs)
+- `3cea705` (2026-08-17) docs: context doc auto-refresh (targeted tests commit sync)
 - `05d2922` (2026-08-17) test: targeted unit tests — optimistic rollback, bulk permissions, realtime mapping
 - `a081f1c` (2026-08-17) docs: context doc auto-refresh (mobile-first pass commit sync)
 - `35ab990` (2026-08-17) web: mobile-first pass — bottom tab bar, touch targets, no horizontal scroll
@@ -125,10 +129,6 @@ Sabse naye 20 commits:
 - `634e968` (2026-08-16) admin: memory chart me heap toggle (dashed amber lines + legend) + current process RSS growth alert badge (4h window, 20%+ = possible leak)
 - `abdeeaa` (2026-08-16) admin: memory chart me time range selector (1h/6h/24h) + drag-to-zoom (ref-based, reset button, window-filtered lines)
 - `98a57a3` (2026-08-16) tools: GitHub repo backup script — mirror fetch + source zip + private GitHub Release upload (weekly offsite backup), retention + .bat launchers + Task Scheduler installer
-- `8320ddb` (2026-08-16) admin: deploy-info me GitHub Actions CI status — pass/fail/pending badge (workflow + run # + time), 5-min cache, GITHUB_TOKEN env se
-- `cf1c525` (2026-08-16) admin: deploy-info card ab Overview page pe bhi — Logs tab ke saath dashboard pe 'last updated' visible (60s refresh)
-- `ae39182` (2026-08-16) fix: diagnostics export — real newlines/tabs instead of literal \n (download .txt was broken)
-- `3ed2903` (2026-08-16) chore: untrack health-check.jsonl — runtime log, gitignore logs dir
 <!-- AUTO:RECENT_COMMITS:END -->
 
 - 503 root-cause work: DB probe retry loop so the app self-heals, `nodeProcessCountPerApplication=1`,
