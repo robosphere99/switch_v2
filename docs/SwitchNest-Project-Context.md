@@ -7,7 +7,7 @@
 > Repo location (this machine): `C:\Users\robos\OneDrive\Documents\SwitchNest`
 >
 <!-- AUTO:STAMP:START -->
-> _Auto-updated: 2026-08-17 07:19 UTC · branch `main` · tree dirty (2 changes) · 179 commits_
+> _Auto-updated: 2026-08-17 07:32 UTC · branch `main` · tree dirty (1 changes) · 181 commits_
 <!-- AUTO:STAMP:END -->
 
 ---
@@ -109,6 +109,8 @@ that also serves real ESP32 hardware).
 <!-- AUTO:RECENT_COMMITS:START -->
 Sabse naye 20 commits:
 
+- `33f43ae` (2026-08-17) tools: server diag script (npm run diag) — Plesk pe deploy layout/lock diagnose ke liye
+- `2efcd5b` (2026-08-17) docs: context doc auto-refresh (deploy marker check trigger)
 - `650912c` (2026-08-17) api: health me build marker (e2e-auto-deploy-v1) — auto-deploy verify ke liye
 - `5e90ae4` (2026-08-17) deploy: trigger — recreate server dist/index.mjs (deleted via Plesk File Manager)
 - `6d94e79` (2026-08-17) docs: context doc auto-refresh (manual sync — CI/CD verify trigger)
@@ -127,8 +129,6 @@ Sabse naye 20 commits:
 - `06c13b8` (2026-08-16) tools: context doc auto-update — update-context.mjs + post-commit hook (installer + manual launcher)
 - `64b1eb4` (2026-08-16) docs: Phase 4 realtime (Socket.IO) implementation plan — events, auth, edge cases, polling fallback
 - `2e09304` (2026-08-16) docs: project context handoff ko docs/ me rakha + README me link — kisi bhi AI agent ko pura project context dene ke liye
-- `bae3a61` (2026-08-16) docs: TESTING.md — leak-monitor fix, admin password sync aur instance cleanup ke liye verification checklist
-- `af9e06b` (2026-08-16) tools: API duplicate-instance cleanup script — sirf ek canonical (port 4000) rakhe
 <!-- AUTO:RECENT_COMMITS:END -->
 
 - 503 root-cause work: DB probe retry loop so the app self-heals, `nodeProcessCountPerApplication=1`,
