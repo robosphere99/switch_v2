@@ -867,9 +867,14 @@ const latestCache: { at: number; value: { commit: string; branch: string; ts: st
 async function fetchLatestMain() {
   const now = Date.now();
   if (now - latestCache.at < 60_000) return latestCache.value;
+  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
   try {
     const res = await fetch("https://api.github.com/repos/robosphere99/switch_v2/commits/main", {
-      headers: { Accept: "application/vnd.github+json", "User-Agent": "switchnest-admin" },
+      headers: {
+        Accept: "application/vnd.github+json",
+        "User-Agent": "switchnest-admin",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) return latestCache.value;
