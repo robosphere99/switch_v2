@@ -77,7 +77,7 @@ app.use((req, _res, next) => {
   app.get("/api/health", async (_req, res) => {
     res.json({
       success: true,
-      data: { status: "ok", ts: new Date().toISOString(), schema: await schemaDiag() },
+      data: { status: "ok", ts: new Date().toISOString(), schema: await schemaDiag(), build: "e2e-auto-deploy-v1" },
     });
   });
 

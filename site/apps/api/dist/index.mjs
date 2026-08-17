@@ -7883,7 +7883,7 @@ function createApp() {
   app.get("/api/health", async (_req, res) => {
     res.json({
       success: true,
-      data: { status: "ok", ts: (/* @__PURE__ */ new Date()).toISOString(), schema: await schemaDiag() }
+      data: { status: "ok", ts: (/* @__PURE__ */ new Date()).toISOString(), schema: await schemaDiag(), build: "e2e-auto-deploy-v1" }
     });
   });
   app.use("/api/install", installRouter);
