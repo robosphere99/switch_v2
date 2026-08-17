@@ -7,7 +7,7 @@
 > Repo location (this machine): `C:\Users\robos\OneDrive\Documents\SwitchNest`
 >
 <!-- AUTO:STAMP:START -->
-> _Auto-updated: 2026-08-17 05:27 UTC · branch `main` · tree dirty (2 changes) · 174 commits_
+> _Auto-updated: 2026-08-17 06:22 UTC · branch `main` · tree dirty (1 changes) · 176 commits_
 <!-- AUTO:STAMP:END -->
 
 ---
@@ -109,6 +109,8 @@ that also serves real ESP32 hardware).
 <!-- AUTO:RECENT_COMMITS:START -->
 Sabse naye 20 commits:
 
+- `a4b65e3` (2026-08-17) test: CI/CD end-to-end verify — homepage title v2.1 → v2.2 (web dist rebuild)
+- `03142c4` (2026-08-17) docs: context doc auto-refresh (flasher guide commits sync)
 - `44d8f26` (2026-08-17) flasher: fix layout — Mode + Guide ko row 1 pe (ESP Server URL ke bagal)
 - `f4e9e70` (2026-08-17) flasher: Mode selector (Live site / Localhost) + Admin Flasher Guide page
 - `c856e4d` (2026-08-17) deploy: Phase 4 realtime + Phase 6 analytics + factory flow v2 (site + firmware + docs)
@@ -127,8 +129,6 @@ Sabse naye 20 commits:
 - `8c6cb8d` (2026-08-16) leak-monitor + admin: false leak alerts fix + admin password .env sync
 - `a6d85a7` (2026-08-16) admin: memory chart me heap ab default ON — naya admin pe RSS + heap dono lines turant dikhein
 - `634e968` (2026-08-16) admin: memory chart me heap toggle (dashed amber lines + legend) + current process RSS growth alert badge (4h window, 20%+ = possible leak)
-- `abdeeaa` (2026-08-16) admin: memory chart me time range selector (1h/6h/24h) + drag-to-zoom (ref-based, reset button, window-filtered lines)
-- `98a57a3` (2026-08-16) tools: GitHub repo backup script — mirror fetch + source zip + private GitHub Release upload (weekly offsite backup), retention + .bat launchers + Task Scheduler installer
 <!-- AUTO:RECENT_COMMITS:END -->
 
 - 503 root-cause work: DB probe retry loop so the app self-heals, `nodeProcessCountPerApplication=1`,
