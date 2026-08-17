@@ -552,9 +552,9 @@ export function Admin() {
             <div className="mb-8 rounded-xl border border-emerald-500/30 bg-night-800 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-xs font-bold uppercase text-emerald-500">🚀 Last code update</p>
-                {deployInfo.data?.success && deployInfo.data.data.marker?.deployedAt && (
+                {deployInfo.data?.success && deployInfo.data.data.deployedAt && (
                   <span className="text-[11px] text-gray-500">
-                    {new Date(deployInfo.data.data.marker.deployedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
+                    {new Date(deployInfo.data.data.deployedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
                   </span>
                 )}
               </div>
@@ -577,7 +577,7 @@ export function Admin() {
                   <div>
                     <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Commit</p>
                     <p className="mt-0.5 font-mono text-xs font-semibold text-night-950">
-                      {(deployInfo.data.data.git?.commit || deployInfo.data.data.marker?.commit || deployInfo.data.data.latest?.commit || "—").slice(0, 12)}
+                      {(deployInfo.data.data.build?.commit || deployInfo.data.data.git?.commit || deployInfo.data.data.marker?.commit || deployInfo.data.data.latest?.commit || "—").slice(0, 12)}
                       {deployInfo.data.data.git?.commit && deployInfo.data.data.marker?.commit && deployInfo.data.data.git.commit !== deployInfo.data.data.marker.commit
                         ? " ⚠️ mismatch"
                         : deployInfo.data.data.sync?.status === "lagging" && deployInfo.data.data.marker?.commit && deployInfo.data.data.latest?.commit && deployInfo.data.data.marker.commit !== deployInfo.data.data.latest.commit
@@ -602,7 +602,7 @@ export function Admin() {
                   <div>
                     <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Status</p>
                     <p className="mt-0.5 font-semibold text-night-950">
-                      {deployInfo.data.data.marker?.deployedAt ? "✅ Deployed" : "ℹ️ No deploy marker yet"}
+                      {deployInfo.data.data.deployedAt ? "✅ Deployed" : "ℹ️ No deploy marker yet"}
                     </p>
                   </div>
                 </div>
@@ -1533,15 +1533,15 @@ export function Admin() {
                     <div>
                       <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Deployed at</p>
                       <p className="mt-0.5 font-semibold text-night-950">
-                        {deployInfo.data.data.marker?.deployedAt
-                          ? new Date(deployInfo.data.data.marker.deployedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
+                        {deployInfo.data.data.deployedAt
+                          ? new Date(deployInfo.data.data.deployedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
                           : "—"}
                       </p>
                     </div>
                     <div>
                       <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Commit</p>
                       <p className="mt-0.5 font-mono text-xs font-semibold text-night-950">
-                        {(deployInfo.data.data.git?.commit || deployInfo.data.data.marker?.commit || deployInfo.data.data.latest?.commit || "—").slice(0, 12)}
+                        {(deployInfo.data.data.build?.commit || deployInfo.data.data.git?.commit || deployInfo.data.data.marker?.commit || deployInfo.data.data.latest?.commit || "—").slice(0, 12)}
                         {deployInfo.data.data.git?.commit && deployInfo.data.data.marker?.commit && deployInfo.data.data.git.commit !== deployInfo.data.data.marker.commit
                           ? " ⚠️ mismatch"
                           : deployInfo.data.data.sync?.status === "lagging" && deployInfo.data.data.marker?.commit && deployInfo.data.data.latest?.commit && deployInfo.data.data.marker.commit !== deployInfo.data.data.latest.commit

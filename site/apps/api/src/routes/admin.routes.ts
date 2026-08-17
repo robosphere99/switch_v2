@@ -898,7 +898,19 @@ adminRouter.get("/deploy-info", async (_req, res) => {
     if (head) git = { commit: head, branch };
   } catch { /* production pe .git nahi ho to — marker hi kaafi hai */ }
 
-  const ciSha = git?.commit || marker?.commit || undefined;
+  // Build metadata — dist/build-commit.json (build time pe likha, git me committed).
+  // Deployed commit ka SABSE reliable source: code hi batata hai kis commit se bana hai,
+  // deploy.json (untracked, wipe ho sakta hai) ya GitHub API pe depend nahi karta.
+  let build: { commit: string; builtAt: string } | null = null;
+  try {
+    const bp = path.resolve(process.cwd(), "dist/build-commit.json");
+    if (fs.existsSync(bp)) {
+      const bj = JSON.parse(fs.readFileSync(bp, "utf8"));
+      if (bj?.commit) build = { commit: bj.commit, builtAt: bj.builtAt || "" };
+    }
+  } catch { /* build metadata nahi — marker/git/latest fallback */ }
+
+  const ciSha = marker?.commit || git?.commit || build?.commit || undefined;
   const ci = await fetchCiStatus(ciSha);
   const latest = await fetchLatestMain();
 
@@ -907,8 +919,12 @@ adminRouter.get("/deploy-info", async (_req, res) => {
   //   synced  : deployed commit == latest main commit
   //   pending : naya commit hai par deploy window me (push 5 min se kam purana)
   //   lagging : commit 5+ min purana hai aur abhi tak live nahi — action chahiye
-  //   unknown : deployed/latest dono nahi pata (GitHub fetch fail / marker missing)
-  const deployedCommit = git?.commit || marker?.commit || null;
+  //   unknown : deployed/latest dono nahi pata (GitHub fetch fail / build metadata missing)
+  // Note: build-commit.json hamesha PARENT commit embed karta hai (build commit
+  // se pehle hota hai) — isliye marker (deploy-time SHA) ko priority, build sirf
+  // last resort jab marker wipe ho jaye.
+  const deployedCommit = marker?.commit || build?.commit || git?.commit || null;
+  const deployedAt = marker?.deployedAt || build?.builtAt || null;
   const latestCommit = latest?.commit || null;
   const latestTs = latest?.ts || null;
   let syncStatus: "synced" | "pending" | "lagging" | "unknown" = "unknown";
@@ -920,6 +936,8 @@ adminRouter.get("/deploy-info", async (_req, res) => {
   ok(res, {
     marker,
     git,
+    build,
+    deployedAt,
     latest,
     sync: {
       status: syncStatus,
