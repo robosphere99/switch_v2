@@ -24,6 +24,7 @@ import { Orders } from "./pages/Orders";
 import { Activate } from "./pages/Activate";
 import { PrintSerials } from "./pages/PrintSerials";
 import { PrintBill } from "./pages/PrintBill";
+import { AdminFlasherGuide } from "./components/AdminFlasherGuide";
 import { Warranty } from "./pages/Warranty";
 import { Support } from "./pages/Support";
 import { Install } from "./pages/Install";
@@ -211,6 +212,15 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <PrintBill />
+              </ProtectedRoute>
+            }
+          />
+          {/* Flasher Guide — flasher GUI ka "📖 Guide" button isi ko kholta hai */}
+          <Route
+            path="/admin/flasher-guide"
+            element={
+              <ProtectedRoute>
+                <AdminFlasherGuide />
               </ProtectedRoute>
             }
           />

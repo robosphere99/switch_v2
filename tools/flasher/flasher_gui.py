@@ -27,6 +27,7 @@ import sys
 import threading
 import time
 import tkinter as tk
+import webbrowser
 from tkinter import messagebox, scrolledtext, ttk
 
 # Soft imports — missing dep ho to GUI crash na ho, friendly message dikhao.
@@ -43,6 +44,13 @@ except ImportError:
 MODELS = ["2CH", "4CH", "5CH", "6CH", "8CH", "4CH-IR", "FAN-DIM", "DIM-3S", "DIM-4S"]
 BAUD = 115200
 FLASH_ADDR = "0x10000"  # ESP32 app partition (standard PlatformIO layout)
+
+# Server mode presets — (label, API URL, web URL). Localhost testing se live
+# site pe switch karte waqt URL bhoolna band — ek click me dono set.
+SERVER_PRESETS = [
+    ("Live site", "https://onlineswitch.bhartitechnical.com", "https://onlineswitch.bhartitechnical.com"),
+    ("Localhost", "http://localhost:4000", "http://localhost:5173"),
+]
 
 INSTALL_CMD = "pip install requests pyserial esptool"
 
@@ -194,26 +202,36 @@ class FlasherApp:
         row.columnconfigure(1, weight=3)
         row.columnconfigure(3, weight=1)
         row.columnconfigure(5, weight=1)
-        ttk.Label(row, text="Site URL").grid(row=0, column=0, sticky="w")
-        self.e_server = ttk.Entry(row, width=34)
+        ttk.Label(row, text="Mode").grid(row=0, column=0, sticky="w")
+        self.cb_mode = ttk.Combobox(row, width=10, state="readonly",
+                                    values=[p[0] for p in SERVER_PRESETS])
+        self.cb_mode.set("Live site")
+        self.cb_mode.grid(row=0, column=1, padx=4, sticky="w")
+        self.cb_mode.bind("<<ComboboxSelected>>", self.on_server_mode)
+        ttk.Button(row, text="📖 Guide", command=self.open_guide)\
+            .grid(row=0, column=2, padx=(8, 4))
+        ttk.Label(row, text="Site URL (API)").grid(row=0, column=3, sticky="w")
+        self.e_server = ttk.Entry(row, width=30)
         self.e_server.insert(0, "https://onlineswitch.bhartitechnical.com")
-        self.e_server.grid(row=0, column=1, padx=4)
-        ttk.Label(row, text="Admin user").grid(row=0, column=2, sticky="w")
-        self.e_user = ttk.Entry(row, width=14)
+        self.e_server.grid(row=0, column=4, padx=4)
+        ttk.Label(row, text="Admin user").grid(row=0, column=5, sticky="w")
+        self.e_user = ttk.Entry(row, width=11)
         self.e_user.insert(0, "admin")
-        self.e_user.grid(row=0, column=3, padx=4)
-        ttk.Label(row, text="Password").grid(row=0, column=4, sticky="w")
-        self.e_pass = ttk.Entry(row, width=14, show="*")
-        self.e_pass.grid(row=0, column=5, padx=4)
+        self.e_user.grid(row=0, column=6, padx=4)
+        ttk.Label(row, text="Password").grid(row=0, column=7, sticky="w")
+        self.e_pass = ttk.Entry(row, width=12, show="*")
+        self.e_pass.grid(row=0, column=8, padx=4)
         self.b_login = ttk.Button(row, text="Login", style="Primary.TButton", command=self.do_login)
-        self.b_login.grid(row=0, column=6, padx=4)
+        self.b_login.grid(row=0, column=9, padx=4)
         self.l_login = ttk.Label(row, text="Not logged in", foreground="orange")
-        self.l_login.grid(row=0, column=7, padx=8)
+        self.l_login.grid(row=0, column=10, padx=8)
         ttk.Label(row, text="ESP Server URL (board ko dikhe)")\
             .grid(row=1, column=0, sticky="w", pady=(6, 0))
         self.e_esp_server = ttk.Entry(row, width=34)
         self.e_esp_server.insert(0, f"http://{detect_lan_ip()}:4000")
         self.e_esp_server.grid(row=1, column=1, padx=4, pady=(6, 0))
+        ttk.Label(row, text="Guide: kya bharna hai — mode change karo, phir 📖 Guide dabao",
+                  style="Muted.TLabel").grid(row=1, column=3, columnspan=6, sticky="w", pady=(6, 0))
 
         # Row 2 — order + device (wide fields — lamba order number ab pura dikhta hai)
         row = ttk.LabelFrame(f, text=" 2 · Order / Device ", padding=10)
@@ -359,6 +377,40 @@ class FlasherApp:
         return body.get("data")
 
     # ---------------- actions ----------------
+
+    def on_server_mode(self, _event=None):
+        """Mode switch — Live site ↔ Localhost. Site URL + ESP server URL
+        preset se fill hote hain (dono editable rehte hain — manual bhi kar sakte ho)."""
+        label = self.cb_mode.get()
+        preset = next((p for p in SERVER_PRESETS if p[0] == label), None)
+        if not preset:
+            return
+        _, api_url, web_url = preset
+        self.e_server.delete(0, "end")
+        self.e_server.insert(0, api_url)
+        if label == "Localhost":
+            esp = f"http://{detect_lan_ip()}:4000"
+        else:
+            esp = api_url  # live pe board seedha site se heartbeat karega
+        self.e_esp_server.delete(0, "end")
+        self.e_esp_server.insert(0, esp)
+        self._log(f"Mode: {label} — API {api_url} · ESP server {esp}", "info")
+        self._log(f"Guide: {web_url}/admin/flasher-guide (📖 Guide se kholega)", "info")
+
+    def open_guide(self):
+        """Admin ke Flasher Guide page ko browser me kholo — kya bharna hai
+        field-by-field (current mode ke hisaab se web URL)."""
+        server = self.e_server.get().strip().rstrip("/")
+        if "localhost" in server or "127.0.0.1" in server:
+            web = "http://localhost:5173"
+        else:
+            web = server
+        url = f"{web}/admin/flasher-guide"
+        try:
+            webbrowser.open(url)
+            self._log(f"Guide khola: {url}", "ok")
+        except Exception as e:
+            self._log(f"Guide open FAIL: {e} — browser me khud kholo: {url}", "err")
 
     def do_install_deps(self):
         """Missing deps ko pip se install karo (background) — fresh env me bhi bina crash ke."""
