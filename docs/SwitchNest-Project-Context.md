@@ -7,7 +7,7 @@
 > Repo location (this machine): `C:\Users\robos\OneDrive\Documents\SwitchNest`
 >
 <!-- AUTO:STAMP:START -->
-> _Auto-updated: 2026-08-17 06:22 UTC · branch `main` · tree dirty (1 changes) · 176 commits_
+> _Auto-updated: 2026-08-17 07:19 UTC · branch `main` · tree dirty (2 changes) · 179 commits_
 <!-- AUTO:STAMP:END -->
 
 ---
@@ -109,6 +109,9 @@ that also serves real ESP32 hardware).
 <!-- AUTO:RECENT_COMMITS:START -->
 Sabse naye 20 commits:
 
+- `650912c` (2026-08-17) api: health me build marker (e2e-auto-deploy-v1) — auto-deploy verify ke liye
+- `5e90ae4` (2026-08-17) deploy: trigger — recreate server dist/index.mjs (deleted via Plesk File Manager)
+- `6d94e79` (2026-08-17) docs: context doc auto-refresh (manual sync — CI/CD verify trigger)
 - `a4b65e3` (2026-08-17) test: CI/CD end-to-end verify — homepage title v2.1 → v2.2 (web dist rebuild)
 - `03142c4` (2026-08-17) docs: context doc auto-refresh (flasher guide commits sync)
 - `44d8f26` (2026-08-17) flasher: fix layout — Mode + Guide ko row 1 pe (ESP Server URL ke bagal)
@@ -126,9 +129,6 @@ Sabse naye 20 commits:
 - `2e09304` (2026-08-16) docs: project context handoff ko docs/ me rakha + README me link — kisi bhi AI agent ko pura project context dene ke liye
 - `bae3a61` (2026-08-16) docs: TESTING.md — leak-monitor fix, admin password sync aur instance cleanup ke liye verification checklist
 - `af9e06b` (2026-08-16) tools: API duplicate-instance cleanup script — sirf ek canonical (port 4000) rakhe
-- `8c6cb8d` (2026-08-16) leak-monitor + admin: false leak alerts fix + admin password .env sync
-- `a6d85a7` (2026-08-16) admin: memory chart me heap ab default ON — naya admin pe RSS + heap dono lines turant dikhein
-- `634e968` (2026-08-16) admin: memory chart me heap toggle (dashed amber lines + legend) + current process RSS growth alert badge (4h window, 20%+ = possible leak)
 <!-- AUTO:RECENT_COMMITS:END -->
 
 - 503 root-cause work: DB probe retry loop so the app self-heals, `nodeProcessCountPerApplication=1`,
