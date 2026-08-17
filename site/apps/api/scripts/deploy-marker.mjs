@@ -41,9 +41,13 @@ function buildCommit() {
 }
 
 async function ghHead() {
+  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
   try {
     const res = await fetch(`https://api.github.com/repos/${REPO}/commits/${BRANCH}`, {
-      headers: { "User-Agent": "switch-v2-deploy" },
+      headers: {
+        "User-Agent": "switch-v2-deploy",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       signal: AbortSignal.timeout(10000),
     });
     if (!res.ok) return "";
