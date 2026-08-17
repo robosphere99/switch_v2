@@ -64,16 +64,28 @@ automatically by Plesk Git to the `onlineswitch` subdomain:
 git push origin main  →  GitHub webhook  →  Plesk pulls + deploys  →  site updates
 ```
 
-- **CI** — `.github/workflows/ci.yml`: `npm ci` + typecheck + build on every push to `main`.
-- **CD** — Plesk Git: repo `switch_v2`, branch `main`, mode **Automatic**,
-  server path `onlineswitch.bhartitechnical.com`.
-- **Post-deploy commands** — Plesk → Git → `switch_v2` → Deployment settings →
-  **Additional deployment actions** should run `site\deploy.cmd` (installs the API
-  workspace; `postinstall` regenerates the Prisma client). Without this, a fresh
-  server install fails with `ERR_MODULE_NOT_FOUND: @prisma/client`.
+- **CI** — `.github/workflows/ci.yml`: `npm ci` + typecheck + tests + build on every push to `main`.
+- **CD — Plesk Git settings** (Plesk → Git → `switch_v2` → Deployment settings):
+  - Repository: `robosphere99/switch_v2` · Branch: **`main`** · Mode: **Automatic**
+  - **Server path: `\onlineswitch.bhartitechnical.com`** (domain root)
+  - **Enable additional deployment actions** ✅ → **Deploy actions: `site\deploy.cmd`**
+- **Post-deploy actions (`site\deploy.cmd`)** — web.config patch (iisnode recycle + JSON
+  PassThrough), Prisma client refresh (fast path: `npx prisma generate`; fresh install:
+  `npm install --ignore-scripts`), app pool config dump, deploy marker `site/apps/logs/deploy.json`
+  (admin → Diagnostics → "LAST CODE UPDATE" card). Without this a fresh server install fails
+  with `ERR_MODULE_NOT_FOUND: @prisma/client`.
+- **⚠️ Server path gotcha** — server path ko `\onlineswitch.bhartitechnical.com\site\apps\api`
+  jaise sub-path pe mat rakho: repo root wahan dump hota hai → **double-nesting**
+  (`site/apps/api/site/apps/api/...`). Symptom: web static files update ho jaati hain par
+  **API kabhi nahi** (`dist/index.mjs` + `package.json` purane rehte hain), deploy actions bhi
+  galat resolve hote hain. Fix: server path = **domain root**, phir ek deploy trigger karo.
 - **Build artifacts are committed** — Plesk shared hosting can't run esbuild
   (Access denied on parent dirs), so `apps/api/dist/` and `apps/web/dist/` are
   committed intentionally (see `site/.gitignore`). Update flow: build locally
   (`npm run build` + `npm run build:prod -w @robosphere/api`) → commit `dist` →
   push `main` → Plesk auto-deploys.
-- **Verify** — `GET /api/health` on the live domain.
+- **Verify** —
+  - `GET /api/health` → `data.build` (e.g. `"2.2.0"`) live code version
+  - `GET /api/admin/deploy-info` (admin JWT) → `marker.deployedAt` + CI status
+  - Server-side diagnosis: Plesk → Node.js → Run script → `diag` (npm script,
+    `scripts/diag.cjs` — deploy layout, file lock, git state check)

@@ -66,6 +66,13 @@ git push origin main          # → auto-deploy live
 
 > Plesk sirf `main` branch pe deploy karta hai — `dev` pushes webhook ko jaati hain par production restart nahi hota.
 
+**Plesk Git settings (production):** repo `switch_v2` · branch `main` · mode **Automatic** ·
+**Server path = domain root** (`\onlineswitch.bhartitechnical.com`) · **Additional deployment
+actions = `site\deploy.cmd`**. ⚠️ Server path ko sub-folder pe mat rakho (`...\site\apps\api`)
+— repo root wahan dump hokar **double-nesting** banata hai: web update hota hai par API kabhi
+nahi (chalta hua app flat `...\site\apps\api` pe hota hai). Fix = server path domain root.
+Details: `site/README.md` → Production Deployment.
+
 ## Status
 
 - [x] PHP v1 analyzed → `PROJECT_ANALYSIS.md`

@@ -216,3 +216,21 @@ git pull origin main
 git merge dev
 git push origin main          # → webhook → Plesk → auto-deploy live
 ```
+
+**Plesk pe ek baar setup (production):** Plesk → Git → `switch_v2` → Deployment settings:
+
+| Setting | Value |
+|---|---|
+| Branch | `main` |
+| Deployment mode | **Automatic** |
+| **Server path** | `\onlineswitch.bhartitechnical.com` (domain root) |
+| Enable additional deployment actions | ✅ |
+| Deploy actions | `site\deploy.cmd` |
+
+> ⚠️ **Server path gotcha:** `...\site\apps\api` jaise sub-path mat do — repo root wahan
+> dump hota hai → double-nesting (`site/apps/api/site/apps/api/...`) → web update hoti hai
+> par **API kabhi nahi**. Server path = domain root hona chahiye (repo ka `site/` wahan
+> `...\site\` pe land karta hai, jahan app actually chalti hai).
+>
+> Verify: `GET https://onlineswitch.bhartitechnical.com/api/health` → `data.build` (live code
+> version) · Admin → Diagnostics → "LAST CODE UPDATE" card (deploy.json marker).
