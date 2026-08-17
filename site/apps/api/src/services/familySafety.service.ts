@@ -1,6 +1,6 @@
 import { prisma } from "../lib/prisma";
 import { createNotification } from "./notification.service";
-import { emitToHome } from "../lib/socket";
+import { emitDeviceUpdated } from "../lib/socket";
 import { fileLog } from "../lib/logger";
 
 /**
@@ -81,7 +81,7 @@ async function autoOffDevice(deviceId: number, homeId: number) {
     }),
   ]);
   const updated = await prisma.device.findUnique({ where: { id: deviceId } });
-  if (updated) emitToHome(homeId, "device:updated", updated);
+  if (updated) await emitDeviceUpdated(homeId, updated.id);
 }
 
 export async function runSafetyCheck(): Promise<void> {

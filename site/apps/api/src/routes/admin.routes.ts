@@ -490,6 +490,32 @@ adminRouter.get("/api-keys", async (_req, res) => {
   ok(res, keys);
 });
 
+/** Flasher ke liye: user ke liye naya API key banao (userId/homeId pe bind).
+ * GUI me order fetch pe key nahi mili (buyer ka home nahi) to yahi call hota hai. */
+adminRouter.post("/api-keys", async (req, res) => {
+  const userId = Number(req.body?.userId);
+  if (!userId) throw new AppError("BAD_REQUEST", "userId required");
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw new AppError("NOT_FOUND", "User not found");
+  let homeId = req.body?.homeId ? Number(req.body.homeId) : null;
+  if (!homeId) {
+    const home = await prisma.home.findFirst({ where: { ownerId: userId } });
+    homeId = home?.id ?? null;
+  }
+  const label = String(req.body?.label ?? "factory").slice(0, 100);
+  const crypto = await import("node:crypto");
+  const plain = `rs_${crypto.randomBytes(9).toString("base64url").replace(/-/g, "").slice(0, 16)}`;
+  const keyHash = crypto.createHash("sha256").update(plain).digest("hex");
+  const keyPrefix = plain.slice(0, 8);
+  await prisma.apiKey.create({ data: { userId, homeId, label, keyHash, keyPrefix } });
+  await audit(req.user!.sub, "admin.apikey.create", {
+    entity: "api_key",
+    entityId: userId,
+    meta: { label, prefix: keyPrefix, userId },
+  });
+  ok(res, { apiKey: plain, keyPrefix, userId, homeId });
+});
+
 adminRouter.delete("/api-keys/:id", async (req, res) => {
   const id = Number(req.params.id);
   const key = await prisma.apiKey.findUnique({ where: { id } });
@@ -1818,6 +1844,20 @@ adminRouter.get("/orders", async (req, res) => {
   ok(res, orders);
 });
 
+/** Ek order ka pura detail (bill/print ke liye) — items + buyer + payment. */
+adminRouter.get("/orders/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  const order = await prisma.order.findUnique({
+    where: { id },
+    include: {
+      items: true,
+      user: { select: { id: true, username: true, email: true } },
+    },
+  });
+  if (!order) throw new AppError("NOT_FOUND", "Order not found");
+  ok(res, order);
+});
+
 adminRouter.patch("/orders/:id/status", async (req, res) => {
   const id = Number(req.params.id);
   const status = String(req.body?.status ?? "");
@@ -1840,11 +1880,56 @@ adminRouter.get("/serials", async (req, res) => {
       ...(status ? { status: status as never } : {}),
       ...(productId ? { productId } : {}),
     },
-    include: { product: { select: { id: true, name: true, modelCode: true } } },
+    include: {
+      product: { select: { id: true, name: true, modelCode: true } },
+      user: { select: { id: true, username: true, email: true } },
+      order: { select: { id: true, orderNumber: true, status: true } },
+    },
     orderBy: { id: "desc" },
     take: 500,
   });
-  ok(res, serials);
+
+  // Sticker/hotspot ke liye: har serial ka order ke andar device number
+  // (orderIdx) aur order total serials (orderTotal) — `username_XXXXXX_2` jaisa
+  // hotspot naam banane ke liye (order me multiple devices ho to).
+  const orderIds = [...new Set(serials.map((s) => s.orderId).filter((x): x is number => Boolean(x)))];
+  const perOrder: Record<number, string[]> = {};
+  if (orderIds.length) {
+    const byOrder = await prisma.serialRegistry.findMany({
+      where: { orderId: { in: orderIds } },
+      select: { id: true, serialCode: true, orderId: true },
+      orderBy: { id: "asc" },
+    });
+    for (const s of byOrder) {
+      if (!s.orderId) continue;
+      (perOrder[s.orderId] ??= []).push(s.serialCode);
+    }
+  }
+  const enriched = serials.map((s) => {
+    const codes = s.orderId ? perOrder[s.orderId] : undefined;
+    return {
+      ...s,
+      orderIdx: codes ? codes.indexOf(s.serialCode) + 1 : 0,
+      orderTotal: codes?.length ?? 0,
+    };
+  });
+  ok(res, enriched);
+});
+
+/** Serial detail — kisne claim kiya, kaun sa order, home, warranty (admin click pe). */
+adminRouter.get("/serials/:code", async (req, res) => {
+  const code = String(req.params.code ?? "").trim().toUpperCase();
+  const serial = await prisma.serialRegistry.findUnique({
+    where: { serialCode: code },
+    include: {
+      product: { select: { id: true, name: true, modelCode: true } },
+      user: { select: { id: true, username: true, email: true } },
+      order: { select: { id: true, orderNumber: true, status: true } },
+      home: { select: { id: true, name: true } },
+    },
+  });
+  if (!serial) throw new AppError("NOT_FOUND", "Serial not found");
+  ok(res, serial);
 });
 
 adminRouter.post("/serials/generate", async (req, res) => {
@@ -1939,6 +2024,15 @@ adminRouter.get("/orders/:id/provision", async (req, res) => {
   }
   if (!order) throw new AppError("NOT_FOUND", "Order not found");
 
+  // Paid-gate: sirf verified-payment orders hi flasher me fetch ho sakte hain.
+  // Pending/cancelled order ka board factory me flash nahi hota — pehle payment verify karo.
+  if (order.status === "pending" || order.status === "cancelled") {
+    throw new AppError(
+      "BAD_REQUEST",
+      "Payment verify nahi hua — pehle admin Orders me order ko 'Mark Paid' karo, phir fetch karo",
+    );
+  }
+
   const items = await Promise.all(
     order.items.map(async (it) => {
       // Model hamesha product se (serial se nahi) — taaki serial generate
@@ -1992,6 +2086,7 @@ adminRouter.get("/orders/:id/provision", async (req, res) => {
     orderId: order.id,
     orderNumber: order.orderNumber,
     status: order.status,
+    paymentStatus: order.paymentStatus,
     wifiSsid: order.wifiSsid,
     wifiPassword,
     apiKey: apiKeyPlain,
@@ -2014,6 +2109,27 @@ adminRouter.post("/serials/:code/mark-tested", async (req, res) => {
     entityId: serial.id,
     meta: { serialCode: code },
   });
+
+  // Serial order se linked hai to user ko notify — "tested, ab pack hone chala".
+  if (serial.orderId) {
+    try {
+      const order = await prisma.order.findUnique({
+        where: { id: serial.orderId },
+        select: { userId: true, orderNumber: true },
+      });
+      if (order) {
+        await createNotification(order.userId, {
+          category: "system",
+          type: "info",
+          title: "✅ Factory test pass",
+          body: `Aapka board (${code}) factory relay self-test pass kar chuka hai — ab pack hone chala gaya. Order ${order.orderNumber}.`,
+        });
+      }
+    } catch (err) {
+      console.error("[admin] tested notification failed", err);
+    }
+  }
+
   ok(res, { tested: true, serialCode: code, testedAt: updated.testedAt });
 });
 

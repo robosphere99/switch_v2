@@ -713,53 +713,6 @@ init_prisma();
 // src/lib/socket.ts
 import { Server } from "socket.io";
 import jwt3 from "jsonwebtoken";
-init_prisma();
-var io = null;
-function initSocket(server) {
-  io = new Server(server, {
-    cors: { origin: corsOrigins, credentials: true }
-  });
-  io.use((socket, next) => {
-    try {
-      const token = socket.handshake.auth?.token;
-      if (!token) throw new Error("missing token");
-      const payload = jwt3.verify(token, env.JWT_ACCESS_SECRET);
-      socket.data.userId = payload.sub;
-      next();
-    } catch {
-      next(new Error("unauthorized"));
-    }
-  });
-  io.on("connection", async (socket) => {
-    const userId = socket.data.userId;
-    socket.join(`user:${userId}`);
-    let joined = 0;
-    try {
-      const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
-      const isAdmin = user?.role === "system_admin";
-      const homes = isAdmin ? await prisma.home.findMany({ select: { id: true } }) : await prisma.homeMember.findMany({ where: { userId }, select: { homeId: true } });
-      for (const h of homes) {
-        socket.join(`home:${"homeId" in h ? h.homeId : h.id}`);
-        joined++;
-      }
-    } catch {
-    }
-    console.log(`[socket] user ${userId} connected (${joined} homes)`);
-  });
-  return io;
-}
-function emitToUser(userId, event, payload) {
-  io?.to(`user:${userId}`).emit(event, payload);
-}
-function emitToHome(homeId, event, payload) {
-  io?.to(`home:${homeId}`).emit(event, payload);
-}
-
-// src/services/device.service.ts
-init_audit_service();
-
-// src/services/notification.service.ts
-init_prisma();
 
 // ../../packages/shared/src/notificationDraft.ts
 function parseNotificationBody(body) {
@@ -846,8 +799,117 @@ function buildNotificationDraft(n) {
   return buildClientSupportDraft(n) ?? buildClientAdminReplyDraft(n);
 }
 
+// ../../packages/shared/src/realtime.ts
+var REALTIME_EVENTS = {
+  /** Device row change — hamesha uniform DTO (id + status + online + updatedAt). */
+  deviceUpdated: "device:updated",
+  /** ESP board update (admin/devices page). */
+  espUpdated: "esp:updated",
+  /** Command executed/failed — pending badge confirm ke liye. */
+  commandUpdated: "command:updated",
+  /** Naya notification (bell + badge). */
+  notificationNew: "notification:new",
+  /** Support chat message. */
+  supportNew: "support:new",
+  /** Socket connect hone pe ack — UI "live" indicator ke liye. */
+  socketReady: "socket:ready",
+  /** Home membership revoke/role-change — socket ko room se nikaala gaya. */
+  homeAccessRevoked: "home:access-revoked"
+};
+
 // ../../packages/shared/src/index.ts
 var HOME_MEMBER_ROLES = ["owner", "admin", "member", "viewer"];
+
+// src/lib/socket.ts
+init_prisma();
+var io = null;
+function initSocket(server) {
+  io = new Server(server, {
+    cors: { origin: corsOrigins, credentials: true }
+  });
+  io.use((socket, next) => {
+    try {
+      const token = socket.handshake.auth?.token;
+      if (!token) throw new Error("missing token");
+      const payload = jwt3.verify(token, env.JWT_ACCESS_SECRET);
+      socket.data.userId = payload.sub;
+      next();
+    } catch {
+      next(new Error("unauthorized"));
+    }
+  });
+  io.on("connection", async (socket) => {
+    const userId = socket.data.userId;
+    socket.join(`user:${userId}`);
+    let joined = 0;
+    try {
+      const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+      const isAdmin = user?.role === "system_admin";
+      const homes = isAdmin ? await prisma.home.findMany({ select: { id: true } }) : await prisma.homeMember.findMany({ where: { userId }, select: { homeId: true } });
+      for (const h of homes) {
+        socket.join(`home:${"homeId" in h ? h.homeId : h.id}`);
+        joined++;
+      }
+    } catch {
+    }
+    socket.emit(REALTIME_EVENTS.socketReady, { homes: joined });
+    console.log(`[socket] user ${userId} connected (${joined} homes)`);
+  });
+  return io;
+}
+function emitToUser(userId, event, payload) {
+  io?.to(`user:${userId}`).emit(event, payload);
+}
+function emitToHome(homeId, event, payload) {
+  io?.to(`home:${homeId}`).emit(event, payload);
+}
+async function emitDeviceUpdated(homeId, deviceId) {
+  if (!io) return;
+  try {
+    const device = await prisma.device.findUnique({
+      where: { id: deviceId },
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        offline: true,
+        lastSeen: true,
+        lastUpdated: true
+      }
+    });
+    if (!device) return;
+    const payload = {
+      id: device.id,
+      homeId,
+      name: device.name,
+      status: device.status,
+      online: !device.offline,
+      offline: device.offline,
+      lastSeen: device.lastSeen ? device.lastSeen.toISOString() : null,
+      updatedAt: device.lastUpdated.toISOString()
+    };
+    io.to(`home:${homeId}`).emit(REALTIME_EVENTS.deviceUpdated, payload);
+  } catch (err) {
+    console.error("[socket] emitDeviceUpdated failed", err);
+  }
+}
+async function leaveHomeRoom(userId, homeId) {
+  if (!io) return;
+  try {
+    const sockets = await io.in(`home:${homeId}`).fetchSockets();
+    for (const s of sockets) {
+      if (s.data.userId === userId) s.leave(`home:${homeId}`);
+    }
+  } catch {
+  }
+  emitToUser(userId, REALTIME_EVENTS.homeAccessRevoked, { homeId });
+}
+
+// src/services/device.service.ts
+init_audit_service();
+
+// src/services/notification.service.ts
+init_prisma();
 
 // src/services/notificationQuery.ts
 var SCHEDULE_TITLE_RE = /Schedule fired/i;
@@ -1030,7 +1092,7 @@ async function setDeviceStatus(input) {
     })
   ]);
   const updated = await prisma.device.findUnique({ where: { id: device.id } });
-  if (updated) emitToHome(input.homeId, "device:updated", updated);
+  if (updated) await emitDeviceUpdated(input.homeId, updated.id);
   return updated;
 }
 async function bulkSetStatus(input) {
@@ -1081,7 +1143,7 @@ async function bulkSetStatus(input) {
   const updated = await prisma.device.findMany({
     where: { id: { in: devices.map((d) => d.id) }, homeId: input.homeId }
   });
-  for (const d of updated) emitToHome(input.homeId, "device:updated", d);
+  for (const d of updated) await emitDeviceUpdated(input.homeId, d.id);
   return updated;
 }
 async function updateDevice(homeId, deviceId, patch) {
@@ -1237,7 +1299,7 @@ async function requestOta(homeId, deviceId, actorId) {
       });
     }
   }
-  emitToHome(homeId, "device:updated", { id: deviceId });
+  await emitDeviceUpdated(homeId, deviceId);
   return {
     deviceId,
     espId,
@@ -1522,6 +1584,7 @@ async function removeMember(homeId, userId) {
     throw new AppError("CANNOT_REMOVE_OWNER", "The owner cannot be removed", 400);
   }
   await prisma.homeMember.delete({ where: { homeId_userId: { homeId, userId } } });
+  await leaveHomeRoom(userId, homeId);
 }
 async function updateMemberSafety(input) {
   if (input.actorRole !== "owner" && input.actorRole !== "admin") {
@@ -1754,6 +1817,91 @@ memberRouter.post("/invitations/accept", requireAuth, validateBody(acceptSchema)
 // src/routes/device.routes.ts
 import { Router as Router4 } from "express";
 import { z as z5 } from "zod";
+
+// src/services/analytics.service.ts
+init_prisma();
+function computeUsageAnalytics(logs2, days, now = Date.now()) {
+  const perDay = /* @__PURE__ */ new Map();
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(Date.now() - i * 864e5);
+    perDay.set(d.toISOString().slice(0, 10), 0);
+  }
+  const deviceMap = /* @__PURE__ */ new Map();
+  const memberMap = /* @__PURE__ */ new Map();
+  for (const log2 of logs2) {
+    const day = log2.createdAt.toISOString().slice(0, 10);
+    perDay.set(day, (perDay.get(day) ?? 0) + 1);
+    const dev = deviceMap.get(log2.deviceId) ?? {
+      deviceId: log2.deviceId,
+      name: log2.deviceName,
+      toggles: 0,
+      onMs: 0
+    };
+    dev.toggles += 1;
+    const turnedOn = log2.logMessage.trim().endsWith("on");
+    if (turnedOn) {
+      dev.lastOnAt = log2.createdAt.getTime();
+    } else if (dev.lastOnAt !== void 0) {
+      dev.onMs += log2.createdAt.getTime() - dev.lastOnAt;
+      dev.lastOnAt = void 0;
+    }
+    deviceMap.set(log2.deviceId, dev);
+    const actorId = log2.actorId ?? -1;
+    const member = memberMap.get(actorId) ?? {
+      userId: log2.actorId,
+      username: log2.actorId === null ? "Auto (schedule/device)" : log2.actorName ?? "Unknown",
+      toggles: 0
+    };
+    member.toggles += 1;
+    memberMap.set(actorId, member);
+  }
+  for (const dev of deviceMap.values()) {
+    if (dev.lastOnAt !== void 0) {
+      dev.onMs += now - dev.lastOnAt;
+      dev.lastOnAt = void 0;
+    }
+  }
+  const perDevice = [...deviceMap.values()].map(({ deviceId, name, toggles, onMs }) => ({ deviceId, name, toggles, onMs })).sort((a, b) => b.toggles - a.toggles);
+  const perMember = [...memberMap.values()].sort((a, b) => b.toggles - a.toggles);
+  return {
+    days,
+    totals: {
+      toggles: logs2.length,
+      onMs: perDevice.reduce((s, d) => s + d.onMs, 0)
+    },
+    togglesPerDay: [...perDay.entries()].map(([date, count]) => ({ date, count })).sort((a, b) => a.date.localeCompare(b.date)),
+    perDevice,
+    perMember
+  };
+}
+async function getUsageAnalytics(homeId, days) {
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1e3);
+  const logs2 = await prisma.deviceLog.findMany({
+    where: {
+      logType: "status_change",
+      createdAt: { gte: since },
+      device: { homeId }
+    },
+    include: {
+      device: { select: { id: true, name: true } },
+      actor: { select: { id: true, username: true } }
+    },
+    orderBy: { createdAt: "asc" }
+  });
+  return computeUsageAnalytics(
+    logs2.map((l) => ({
+      deviceId: l.deviceId,
+      deviceName: l.device.name,
+      actorId: l.actorId,
+      actorName: l.actor?.username,
+      logMessage: l.logMessage,
+      createdAt: l.createdAt
+    })),
+    days
+  );
+}
+
+// src/routes/device.routes.ts
 var deviceRouter = Router4();
 var idParams3 = z5.object({ homeId: z5.coerce.number().int().positive() });
 var deviceParams = z5.object({
@@ -1844,6 +1992,16 @@ deviceRouter.patch(
   validateBody(espNameSchema),
   renameEsp2
 );
+deviceRouter.get(
+  "/:homeId/analytics/usage",
+  requireAuth,
+  validateParams(idParams3),
+  requireHomeMember("viewer"),
+  async (req, res) => {
+    const days = Math.min(Math.max(Number(req.query.days) || 7, 1), 90);
+    ok(res, await getUsageAnalytics(Number(req.params.homeId), days));
+  }
+);
 
 // src/routes/deviceApi.routes.ts
 import { Router as Router5 } from "express";
@@ -1914,7 +2072,7 @@ async function readAll(key) {
   if (result?.count) {
     const offlineDevices = devices.filter((d) => d.offline);
     for (const d of offlineDevices) {
-      emitToHome(homeId, "device:updated", { id: d.id, offline: false, lastSeen: (/* @__PURE__ */ new Date()).toISOString() });
+      await emitDeviceUpdated(homeId, d.id);
     }
   }
   return devices;
@@ -1940,7 +2098,7 @@ async function updateFromDevice(key, deviceId, status) {
     })
   ]);
   const updated = await prisma.device.findUnique({ where: { id: deviceId } });
-  if (updated) emitToHome(homeId, "device:updated", updated);
+  if (updated) await emitDeviceUpdated(homeId, updated.id);
   return updated;
 }
 async function reportOtaProgress(key, input) {
@@ -1964,7 +2122,7 @@ async function reportOtaProgress(key, input) {
     where: { id: device.id },
     data: { otaProgress: progress, otaStatus: status, lastSeen: /* @__PURE__ */ new Date(), offline: false }
   });
-  emitToHome(homeId, "device:updated", updated);
+  await emitDeviceUpdated(homeId, updated.id);
   return { progress, status };
 }
 async function heartbeat(key, input, baseUrl) {
@@ -2044,7 +2202,7 @@ async function heartbeat(key, input, baseUrl) {
   }
   const updated = await prisma.device.update({ where: { id: device.id }, data });
   if (device.offline) {
-    emitToHome(homeId, "device:updated", updated);
+    await emitDeviceUpdated(homeId, updated.id);
   }
   let synced = 0;
   let statesParsed = false;
@@ -2075,7 +2233,7 @@ async function heartbeat(key, input, baseUrl) {
       if (res.count > 0) {
         synced++;
         controlledIds.push(st.id);
-        emitToHome(homeId, "device:updated", { id: st.id, status: st.status });
+        await emitDeviceUpdated(homeId, st.id);
       }
     }
   }
@@ -3555,7 +3713,7 @@ async function updateOrderStatus(orderId, status) {
   if (!allowed.includes(status)) {
     throw new AppError("BAD_REQUEST", `Cannot move order from ${order.status} to ${status}`);
   }
-  return prisma.$transaction(async (tx) => {
+  const updated = await prisma.$transaction(async (tx) => {
     if (status === "cancelled") {
       await tx.serialRegistry.updateMany({
         where: { orderId: order.id },
@@ -3600,6 +3758,33 @@ async function updateOrderStatus(orderId, status) {
       include: { items: true, user: { select: { id: true, username: true, email: true } } }
     });
   });
+  if (status === "paid") {
+    try {
+      await createNotification(updated.userId, {
+        category: "system",
+        type: "info",
+        title: "\u2705 Payment verified",
+        body: `Order ${updated.orderNumber} ka payment verify ho gaya \u2014 aapka order taiyaar ho raha hai.`
+      });
+    } catch (err) {
+      console.error("[shop] payment notification failed", err);
+    }
+  }
+  if (status === "shipped" || status === "delivered") {
+    const serialCodes = (updated.items ?? []).map((i) => i.serialCode).filter((c) => Boolean(c));
+    const keys = serialCodes.length ? serialCodes.join(", ") : "box sticker pe milenge";
+    try {
+      await createNotification(updated.userId, {
+        category: "system",
+        type: "info",
+        title: status === "shipped" ? "\u{1F69A} Order shipped" : "\u{1F4E6} Order delivered",
+        body: status === "shipped" ? `Order ${updated.orderNumber} ship ho gaya. Aapke serial keys: ${keys} \u2014 Activate page pe daal kar device link karo.` : `Order ${updated.orderNumber} deliver ho gaya! Serial keys: ${keys} \u2014 Activate page pe daal kar device add karo (box sticker pe bhi hain).`
+      });
+    } catch (err) {
+      console.error("[shop] status notification failed", err);
+    }
+  }
+  return updated;
 }
 
 // src/routes/admin.routes.ts
@@ -4410,6 +4595,29 @@ adminRouter.get("/api-keys", async (_req, res) => {
     take: 200
   });
   ok(res, keys);
+});
+adminRouter.post("/api-keys", async (req, res) => {
+  const userId = Number(req.body?.userId);
+  if (!userId) throw new AppError("BAD_REQUEST", "userId required");
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw new AppError("NOT_FOUND", "User not found");
+  let homeId = req.body?.homeId ? Number(req.body.homeId) : null;
+  if (!homeId) {
+    const home = await prisma.home.findFirst({ where: { ownerId: userId } });
+    homeId = home?.id ?? null;
+  }
+  const label = String(req.body?.label ?? "factory").slice(0, 100);
+  const crypto7 = await import("node:crypto");
+  const plain = `rs_${crypto7.randomBytes(9).toString("base64url").replace(/-/g, "").slice(0, 16)}`;
+  const keyHash = crypto7.createHash("sha256").update(plain).digest("hex");
+  const keyPrefix = plain.slice(0, 8);
+  await prisma.apiKey.create({ data: { userId, homeId, label, keyHash, keyPrefix } });
+  await audit(req.user.sub, "admin.apikey.create", {
+    entity: "api_key",
+    entityId: userId,
+    meta: { label, prefix: keyPrefix, userId }
+  });
+  ok(res, { apiKey: plain, keyPrefix, userId, homeId });
 });
 adminRouter.delete("/api-keys/:id", async (req, res) => {
   const id = Number(req.params.id);
@@ -5442,6 +5650,18 @@ adminRouter.get("/orders", async (req, res) => {
   });
   ok(res, orders);
 });
+adminRouter.get("/orders/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  const order = await prisma.order.findUnique({
+    where: { id },
+    include: {
+      items: true,
+      user: { select: { id: true, username: true, email: true } }
+    }
+  });
+  if (!order) throw new AppError("NOT_FOUND", "Order not found");
+  ok(res, order);
+});
 adminRouter.patch("/orders/:id/status", async (req, res) => {
   const id = Number(req.params.id);
   const status = String(req.body?.status ?? "");
@@ -5461,11 +5681,50 @@ adminRouter.get("/serials", async (req, res) => {
       ...status ? { status } : {},
       ...productId ? { productId } : {}
     },
-    include: { product: { select: { id: true, name: true, modelCode: true } } },
+    include: {
+      product: { select: { id: true, name: true, modelCode: true } },
+      user: { select: { id: true, username: true, email: true } },
+      order: { select: { id: true, orderNumber: true, status: true } }
+    },
     orderBy: { id: "desc" },
     take: 500
   });
-  ok(res, serials);
+  const orderIds = [...new Set(serials.map((s) => s.orderId).filter((x) => Boolean(x)))];
+  const perOrder = {};
+  if (orderIds.length) {
+    const byOrder = await prisma.serialRegistry.findMany({
+      where: { orderId: { in: orderIds } },
+      select: { id: true, serialCode: true, orderId: true },
+      orderBy: { id: "asc" }
+    });
+    for (const s of byOrder) {
+      if (!s.orderId) continue;
+      (perOrder[s.orderId] ??= []).push(s.serialCode);
+    }
+  }
+  const enriched = serials.map((s) => {
+    const codes = s.orderId ? perOrder[s.orderId] : void 0;
+    return {
+      ...s,
+      orderIdx: codes ? codes.indexOf(s.serialCode) + 1 : 0,
+      orderTotal: codes?.length ?? 0
+    };
+  });
+  ok(res, enriched);
+});
+adminRouter.get("/serials/:code", async (req, res) => {
+  const code = String(req.params.code ?? "").trim().toUpperCase();
+  const serial = await prisma.serialRegistry.findUnique({
+    where: { serialCode: code },
+    include: {
+      product: { select: { id: true, name: true, modelCode: true } },
+      user: { select: { id: true, username: true, email: true } },
+      order: { select: { id: true, orderNumber: true, status: true } },
+      home: { select: { id: true, name: true } }
+    }
+  });
+  if (!serial) throw new AppError("NOT_FOUND", "Serial not found");
+  ok(res, serial);
 });
 adminRouter.post("/serials/generate", async (req, res) => {
   const productId = Number(req.body?.productId);
@@ -5537,6 +5796,12 @@ adminRouter.get("/orders/:id/provision", async (req, res) => {
     order = matches2[0] ?? null;
   }
   if (!order) throw new AppError("NOT_FOUND", "Order not found");
+  if (order.status === "pending" || order.status === "cancelled") {
+    throw new AppError(
+      "BAD_REQUEST",
+      "Payment verify nahi hua \u2014 pehle admin Orders me order ko 'Mark Paid' karo, phir fetch karo"
+    );
+  }
   const items = await Promise.all(
     order.items.map(async (it) => {
       const prod = await prisma.product.findUnique({
@@ -5583,6 +5848,7 @@ adminRouter.get("/orders/:id/provision", async (req, res) => {
     orderId: order.id,
     orderNumber: order.orderNumber,
     status: order.status,
+    paymentStatus: order.paymentStatus,
     wifiSsid: order.wifiSsid,
     wifiPassword,
     apiKey: apiKeyPlain,
@@ -5603,6 +5869,24 @@ adminRouter.post("/serials/:code/mark-tested", async (req, res) => {
     entityId: serial.id,
     meta: { serialCode: code }
   });
+  if (serial.orderId) {
+    try {
+      const order = await prisma.order.findUnique({
+        where: { id: serial.orderId },
+        select: { userId: true, orderNumber: true }
+      });
+      if (order) {
+        await createNotification(order.userId, {
+          category: "system",
+          type: "info",
+          title: "\u2705 Factory test pass",
+          body: `Aapka board (${code}) factory relay self-test pass kar chuka hai \u2014 ab pack hone chala gaya. Order ${order.orderNumber}.`
+        });
+      }
+    } catch (err) {
+      console.error("[admin] tested notification failed", err);
+    }
+  }
   ok(res, { tested: true, serialCode: code, testedAt: updated.testedAt });
 });
 adminRouter.get("/warranty", async (_req, res) => {
@@ -5944,7 +6228,10 @@ claimRouter.post("/", async (req, res) => {
   });
   if (!serial) throw new AppError("NOT_FOUND", "Unknown serial code \u2014 check the sticker on the box");
   if (serial.status === "claimed") {
-    throw new AppError("CONFLICT", `This device was already activated by ${serial.userId ? "another user" : "someone"}`);
+    if (serial.userId === req.user.sub) {
+      throw new AppError("CONFLICT", "This device is already activated in your home \u2014 check your Devices/Boards");
+    }
+    throw new AppError("CONFLICT", "This device was already activated by another user");
   }
   if (!["delivered", "shipped"].includes(serial.status)) {
     throw new AppError("CONFLICT", `This device is not yet ready to activate (status: ${serial.status})`);
@@ -7081,11 +7368,7 @@ async function fireSchedule(scheduleId) {
     entityId: sched.id,
     meta: { deviceId: sched.device.id, deviceName: sched.device.name, action: sched.action }
   });
-  emitToHome(sched.device.homeId, "device:updated", {
-    id: sched.device.id,
-    status: sched.action,
-    via: "schedule"
-  });
+  await emitDeviceUpdated(sched.device.homeId, sched.device.id);
   if (sched.createdBy) {
     await createNotification(sched.createdBy, {
       category: "schedule",
@@ -7177,7 +7460,7 @@ async function checkOfflineDevicesInner() {
     const wasOnline = device.lastSeen !== null && !device.offline;
     if (!wasOnline) continue;
     await prisma.device.update({ where: { id: device.id }, data: { offline: true } });
-    emitToHome(device.homeId, "device:updated", { id: device.id, offline: true });
+    await emitDeviceUpdated(device.homeId, device.id);
     const targetIds = device.home.members.map((m) => m.userId);
     for (const userId of targetIds) {
       await createNotification(userId, {
@@ -7196,7 +7479,7 @@ async function checkOfflineDevicesInner() {
   });
   for (const device of backOnline) {
     await prisma.device.update({ where: { id: device.id }, data: { offline: false } });
-    emitToHome(device.homeId, "device:updated", { id: device.id, offline: false });
+    await emitDeviceUpdated(device.homeId, device.id);
     for (const userId of device.home.members.map((m) => m.userId)) {
       await createNotification(userId, {
         category: "device",
@@ -7695,7 +7978,7 @@ async function autoOffDevice(deviceId, homeId) {
     })
   ]);
   const updated = await prisma.device.findUnique({ where: { id: deviceId } });
-  if (updated) emitToHome(homeId, "device:updated", updated);
+  if (updated) await emitDeviceUpdated(homeId, updated.id);
 }
 async function runSafetyCheck() {
   if (running2) return;

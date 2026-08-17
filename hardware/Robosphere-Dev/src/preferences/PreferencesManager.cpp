@@ -135,7 +135,22 @@ void factoryReset() {
   Serial.println("FACTORY RESET STARTED");
   Serial.println("========================");
 
+  // Serial = board ki lifetime identity — reset pe bhi wapas aata hai,
+  // aur AP credentials serial-derived defaults pe restore hote hain
+  // (hotspot naam SwitchNest-<serial>, password = serial key).
+  String serial = getSerialCode();
+  String model = getModelCode();
+
   preferences.clear();
+
+  if (!serial.isEmpty()) {
+    saveSerialCode(serial);
+    saveModelCode(model);
+    saveAPName("SwitchNest-" + serial);
+    saveAPPassword(serial);
+    Serial.println("Serial preserved (lifetime identity): " + serial);
+    Serial.println("AP credentials restored (serial-derived)");
+  }
 
   Serial.println("All Preferences Cleared");
 

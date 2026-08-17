@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import type { HomeMemberRole } from "@robosphere/shared";
 import { prisma } from "../lib/prisma";
 import { AppError } from "../lib/response";
+import { leaveHomeRoom } from "../lib/socket";
 import { createNotification } from "./notification.service";
 
 function generateInviteCode(): string {
@@ -158,6 +159,10 @@ export async function removeMember(homeId: number, userId: number) {
   }
 
   await prisma.homeMember.delete({ where: { homeId_userId: { homeId, userId } } });
+
+  // Removed member ke sockets ko home room se nikaalo + access-revoked bhejo
+  // — warna removed user ko devices/live updates dikhte rehte hain.
+  await leaveHomeRoom(userId, homeId);
 }
 
 // ---------- Child safety / device-level access ----------

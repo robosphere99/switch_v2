@@ -10,6 +10,73 @@ import {
   type PayIntent,
 } from "../api/shop";
 
+const STEPS = ["placed", "paid", "shipped", "delivered"] as const;
+
+const STEP_LABEL: Record<string, string> = {
+  placed: "🛒 Order placed",
+  paid: "💳 Payment verified",
+  shipped: "📦 Shipped",
+  delivered: "✅ Delivered",
+};
+
+function OrderDetails({ order }: { order: Order }) {
+  const activeIdx = STEPS.indexOf(order.status as (typeof STEPS)[number]);
+  return (
+    <div className="mt-4 rounded-lg border border-brand/20 bg-night-900 p-4 text-sm">
+      {/* Status timeline */}
+      <div className="mb-4 flex flex-wrap items-center gap-1">
+        {STEPS.map((s, i) => {
+          const done = activeIdx >= 0 && i <= activeIdx;
+          return (
+            <div key={s} className="flex items-center gap-1">
+              <span
+                className={`rounded-full px-2 py-0.5 text-xs font-bold ${done ? "bg-brand/20 text-brand" : "bg-night-700 text-gray-500"}`}
+              >
+                {STEP_LABEL[s]}
+              </span>
+              {i < STEPS.length - 1 && <span className="text-gray-600">→</span>}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <div className="mb-1 text-xs font-bold uppercase tracking-wide text-gray-500">Payment</div>
+          <div className="space-y-1 text-gray-600">
+            <div>Method: <b className="text-night-950">{order.paymentMethod.toUpperCase()}</b></div>
+            <div>Status: {order.paymentStatus}</div>
+            <div>Paid at: {order.paidAt ? new Date(order.paidAt).toLocaleString() : "—"}</div>
+            {order.paymentRef && (
+              <div className="break-all">Ref: <span className="font-mono text-xs text-brand">{order.paymentRef}</span></div>
+            )}
+          </div>
+        </div>
+        <div>
+          <div className="mb-1 text-xs font-bold uppercase tracking-wide text-gray-500">Shipping</div>
+          <div className="space-y-1 text-gray-600">
+            <div><b className="text-night-950">{order.shippingName}</b> · {order.shippingPhone}</div>
+            <div>{order.shippingAddress}</div>
+            {order.wifiSsid && <div>📶 Pre-provisioned WiFi: <b>{order.wifiSsid}</b></div>}
+          </div>
+        </div>
+      </div>
+
+      {/* Courier tracking — future integration ke liye placeholder */}
+      <div className="mt-4 rounded-lg border border-dashed border-brand/30 bg-night-800/60 p-3">
+        <div className="mb-1 flex items-center gap-2 text-xs font-bold text-brand">🚚 Courier Tracking</div>
+        <p className="text-xs text-gray-500">
+          Abhi koi delivery service (Shiprocket etc.) linked nahi hai — order ka status yahan track hota hai.
+          Future me courier service integration ke baad yahan live location dikhegi.
+        </p>
+        <div className="mt-2 text-xs text-gray-600">
+          Current status: <span className="font-bold text-night-950">{(STATUS_BADGE[order.status] ?? STATUS_BADGE.pending).label}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
   pending: { label: "⏳ Pending", cls: "bg-amber-500/20 text-amber-600" },
   paid: { label: "💳 Paid", cls: "bg-blue-500/20 text-blue-700" },
@@ -23,6 +90,7 @@ export function Orders() {
   const [loading, setLoading] = useState(true);
   const [params] = useSearchParams();
   const placed = params.get("placed");
+  const [openId, setOpenId] = useState<number | null>(null);
   const [payIntent, setPayIntent] = useState<PayIntent | null>(null);
   const [payingFor, setPayingFor] = useState<number | null>(null);
   const [payBusy, setPayBusy] = useState(false);
@@ -124,7 +192,15 @@ export function Orders() {
                     </CopyText>
                     <span className="ml-3 text-sm text-gray-500">{new Date(o.createdAt).toLocaleString()}</span>
                   </div>
-                  <span className={`rounded-full px-3 py-1 text-xs font-semibold ${badge.cls}`}>{badge.label}</span>
+                  <div className="flex items-center gap-2">
+                    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${badge.cls}`}>{badge.label}</span>
+                    <button
+                      onClick={() => setOpenId(openId === o.id ? null : o.id)}
+                      className="rounded-lg border border-brand/20 px-3 py-1.5 text-xs font-semibold text-brand hover:bg-brand/10"
+                    >
+                      {openId === o.id ? "▲ Details" : "▼ Details"}
+                    </button>
+                  </div>
                 </div>
                 {o.status === "pending" && o.paymentMethod !== "cod" && (
                   <div className="mb-3">
@@ -177,6 +253,8 @@ export function Orders() {
                 ) : (
                   <div className="text-xs text-gray-500">Serial code delivery ke baad milega (box pe sticker).</div>
                 )}
+
+                {openId === o.id && <OrderDetails order={o} />}
               </div>
             );
           })}

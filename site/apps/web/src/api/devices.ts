@@ -1,4 +1,4 @@
-import type { ApiResponse, Device, DeviceStatus, DeviceType } from "@robosphere/shared";
+import type { ApiResponse, Device, DeviceStatus, DeviceType, UsageAnalytics } from "@robosphere/shared";
 import { api } from "./client";
 
 export interface CreateDeviceInput {
@@ -84,6 +84,16 @@ export async function renameEsp(
   const { data } = await api.patch<ApiResponse<{ id: number; name: string }>>(
     `/homes/${homeId}/esp/${espId}`,
     { name },
+  );
+  return data;
+}
+
+export async function getUsageAnalytics(
+  homeId: number,
+  days = 7,
+): Promise<ApiResponse<UsageAnalytics>> {
+  const { data } = await api.get<ApiResponse<UsageAnalytics>>(
+    `/homes/${homeId}/analytics/usage?days=${days}`,
   );
   return data;
 }

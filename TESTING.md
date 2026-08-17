@@ -103,7 +103,24 @@ Fixes ke baad basic features turant check karo:
 
 ---
 
-## 5. Known notes / current behavior
+## 5. Phase 4 — Realtime (Socket.IO) checklist
+
+- [ ] **2 tabs test** — ek tab me device toggle karo, doosre me <1-2s me live update (socket `device:updated` → dashboard invalidate). Polling ab 15s fallback hai, isliye live update turant dikhna chahiye.
+- [ ] **Notification live** — admin se kisi user ko notification bhejo (e.g. order mark-paid) → uske bell pe badge <2s me (socket `notification:new`).
+- [ ] **Server restart test** — API restart karo → socket girta hai → web polling fallback pe zinda rehta hai → socket reconnect pe saari queries refresh (gap recover).
+- [ ] **Member remove test** — home se kisi member ko remove karo → uske socket ko `home:access-revoked` + home/device queries remove (removed member ko devices na dikhein).
+- [ ] **Token expiry** — 15 min ke baad access token expire → socket auth fail → refresh + reconnect (naye token se).
+- [ ] **Multi-device relay sync** — ESP heartbeat pe saare devices `device:updated` uniform payload (id + homeId + name + status + online + updatedAt) bhejte hain.
+
+## 6. Phase 6 — Analytics (Usage) checklist
+
+- [ ] **API** — `GET /api/homes/:homeId/analytics/usage?days=7|30|90` (viewer+): `totals.toggles` + `onMs`, `togglesPerDay` (har din 0-filled), `perDevice` (toggles + on-time, sorted), `perMember` (actor-wise; null actor = schedule/device).
+- [ ] **Dashboard 📊 Usage** — Devices header me button → modal: summary chips (toggles / on-time / active members), Toggles-per-day bar chart (bina library), Top devices list, Member activity. 7d/30d/90d buttons data refresh karte hain.
+- [ ] **On-time correctness** — ek device ko 10 min on karke off karo → analytics me `10m` dikhna chahiye (ON→OFF pair sum). Currently-ON device ka period abhi tak count hota hai (approximation).
+- [ ] **Zero data** — naye home pe analytics khali hona chahiye (sab 0-filled, no crash).
+- [ ] **Roles** — viewer bhi analytics dekh sakta hai (sirf read). Member toggle karne pe uske naam pe count aana chahiye.
+
+## 7. Known notes / current behavior
 
 - **Multiple instances kabhi chal rahe hain to**: log me duplicate
   `[hb]` lines + `leak-incidents.jsonl` me interleaved duplicate entries —

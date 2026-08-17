@@ -23,16 +23,17 @@ const prismaMock = vi.hoisted(() => ({
 }));
 
 vi.mock("../lib/prisma", () => ({ prisma: prismaMock }));
-vi.mock("../lib/socket", () => ({ emitToHome: vi.fn() }));
+vi.mock("../lib/socket", () => ({ emitToHome: vi.fn(), emitDeviceUpdated: vi.fn() }));
 vi.mock("./audit.service", () => ({ audit: vi.fn() }));
 vi.mock("./notification.service", () => ({ createNotification: vi.fn() }));
 vi.mock("./firmware.service", () => ({ resolveFirmware: vi.fn() }));
 
 import { bulkSetStatus } from "./device.service";
-import { emitToHome } from "../lib/socket";
+import { emitDeviceUpdated, emitToHome } from "../lib/socket";
 
 const prisma = prismaMock;
 const emitMock = vi.mocked(emitToHome);
+const emitDeviceUpdatedMock = vi.mocked(emitDeviceUpdated);
 
 const d1 = { id: 1, homeId: 10, name: "Living TV", status: "off" as const };
 const d2 = { id: 2, homeId: 10, name: "Kitchen Fan", status: "off" as const };
@@ -67,8 +68,10 @@ describe("bulkSetStatus — home scoping + restricted member permissions", () =>
     });
     expect(prisma.deviceCommand.create).toHaveBeenCalledTimes(2);
     expect(prisma.deviceLog.create).toHaveBeenCalledTimes(2);
-    expect(emitMock).toHaveBeenCalledTimes(2);
-    expect(emitMock).toHaveBeenCalledWith(10, "device:updated", expect.objectContaining({ id: 1 }));
+    // Uniform emitter — har device ke liye ek (partial payload ki jagah deviceId)
+    expect(emitDeviceUpdatedMock).toHaveBeenCalledTimes(2);
+    expect(emitDeviceUpdatedMock).toHaveBeenCalledWith(10, 1);
+    expect(emitDeviceUpdatedMock).toHaveBeenCalledWith(10, 2);
     expect(result).toHaveLength(2);
   });
 
@@ -128,7 +131,7 @@ describe("bulkSetStatus — home scoping + restricted member permissions", () =>
     ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
 
     expect(prisma.device.updateMany).not.toHaveBeenCalled();
-    expect(emitMock).not.toHaveBeenCalled();
+    expect(emitDeviceUpdatedMock).not.toHaveBeenCalled();
   });
 
   it("koi device is home me nahi mila → DEVICE_NOT_FOUND (404)", async () => {

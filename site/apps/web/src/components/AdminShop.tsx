@@ -9,6 +9,7 @@ import {
   getAdminOrders,
   getAdminProducts,
   getAdminWarranty,
+  getSerialDetail,
   getSerials,
   updateAdminProduct,
   updateOrderStatus,
@@ -143,6 +144,7 @@ function OrdersSection() {
     queryFn: getAdminOrders,
     refetchInterval: 10_000,
   });
+  const [serialDetail, setSerialDetail] = useState<string | null>(null);
 
   async function advance(o: Order) {
     const next: Record<string, string> = { pending: "paid", paid: "shipped", shipped: "delivered" };
@@ -179,7 +181,7 @@ function OrdersSection() {
             <div className="mb-3 text-sm text-gray-600">
               {o.items.map((i) => (
                 <div key={i.id} className="flex justify-between">
-                  <span>{i.productName} × {i.quantity} {i.serialCode && <CopyText text={i.serialCode} className="text-xs text-brand" title="Hold to copy serial">({i.serialCode})</CopyText>}</span>
+                  <span>{i.productName} × {i.quantity} {i.serialCode && <CopyText text={i.serialCode} className="text-xs text-brand" title="Right-click/hold = copy · click = details" onClick={() => setSerialDetail(i.serialCode)}>({i.serialCode})</CopyText>}</span>
                   <span>₹{(Number(i.price) * i.quantity).toLocaleString("en-IN")}</span>
                 </div>
               ))}
@@ -193,6 +195,13 @@ function OrdersSection() {
               {o.wifiSsid && <span className="ml-3">📶 {o.wifiSsid}</span>}
             </div>
             <div className="mt-3 flex gap-2 text-xs">
+              <button
+                onClick={() => window.open(`/admin/bill/${o.id}`, "_blank")}
+                className="rounded bg-night-700 px-3 py-1.5 font-semibold text-gray-300 hover:bg-night-600"
+                title="Invoice/Bill print — items + serials + buyer"
+              >
+                🖨️ Bill
+              </button>
               {o.status === "pending" && (
                 <>
                   <button onClick={() => advance(o)} className="rounded bg-blue-600 px-3 py-1.5 font-semibold text-white hover:bg-blue-700">Mark Paid</button>
@@ -212,6 +221,9 @@ function OrdersSection() {
           </div>
         ))}
       </div>
+      {serialDetail && (
+        <SerialDetailsModal code={serialDetail} onClose={() => setSerialDetail(null)} />
+      )}
     </div>
   );
 }
@@ -229,6 +241,7 @@ function SerialsSection() {
   const [productId, setProductId] = useState<number | "">("");
   const [count, setCount] = useState(10);
   const [genMsg, setGenMsg] = useState<string | null>(null);
+  const [serialDetail, setSerialDetail] = useState<string | null>(null);
 
   async function handleGenerate(e: React.FormEvent) {
     e.preventDefault();
@@ -253,6 +266,7 @@ function SerialsSection() {
   return (
     <div>
       <h2 className="mb-4 text-xl font-bold">Serial Registry</h2>
+      <p className="mb-3 text-xs text-gray-500">Right-click serial = copy · Click serial = details (kisne claim kiya, order, warranty)</p>
 
       <div className="mb-4 flex flex-wrap gap-2 text-xs">
         {Object.entries(counts).map(([k, v]) => (
@@ -306,11 +320,15 @@ function SerialsSection() {
           <tbody>
             {serials?.map((s: SerialRow) => (
               <tr key={s.id} className="border-t border-night-700">
-                <td className="px-3 py-2 font-mono text-xs text-brand"><CopyText text={s.serialCode} title="Hold to copy serial">{s.serialCode}</CopyText></td>
+                <td className="px-3 py-2 font-mono text-xs text-brand">
+                  <CopyText text={s.serialCode} title="Right-click/hold = copy · click = details" onClick={() => setSerialDetail(s.serialCode)}>{s.serialCode}</CopyText>
+                </td>
                 <td className="px-3 py-2">{s.product.modelCode}</td>
                 <td className="px-3 py-2"><span className={`rounded-full px-2 py-0.5 text-xs font-bold ${SERIAL_BADGE[s.status] ?? ""}`}>{s.status}</span></td>
-                <td className="px-3 py-2 text-xs text-gray-500">{s.orderId ? `#${s.orderId}` : "—"}</td>
-                <td className="px-3 py-2 text-xs text-gray-500">{s.userId ? `User #${s.userId}` : "—"}</td>
+                <td className="px-3 py-2 text-xs text-gray-500">{s.order ? `#${s.order.orderNumber}` : s.orderId ? `#${s.orderId}` : "—"}</td>
+                <td className="px-3 py-2 text-xs text-gray-500">
+                  {s.user ? `${s.user.username}${s.user.email ? ` (${s.user.email})` : ""}` : s.userId ? `User #${s.userId}` : "—"}
+                </td>
               </tr>
             ))}
             {serials?.length === 0 && (
@@ -319,6 +337,74 @@ function SerialsSection() {
           </tbody>
         </table>
       </div>
+      {serialDetail && (
+        <SerialDetailsModal code={serialDetail} onClose={() => setSerialDetail(null)} />
+      )}
+    </div>
+  );
+}
+
+// ---------------- Serial details modal ----------------
+
+function SerialDetailsModal({ code, onClose }: { code: string; onClose: () => void }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["admin-serial-detail", code],
+    queryFn: () => getSerialDetail(code),
+    enabled: Boolean(code),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+      <div
+        className="w-full max-w-md rounded-2xl border border-brand/20 bg-night-800 p-6 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-lg font-bold">🔑 Serial Details</h3>
+          <button onClick={onClose} className="rounded bg-night-700 px-2.5 py-1 text-xs font-semibold hover:bg-night-600">✕ Close</button>
+        </div>
+        {isLoading ? (
+          <p className="text-sm text-gray-500">Loading…</p>
+        ) : data ? (
+          <div className="space-y-2 text-sm">
+            <SerialInfo
+              row="Serial"
+              value={
+                <CopyText text={data.serialCode} className="font-mono text-brand" title="Right-click/hold = copy">
+                  {data.serialCode}
+                </CopyText>
+              }
+            />
+            <SerialInfo row="Product" value={`${data.product.modelCode} — ${data.product.name}`} />
+            <SerialInfo row="Status" value={data.status} />
+            <SerialInfo row="Order" value={data.order ? `#${data.order.orderNumber} (${data.order.status})` : "—"} />
+            <SerialInfo row="Claimed by" value={data.user ? `${data.user.username} (${data.user.email})` : "—"} />
+            <SerialInfo row="Home" value={data.home ? data.home.name : "—"} />
+            <SerialInfo row="Created" value={data.createdAt ? new Date(data.createdAt).toLocaleString() : "—"} />
+            <SerialInfo row="Claimed at" value={data.claimedAt ? new Date(data.claimedAt).toLocaleString() : "—"} />
+            <SerialInfo row="Tested at" value={data.testedAt ? new Date(data.testedAt).toLocaleString() : "—"} />
+            <SerialInfo
+              row="Warranty"
+              value={
+                data.warrantyExpiresAt
+                  ? `${data.warrantyStatus} · till ${new Date(data.warrantyExpiresAt).toLocaleDateString()}`
+                  : "—"
+              }
+            />
+          </div>
+        ) : (
+          <p className="text-sm text-red-400">Serial detail load nahi hua</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SerialInfo({ row, value }: { row: string; value: React.ReactNode }) {
+  return (
+    <div className="flex items-start justify-between gap-3 border-b border-night-700 pb-1.5">
+      <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">{row}</span>
+      <span className="text-right">{value}</span>
     </div>
   );
 }

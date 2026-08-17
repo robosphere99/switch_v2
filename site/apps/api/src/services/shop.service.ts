@@ -153,7 +153,7 @@ export async function updateOrderStatus(orderId: number, status: string) {
     throw new AppError("BAD_REQUEST", `Cannot move order from ${order.status} to ${status}`);
   }
 
-  return prisma.$transaction(async (tx) => {
+  const updated = await prisma.$transaction(async (tx) => {
     if (status === "cancelled") {
       // Release reserved serials back to stock.
       await tx.serialRegistry.updateMany({
@@ -201,4 +201,41 @@ export async function updateOrderStatus(orderId: number, status: string) {
       include: { items: true, user: { select: { id: true, username: true, email: true } } },
     });
   });
+
+  // Payment verified → user ko notification — order taiyaar hone ka confidence.
+  if (status === "paid") {
+    try {
+      await createNotification(updated.userId, {
+        category: "system",
+        type: "info",
+        title: "✅ Payment verified",
+        body: `Order ${updated.orderNumber} ka payment verify ho gaya — aapka order taiyaar ho raha hai.`,
+      });
+    } catch (err) {
+      console.error("[shop] payment notification failed", err);
+    }
+  }
+
+  // Serial keys user ko notification me — shipped/delivered pe turant pata chale.
+  if (status === "shipped" || status === "delivered") {
+    const serialCodes = (updated.items ?? [])
+      .map((i) => i.serialCode)
+      .filter((c): c is string => Boolean(c));
+    const keys = serialCodes.length ? serialCodes.join(", ") : "box sticker pe milenge";
+    try {
+      await createNotification(updated.userId, {
+        category: "system",
+        type: "info",
+        title: status === "shipped" ? "🚚 Order shipped" : "📦 Order delivered",
+        body:
+          status === "shipped"
+            ? `Order ${updated.orderNumber} ship ho gaya. Aapke serial keys: ${keys} — Activate page pe daal kar device link karo.`
+            : `Order ${updated.orderNumber} deliver ho gaya! Serial keys: ${keys} — Activate page pe daal kar device add karo (box sticker pe bhi hain).`,
+      });
+    } catch (err) {
+      console.error("[shop] status notification failed", err);
+    }
+  }
+
+  return updated;
 }

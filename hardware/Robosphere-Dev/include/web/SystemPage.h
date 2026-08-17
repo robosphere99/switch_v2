@@ -4,6 +4,7 @@
 
 String SystemPage(
     const String &board,
+    const String &serial,
     const String &firmware,
     const String &ip,
     uint32_t uptime,

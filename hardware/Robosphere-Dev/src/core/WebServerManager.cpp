@@ -853,6 +853,7 @@ void handleSystem()
         "text/html",
         SystemPage(
             BoardManager::getBoard()->name,
+            PreferencesManager::getSerialCode(),
             FIRMWARE_VERSION,
             WiFi.localIP().toString(),
             millis()/1000,
@@ -905,7 +906,9 @@ void handleWiFi()
         "text/html",
         WiFiPage(
             PreferencesManager::getWiFiSSID(),
-            WiFiScanner::getNetworkOptions()
+            WiFiScanner::getNetworkOptions(),
+            PreferencesManager::getAPName(),
+            PreferencesManager::getAPPassword()
         )
     );
 }
@@ -921,17 +924,23 @@ void handleWiFiSave()
     String password =
         server.arg("wifi_password");
 
+    // Hotspot (AP) edit — user login karke apna AP naam/password change kar sakta hai.
+    String apName = server.arg("ap_name");
+    String apPassword = server.arg("ap_password");
+
     PreferencesManager::saveWiFi(
         ssid,
         password
     );
+    PreferencesManager::saveAPName(apName);
+    PreferencesManager::saveAPPassword(apPassword);
 
     String html;
-    html += uiHead("WiFi Saved");
+    html += uiHead("Settings Saved");
     html += uiAuthBegin();
     html += "<div class='glass auth-card msg-card ok'><div class='msg-icon'>📶</div>";
-    html += "<h2>WiFi Saved</h2>";
-    html += "<p class='msg-sub'>Device restarting... naye network se connect hone ka wait karo.</p>";
+    html += "<h2>Settings Saved</h2>";
+    html += "<p class='msg-sub'>WiFi + Hotspot saved. Device restarting... naye network se connect hone ka wait karo.</p>";
     html += "</div>";
     html += uiEnd();
 

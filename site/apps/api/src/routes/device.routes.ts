@@ -1,9 +1,11 @@
 import { Router } from "express";
 import { z } from "zod";
 import * as deviceController from "../controllers/device.controller";
+import { ok } from "../lib/response";
 import { requireAuth } from "../middleware/auth";
 import { requireHomeMember } from "../middleware/requireRole";
 import { validateBody, validateParams } from "../middleware/validate";
+import { getUsageAnalytics } from "../services/analytics.service";
 
 export const deviceRouter = Router();
 
@@ -101,4 +103,16 @@ deviceRouter.patch(
   requireHomeMember("admin"),
   validateBody(espNameSchema),
   deviceController.renameEsp,
+);
+
+/** Usage analytics — device_logs se (toggles/day, on-time per device, per member). */
+deviceRouter.get(
+  "/:homeId/analytics/usage",
+  requireAuth,
+  validateParams(idParams),
+  requireHomeMember("viewer"),
+  async (req, res) => {
+    const days = Math.min(Math.max(Number(req.query.days) || 7, 1), 90);
+    ok(res, await getUsageAnalytics(Number(req.params.homeId), days));
+  },
 );

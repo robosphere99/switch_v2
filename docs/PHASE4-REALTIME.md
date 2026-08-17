@@ -1,5 +1,8 @@
 # Phase 4 — Realtime (Socket.IO) Implementation Plan
 
+> **Status: core implemented + live verified** — steps B1-B3, W1-W3, W5 (via hook), B4, W6 done.
+> W4 (optimistic toggle instant UI) v1.1 pending.
+>
 > **Goal:** web app ko live banao — device toggle/status, offline/online, notifications,
 > support chat push hote hi UI me aa jayein. Polling ko kill nahi, **fallback** bana do
 > (reliability ke liye zyada zaroori hai).
@@ -73,8 +76,8 @@
 ### 3.3 Tests + Docs
 
 - API: emitDeviceUpdated payload shape test (vitest).
-- Web: useRealtime mapping test (fake socket client).
-- `TESTING.md` me Phase 4 checklist add — **2 browsers/2 tabs test** (ek me toggle, doosre me <1s update), **server-restart test** (socket down → polling fallback → reconnect catch-up).
+- Web: useRealtime mapping test — done (`lib/realtimeMap.test.ts`: device/esp/command/notification/support/access-revoked mapping + removals + reconnect keys, 67 web tests).
+- `TESTING.md` me Phase 4 checklist add — done (2 tabs test, notification live, server-restart, member-remove, token expiry, multi-device relay sync).
 
 ---
 
