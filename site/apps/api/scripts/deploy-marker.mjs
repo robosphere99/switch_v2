@@ -24,6 +24,22 @@ function gitHead() {
   }
 }
 
+// Build-time embedded commit — dist/build-commit.json (git me committed,
+// build:prod usse likhta hai). Network ke bina kaam karta hai — production
+// me deployed commit ka SABSE reliable source.
+function buildCommit() {
+  try {
+    const p = path.resolve(process.cwd(), "dist/build-commit.json");
+    if (fs.existsSync(p)) {
+      const j = JSON.parse(fs.readFileSync(p, "utf8"));
+      if (j?.commit) return j.commit;
+    }
+  } catch {
+    /* missing/corrupt — fallback chain aage badhe */
+  }
+  return "";
+}
+
 async function ghHead() {
   try {
     const res = await fetch(`https://api.github.com/repos/${REPO}/commits/${BRANCH}`, {
@@ -47,15 +63,13 @@ function writeMarker(commit) {
 
 async function main() {
   const out = writeMarker(""); // pehle turant likho — deployedAt kabhi miss na ho
-  const local = gitHead();
-  if (local) {
-    writeMarker(local);
-    console.log(`[deploy-marker] wrote ${out} commit=${local.slice(0, 7)} branch=${BRANCH}`);
-  } else {
-    const gh = await ghHead(); // .git nahi — GitHub API se enrich (best-effort)
-    if (gh) writeMarker(gh);
-    console.log(`[deploy-marker] wrote ${out} commit=${(gh || "(empty)").slice(0, 7)} branch=${BRANCH}`);
-  }
+  const local = gitHead(); // .git ho (dev/local) — exact
+  // GitHub API deploy-time SHA exact hai (build-commit.json parent hota hai,
+  // kyunki build commit se pehle chalta hai) — isliye GitHub primary, build
+  // metadata sirf last resort jab GitHub down/rate-limited ho.
+  const commit = local || (await ghHead()) || buildCommit();
+  if (commit) writeMarker(commit);
+  console.log(`[deploy-marker] wrote ${out} commit=${(commit || "(empty)").slice(0, 7)} branch=${BRANCH}`);
 }
 
 main().catch(() => {});

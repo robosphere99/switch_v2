@@ -4909,10 +4909,20 @@ adminRouter.get("/deploy-info", async (_req, res) => {
     if (head) git = { commit: head, branch };
   } catch {
   }
-  const ciSha = git?.commit || marker?.commit || void 0;
+  let build = null;
+  try {
+    const bp = path7.resolve(process.cwd(), "dist/build-commit.json");
+    if (fs6.existsSync(bp)) {
+      const bj = JSON.parse(fs6.readFileSync(bp, "utf8"));
+      if (bj?.commit) build = { commit: bj.commit, builtAt: bj.builtAt || "" };
+    }
+  } catch {
+  }
+  const ciSha = marker?.commit || git?.commit || build?.commit || void 0;
   const ci = await fetchCiStatus(ciSha);
   const latest = await fetchLatestMain();
-  const deployedCommit = git?.commit || marker?.commit || null;
+  const deployedCommit = marker?.commit || build?.commit || git?.commit || null;
+  const deployedAt = marker?.deployedAt || build?.builtAt || null;
   const latestCommit = latest?.commit || null;
   const latestTs = latest?.ts || null;
   let syncStatus = "unknown";
@@ -4924,6 +4934,8 @@ adminRouter.get("/deploy-info", async (_req, res) => {
   ok(res, {
     marker,
     git,
+    build,
+    deployedAt,
     latest,
     sync: {
       status: syncStatus,

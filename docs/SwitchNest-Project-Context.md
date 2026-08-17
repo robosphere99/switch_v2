@@ -7,7 +7,7 @@
 > Repo location (this machine): `C:\Users\robos\OneDrive\Documents\SwitchNest`
 >
 <!-- AUTO:STAMP:START -->
-> _Auto-updated: 2026-08-17 14:09 UTC · branch `main` · tree dirty (1 changes) · 188 commits_
+> _Auto-updated: 2026-08-17 14:20 UTC · branch `main` · tree dirty (1 changes) · 190 commits_
 <!-- AUTO:STAMP:END -->
 
 ---
@@ -109,6 +109,8 @@ that also serves real ESP32 hardware).
 <!-- AUTO:RECENT_COMMITS:START -->
 Sabse naye 20 commits:
 
+- `4133974` (2026-08-17) deploy: webhook re-trigger (84599c5 ka delivery lost — sync health check test)
+- `84599c5` (2026-08-17) feat: deploy sync health check — push live site pe nahi pahuncha to panel alert
 - `1376c9a` (2026-08-17) deploy: webhook re-trigger (af72ffc ka deploy nahi chala tha)
 - `af72ffc` (2026-08-17) fix: deploy card commit/branch kabhi blank na ho — 3-layer fallback
 - `5bc9329` (2026-08-17) deploy: marker me commit+branch fix — GitHub API se fetch (deployed folder me .git nahi hota)
@@ -127,8 +129,6 @@ Sabse naye 20 commits:
 - `f4e9e70` (2026-08-17) flasher: Mode selector (Live site / Localhost) + Admin Flasher Guide page
 - `c856e4d` (2026-08-17) deploy: Phase 4 realtime + Phase 6 analytics + factory flow v2 (site + firmware + docs)
 - `3cea705` (2026-08-17) docs: context doc auto-refresh (targeted tests commit sync)
-- `05d2922` (2026-08-17) test: targeted unit tests — optimistic rollback, bulk permissions, realtime mapping
-- `a081f1c` (2026-08-17) docs: context doc auto-refresh (mobile-first pass commit sync)
 <!-- AUTO:RECENT_COMMITS:END -->
 
 - 503 root-cause work: DB probe retry loop so the app self-heals, `nodeProcessCountPerApplication=1`,
