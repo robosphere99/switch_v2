@@ -288,8 +288,10 @@ robosphere-v2/                     ← NEW folder + NEW GitHub repo
 - [x] **Phase 2 — Web app DONE** — Dashboard (devices CRUD + rooms + ONLINE badges + logs + filters), Family (invite codes, roles, join), Device Keys (create/copy/revoke), Homes (create/rename/transfer), Profile, admin links; verified in browser
 - [x] **Phase 3 — Admin panel DONE** — stats, users (role/delete), homes (suspend/delete), all devices (online status), api-keys, audit logs viewer; `audit_logs` ab actually write hote hain har action pe
 - [x] **Phase 5 — Timers & Scheduler DONE** ⏰ — Schedule CRUD API (`once/daily/weekly/cron` + custom 5-field cron), background worker (10s tick) fires due schedules → writes `device_commands` → ESP32 executes → audit log; UI on Dashboard verified (create → next-run compute → list → enable/disable → delete)
-- [ ] Phase 4 (WebSocket realtime — polling 5s/10s abhi bhi hai), Phase 6 (notifications/analytics), Phase 7 (AI assist), Phase 8 (mobile)
+- [x] **Phase 4 — Realtime DONE** 🔌 — Socket.IO (auth, rooms, `socket:ready` ack), uniform `device:updated` DTO (shared types), web `useRealtime` hook (invalidate/access-revoked/reconnect), polling relaxed (15s/20s), live <2s updates verified
+- [ ] **Phase 6 — Analytics PARTIAL** — Rooms (grouping + bulk on/off) ✅ · offline → notifications ✅ · **usage analytics ✅ (API + Dashboard 📊 Usage: toggles/day, on-time per device, per member)** — baaki: email channel, offline batching
+- [ ] Phase 7 (AI assist), Phase 8 (mobile)
 
 > **Current state:** `site/` runs locally — API on :4000, web on :5173 (XAMPP MySQL, db `switch_v2`). ESP32 (COM8, `192.168.1.36`) v2 firmware pe live connected — web toggle → command queue → physical relay loop verified.
 
-> **Next action:** realtime (WebSocket/SSE), notifications + offline alerts, AI assist mode (Phase 7), second ESP32 setup, OTA infra.
+> **Next action:** Phase 6 baaki (email notifications, offline batching) ya Phase 7 (AI assist mode — natural-language control), second ESP32 setup, OTA infra.

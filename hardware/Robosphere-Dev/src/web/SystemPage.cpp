@@ -30,6 +30,7 @@ String formatUptime(uint32_t sec)
 
 String SystemPage(
     const String &board,
+    const String &serial,
     const String &firmware,
     const String &ip,
     uint32_t uptime,
@@ -60,6 +61,8 @@ String SystemPage(
 )rawliteral";
 
     html += "<div class='info'><b>Board</b><span>" + board + "</span></div>";
+    html += "<div class='info'><b>Serial Code</b><span>" + (serial.length() ? serial : "Not set (factory)") + "</span></div>";
+    html += "<p class='hint'>Serial Code is unique — yeh board ka lifetime identity hai. Device aapke account se isi se linked hota hai.</p>";
     html += "<div class='info'><b>Firmware</b><span>" + firmware + "</span></div>";
     html += "<div class='info'><b>IP</b><span>" + ip + "</span></div>";
     html += "<div class='info'><b>Uptime</b><span>" + formatUptime(uptime) + "</span></div>";

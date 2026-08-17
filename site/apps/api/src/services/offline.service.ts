@@ -1,5 +1,5 @@
 import { prisma } from "../lib/prisma";
-import { emitToHome } from "../lib/socket";
+import { emitDeviceUpdated, emitToHome } from "../lib/socket";
 import { createNotification } from "./notification.service";
 import { fileLog } from "../lib/logger";
 
@@ -105,7 +105,7 @@ async function checkOfflineDevicesInner(): Promise<void> {
     if (!wasOnline) continue; // already flagged
 
     await prisma.device.update({ where: { id: device.id }, data: { offline: true } });
-    emitToHome(device.homeId, "device:updated", { id: device.id, offline: true });
+    await emitDeviceUpdated(device.homeId, device.id);
 
     const targetIds = device.home.members.map((m) => m.userId);
     for (const userId of targetIds) {
@@ -128,7 +128,7 @@ async function checkOfflineDevicesInner(): Promise<void> {
 
   for (const device of backOnline) {
     await prisma.device.update({ where: { id: device.id }, data: { offline: false } });
-    emitToHome(device.homeId, "device:updated", { id: device.id, offline: false });
+    await emitDeviceUpdated(device.homeId, device.id);
     for (const userId of device.home.members.map((m) => m.userId)) {
       await createNotification(userId, {
         category: "device",

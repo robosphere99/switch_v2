@@ -1,7 +1,7 @@
 import type { ApiKey, DeviceStatus, Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { AppError } from "../lib/response";
-import { emitToHome } from "../lib/socket";
+import { emitDeviceUpdated, emitToHome } from "../lib/socket";
 
 /** The home a device API key is scoped to. */
 function homeScope(key: ApiKey): number {
@@ -25,7 +25,7 @@ export async function readAll(key: ApiKey) {
   if (result?.count) {
     const offlineDevices = devices.filter((d) => d.offline);
     for (const d of offlineDevices) {
-      emitToHome(homeId, "device:updated", { id: d.id, offline: false, lastSeen: new Date().toISOString() });
+      await emitDeviceUpdated(homeId, d.id);
     }
   }
   return devices;
@@ -59,7 +59,7 @@ export async function updateFromDevice(key: ApiKey, deviceId: number, status: De
   ]);
 
   const updated = await prisma.device.findUnique({ where: { id: deviceId } });
-  if (updated) emitToHome(homeId, "device:updated", updated);
+  if (updated) await emitDeviceUpdated(homeId, updated.id);
   return updated;
 }
 
@@ -88,7 +88,7 @@ export async function reportOtaProgress(
     where: { id: device.id },
     data: { otaProgress: progress, otaStatus: status, lastSeen: new Date(), offline: false },
   });
-  emitToHome(homeId, "device:updated", updated);
+  await emitDeviceUpdated(homeId, updated.id);
   return { progress, status };
 }
 
@@ -208,7 +208,7 @@ export async function heartbeat(
 
   const updated = await prisma.device.update({ where: { id: device.id }, data });
   if (device.offline) {
-    emitToHome(homeId, "device:updated", updated);
+    await emitDeviceUpdated(homeId, updated.id);
   }
 
   // Relay state sync — the ESP's physical relays are the source of truth.
@@ -243,7 +243,7 @@ export async function heartbeat(
       if (res.count > 0) {
         synced++;
         controlledIds.push(st.id);
-        emitToHome(homeId, "device:updated", { id: st.id, status: st.status });
+        await emitDeviceUpdated(homeId, st.id);
       }
     }
   }

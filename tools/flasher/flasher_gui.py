@@ -111,11 +111,18 @@ class FlasherApp:
         self.cur_order_no = ""       # display ke liye
         self.provision_data = {}     # fetched order ka data (WiFi + apiKey)
         self.generated_serials = []  # is order me pehle se generate serials
+        self.order_models = []       # fetched order ke available models (dropdown sirf yehi dikhaye)
+        self.board_index = 0         # order me kaunsa board (hotspot naam ka _N suffix)
+        self.monitor_on = False      # serial monitor inline toggle (on/off)
+        self.mon_ser = None          # monitor ke liye serial connection
+        self.mon_stop = None         # threading.Event — reader stop ke liye
+        self.mon_q = None            # queue.Queue — serial chunks
 
         # Startup dep auto-check — UI se pehle taaki banner bana sake
         self.missing_deps = check_deps()
 
         self._build_ui()
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         self._log("RoboSphere Factory Flasher ready.")
         if self.missing_deps:
             self._log(
@@ -222,15 +229,16 @@ class FlasherApp:
         self.l_orderinfo = ttk.Label(row, text="", foreground="#7ee787")
         self.l_orderinfo.grid(row=0, column=3, columnspan=4, padx=8, sticky="w")
 
-        ttk.Label(row, text="Serial code").grid(row=1, column=0, sticky="w", pady=2)
-        self.e_serial = ttk.Entry(row, width=22)
-        self.e_serial.grid(row=1, column=1, padx=4, pady=2, sticky="ew")
-        self.b_gen = ttk.Button(row, text="Generate", command=self.gen_serial)
-        self.b_gen.grid(row=1, column=2, padx=4, pady=2)
-        ttk.Label(row, text="Model").grid(row=1, column=3, sticky="w", pady=2, padx=(12, 0))
+        # Layout: Model LEFT, Serial + Generate RIGHT (order ke devices ke hisaab se)
+        ttk.Label(row, text="Model").grid(row=1, column=0, sticky="w", pady=2)
         self.cb_model = ttk.Combobox(row, values=MODELS, width=8, state="readonly")
         self.cb_model.set("4CH")
-        self.cb_model.grid(row=1, column=4, padx=4, pady=2)
+        self.cb_model.grid(row=1, column=1, padx=4, pady=2)
+        ttk.Label(row, text="Serial code").grid(row=1, column=2, sticky="w", pady=2, padx=(12, 0))
+        self.e_serial = ttk.Entry(row, width=22)
+        self.e_serial.grid(row=1, column=3, padx=4, pady=2, sticky="ew")
+        self.b_gen = ttk.Button(row, text="Generate", command=self.gen_serial)
+        self.b_gen.grid(row=1, column=4, padx=4, pady=2)
 
         ttk.Label(row, text="WiFi SSID").grid(row=2, column=0, sticky="w", pady=2)
         self.e_ssid = ttk.Entry(row, width=16)
@@ -260,15 +268,37 @@ class FlasherApp:
         self.b_prov.grid(row=0, column=4, padx=6)
         self.b_mark = ttk.Button(row, text="3 · Mark Tested", command=self.do_mark)
         self.b_mark.grid(row=0, column=5, padx=6)
+        self.b_monitor = ttk.Button(row, text="🔍 Serial Monitor", command=self.toggle_monitor)
+        self.b_monitor.grid(row=0, column=6, padx=6)
         self.b_next = ttk.Button(row, text="Next Board ▸", command=self.do_next)
-        self.b_next.grid(row=0, column=6, padx=6)
+        self.b_next.grid(row=0, column=7, padx=6)
         self.l_prog = ttk.Label(row, text="Idle", foreground="orange")
-        self.l_prog.grid(row=0, column=7, padx=8)
+        self.l_prog.grid(row=0, column=8, padx=8)
+
+        # Row 3b — serial monitor (inline, toggle se show/hide — alag window nahi)
+        self.mon_frame = ttk.LabelFrame(f, text=" Serial Monitor ", padding=8)
+        self.mon_out = scrolledtext.ScrolledText(self.mon_frame, height=8, bg="#010409", fg="#e6edf3",
+                                                 insertbackground="#e6edf3", relief="flat",
+                                                 font=("Consolas", 10))
+        self.mon_out.pack(fill="both", expand=True)
+        self.mon_out.tag_configure("ok", foreground="#7ee787")
+        self.mon_out.tag_configure("err", foreground="#ff7b72")
+        mbar = ttk.Frame(self.mon_frame)
+        mbar.pack(fill="x", pady=(6, 0))
+        self.l_mon_state = ttk.Label(mbar, text="", style="Muted.TLabel")
+        self.l_mon_state.pack(side="left")
+        self.mon_cmd = ttk.Entry(mbar)
+        self.mon_cmd.pack(side="left", fill="x", expand=True, padx=8)
+        self.mon_cmd.bind("<Return>", lambda e: self.mon_send())
+        ttk.Button(mbar, text="Send", command=self.mon_send).pack(side="left", padx=2)
+        ttk.Button(mbar, text="Clear", command=self.mon_clear).pack(side="left", padx=2)
+        self.mon_frame.grid(row=3, column=0, sticky="nsew", **pad)
+        self.mon_frame.grid_remove()
 
         # Row 4 — log (resize pe expand)
         row = ttk.LabelFrame(f, text=" Log ", padding=8)
-        row.grid(row=3, column=0, sticky="nsew", **pad)
-        f.rowconfigure(3, weight=1)
+        row.grid(row=4, column=0, sticky="nsew", **pad)
+        f.rowconfigure(4, weight=1)
         self.log = scrolledtext.ScrolledText(row, height=12, bg="#010409", fg="#e6edf3",
                                              insertbackground="#e6edf3", relief="flat",
                                              font=("Consolas", 10))
@@ -279,7 +309,7 @@ class FlasherApp:
         self.log.tag_configure("info", foreground="#58a6ff")
 
         ttk.Label(f, text="Flow: 1) Flash  →  2) Provision + Relay test  →  3) Mark tested  →  Next board",
-                  style="Muted.TLabel").grid(row=4, column=0, sticky="w", padx=8, pady=(0, 2))
+                  style="Muted.TLabel").grid(row=5, column=0, sticky="w", padx=8, pady=(0, 2))
 
     # ---------------- helpers ----------------
 
@@ -301,7 +331,8 @@ class FlasherApp:
     def set_busy(self, busy: bool):
         self.busy = busy
         self.l_prog.config(text="Busy…" if busy else "Idle", foreground="orange" if busy else "#7ee787")
-        for b in (self.b_flash, self.b_prov, self.b_mark, self.b_next, self.b_fetch, self.b_login):
+        for b in (self.b_flash, self.b_prov, self.b_mark, self.b_next, self.b_monitor,
+                  self.b_fetch, self.b_login):
             b.config(state="disabled" if busy else "normal")
 
     def refresh_ports(self):
@@ -418,6 +449,29 @@ class FlasherApp:
         except Exception as e:
             self._log(f"Serial generate FAIL: {e}", "err")
 
+    def _gen_apikey_worker(self):
+        """Order fetch pe API key nahi mili (buyer ka home nahi) to server pe
+        create karo — userId/homeId pe permanently bind hota hai."""
+        try:
+            data = self.provision_data or {}
+            uid = (data.get("user") or {}).get("id")
+            if not uid:
+                raise RuntimeError("order me user nahi mila")
+            kd = self.api("POST", "/api/admin/api-keys", json={
+                "userId": uid,
+                "label": f"factory-order-{self.cur_order_no or self.cur_order_id}",
+            })
+            plain = (kd or {}).get("apiKey") or ""
+            if not plain:
+                raise RuntimeError("server ne API key wapas nahi bheja")
+            self.provision_data["apiKey"] = plain
+            self.root.after(0, lambda k=plain: (self.e_apikey.delete(0, "end"),
+                                                self.e_apikey.insert(0, k),
+                                                self.l_prog.config(text="API key ✓", foreground="#7ee787")))
+            self._log(f"API key generated (server): {plain[:8]}… — user se bind", "ok")
+        except Exception as e:
+            self._log(f"API key generate FAIL: {e}", "err")
+
     def do_fetch(self):
         if self.busy:
             return
@@ -446,6 +500,15 @@ class FlasherApp:
                 self.cur_order_no = data.get("orderNumber") or ""
                 self.generated_serials = []
                 boards = len(self.order_items)
+                self.board_index = 1  # pehla board
+                # Model dropdown me sirf order ke available devices (puri MODELS list nahi)
+                models = []
+                for it in self.order_items:
+                    m = it.get("modelCode")
+                    if m and m not in models:
+                        models.append(m)
+                self.order_models = models
+                self.root.after(0, lambda ms=models: self.cb_model.configure(values=ms or MODELS))
                 self._fill_item(self.order_items[0])
                 self.root.after(0, lambda d=data, n=boards: self.l_orderinfo.config(
                     text=f"#{d['orderNumber']} · buyer {d['user']['username']} · {n} board(s) · {d['status']}"))
@@ -468,12 +531,23 @@ class FlasherApp:
         self.e_ssid.delete(0, "end")
         if data.get("wifiSsid"):
             self.e_ssid.insert(0, data["wifiSsid"])
+        else:
+            # Order-time WiFi nahi diya → default factory WiFi auto-fill
+            self.e_ssid.insert(0, "Robo_lab")
+            self._log("WiFi order me nahi tha — default 'Robo_lab' auto-fill", "info")
         self.e_wpass.delete(0, "end")
         if data.get("wifiPassword"):
             self.e_wpass.insert(0, data["wifiPassword"])
+        else:
+            self.e_wpass.insert(0, "Robosphere")
+            self._log("WiFi pass order me nahi tha — default 'Robosphere' auto-fill", "info")
         self.e_apikey.delete(0, "end")
         if data.get("apiKey"):
             self.e_apikey.insert(0, data["apiKey"])
+        elif self.cur_order_id:
+            # Order me key nahi mili (buyer ka home nahi) → GUI me hi generate + server pe create
+            self._log("API key order me nahi mila — server se generate ho raha hai…", "info")
+            threading.Thread(target=self._gen_apikey_worker, daemon=True).start()
         self.cur_serial = item.get("serialCode") or ""
         # Har naye board ke liye fresh serial server se (order-linked).
         # Item serialCode pehla serial hi dikhata hai — jo pehle generate ho
@@ -491,6 +565,7 @@ class FlasherApp:
             self._log("Queue khali hai — pehle order fetch karo (ya manual bharo)", "warn")
             return
         self.order_items.pop(0)
+        self.board_index += 1  # agla board (hotspot _N suffix)
         if self.order_items:
             self._fill_item(self.order_items[0])
             left = len(self.order_items)
@@ -551,12 +626,58 @@ class FlasherApp:
     def do_flash(self):
         if self.busy:
             return
+        if self.monitor_on:
+            messagebox.showwarning("Serial Monitor",
+                                   "Serial Monitor ON hai — Close Serial Monitor dabao, phir Flash karo (port busy hai)")
+            return
         if requests is None:
             self._log(f"Flash disabled — requests missing. Install: {INSTALL_CMD}", "err")
+            return
+        model_confirm = self.cb_model.get().strip()
+        serial_now = self.e_serial.get().strip()
+        apikey_now = self.e_apikey.get().strip()
+        order_no = self.cur_order_no or self.e_order.get().strip()
+        if not messagebox.askyesno(
+            "Confirm Board — Flash",
+            f"Are you sure yeh {model_confirm} board hai?\n\n"
+            f"Order  : {order_no}\n"
+            f"Model  : {model_confirm}\n"
+            f"Serial : {serial_now or '(khali — flash se pehle generate + bind hoga)'}\n"
+            f"API key: {apikey_now[:12] + '…' if apikey_now else '(khali — flash se pehle create + bind hoga)'}\n\n"
+            "OK pe serial + API key is order ke user se permanently bind ho jayega, phir flash shuru hoga.",
+        ):
+            self._log("Flash cancelled (confirmation me No)", "warn")
             return
         self.set_busy(True)
         def work():
             try:
+                # Permanent bind — serial + API key order ke user se (confirm ke baad)
+                if not serial_now and self.cur_order_id:
+                    self._log("Serial khali — server se generate + order se bind ho raha hai…", "info")
+                    sd = self.api("POST", f"/api/admin/orders/{self.cur_order_id}/serials/generate")
+                    code = (sd or {}).get("serialCode")
+                    if code:
+                        serial_now = code
+                        self.root.after(0, lambda c=code: (self.e_serial.delete(0, "end"), self.e_serial.insert(0, c)))
+                        self._log(f"Serial bound: {code}", "ok")
+                if not serial_now:
+                    raise RuntimeError("Serial code required — generate nahi hua, flash roka gaya")
+                if not apikey_now:
+                    uid = (self.provision_data or {}).get("user", {}).get("id")
+                    if uid:
+                        self._log("API key khali — server pe create + user se bind ho raha hai…", "info")
+                        kd = self.api("POST", "/api/admin/api-keys", json={
+                            "userId": uid,
+                            "label": f"factory-order-{order_no or self.cur_order_id}",
+                        })
+                        plain = (kd or {}).get("apiKey")
+                        if plain:
+                            apikey_now = plain
+                            self.root.after(0, lambda k=plain: (self.e_apikey.delete(0, "end"), self.e_apikey.insert(0, k)))
+                            self._log(f"API key bound: {plain[:8]}…", "ok")
+                if not apikey_now:
+                    raise RuntimeError("API key required — create nahi hua, flash roka gaya")
+                self._log(f"BIND ok — serial {serial_now[:14]}… · api key {apikey_now[:8]}…", "ok")
                 port = self._com()
                 # Model-specific file pehle try karo (firmware-4ch.bin), fallback firmware.bin
                 model = self.cb_model.get().strip().lower()
@@ -643,6 +764,10 @@ class FlasherApp:
                 return buf
         return buf
 
+    # Firmware banner — v1 me "Robosphere", naye firmware me "SwitchNest".
+    # Dono accept karo taaki purane + naye dono builds provision ho sakein.
+    FIRMWARE_BANNERS = ("Robosphere IoT Firmware", "SwitchNest IoT Firmware")
+
     def _wait_banner(self, timeout=20):
         deadline = time.time() + timeout
         buf = ""
@@ -650,12 +775,56 @@ class FlasherApp:
             chunk = self.ser.read(256).decode(errors="replace")
             if chunk:
                 buf += chunk
-            if "Robosphere IoT Firmware" in buf:
+            if any(b in buf for b in self.FIRMWARE_BANNERS):
                 return buf
         return buf
 
+    def _verify_hotspot(self, expected_name, expected_password, timeout=6):
+        """Factory quality check — board ka saved AP naam/password sticker ke
+        hotspot naam se match hona chahiye (config export parse karke).
+        Export mila nahi (purana firmware) → WARN; mismatch → FAIL (quality gate)."""
+        self.ser.reset_input_buffer()
+        self.ser.write(b"export\n")
+        self._log("> export  (hotspot verify)", "info")
+        deadline = time.time() + timeout
+        buf = ""
+        while time.time() < deadline:
+            chunk = self.ser.read(256).decode(errors="replace")
+            if chunk:
+                buf += chunk
+            if "CONFIG EXPORT END" in buf:
+                break
+        m = re.search(r"CONFIG EXPORT\s*=+(.*?)CONFIG EXPORT END", buf, re.S)
+        if not m:
+            self._log("Hotspot verify: export response nahi mila — purana firmware ho sakta hai (skip, manual monitor se check karo)", "warn")
+            return False
+        body = m.group(1).strip()
+        start, end = body.find("{"), body.rfind("}")
+        if start < 0 or end <= start:
+            self._log("Hotspot verify: export me JSON nahi mila — skip", "warn")
+            return False
+        try:
+            cfg = json.loads(body[start:end + 1])
+        except Exception as e:
+            self._log(f"Hotspot verify: export parse fail ({e}) — skip", "warn")
+            return False
+        ap = cfg.get("ap") or {}
+        got_name = (ap.get("name") or "").strip()
+        got_pass = (ap.get("password") or "").strip()
+        if got_name != expected_name or got_pass != expected_password:
+            raise RuntimeError(
+                "Hotspot MISMATCH — board: '%s' / '%s…', expected: '%s' / '%s…'"
+                % (got_name, got_pass[:4], expected_name, expected_password[:4])
+            )
+        self._log(f"Hotspot verify OK — AP '{got_name}' sticker se match ✓ (password = serial)", "ok")
+        return True
+
     def do_provision(self):
         if self.busy:
+            return
+        if self.monitor_on:
+            messagebox.showwarning("Serial Monitor",
+                                   "Serial Monitor ON hai — Close Serial Monitor dabao, phir Provision karo (port busy hai)")
             return
         if serial is None:
             messagebox.showerror("pyserial", "pip install pyserial")
@@ -684,18 +853,44 @@ class FlasherApp:
                 self._open_ser()
                 self._log("Waiting for board…", "info")
                 banner = self._wait_banner(25)
-                if "Robosphere IoT Firmware" not in banner:
-                    raise RuntimeError("Board nahi mila — firmware flashed hai? Cable/baud check karo")
+                if not any(b in banner for b in self.FIRMWARE_BANNERS):
+                    raise RuntimeError(
+                        "Board nahi mila — firmware flashed hai? Cable/baud check karo"
+                        + (f" (serial pe: {banner[-80:]!r})" if banner.strip() else "")
+                    )
                 self._log("Board detected ✓", "ok")
 
                 r = self._send_cmd(f"setwifi {ssid} {wpass}")
                 self._check_ok(r, "setwifi")
                 r = self._send_cmd(f"setserver {esp_url} {apikey}")
                 self._check_ok(r, "setserver")
+
+                # Hotspot naming: UserName_OrderID-last-letters (+ _N agar order
+                # me multiple devices) — sticker ke naam se match. Password = serial key.
+                username = (self.provision_data or {}).get("user", {}).get("username", "")
+                order_no = self.cur_order_no or ""
+                hotspot = ""
+                if username and order_no:
+                    hotspot = f"{username}_{order_no[-6:]}"
+                    if len(self.order_items) > 1:
+                        hotspot += f"_{self.board_index}"
+                if not hotspot and serial_code:
+                    hotspot = f"SwitchNest-{serial_code}"
+                if hotspot:
+                    r = self._send_cmd(f"setapname {hotspot}")
+                    self._check_ok(r, "setapname")
+                    self._log(f"Hotspot: {hotspot} (password = serial key)", "info")
+                r = self._send_cmd(f"setappass {serial_code}")
+                self._check_ok(r, "setappass")
+
                 r = self._send_cmd(f"setserial {serial_code}")
                 self._check_ok(r, "setserial")
                 r = self._send_cmd(f"setmodel {model}")
                 self._check_ok(r, "setmodel")
+
+                # Factory quality check: board ka saved hotspot sticker se match
+                # (export JSON parse — naam + password dono verify, mismatch = FAIL).
+                self._verify_hotspot(hotspot, serial_code)
 
                 # relay self-test — board jaldi reboot kare isse pehle
                 self._log("Relay self-test…", "info")
@@ -744,6 +939,105 @@ class FlasherApp:
             finally:
                 self.root.after(0, lambda: self.set_busy(False))
         threading.Thread(target=work, daemon=True).start()
+
+    # ---------------- serial monitor (inline toggle) ----------------
+
+    def toggle_monitor(self):
+        """Serial Monitor on/off — button hi toggle hai. ON pe output niche
+        panel me dikhta hai aur button 'Close Serial Monitor' ban jata hai."""
+        if self.busy:
+            return
+        if self.monitor_on:
+            self.stop_monitor()
+        else:
+            self.start_monitor()
+
+    def start_monitor(self):
+        if serial is None:
+            messagebox.showerror("pyserial", "Serial monitor ke liye pyserial chahiye.\n\npip install pyserial")
+            return
+        port = self.cb_port.get().strip()
+        if not port:
+            messagebox.showwarning("COM port", "Pehle COM port choose karo (⟳ se refresh)")
+            return
+        try:
+            self.mon_ser = serial.Serial(port, BAUD, timeout=0.3)
+            self.mon_ser.reset_input_buffer()
+        except Exception as e:
+            self._log(f"Serial monitor FAIL ({port}): {e}", "err")
+            return
+        self.monitor_on = True
+        self.mon_stop = threading.Event()
+        self.mon_q = queue.Queue()
+        self.b_monitor.config(text="⏹ Close Serial Monitor")
+        self.l_mon_state.config(text=f"● {port} @ {BAUD} — live", foreground="#7ee787")
+        self.mon_frame.grid()
+        self.mon_out.delete("1.0", "end")
+        self._mon_write(f"[monitor] {port} @ {BAUD} open — board ka output yahan aayega.\n")
+        self._mon_write("[monitor] Board pe RESET dabao (boot logs: AP SSID / AP IP / IP) ya niche command bhejo (e.g. help).\n", "ok")
+        self._log(f"Serial monitor ON — {port} @ {BAUD}", "ok")
+        threading.Thread(target=self._mon_reader, daemon=True).start()
+        self.root.after(100, self._drain_mon)
+
+    def stop_monitor(self):
+        self.monitor_on = False
+        if self.mon_stop:
+            self.mon_stop.set()
+        if self.mon_ser:
+            try:
+                self.mon_ser.close()
+            except Exception:
+                pass
+            self.mon_ser = None
+        self.b_monitor.config(text="🔍 Serial Monitor")
+        self.l_mon_state.config(text="")
+        self.mon_frame.grid_remove()
+        self._log("Serial monitor OFF — port release", "info")
+
+    def _mon_write(self, text, tag=None):
+        self.mon_out.insert("end", text, tag or ())
+        self.mon_out.see("end")
+
+    def _mon_reader(self):
+        while not self.mon_stop.is_set():
+            try:
+                chunk = self.mon_ser.read(256)
+                if chunk:
+                    self.mon_q.put(chunk.decode(errors="replace"))
+            except Exception as e:
+                self.mon_q.put(f"\n[monitor] read error: {e}\n")
+                break
+
+    def _drain_mon(self):
+        if not self.monitor_on:
+            return
+        try:
+            while True:
+                self._mon_write(self.mon_q.get_nowait())
+        except queue.Empty:
+            pass
+        self.root.after(100, self._drain_mon)
+
+    def mon_send(self):
+        if not self.monitor_on or self.mon_ser is None:
+            return
+        cmd = self.mon_cmd.get().strip()
+        if not cmd:
+            return
+        self.mon_cmd.delete(0, "end")
+        try:
+            self.mon_ser.write((cmd + "\n").encode())
+            self._mon_write(f"\n> {cmd}\n", "ok")
+        except Exception as e:
+            self._mon_write(f"\n[monitor] send fail: {e}\n", "err")
+
+    def mon_clear(self):
+        self.mon_out.delete("1.0", "end")
+
+    def on_close(self):
+        """App band karte waqt monitor port bhi release karo (koi zombie nahi)."""
+        self.stop_monitor()
+        self.root.destroy()
 
 
 def main():

@@ -2,7 +2,7 @@ import type { DeviceStatus, DeviceType } from "@robosphere/shared";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { AppError } from "../lib/response";
-import { emitToHome } from "../lib/socket";
+import { emitDeviceUpdated, emitToHome } from "../lib/socket";
 import { audit } from "./audit.service";
 import { createNotification } from "./notification.service";
 import { resolveFirmware } from "./firmware.service";
@@ -124,7 +124,7 @@ export async function setDeviceStatus(input: {
   ]);
 
   const updated = await prisma.device.findUnique({ where: { id: device.id } });
-  if (updated) emitToHome(input.homeId, "device:updated", updated);
+  if (updated) await emitDeviceUpdated(input.homeId, updated.id);
   return updated;
 }
 
@@ -192,7 +192,7 @@ export async function bulkSetStatus(input: {
   const updated = await prisma.device.findMany({
     where: { id: { in: devices.map((d) => d.id) }, homeId: input.homeId },
   });
-  for (const d of updated) emitToHome(input.homeId, "device:updated", d);
+  for (const d of updated) await emitDeviceUpdated(input.homeId, d.id);
   return updated;
 }
 
@@ -382,7 +382,7 @@ export async function requestOta(homeId: number, deviceId: number, actorId: numb
       });
     }
   }
-  emitToHome(homeId, "device:updated", { id: deviceId });
+  await emitDeviceUpdated(homeId, deviceId);
 
   return {
     deviceId,

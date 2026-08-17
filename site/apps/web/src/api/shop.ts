@@ -56,6 +56,29 @@ export interface SerialRow {
   createdAt: string;
   claimedAt: string | null;
   product: { id: number; name: string; modelCode: string };
+  user?: { id: number; username: string; email: string } | null;
+  order?: { id: number; orderNumber: string; status: string } | null;
+  orderIdx?: number;   // order ke andar device number (1-based) — sticker hotspot ke liye
+  orderTotal?: number; // order me total serials
+}
+
+export interface SerialDetail {
+  id: number;
+  serialCode: string;
+  productId: number;
+  orderId: number | null;
+  userId: number | null;
+  homeId: number | null;
+  status: string;
+  createdAt: string;
+  claimedAt: string | null;
+  testedAt: string | null;
+  warrantyExpiresAt: string | null;
+  warrantyStatus: string;
+  product: { id: number; name: string; modelCode: string };
+  user?: { id: number; username: string; email: string } | null;
+  order?: { id: number; orderNumber: string; status: string } | null;
+  home?: { id: number; name: string } | null;
 }
 
 // ---------- Shop (public) ----------
@@ -135,6 +158,11 @@ export async function getAdminOrders(): Promise<Order[]> {
   return data.data;
 }
 
+export async function getAdminOrder(id: number): Promise<Order> {
+  const { data } = await api.get(`/admin/orders/${id}`);
+  return data.data;
+}
+
 export async function updateOrderStatus(id: number, status: string): Promise<Order> {
   const { data } = await api.patch(`/admin/orders/${id}/status`, { status });
   return data.data;
@@ -151,6 +179,11 @@ export async function getSerials(filters?: { status?: string; productId?: number
 
 export async function generateSerials(productId: number, count: number): Promise<{ generated: number; codes: string[] }> {
   const { data } = await api.post("/admin/serials/generate", { productId, count });
+  return data.data;
+}
+
+export async function getSerialDetail(serialCode: string): Promise<SerialDetail> {
+  const { data } = await api.get(`/admin/serials/${encodeURIComponent(serialCode)}`);
   return data.data;
 }
 

@@ -79,6 +79,16 @@ Followed the roadmap in `ROADMAP.md`:
   written on every action.
 - **Phase 5 — Timers & Scheduler (DONE):** Schedule CRUD (`once/daily/weekly/cron` +
   custom 5-field cron), 10s background worker, next-run computation, UI verified.
+- **Phase 4 — Realtime (DONE):** Socket.IO (auth, per-home rooms, `socket:ready` ack),
+  uniform `device:updated` DTO via shared `REALTIME_EVENTS` types (12 emit points
+  migrated), web `useRealtime` hook (query invalidate / access-revoked / reconnect
+  refresh), polling relaxed to 15s/20s, live <2s toggle updates verified.
+- **Phase 6 — Rooms/Notifications/Analytics (PARTIAL):** rooms (grouping + bulk on/off)
+  ✅ · offline detection → in-app notifications (boards root-cause, summary) ✅ ·
+  **usage analytics** ✅ — `GET /api/homes/:homeId/analytics/usage?days=7|30|90`
+  (toggles/day 0-filled, per-device on-time from ON→OFF pairing, per-member activity)
+  + Dashboard 📊 Usage modal (div-based bar chart, no new deps). Baaki: email channel,
+  offline batching.
 - **Ops/infra (DONE along the way):**
   - Install wizard (DB connect → schema → admin account → .env persist)
   - Health Monitor (30s self-check, outage detection, incident history)
@@ -166,12 +176,11 @@ Sabse naye 20 commits:
 
 From `ROADMAP.md` (build order — each phase is a working milestone):
 
-1. **Phase 4 — Realtime:** WebSocket (Socket.IO) pushes device status → kill the 5s/10s
-   polling. `device_commands` + `device_logs` become fully real ("who toggled it" via
-   `actor_id`).
-2. **Phase 6 — Rooms, Notifications & Analytics:** room grouping + bulk on/off; offline
-   detection → notifications (in-app now, email later); usage analytics from
-   `device_logs` (on-time per device, toggles per day/member).
+1. ~~**Phase 4 — Realtime:** Socket.IO push → polling fallback~~ **DONE** (v1.1 polish
+   baaki: admin live devices, "live" indicator dot).
+2. **Phase 6 — Rooms, Notifications & Analytics:** rooms + bulk on/off ✅, offline →
+   notifications ✅, usage analytics ✅ (Dashboard 📊 Usage). **Baaki:** email
+   notification channel, offline batching (power-cut summary).
 3. **Phase 7 — AI Assist Mode:** natural-language control ("turn off all fans" → confirm →
    execute); suggested automations from usage history; **modular `ai` service** with a
    swappable provider interface (OpenAI / Gemini / local Ollama); chat history in
@@ -202,6 +211,11 @@ From `ROADMAP.md` (build order — each phase is a working milestone):
 | `START_GUIDE.md` | Full local setup (XAMPP, firmware, flasher) |
 | `PROJECT_ANALYSIS.md` | Deep analysis of the legacy PHP v1 |
 | `TESTING.md` | Verification checklist for recent fixes |
+| `docs/DEMO-WALKTHROUGH.md` | Full demo video script — order→flash→OTA, field-by-field (demo video banane ke liye) |
+| `docs/FACTORY-FLOW-V2.md` | Factory/order flow v2 spec — payment→flash→sticker→delivery improvements (proposed) |
+| `docs/IDEAS-BACKLOG.md` | Suggestions backlog — jo ideas review ke liye accumulate hote hain |
+| `docs/PHASE4-REALTIME.md` | Phase 4 (Socket.IO) implementation plan + status |
+| `docs/COURIER-TRACKING-PLAN.md` | Shiprocket/DTDC/Bluedart integration plan (AWB/webhook/polling) |
 | `site/apps/api/src/index.ts` | App bootstrap: boot, heartbeat, DB init, services |
 | `site/apps/api/src/lib/leakMonitor.ts` | Leak detection (recently fixed) |
 | `site/apps/api/src/lib/envPersist.ts` | .env write helper (password sync) |

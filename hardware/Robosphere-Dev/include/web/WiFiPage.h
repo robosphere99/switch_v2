@@ -4,5 +4,7 @@
 
 String WiFiPage(
     const String &currentSSID,
-    const String &networkOptions
+    const String &networkOptions,
+    const String &currentAPName,
+    const String &currentAPPassword
 );

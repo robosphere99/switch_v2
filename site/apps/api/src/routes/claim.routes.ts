@@ -53,7 +53,10 @@ claimRouter.post("/", async (req, res) => {
   if (!serial) throw new AppError("NOT_FOUND", "Unknown serial code — check the sticker on the box");
 
   if (serial.status === "claimed") {
-    throw new AppError("CONFLICT", `This device was already activated by ${serial.userId ? "another user" : "someone"}`);
+    if (serial.userId === req.user!.sub) {
+      throw new AppError("CONFLICT", "This device is already activated in your home — check your Devices/Boards");
+    }
+    throw new AppError("CONFLICT", "This device was already activated by another user");
   }
   if (!["delivered", "shipped"].includes(serial.status)) {
     throw new AppError("CONFLICT", `This device is not yet ready to activate (status: ${serial.status})`);

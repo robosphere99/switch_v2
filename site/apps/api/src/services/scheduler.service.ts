@@ -1,7 +1,7 @@
 import { prisma } from "../lib/prisma";
 import { computeNextRun } from "./schedule.service";
 import { audit } from "./audit.service";
-import { emitToHome } from "../lib/socket";
+import { emitDeviceUpdated } from "../lib/socket";
 import { createNotification } from "./notification.service";
 import { fileLog } from "../lib/logger";
 
@@ -111,11 +111,7 @@ async function fireSchedule(scheduleId: number): Promise<void> {
     meta: { deviceId: sched.device.id, deviceName: sched.device.name, action: sched.action },
   });
 
-  emitToHome(sched.device.homeId, "device:updated", {
-    id: sched.device.id,
-    status: sched.action,
-    via: "schedule",
-  });
+  await emitDeviceUpdated(sched.device.homeId, sched.device.id);
 
   if (sched.createdBy) {
     await createNotification(sched.createdBy, {

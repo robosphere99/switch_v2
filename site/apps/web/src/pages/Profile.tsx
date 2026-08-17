@@ -77,6 +77,13 @@ export function Profile() {
         <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-gray-500">
           Account details
         </h2>
+        <div className="mb-4 flex items-center justify-between rounded-lg border border-brand/20 bg-night-900 px-3 py-2.5">
+          <div>
+            <div className="text-xs font-semibold uppercase text-gray-500">User ID</div>
+            <div className="text-xs text-gray-600">Support ko yeh ID batao — account turant milega</div>
+          </div>
+          <div className="rounded bg-brand/10 px-2.5 py-1 font-mono text-sm font-bold text-brand">#{user?.id ?? "—"}</div>
+        </div>
         <label className="mb-1 block text-xs font-semibold uppercase text-gray-500">Username</label>
         <input
           value={username}

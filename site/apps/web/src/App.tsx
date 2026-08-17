@@ -23,6 +23,7 @@ import { Checkout } from "./pages/Checkout";
 import { Orders } from "./pages/Orders";
 import { Activate } from "./pages/Activate";
 import { PrintSerials } from "./pages/PrintSerials";
+import { PrintBill } from "./pages/PrintBill";
 import { Warranty } from "./pages/Warranty";
 import { Support } from "./pages/Support";
 import { Install } from "./pages/Install";
@@ -202,6 +203,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <PrintSerials />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/bill/:orderId"
+            element={
+              <ProtectedRoute>
+                <PrintBill />
               </ProtectedRoute>
             }
           />

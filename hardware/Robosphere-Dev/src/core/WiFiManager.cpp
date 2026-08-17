@@ -63,6 +63,27 @@ static unsigned long apRetryDue = 0;
 
 namespace WiFiManager {
 
+// Effective AP credentials: saved (user/webserver se edit) → serial-derived
+// (SwitchNest-<serial> / serial key) → factory default. Serial ho to board ka
+// hotspot hamesha unique rehta hai (factory reset ke baad bhi).
+static void effectiveAPCreds(String &name, String &pass)
+{
+    if (name.isEmpty()) {
+        String serial = PreferencesManager::getSerialCode();
+        if (!serial.isEmpty())
+            name = "SwitchNest-" + serial;
+        else
+            name = DEFAULT_AP_SSID;
+    }
+    if (pass.isEmpty()) {
+        String serial = PreferencesManager::getSerialCode();
+        if (!serial.isEmpty())
+            pass = serial;
+        else
+            pass = DEFAULT_AP_PASSWORD;
+    }
+}
+
 // Dual-mode softAP — station connect/reconnect ke dauran bhi AP ON rakhta
 // hai (192.168.4.1). ensureDualAP() jaisa hi, par WiFi connected hona
 // zaroori nahi — isliye offline/local control hamesha reachable rehta hai.
@@ -71,11 +92,7 @@ static void startDualSoftAP()
     String apName = PreferencesManager::getAPName();
     String apPass = PreferencesManager::getAPPassword();
 
-    if (apName.isEmpty())
-        apName = DEFAULT_AP_SSID;
-
-    if (apPass.isEmpty())
-        apPass = DEFAULT_AP_PASSWORD;
+    effectiveAPCreds(apName, apPass);
 
     WiFi.mode(WIFI_AP_STA);
     WiFi.softAP(apName.c_str(), apPass.c_str());
@@ -194,15 +211,11 @@ void startAccessPoint() {
   }
 
   // Provisioning tool (tools/provision.py) se set kiya hua AP name/password
-  // prefer karo — factory default sirf tab jab kuch save nahi hai.
+  // prefer karo — serial-derived / factory default sirf tab jab kuch save nahi.
   String apName = PreferencesManager::getAPName();
   String apPass = PreferencesManager::getAPPassword();
 
-  if (apName.isEmpty())
-    apName = DEFAULT_AP_SSID;
-
-  if (apPass.isEmpty())
-    apPass = DEFAULT_AP_PASSWORD;
+  effectiveAPCreds(apName, apPass);
 
   WiFi.mode(WIFI_AP);
   WiFi.softAP(apName.c_str(), apPass.c_str());
@@ -399,8 +412,12 @@ String getAPSSID()
 
     String apName = PreferencesManager::getAPName();
 
-    if (apName.isEmpty())
+    if (apName.isEmpty()) {
+        String serial = PreferencesManager::getSerialCode();
+        if (!serial.isEmpty())
+            return "SwitchNest-" + serial;
         return DEFAULT_AP_SSID;
+    }
 
     return apName;
 }
