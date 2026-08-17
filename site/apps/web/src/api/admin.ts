@@ -409,10 +409,19 @@ export async function getAdminDiagnostics(): Promise<ApiResponse<AdminDiagnostic
   return data;
 }
 
+export interface DeploySync {
+  status: "synced" | "pending" | "lagging" | "unknown";
+  deployedCommit: string | null;
+  latestCommit: string | null;
+  ageMin: number | null;
+  since: string | null;
+}
+
 export interface DeployInfo {
   marker: { deployedAt?: string; commit?: string; branch?: string } | null;
   git: { commit: string; branch: string } | null;
   latest: { commit: string; branch: string; ts: string } | null;
+  sync: DeploySync | null;
   ci: {
     status: "pass" | "fail" | "pending" | "unknown";
     runId?: number;

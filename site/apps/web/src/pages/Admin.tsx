@@ -558,6 +558,20 @@ export function Admin() {
                   </span>
                 )}
               </div>
+              {deployInfo.data?.success && deployInfo.data.data.sync?.status === "lagging" && (
+                <div className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-600">
+                  ⚠️ <b>Deploy lagging</b> — main pe{" "}
+                  <span className="font-mono font-semibold">{deployInfo.data.data.sync.latestCommit?.slice(0, 7)}</span>{" "}
+                  {deployInfo.data.data.sync.ageMin !== null && `${deployInfo.data.data.sync.ageMin} min`} pehle push hua, par live site abhi bhi{" "}
+                  <span className="font-mono font-semibold">{deployInfo.data.data.sync.deployedCommit?.slice(0, 7)}</span> pe hai. Webhook delivery check karo — GitHub → Settings → Webhooks → Recent Deliveries → Redeliver.
+                </div>
+              )}
+              {deployInfo.data?.success && deployInfo.data.data.sync?.status === "pending" && (
+                <div className="mt-3 rounded-lg border border-blue-500/40 bg-blue-500/10 px-3 py-2 text-xs text-blue-400">
+                  ⏳ <b>Deploying…</b> latest commit{" "}
+                  <span className="font-mono font-semibold">{deployInfo.data.data.sync.latestCommit?.slice(0, 7)}</span> abhi push hua hai — auto-deploy live hone me ~1 min lagta hai.
+                </div>
+              )}
               {deployInfo.data?.success ? (
                 <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
                   <div>
@@ -566,7 +580,7 @@ export function Admin() {
                       {(deployInfo.data.data.git?.commit || deployInfo.data.data.marker?.commit || deployInfo.data.data.latest?.commit || "—").slice(0, 12)}
                       {deployInfo.data.data.git?.commit && deployInfo.data.data.marker?.commit && deployInfo.data.data.git.commit !== deployInfo.data.data.marker.commit
                         ? " ⚠️ mismatch"
-                        : deployInfo.data.data.marker?.commit && deployInfo.data.data.latest?.commit && deployInfo.data.data.marker.commit !== deployInfo.data.data.latest.commit
+                        : deployInfo.data.data.sync?.status === "lagging" && deployInfo.data.data.marker?.commit && deployInfo.data.data.latest?.commit && deployInfo.data.data.marker.commit !== deployInfo.data.data.latest.commit
                           ? " ⚠️ behind main"
                           : ""}
                     </p>
@@ -1500,6 +1514,20 @@ export function Admin() {
             {(deployInfo.data?.success || deployInfo.isFetching) && (
               <div className="mb-4 rounded-lg border border-emerald-500/30 bg-night-900 p-3">
                 <p className="mb-2 text-xs font-bold uppercase text-emerald-500">🚀 Last code update</p>
+                {deployInfo.data?.success && deployInfo.data.data.sync?.status === "lagging" && (
+                  <div className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-600">
+                    ⚠️ <b>Deploy lagging</b> — main pe{" "}
+                    <span className="font-mono font-semibold">{deployInfo.data.data.sync.latestCommit?.slice(0, 7)}</span>{" "}
+                    {deployInfo.data.data.sync.ageMin !== null && `${deployInfo.data.data.sync.ageMin} min`} pehle push hua, par live site abhi bhi{" "}
+                    <span className="font-mono font-semibold">{deployInfo.data.data.sync.deployedCommit?.slice(0, 7)}</span> pe hai. Webhook delivery check karo — GitHub → Settings → Webhooks → Recent Deliveries → Redeliver.
+                  </div>
+                )}
+                {deployInfo.data?.success && deployInfo.data.data.sync?.status === "pending" && (
+                  <div className="mt-2 rounded-lg border border-blue-500/40 bg-blue-500/10 px-3 py-2 text-xs text-blue-400">
+                    ⏳ <b>Deploying…</b> latest commit{" "}
+                    <span className="font-mono font-semibold">{deployInfo.data.data.sync.latestCommit?.slice(0, 7)}</span> abhi push hua hai — auto-deploy live hone me ~1 min lagta hai.
+                  </div>
+                )}
                 {deployInfo.data?.success ? (
                   <div className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
                     <div>
@@ -1516,7 +1544,7 @@ export function Admin() {
                         {(deployInfo.data.data.git?.commit || deployInfo.data.data.marker?.commit || deployInfo.data.data.latest?.commit || "—").slice(0, 12)}
                         {deployInfo.data.data.git?.commit && deployInfo.data.data.marker?.commit && deployInfo.data.data.git.commit !== deployInfo.data.data.marker.commit
                           ? " ⚠️ mismatch"
-                          : deployInfo.data.data.marker?.commit && deployInfo.data.data.latest?.commit && deployInfo.data.data.marker.commit !== deployInfo.data.data.latest.commit
+                          : deployInfo.data.data.sync?.status === "lagging" && deployInfo.data.data.marker?.commit && deployInfo.data.data.latest?.commit && deployInfo.data.data.marker.commit !== deployInfo.data.data.latest.commit
                             ? " ⚠️ behind main"
                             : ""}
                       </p>

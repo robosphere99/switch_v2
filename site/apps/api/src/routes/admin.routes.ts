@@ -901,10 +901,33 @@ adminRouter.get("/deploy-info", async (_req, res) => {
   const ciSha = git?.commit || marker?.commit || undefined;
   const ci = await fetchCiStatus(ciSha);
   const latest = await fetchLatestMain();
+
+  // Deploy sync health — main pe push hua par live site pe nahi pahuncha
+  // (lost webhook delivery / failed deploy) to yahan detect hota hai.
+  //   synced  : deployed commit == latest main commit
+  //   pending : naya commit hai par deploy window me (push 5 min se kam purana)
+  //   lagging : commit 5+ min purana hai aur abhi tak live nahi — action chahiye
+  //   unknown : deployed/latest dono nahi pata (GitHub fetch fail / marker missing)
+  const deployedCommit = git?.commit || marker?.commit || null;
+  const latestCommit = latest?.commit || null;
+  const latestTs = latest?.ts || null;
+  let syncStatus: "synced" | "pending" | "lagging" | "unknown" = "unknown";
+  let syncAgeMin: number | null = null;
+  if (deployedCommit && latestCommit && latestTs) {
+    syncAgeMin = Math.round((Date.now() - new Date(latestTs).getTime()) / 60_000);
+    syncStatus = deployedCommit === latestCommit ? "synced" : syncAgeMin > 5 ? "lagging" : "pending";
+  }
   ok(res, {
     marker,
     git,
     latest,
+    sync: {
+      status: syncStatus,
+      deployedCommit,
+      latestCommit,
+      ageMin: syncAgeMin,
+      since: latest?.ts || null,
+    },
     ci,
     processUptimeSec: Math.round(process.uptime()),
     startedAt: new Date(Date.now() - process.uptime() * 1000).toISOString(),
