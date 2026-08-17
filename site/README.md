@@ -86,6 +86,18 @@ git push origin main  →  GitHub webhook  →  Plesk pulls + deploys  →  site
   push `main` → Plesk auto-deploys.
 - **Verify** —
   - `GET /api/health` → `data.build` (e.g. `"2.2.0"`) live code version
-  - `GET /api/admin/deploy-info` (admin JWT) → `marker.deployedAt` + CI status
+  - `GET /api/admin/deploy-info` (admin JWT) → `marker.deployedAt` + `sync` status
+    (`synced` / `pending` / `lagging` / `unknown` — push live site pe nahi pahuncha
+    to panel me amber banner + Redeliver hint; 60s auto-refresh)
+  - Commit 3-layer fallback: marker (deploy-time SHA, `source` field) →
+    `dist/build-commit.json` (build-time, committed) → GitHub `latest` —
+    deploy.json wipe ho jaye to bhi card kabhi blank nahi
   - Server-side diagnosis: Plesk → Node.js → Run script → `diag` (npm script,
     `scripts/diag.cjs` — deploy layout, file lock, git state check)
+- **GITHUB_TOKEN (recommended)** — server ke unauthenticated GitHub API calls shared IP pe
+  60 req/hr rate-limit hote hain (`ci`/`latest`/marker → `unknown`). Plesk → Node.js →
+  Environment variables → `GITHUB_TOKEN` = PAT (repo scope) → Restart. Code token support
+  bhejta hai.
+- **Lost webhook delivery** — CI green par site purana = delivery lost. Fix: GitHub →
+  Settings → Webhooks → Recent Deliveries → **Redeliver**, ya empty-commit push
+  (`git commit --allow-empty -m "deploy: re-trigger" && git push origin main`).
