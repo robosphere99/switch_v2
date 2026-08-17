@@ -106,3 +106,8 @@ User ka order-to-delivery flow ka full vision — kya improve karna hai, kya imp
 - Admin routes: `admin.routes.ts` me order/provision/serial endpoints pe checks + notification calls
 - Flasher GUI: `tools/flasher/flasher_gui.py` — layout + confirm dialog + API key generate
 - Firmware: `hardware/Robosphere-Dev/src/main.cpp` (`setapname`/`setappass` already exist — default naming + factory-reset restore add karna hai)
+
+## Flasher Mode + Guide (localhost ↔ live site bhoolna band)
+- **Flasher GUI** Row 1 me **Mode** dropdown: `Live site` / `Localhost` — select karte hi Site URL (API) + ESP Server URL preset se fill hote hain (dono editable). `on_server_mode()`
+- **📖 Guide button** — browser me `/admin/flasher-guide` khulta hai (localhost pe web = `:5173`, live = site URL)
+- **Admin panel**: naya tab **Flasher Guide** + standalone route `/admin/flasher-guide` (`AdminFlasherGuide.tsx`) — dono modes ki values (creds, ESP server URL), field-by-field matlab, 7-step flow, hotspot naming rule + sticker print link

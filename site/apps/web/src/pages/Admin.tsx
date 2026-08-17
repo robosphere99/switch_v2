@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileText, Home, KeyRound, LayoutDashboard, Lightbulb, MessageSquare, RadioTower, ScrollText, Settings, ShoppingCart, Users, type LucideIcon } from "lucide-react";
+import { FileText, Home, KeyRound, LayoutDashboard, Lightbulb, MessageSquare, RadioTower, ScrollText, Settings, ShoppingCart, Users, Wrench, type LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
@@ -44,9 +44,10 @@ import { AdminShop } from "../components/AdminShop";
 import { AdminSupport } from "../components/AdminSupport";
 import { AdminSettings } from "../components/AdminSettings";
 import { SupportChatModal } from "../components/SupportChatModal";
+import { AdminFlasherGuide } from "../components/AdminFlasherGuide";
 import { getSocket } from "../lib/socket";
 
-type Tab = "overview" | "users" | "homes" | "devices" | "ota" | "shop" | "keys" | "audit" | "logs" | "support" | "settings";
+type Tab = "overview" | "users" | "homes" | "devices" | "ota" | "shop" | "keys" | "audit" | "logs" | "support" | "settings" | "flasher";
 
 const TABS: Array<{ id: Tab; label: string; icon: LucideIcon }> = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
@@ -61,6 +62,7 @@ const TABS: Array<{ id: Tab; label: string; icon: LucideIcon }> = [
   { id: "audit", label: "Audit Log", icon: ScrollText },
   { id: "logs", label: "Logs", icon: FileText },
   { id: "settings", label: "Settings", icon: Settings },
+  { id: "flasher", label: "Flasher Guide", icon: Wrench },
 ];
 
 function Badge({ children, color }: { children: React.ReactNode; color: string }) {
@@ -1967,6 +1969,8 @@ export function Admin() {
       )}
 
       {tab === "settings" && <AdminSettings />}
+
+      {tab === "flasher" && <AdminFlasherGuide />}
 
       {chatUser && (
         <SupportChatModal
