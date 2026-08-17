@@ -888,7 +888,7 @@ async function fetchLatestMain() {
 }
 
 adminRouter.get("/deploy-info", async (_req, res) => {
-  let marker: { deployedAt?: string; commit?: string; branch?: string } | null = null;
+  let marker: { deployedAt?: string; commit?: string; branch?: string; source?: string } | null = null;
   const markerPath = path.resolve(process.cwd(), "../logs/deploy.json");
   try {
     if (fs.existsSync(markerPath)) {
@@ -932,9 +932,13 @@ adminRouter.get("/deploy-info", async (_req, res) => {
   const deployedAt = marker?.deployedAt || build?.builtAt || null;
   const latestCommit = latest?.commit || null;
   const latestTs = latest?.ts || null;
+  // Marker source "build" = GitHub down tha deploy pe, commit parent hai —
+  // usse sync compare KARNA galat ho sakta hai (jhuta lagging). Trusted
+  // sirf github/git source (ya purane markers bina source ke).
+  const markerTrusted = marker?.commit ? marker?.source !== "build" : true;
   let syncStatus: "synced" | "pending" | "lagging" | "unknown" = "unknown";
   let syncAgeMin: number | null = null;
-  if (deployedCommit && latestCommit && latestTs) {
+  if (markerTrusted && deployedCommit && latestCommit && latestTs) {
     syncAgeMin = Math.round((Date.now() - new Date(latestTs).getTime()) / 60_000);
     syncStatus = deployedCommit === latestCommit ? "synced" : syncAgeMin > 5 ? "lagging" : "pending";
   }
