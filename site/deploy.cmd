@@ -132,7 +132,11 @@ REM 3) Deploy marker — admin panel me 'last code update' info ke liye.
 
 REM    deploy.json: timestamp + commit + branch (best-effort).
 
-call node -e "try{const fs=require('fs'),cp=require('child_process'),p=require('path');let c='',b='';try{c=cp.execSync('git rev-parse HEAD',{encoding:'utf8'}).trim()}catch(e){}try{b=cp.execSync('git rev-parse --abbrev-ref HEAD',{encoding:'utf8'}).trim()}catch(e){}fs.writeFileSync(p.resolve(process.cwd(),'../logs/deploy.json'),JSON.stringify({deployedAt:new Date().toISOString(),commit:c,branch:b},null,2))}catch(e){}" 2>nul
+REM    Deployed folder me .git nahi hota (Plesk files copy karta hai) —
+
+REM    isliye commit GitHub API se fetch karta hai (scripts\deploy-marker.mjs).
+
+call node scripts\deploy-marker.mjs 2>nul
 
 call :touchSelfHealMarker
 
