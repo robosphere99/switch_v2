@@ -7,7 +7,7 @@
 > Repo location (this machine): `C:\Users\robos\OneDrive\Documents\SwitchNest`
 >
 <!-- AUTO:STAMP:START -->
-> _Auto-updated: 2026-08-17 08:03 UTC · branch `main` · tree dirty (2 changes) · 186 commits_
+> _Auto-updated: 2026-08-17 14:09 UTC · branch `main` · tree dirty (1 changes) · 188 commits_
 <!-- AUTO:STAMP:END -->
 
 ---
@@ -109,6 +109,8 @@ that also serves real ESP32 hardware).
 <!-- AUTO:RECENT_COMMITS:START -->
 Sabse naye 20 commits:
 
+- `1376c9a` (2026-08-17) deploy: webhook re-trigger (af72ffc ka deploy nahi chala tha)
+- `af72ffc` (2026-08-17) fix: deploy card commit/branch kabhi blank na ho — 3-layer fallback
 - `5bc9329` (2026-08-17) deploy: marker me commit+branch fix — GitHub API se fetch (deployed folder me .git nahi hota)
 - `efded99` (2026-08-17) api: public /api/version endpoint (ops/diagnostics) — API_VERSION const se health sync
 - `3af5c9a` (2026-08-17) docs: deploy setup document — Plesk Git server path = domain root + double-nesting gotcha
@@ -127,8 +129,6 @@ Sabse naye 20 commits:
 - `3cea705` (2026-08-17) docs: context doc auto-refresh (targeted tests commit sync)
 - `05d2922` (2026-08-17) test: targeted unit tests — optimistic rollback, bulk permissions, realtime mapping
 - `a081f1c` (2026-08-17) docs: context doc auto-refresh (mobile-first pass commit sync)
-- `35ab990` (2026-08-17) web: mobile-first pass — bottom tab bar, touch targets, no horizontal scroll
-- `caf2b18` (2026-08-16) fix: update-context.mjs — branch/status/count git calls ko separate args me (stamp ab sahi branch+count dikhata hai)
 <!-- AUTO:RECENT_COMMITS:END -->
 
 - 503 root-cause work: DB probe retry loop so the app self-heals, `nodeProcessCountPerApplication=1`,

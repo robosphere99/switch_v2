@@ -4912,10 +4912,26 @@ adminRouter.get("/deploy-info", async (_req, res) => {
   const ciSha = git?.commit || marker?.commit || void 0;
   const ci = await fetchCiStatus(ciSha);
   const latest = await fetchLatestMain();
+  const deployedCommit = git?.commit || marker?.commit || null;
+  const latestCommit = latest?.commit || null;
+  const latestTs = latest?.ts || null;
+  let syncStatus = "unknown";
+  let syncAgeMin = null;
+  if (deployedCommit && latestCommit && latestTs) {
+    syncAgeMin = Math.round((Date.now() - new Date(latestTs).getTime()) / 6e4);
+    syncStatus = deployedCommit === latestCommit ? "synced" : syncAgeMin > 5 ? "lagging" : "pending";
+  }
   ok(res, {
     marker,
     git,
     latest,
+    sync: {
+      status: syncStatus,
+      deployedCommit,
+      latestCommit,
+      ageMin: syncAgeMin,
+      since: latest?.ts || null
+    },
     ci,
     processUptimeSec: Math.round(process.uptime()),
     startedAt: new Date(Date.now() - process.uptime() * 1e3).toISOString()
