@@ -4876,6 +4876,23 @@ async function fetchCiStatus(sha) {
     return { status: "unknown", reason: e instanceof Error ? e.message : "network error" };
   }
 }
+var latestCache = { at: 0, value: null };
+async function fetchLatestMain() {
+  const now = Date.now();
+  if (now - latestCache.at < 6e4) return latestCache.value;
+  try {
+    const res = await fetch("https://api.github.com/repos/robosphere99/switch_v2/commits/main", {
+      headers: { Accept: "application/vnd.github+json", "User-Agent": "switchnest-admin" },
+      signal: AbortSignal.timeout(8e3)
+    });
+    if (!res.ok) return latestCache.value;
+    const j = await res.json();
+    latestCache.value = { commit: j.sha || "", branch: "main", ts: j.commit?.committer?.date || "" };
+    latestCache.at = now;
+  } catch {
+  }
+  return latestCache.value;
+}
 adminRouter.get("/deploy-info", async (_req, res) => {
   let marker = null;
   const markerPath = path7.resolve(process.cwd(), "../logs/deploy.json");
@@ -4894,9 +4911,11 @@ adminRouter.get("/deploy-info", async (_req, res) => {
   }
   const ciSha = git?.commit || marker?.commit || void 0;
   const ci = await fetchCiStatus(ciSha);
+  const latest = await fetchLatestMain();
   ok(res, {
     marker,
     git,
+    latest,
     ci,
     processUptimeSec: Math.round(process.uptime()),
     startedAt: new Date(Date.now() - process.uptime() * 1e3).toISOString()
