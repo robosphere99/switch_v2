@@ -7831,6 +7831,7 @@ installRouter.post("/", async (req, res) => {
 
 // src/app.ts
 init_prisma();
+var API_VERSION = "2.2.0";
 async function schemaDiag() {
   try {
     const models = {
@@ -7883,8 +7884,11 @@ function createApp() {
   app.get("/api/health", async (_req, res) => {
     res.json({
       success: true,
-      data: { status: "ok", ts: (/* @__PURE__ */ new Date()).toISOString(), schema: await schemaDiag(), build: "2.2.0" }
+      data: { status: "ok", ts: (/* @__PURE__ */ new Date()).toISOString(), schema: await schemaDiag(), build: API_VERSION }
     });
+  });
+  app.get("/api/version", (_req, res) => {
+    res.json({ success: true, data: { version: API_VERSION, ts: (/* @__PURE__ */ new Date()).toISOString() } });
   });
   app.use("/api/install", installRouter);
   app.use("/api", (req, res, next) => {
