@@ -72,6 +72,10 @@ REM     identity ko appcmd read access nahi hota; webhook identity me ho
 
 REM     sakta hai. Best-effort — fail ho to error text hi milta hai.
 
+REM     Logs dir ensure — Plesk deploy untracked files wipe kar sakta hai.
+
+if not exist "%~dp0apps\logs" mkdir "%~dp0apps\logs"
+
 set APPCMD=%windir%\System32\inetsrv\appcmd.exe
 
 call "%APPCMD%" list apppool /config > "%~dp0apps\logs\apppool.log" 2>&1

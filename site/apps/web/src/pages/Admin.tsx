@@ -563,16 +563,18 @@ export function Admin() {
                   <div>
                     <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Commit</p>
                     <p className="mt-0.5 font-mono text-xs font-semibold text-night-950">
-                      {(deployInfo.data.data.git?.commit || deployInfo.data.data.marker?.commit || "—").slice(0, 12)}
+                      {(deployInfo.data.data.git?.commit || deployInfo.data.data.marker?.commit || deployInfo.data.data.latest?.commit || "—").slice(0, 12)}
                       {deployInfo.data.data.git?.commit && deployInfo.data.data.marker?.commit && deployInfo.data.data.git.commit !== deployInfo.data.data.marker.commit
                         ? " ⚠️ mismatch"
-                        : ""}
+                        : deployInfo.data.data.marker?.commit && deployInfo.data.data.latest?.commit && deployInfo.data.data.marker.commit !== deployInfo.data.data.latest.commit
+                          ? " ⚠️ behind main"
+                          : ""}
                     </p>
                   </div>
                   <div>
                     <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Branch</p>
                     <p className="mt-0.5 font-semibold text-night-950">
-                      {deployInfo.data.data.git?.branch || deployInfo.data.data.marker?.branch || "—"}
+                      {deployInfo.data.data.git?.branch || deployInfo.data.data.marker?.branch || deployInfo.data.data.latest?.branch || "—"}
                     </p>
                   </div>
                   <div>
@@ -1511,16 +1513,18 @@ export function Admin() {
                     <div>
                       <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Commit</p>
                       <p className="mt-0.5 font-mono text-xs font-semibold text-night-950">
-                        {(deployInfo.data.data.git?.commit || deployInfo.data.data.marker?.commit || "—").slice(0, 12)}
+                        {(deployInfo.data.data.git?.commit || deployInfo.data.data.marker?.commit || deployInfo.data.data.latest?.commit || "—").slice(0, 12)}
                         {deployInfo.data.data.git?.commit && deployInfo.data.data.marker?.commit && deployInfo.data.data.git.commit !== deployInfo.data.data.marker.commit
                           ? " ⚠️ mismatch"
-                          : ""}
+                          : deployInfo.data.data.marker?.commit && deployInfo.data.data.latest?.commit && deployInfo.data.data.marker.commit !== deployInfo.data.data.latest.commit
+                            ? " ⚠️ behind main"
+                            : ""}
                       </p>
                     </div>
                     <div>
                       <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Branch</p>
                       <p className="mt-0.5 font-semibold text-night-950">
-                        {deployInfo.data.data.git?.branch || deployInfo.data.data.marker?.branch || "—"}
+                        {deployInfo.data.data.git?.branch || deployInfo.data.data.marker?.branch || deployInfo.data.data.latest?.branch || "—"}
                       </p>
                     </div>
                     <div>

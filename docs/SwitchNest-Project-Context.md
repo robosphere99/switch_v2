@@ -7,7 +7,7 @@
 > Repo location (this machine): `C:\Users\robos\OneDrive\Documents\SwitchNest`
 >
 <!-- AUTO:STAMP:START -->
-> _Auto-updated: 2026-08-17 07:47 UTC · branch `main` · tree dirty (1 changes) · 183 commits_
+> _Auto-updated: 2026-08-17 08:03 UTC · branch `main` · tree dirty (2 changes) · 186 commits_
 <!-- AUTO:STAMP:END -->
 
 ---
@@ -109,6 +109,9 @@ that also serves real ESP32 hardware).
 <!-- AUTO:RECENT_COMMITS:START -->
 Sabse naye 20 commits:
 
+- `5bc9329` (2026-08-17) deploy: marker me commit+branch fix — GitHub API se fetch (deployed folder me .git nahi hota)
+- `efded99` (2026-08-17) api: public /api/version endpoint (ops/diagnostics) — API_VERSION const se health sync
+- `3af5c9a` (2026-08-17) docs: deploy setup document — Plesk Git server path = domain root + double-nesting gotcha
 - `833ba0e` (2026-08-17) api: health build marker — e2e test value ko proper version 2.2.0 (cleanup)
 - `a594093` (2026-08-17) docs: context doc auto-refresh (server path fix — deploy verify trigger)
 - `33f43ae` (2026-08-17) tools: server diag script (npm run diag) — Plesk pe deploy layout/lock diagnose ke liye
@@ -126,9 +129,6 @@ Sabse naye 20 commits:
 - `a081f1c` (2026-08-17) docs: context doc auto-refresh (mobile-first pass commit sync)
 - `35ab990` (2026-08-17) web: mobile-first pass — bottom tab bar, touch targets, no horizontal scroll
 - `caf2b18` (2026-08-16) fix: update-context.mjs — branch/status/count git calls ko separate args me (stamp ab sahi branch+count dikhata hai)
-- `3981e63` (2026-08-16) docs: context doc auto-refresh — post-commit hook ne naye commits sync kiye
-- `3157905` (2026-08-16) web: optimistic toggle + room-first dashboard + bulk actions + offline UX + skeletons
-- `06c13b8` (2026-08-16) tools: context doc auto-update — update-context.mjs + post-commit hook (installer + manual launcher)
 <!-- AUTO:RECENT_COMMITS:END -->
 
 - 503 root-cause work: DB probe retry loop so the app self-heals, `nodeProcessCountPerApplication=1`,

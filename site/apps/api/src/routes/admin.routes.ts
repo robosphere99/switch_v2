@@ -860,6 +860,28 @@ async function fetchCiStatus(sha?: string): Promise<CiStatus> {
   }
 }
 
+/** Latest main commit — marker/git dono missing ho to fallback (GitHub API).
+ * Production pe .git nahi hota aur deploy.json wipe bhi ho sakta hai — isliye
+ * API khud apne repo ka current main commit fetch karta hai (60s cache). */
+const latestCache: { at: number; value: { commit: string; branch: string; ts: string } | null } = { at: 0, value: null };
+async function fetchLatestMain() {
+  const now = Date.now();
+  if (now - latestCache.at < 60_000) return latestCache.value;
+  try {
+    const res = await fetch("https://api.github.com/repos/robosphere99/switch_v2/commits/main", {
+      headers: { Accept: "application/vnd.github+json", "User-Agent": "switchnest-admin" },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return latestCache.value;
+    const j = (await res.json()) as { sha?: string; commit?: { committer?: { date?: string } } };
+    latestCache.value = { commit: j.sha || "", branch: "main", ts: j.commit?.committer?.date || "" };
+    latestCache.at = now;
+  } catch {
+    /* best-effort — cache purana rehne do */
+  }
+  return latestCache.value;
+}
+
 adminRouter.get("/deploy-info", async (_req, res) => {
   let marker: { deployedAt?: string; commit?: string; branch?: string } | null = null;
   const markerPath = path.resolve(process.cwd(), "../logs/deploy.json");
@@ -878,9 +900,11 @@ adminRouter.get("/deploy-info", async (_req, res) => {
 
   const ciSha = git?.commit || marker?.commit || undefined;
   const ci = await fetchCiStatus(ciSha);
+  const latest = await fetchLatestMain();
   ok(res, {
     marker,
     git,
+    latest,
     ci,
     processUptimeSec: Math.round(process.uptime()),
     startedAt: new Date(Date.now() - process.uptime() * 1000).toISOString(),
