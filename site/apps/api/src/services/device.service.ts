@@ -136,17 +136,15 @@ export async function setDeviceStatus(input: {
 /**
  * Remote device command — site se ESP ko bhejo (restart / WiFi / LED).
  * Home scoping + restricted-member check (setStatus jaisa), command queue me
- * entry + log. LED on/off pe Device.ledEnabled bhi update hota hai (server
- * mirror — firmware khud NVS me persist karta hai).
+ * entry + log.
  */
 export async function sendDeviceCommand(input: {
   homeId: number;
   actorId: number;
   deviceId: number;
-  command: string; // "reboot" | "setwifi:<ssid>|<pass>" | "led:on" | "led:off"
+  command: string;
   logType: string;
   logMessage: string;
-  ledEnabled?: boolean; // led command pe set karna ho to
 }) {
   const device = await prisma.device.findFirst({
     where: { id: input.deviceId, homeId: input.homeId },
@@ -172,9 +170,6 @@ export async function sendDeviceCommand(input: {
   }
 
   await prisma.$transaction([
-    ...(input.ledEnabled !== undefined
-      ? [prisma.device.update({ where: { id: device.id }, data: { ledEnabled: input.ledEnabled } })]
-      : []),
     prisma.deviceCommand.create({
       data: { deviceId: device.id, actorId: input.actorId, command: input.command },
     }),
@@ -380,7 +375,6 @@ export async function listMyBoards(userId: number) {
           status: true,
           offline: true,
           lastSeen: true,
-          ledEnabled: true,
         },
         orderBy: { id: "asc" },
       },

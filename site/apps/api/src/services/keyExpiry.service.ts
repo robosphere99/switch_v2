@@ -28,23 +28,12 @@ export type KeyExpiryAction = "warn" | "warnSoon" | "expired" | null;
 export function keyExpiryAction(
   key: {
     expiresAt: Date | null;
-    expiryWarnedAt: Date | null;
-    expiryFinalWarnedAt: Date | null;
-    expiryNotifiedAt?: Date | null;
   },
   now: Date,
 ): KeyExpiryAction {
   if (!key.expiresAt) return null;
   if (key.expiresAt.getTime() <= now.getTime()) {
     return "expired";
-  }
-  const finalCutoff = now.getTime() + FINAL_WARN_HOURS_BEFORE * 60 * 60 * 1000;
-  if (key.expiresAt.getTime() <= finalCutoff) {
-    return key.expiryFinalWarnedAt ? null : "warnSoon";
-  }
-  const warnCutoff = now.getTime() + WARN_DAYS_BEFORE * 24 * 60 * 60 * 1000;
-  if (key.expiresAt.getTime() <= warnCutoff) {
-    return key.expiryWarnedAt ? null : "warn";
   }
   return null;
 }
@@ -73,6 +62,12 @@ async function keysCtaUrl(): Promise<string | undefined> {
 }
 
 async function checkKeyExpiryInner(): Promise<void> {
+  // DISABLED: expiry notification columns (expiry_warned_at, expiry_final_warned_at,
+  // expiry_notified_at) don't exist in production DB yet.
+  // Re-enable after: ALTER TABLE api_keys ADD COLUMN expiry_warned_at DATETIME(3),
+  // expiry_final_warned_at DATETIME(3), expiry_notified_at DATETIME(3).
+  return;
+
   const now = new Date();
   const warnCutoff = new Date(now.getTime() + WARN_DAYS_BEFORE * 24 * 60 * 60 * 1000);
   const cta = await keysCtaUrl();
@@ -110,10 +105,7 @@ async function checkKeyExpiryInner(): Promise<void> {
         { category: "system", type: "warning", title, body },
         { emailSubject: title, emailBody: body, ctaUrl: cta, ctaLabel: "Create new key" },
       );
-      await prisma.apiKey.update({
-        where: { id: key.id },
-        data: { expiryFinalWarnedAt: now },
-      });
+      // expiryFinalWarnedAt column not in production DB — skip.
       fileLog(`[keyExpiry] FINAL warned user ${key.userId} about key #${key.id} (${key.keyPrefix}…) expiring ${key.expiresAt!.toISOString()}`);
       continue;
     }
@@ -131,10 +123,7 @@ async function checkKeyExpiryInner(): Promise<void> {
       { category: "system", type: "warning", title, body },
       { emailSubject: title, emailBody: body, ctaUrl: cta, ctaLabel: "Manage keys" },
     );
-    await prisma.apiKey.update({
-      where: { id: key.id },
-      data: { expiryWarnedAt: now },
-    });
+    // expiryWarnedAt column not in production DB — skip.
     fileLog(`[keyExpiry] warned user ${key.userId} about key #${key.id} (${key.keyPrefix}…) expiring ${key.expiresAt!.toISOString()}`);
   }
 

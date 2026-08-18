@@ -359,8 +359,6 @@ CREATE TABLE `orders` (
     `payment_ref` VARCHAR(64) NULL,
     `razorpay_order_id` VARCHAR(64) NULL,
     `paid_at` DATETIME(3) NULL,
-    `shipped_at` DATETIME(3) NULL,
-    `delivered_at` DATETIME(3) NULL,
     `totalAmount` DECIMAL(10, 2) NOT NULL,
     `shippingName` VARCHAR(100) NOT NULL,
     `shippingPhone` VARCHAR(20) NOT NULL,

@@ -536,8 +536,6 @@ model Order {
   paymentRef      String?       @db.VarChar(64) @map("payment_ref") // razorpay payment id
   razorpayOrderId String?       @db.VarChar(64) @map("razorpay_order_id") // razorpay order id
   paidAt          DateTime?     @map("paid_at")
-  shippedAt       DateTime?     @map("shipped_at")
-  deliveredAt     DateTime?     @map("delivered_at")
   totalAmount     Decimal       @db.Decimal(10, 2)
   shippingName    String        @db.VarChar(100)
   shippingPhone   String        @db.VarChar(20)

@@ -172,7 +172,7 @@ export async function login(usernameEmail: string, password: string): Promise<Lo
   try {
     await prisma.user.update({
       where: { id: user.id },
-      data: { lastLoginAt: new Date(), loginCount: { increment: 1 } },
+      data: { lastLoginAt: new Date() },
     });
   } catch {
     // Column missing or other DB issue — login still succeeds.

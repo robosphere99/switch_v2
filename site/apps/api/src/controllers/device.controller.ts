@@ -77,7 +77,6 @@ export async function setLed(req: Request, res: Response) {
     command: `led:${enabled ? "on" : "off"}`,
     logType: "remote_led",
     logMessage: `Status LED ${enabled ? "enabled" : "disabled"}`,
-    ledEnabled: enabled,
   });
   ok(res, device);
 }
