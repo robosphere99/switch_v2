@@ -422,8 +422,10 @@ export async function getAdminDiagnostics(): Promise<ApiResponse<AdminDiagnostic
 }
 
 export interface DeploySync {
-  status: "synced" | "pending" | "lagging" | "unknown";
+  /** `local` = dev machine (git checkout) GitHub main se aage hai — alarm nahi. */
+  status: "synced" | "pending" | "lagging" | "local" | "unknown";
   deployedCommit: string | null;
+  deployedSource?: "marker" | "git" | "build" | null;
   latestCommit: string | null;
   ageMin: number | null;
   since: string | null;

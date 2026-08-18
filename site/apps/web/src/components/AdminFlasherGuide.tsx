@@ -1,4 +1,6 @@
+import { useEffect, useState } from "react";
 import { ExternalLink } from "lucide-react";
+import { api } from "../api/client";
 
 /**
  * Flasher Guide — factory tool me kya bharna hai (reference page).
@@ -8,6 +10,61 @@ import { ExternalLink } from "lucide-react";
  */
 
 const LIVE = "https://onlineswitch.bhartitechnical.com";
+
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // Non-secure context fallback (rare — localhost/HTTPS pe clipboard chalta hai)
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
+/**
+ * Copyable value — click (mobile tap = long press) ya right-click pe copy
+ * hota hai, "✓ Copied" feedback ke saath. select-none isliye ki mobile pe
+ * long-press native text-select na khole (contextmenu event hi kaam kare).
+ */
+function CopyValue({ value, className = "" }: { value: string; className?: string }) {
+  const [copied, setCopied] = useState(false);
+  const doCopy = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (await copyText(value)) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={doCopy}
+      onContextMenu={doCopy}
+      title={`Copy: ${value}`}
+      className={`group inline-flex cursor-pointer items-center gap-1.5 font-mono text-sm transition select-none ${
+        copied ? "text-emerald-400" : className || "text-brand hover:bg-brand/10"
+      }`}
+    >
+      {value}
+      <span className={`text-[10px] font-semibold ${copied ? "text-emerald-400" : "text-gray-500 group-hover:text-brand"}`}>
+        {copied ? "✓ Copied!" : "⧉"}
+      </span>
+    </button>
+  );
+}
 
 function ModeCard({
   title,
@@ -25,7 +82,7 @@ function ModeCard({
         {rows.map((r) => (
           <div key={r.label} className="flex flex-col gap-0.5 rounded-lg border border-gray-200 bg-night-900 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
             <span className="text-xs font-semibold text-gray-600">{r.label}</span>
-            <span className="font-mono text-sm text-brand">{r.value}</span>
+            <CopyValue value={r.value} />
             {r.hint && <span className="text-[11px] text-gray-500 sm:ml-3">{r.hint}</span>}
           </div>
         ))}
@@ -49,6 +106,22 @@ function Step({ n, title, body }: { n: number; title: string; body: React.ReactN
 }
 
 export function AdminFlasherGuide() {
+  const [lanIp, setLanIp] = useState<string | null>(null);
+  const [lanErr, setLanErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Server ka asli LAN IP — `<LAN-IP>` placeholder ki jagah yahi dikhta hai.
+    api
+      .get("/admin/lan-info")
+      .then(({ data }) => setLanIp((data.data as { lanIp?: string }).lanIp ?? null))
+      .catch(() => setLanErr("LAN IP detect nahi hua — server log dekho"));
+  }, []);
+
+  const localhostEsp = lanIp ? `http://${lanIp}:4000` : "http://<LAN-IP>:4000";
+  const localhostHint = lanIp
+    ? `board ko wahi IP dikhe jo server chala raha hai — abhi http://${lanIp}:4000`
+    : "mode change pe auto-fill — board ko wahi IP dikhe jo server chala raha hai";
+
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
       <div className="mb-6">
@@ -82,10 +155,11 @@ export function AdminFlasherGuide() {
             { label: "Site URL (API)", value: "http://localhost:4000" },
             { label: "Admin user", value: "admin" },
             { label: "Password", value: "123456", hint: "testing accounts — sabka 123456" },
-            { label: "ESP Server URL", value: "http://<LAN-IP>:4000", hint: "mode change pe auto-fill — board ko wahi IP dikhe jo server chala raha hai" },
+            { label: "ESP Server URL", value: localhostEsp, hint: localhostHint },
           ]}
         />
       </div>
+      {lanErr && <p className="-mt-5 mb-4 text-xs text-amber-500">⚠️ {lanErr}</p>}
 
       {/* Field-by-field */}
       <div className="mb-8 rounded-xl border border-gray-200 bg-night-800 p-5 dark:border-night-600">
@@ -140,9 +214,11 @@ export function AdminFlasherGuide() {
         </p>
         <div className="flex flex-wrap gap-2">
           {["demoflow_BYR8OX_1", "demoflow_BYR8OX_2"].map((h) => (
-            <span key={h} className="rounded-full border border-amber-500/40 bg-night-900 px-3 py-1 font-mono text-xs text-amber-500">
-              {h}
-            </span>
+            <CopyValue
+              key={h}
+              value={h}
+              className="rounded-full border border-amber-500/40 bg-night-900 px-3 py-1 text-xs text-amber-500"
+            />
           ))}
           <a
             href="/admin/print"
