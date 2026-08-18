@@ -17,6 +17,8 @@ export interface AutomationSuggestion {
   confidence: number; // 0..1 — kitne din same time pe pattern mila
   days: number; // pattern wale distinct din
   reason: string;
+  /** Demo hai? — usage data na ho to sample suggestions (feature dikhane ke liye) */
+  demo?: boolean;
 }
 
 interface SuggestionLog {
@@ -87,6 +89,36 @@ export function suggestAutomationsFromLogs(
   return suggestions.sort((a, b) => b.confidence - a.confidence).slice(0, 10);
 }
 
+const DEMO_PATTERNS: Array<{ time: string; action: DeviceStatus; note: string }> = [
+  { time: "07:00", action: "on", note: "subah ON — din ki shuruaat" },
+  { time: "18:00", action: "on", note: "shaam ON — ghar aate hi" },
+  { time: "21:30", action: "off", note: "raat OFF — sone se pehle" },
+];
+
+/**
+ * Demo suggestions — usage data NA ho to feature dikhane ke liye (confidence
+ * kam + demo flag taaki user ko pata rahe ye asli pattern nahi hai). Home ke
+ * REAL devices use hote hain taaki "Create schedule" button asli kaam kare.
+ */
+export function demoSuggestions(
+  devices: Array<{ id: number; name: string }>,
+): AutomationSuggestion[] {
+  return devices.slice(0, 3).map((d, i) => {
+    const p = DEMO_PATTERNS[i % DEMO_PATTERNS.length];
+    return {
+      deviceId: d.id,
+      deviceName: d.name,
+      type: "daily",
+      time: p.time,
+      action: p.action,
+      confidence: 0.6,
+      days: 3,
+      reason: `Demo: "${d.name}" ko ${p.time} baje ${p.action === "on" ? "ON" : "OFF"} karna — ${p.note}. (Aapke usage data se nahi — schedule bana ke try karo.)`,
+      demo: true,
+    };
+  });
+}
+
 /** Home ke devices ke logs se suggestions — route handler ke liye. */
 export async function getAutomationSuggestions(homeId: number): Promise<AutomationSuggestion[]> {
   const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000); // last 14 din
@@ -101,7 +133,7 @@ export async function getAutomationSuggestions(homeId: number): Promise<Automati
     orderBy: { createdAt: "asc" },
   });
 
-  return suggestAutomationsFromLogs(
+  const real = suggestAutomationsFromLogs(
     logs.map((l) => ({
       deviceId: l.deviceId,
       deviceName: l.device.name,
@@ -109,4 +141,14 @@ export async function getAutomationSuggestions(homeId: number): Promise<Automati
       createdAt: l.createdAt,
     })),
   );
+  if (real.length > 0) return real;
+
+  // Usage data nahi → demo suggestions (panel kabhi khali na rahe).
+  const devices = await prisma.device.findMany({
+    where: { homeId },
+    select: { id: true, name: true },
+    orderBy: { id: "asc" },
+    take: 10,
+  });
+  return demoSuggestions(devices);
 }

@@ -9,9 +9,8 @@ import {
   type AssistantMessage,
 } from "../api/assistant";
 import { listHomes } from "../api/homes";
-import { getAutomationSuggestions, type AutomationSuggestion } from "../api/devices";
-import { createSchedule } from "../api/schedules";
 import { RichText } from "../components/RichText";
+import { AutomationSuggestions } from "../components/AutomationSuggestions";
 
 const EXAMPLES = [
   "turn on the fan",
@@ -89,28 +88,6 @@ export function Assistant() {
     ? chats.data.data.find((c) => c.id === chatId)
     : undefined;
   const suggestionsHomeId = activeChat?.homeId ?? null;
-  const suggestions = useQuery({
-    queryKey: ["automations", "suggestions", suggestionsHomeId],
-    queryFn: () => getAutomationSuggestions(suggestionsHomeId!),
-    enabled: suggestionsHomeId !== null,
-  });
-  const suggestionList: AutomationSuggestion[] = suggestions.data?.success
-    ? suggestions.data.data
-    : [];
-
-  const createSuggestion = useMutation({
-    mutationFn: (s: AutomationSuggestion) =>
-      createSchedule(suggestionsHomeId!, {
-        deviceId: s.deviceId,
-        action: s.action,
-        type: "daily",
-        runAt: buildRunAt(s.time),
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["automations", "suggestions", suggestionsHomeId] });
-      queryClient.invalidateQueries({ queryKey: ["schedules"] });
-    },
-  });
 
   const msgList = messages.data?.success ? messages.data.data : [];
 
@@ -166,41 +143,7 @@ export function Assistant() {
 
       {chatId !== null && (
         <>
-        {suggestionList.length > 0 && (
-          <div className="mb-6 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-5">
-            <h2 className="mb-3 text-lg font-bold">💡 Suggested automations</h2>
-            <p className="mb-4 text-sm text-gray-500">
-              Aapke usage patterns se — ek click me daily schedule banao. Dashboard → Timers se edit/disable kar sakte ho.
-            </p>
-            <div className="space-y-2">
-              {suggestionList.map((s) => (
-                <div
-                  key={`${s.deviceId}-${s.time}-${s.action}`}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emerald-500/20 bg-night-800 px-4 py-3"
-                >
-                  <div className="min-w-0">
-                    <div className="text-sm font-semibold">
-                      ⏰ {s.deviceName} — {s.time} baje {s.action === "on" ? "ON" : "OFF"}
-                    </div>
-                    <div className="mt-0.5 text-xs text-gray-500">{s.reason}</div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-bold text-emerald-400">
-                      {Math.round(s.confidence * 100)}% confident
-                    </span>
-                    <button
-                      onClick={() => createSuggestion.mutate(s)}
-                      disabled={createSuggestion.isPending}
-                      className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-night-950 hover:bg-emerald-500 disabled:opacity-50"
-                    >
-                      {createSuggestion.isPending ? "Creating…" : "+ Daily schedule"}
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        {suggestionsHomeId !== null && <AutomationSuggestions homeId={suggestionsHomeId} />}
         <div className="grid gap-6 lg:grid-cols-[220px_1fr]">
           {/* Chat list */}
           <div className="hidden lg:block">
@@ -277,14 +220,6 @@ export function Assistant() {
       )}
     </div>
   );
-}
-
-/** "07:00" → aaj ki date pe wo time (daily schedule ka base — server next occurrence normalize karta hai). */
-function buildRunAt(time: string): string {
-  const [h, m] = time.split(":").map(Number);
-  const d = new Date();
-  d.setHours(h ?? 0, m ?? 0, 0, 0);
-  return d.toISOString();
 }
 
 function MessageBubble({

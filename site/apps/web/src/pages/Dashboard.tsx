@@ -9,6 +9,7 @@ import { createRoom, deleteRoom } from "../api/rooms";
 import { DeviceCard, isOnline } from "../components/DeviceCard";
 import { Modal } from "../components/Modal";
 import { ScheduleSection } from "../components/ScheduleSection";
+import { AutomationSuggestions } from "../components/AutomationSuggestions";
 import { useAuthStore } from "../stores/auth";
 
 const DEVICE_TYPES: DeviceType[] = ["bulb", "fan", "ac", "tv", "plug", "custom"];
@@ -371,6 +372,9 @@ export function Dashboard() {
               </span>
             </div>
           </div>
+
+          {/* ===== Suggested automations (usage patterns ya demo) ===== */}
+          {homeId !== null && <AutomationSuggestions homeId={homeId} compact />}
 
           {/* ===== Quick actions ===== */}
           {devices.data?.success && devices.data.data.some((d) => d.type === "bulb") && (

@@ -107,6 +107,8 @@ export interface AutomationSuggestion {
   confidence: number;
   days: number;
   reason: string;
+  /** Demo — usage data na ho to sample suggestions */
+  demo?: boolean;
 }
 
 /** Phase 7 — usage patterns se automation suggestions. */
