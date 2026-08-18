@@ -138,7 +138,14 @@ REM    purana dist crash karta hai naye API routes ke saath.
 
 if "%NODE_MODULES_OK%"=="1" (
   echo [deploy] building dist/index.mjs (esbuild)...
-  call npx --no-install esbuild src/index.ts --bundle --platform=node --format=esm --external:@prisma/client --external:bcryptjs --external:cors --external:dotenv --external:express --external:helmet --external:jsonwebtoken --external:multer --external:mysql2 --external:socket.io --external:zod --outfile=dist\index.mjs 2>nul
+  REM Try node_modules/.bin first, then npx fallback
+  if exist "..\..\node_modules\.bin\esbuild.cmd" (
+    call "..\..\node_modules\.bin\esbuild.cmd" src/index.ts --bundle --platform=node --format=esm --external:@prisma/client --external:bcryptjs --external:cors --external:dotenv --external:express --external:helmet --external:jsonwebtoken --external:multer --external:mysql2 --external:socket.io --external:zod --outfile=dist\index.mjs 2>nul
+  ) else if exist "node_modules\.bin\esbuild.cmd" (
+    call "node_modules\.bin\esbuild.cmd" src/index.ts --bundle --platform=node --format=esm --external:@prisma/client --external:bcryptjs --external:cors --external:dotenv --external:express --external:helmet --external:jsonwebtoken --external:multer --external:mysql2 --external:socket.io --external:zod --outfile=dist\index.mjs 2>nul
+  ) else (
+    call npx esbuild src/index.ts --bundle --platform=node --format=esm --external:@prisma/client --external:bcryptjs --external:cors --external:dotenv --external:express --external:helmet --external:jsonwebtoken --external:multer --external:mysql2 --external:socket.io --external:zod --outfile=dist\index.mjs 2>nul
+  )
   if errorlevel 1 (
     echo [deploy] WARN: esbuild fail — purana dist chalega (crash ho sakta hai)
   ) else (
