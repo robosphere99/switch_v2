@@ -507,14 +507,21 @@ void handleLogin() {
   html += defUser;
   html += R"rawliteral(" required>
 <label>Password</label>
-<div style="position:relative">
-<input type="password" name="password" id="pw" placeholder="Password" required style="width:100%;padding-right:40px">
-<button type="button" onclick="var i=document.getElementById('pw');i.type=(i.type==='password')?'text':'password';this.textContent=(i.type==='password')?'👁':'🙈'" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px">👁</button>
+<div class="pw-wrap">
+<input type="password" name="password" id="pw" placeholder="Password" required>
+<button type="button" class="pw-toggle" id="pwToggle" aria-label="Show password">👁</button>
 </div>
 <p class="hint" style="margin-top:4px;font-size:11px;opacity:0.6">Default: admin / admin</p>
 <button type="submit">Login</button>
 </form>
 </div>
+<script>
+document.getElementById('pwToggle').addEventListener('click',function(){
+  var i=document.getElementById('pw');
+  i.type=(i.type==='password')?'text':'password';
+  this.textContent=(i.type==='password')?'👁':'🙈';
+});
+</script>
 )rawliteral";
 
   html += uiEnd();
