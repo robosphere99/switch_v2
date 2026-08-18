@@ -8,7 +8,6 @@ CREATE TABLE `users` (
     `status` ENUM('active', 'suspended') NOT NULL DEFAULT 'active',
     `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `last_login_at` DATETIME(3) NULL,
-    `login_count` INTEGER NOT NULL DEFAULT 0,
     `theme_pref` VARCHAR(16) NULL,
     `token_version` INTEGER NOT NULL DEFAULT 0,
 
@@ -146,7 +145,6 @@ CREATE TABLE `devices` (
     `ota_requested_at` DATETIME(3) NULL,
     `ota_progress` INTEGER NULL,
     `ota_status` VARCHAR(32) NULL,
-    `led_enabled` BOOLEAN NOT NULL DEFAULT true,
     `espId` INTEGER NULL,
     `createdBy` INTEGER NOT NULL,
     `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
@@ -252,9 +250,6 @@ CREATE TABLE `api_keys` (
     `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     `expires_at` DATETIME(3) NULL,
     `last_used_at` DATETIME(3) NULL,
-    `expiry_notified_at` DATETIME(3) NULL,
-    `expiry_warned_at` DATETIME(3) NULL,
-    `expiry_final_warned_at` DATETIME(3) NULL,
     `revoked_at` DATETIME(3) NULL,
 
     UNIQUE INDEX `api_keys_key_hash_key`(`key_hash`),
