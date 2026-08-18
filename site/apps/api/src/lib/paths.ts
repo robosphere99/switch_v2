@@ -35,3 +35,9 @@ export const attachmentDir = repoRoot
 export const webDist = repoRoot
   ? path.join(repoRoot, "site", "apps", "web", "dist")
   : path.resolve(process.cwd(), "../../apps/web/dist");
+
+/** <repo>/site/apps/api/public/swagger-ui — vendored Swagger UI assets (CDN-free,
+ *  helmet ke CSP `script-src 'self'` ke saath kaam karta hai). */
+export const swaggerUiDir = repoRoot
+  ? path.join(repoRoot, "site", "apps", "api", "public", "swagger-ui")
+  : path.resolve(process.cwd(), "public/swagger-ui");
