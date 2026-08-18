@@ -30,3 +30,19 @@ export async function updateProfile(input: {
   const { data } = await api.patch<ApiResponse<AuthUser>>("/auth/me", input);
   return data;
 }
+
+export async function forgotPassword(email: string): Promise<ApiResponse<{ sent: true }>> {
+  const { data } = await api.post<ApiResponse<{ sent: true }>>("/auth/forgot-password", { email });
+  return data;
+}
+
+export async function resetPassword(
+  token: string,
+  newPassword: string,
+): Promise<ApiResponse<{ message: string }>> {
+  const { data } = await api.post<ApiResponse<{ message: string }>>("/auth/reset-password", {
+    token,
+    newPassword,
+  });
+  return data;
+}

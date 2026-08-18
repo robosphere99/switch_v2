@@ -8,6 +8,7 @@ import { errorHandler } from "./middleware/errorHandler";
 import { firmwareDir, webDist } from "./lib/paths";
 import { apiRouter } from "./routes";
 import { installRouter } from "./routes/install.routes";
+import { docsRouter } from "./routes/docs.routes";
 import { isDbReady } from "./lib/dbState";
 import { fileLog } from "./lib/logger";
 import { prisma } from "./lib/prisma";
@@ -90,6 +91,9 @@ app.use((req, _res, next) => {
 
   // Install routes hamesha available — setup mode me bhi.
   app.use("/api/install", installRouter);
+
+  // API docs hamesha available — setup mode me bhi (DB nahi chahiye).
+  app.use("/api/docs", docsRouter);
 
   // Setup mode (DB install pending) — baaki saare routes 503.
   app.use("/api", (req, res, next) => {

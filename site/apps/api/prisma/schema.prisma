@@ -127,6 +127,7 @@ model User {
   apiKeys        ApiKey[]
   schedules      Schedule[]
   refreshTokens  RefreshToken[]
+  passwordResetTokens PasswordResetToken[]
   auditLogs      AuditLog[]
   notifications  Notification[]
   deviceLogs     DeviceLog[]       @relation("DeviceLogActor")
@@ -442,6 +443,21 @@ model RefreshToken {
   @@map("refresh_tokens")
 }
 
+/** Forgot-password flow — hashed token (1-use, 30 min expiry). */
+model PasswordResetToken {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  tokenHash String    @unique @db.VarChar(64) @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
 model Notification {
   id        Int              @id @default(autoincrement())
   userId    Int
@@ -654,7 +670,7 @@ model SupportChatSettings {
 
 model AppMeta {
   key       String   @id @db.VarChar(64)
-  value     String   @db.VarChar(255)
+  value     String   @db.Text // site_settings/req_tracker JSON blobs — TEXT chahiye, VarChar(255) chhota padta hai
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("app_meta")

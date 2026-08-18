@@ -84,16 +84,19 @@ echo    Sab ready!
 echo      Site:    http://localhost:5173
 echo      API:     http://localhost:4000/api/health
 
-REM ---- login hint: .env (ADMIN_PASSWORD) se asli password - change ho to yahan bhi sahi dikhe ----
+REM ---- login hint: .env se asli admin email/password - change ho to yahan bhi sahi dikhe ----
+set "ADMIN_EM=admin@switchnest.local"
 set "ADMIN_PW=admin123"
 if exist "%SITE%\.env" (
   for /f "usebackq tokens=1,* delims==" %%a in ("%SITE%\.env") do (
     if /i "%%a"=="ADMIN_PASSWORD" set "ADMIN_PW=%%b"
+    if /i "%%a"=="ADMIN_EMAIL" set "ADMIN_EM=%%b"
   )
 )
 set "ADMIN_PW=%ADMIN_PW:"=%"
+set "ADMIN_EM=%ADMIN_EM:"=%"
 
-echo      Login:   admin@robosphere.local / %ADMIN_PW%
+echo      Login:   %ADMIN_EM% / %ADMIN_PW%
 echo.
 echo    Band karne ke liye API/Web windows close karo.
 echo ================================================

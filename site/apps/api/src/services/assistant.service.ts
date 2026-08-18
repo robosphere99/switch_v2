@@ -2,6 +2,7 @@ import { prisma } from "../lib/prisma";
 import { AppError } from "../lib/response";
 import { audit } from "./audit.service";
 import { setDeviceStatus } from "./device.service";
+import { aiConfigured, chatCompletion } from "../lib/ai";
 import type { DeviceStatus } from "@robosphere/shared";
 
 // ---------------------------------------------------------------------------
@@ -104,7 +105,9 @@ export function parseIntent(text: string, devices: { id: number; name: string; t
     actions: action
       ? matches.map((d) => ({ deviceId: d.id, deviceName: d.name, action }))
       : [],
-    matchedBy: all ? "all" : types.length > 0 ? `type:${types.join(",")}` : matches.length > 0 ? "name" : "none",
+    // Asli match kaise hua: type keyword ("saare lights" → type, sirf lights,
+    // "all" nahi) > all > exact name > kuch nahi.
+    matchedBy: types.length > 0 ? `type:${types.join(",")}` : all ? "all" : matches.length > 0 ? "name" : "none",
   };
 }
 
@@ -283,7 +286,108 @@ Aur madad chahiye? Board level ki details ke liye admin/support se baat karo.`
 }
 
 // ---------------------------------------------------------------------------
-// Message flow: user message -> parse -> assistant reply (with proposal)
+// Phase 7 — LLM reply (hybrid). Configured ho to pehle LLM try karo;
+// fail/not-configured → rule-based fallback (neeche). Execution HAMESHA
+// confirm-gated hai — LLM sirf proposal deta hai, execute nahi.
+// ---------------------------------------------------------------------------
+
+interface LlmReply {
+  content: string;
+  proposal: ParsedAction[] | null;
+}
+
+function buildDeviceContext(devices: DeviceBrief[]): string {
+  return devices
+    .map((d) => `- id=${d.id} name="${d.name}" type=${d.type} status=${d.status}`)
+    .join("\n");
+}
+
+const LLM_SYSTEM_PROMPT = `Tu SwitchNest ka AI assistant hai — smart-home device control + chat helper.
+Reply Hinglish me do (Roman Hindi + thoda English), chhota aur friendly.
+
+Home ke devices (sirf inhi ids use karo):
+{devices}
+
+Rules:
+1. Agar user device ON/OFF karna chahta hai to SIRF ye JSON format do (koi aur text nahi, code fence bhi nahi):
+{"actions":[{"deviceId":1,"action":"on"}],"reply":"<chhota confirm message>"}
+   - Device name/type se sahi id match karo (case-insensitive).
+   - Group request ("saare lights", "all fans") me saare matching devices ke actions do.
+   - Action sirf "on" ya "off" ho sakta hai.
+2. Agar user sirf sawaal/puchta hai (help, status, baat-cheet) to seedha normal reply do — bina JSON.
+3. Kabhi bhi devices list me na ho to us device ka action mat do — reply me bata do ki device nahi mila.`;
+
+/** Code fences / extra text se pehla JSON object nikaalo. */
+export function extractJsonObject(text: string): Record<string, unknown> | null {
+  const cleaned = text.replace(/```(?:json)?/gi, "").trim();
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
+  if (start === -1 || end === -1 || end <= start) return null;
+  try {
+    const parsed = JSON.parse(cleaned.slice(start, end + 1)) as Record<string, unknown>;
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/** LLM reply se actions proposal banao — deviceId/action validate karke. */
+export function parseLlmActions(
+  raw: Record<string, unknown>,
+  devices: DeviceBrief[],
+): { reply: string; actions: ParsedAction[] } | null {
+  const reply = typeof raw.reply === "string" ? raw.reply.trim() : "";
+  const actionsRaw = Array.isArray(raw.actions) ? raw.actions : [];
+  const deviceMap = new Map(devices.map((d) => [d.id, d]));
+  const actions: ParsedAction[] = [];
+  for (const a of actionsRaw) {
+    const o = a as { deviceId?: unknown; action?: unknown };
+    const deviceId = Number(o.deviceId);
+    const device = deviceMap.get(deviceId);
+    if (!device) continue;
+    if (o.action !== "on" && o.action !== "off") continue;
+    actions.push({ deviceId, deviceName: device.name, action: o.action });
+  }
+  return { reply: reply || (actions.length ? "Confirm karo to execute ho jayega." : ""), actions };
+}
+
+/**
+ * LLM try karo — success: {content, proposal}; LLM off/fail/invalid: null
+ * (caller rule-based pe fallback karta hai). Kabhi throw nahi.
+ */
+async function tryLlmReply(
+  content: string,
+  devices: DeviceBrief[],
+): Promise<LlmReply | null> {
+  if (!aiConfigured()) return null;
+  try {
+    const raw = await chatCompletion({
+      system: LLM_SYSTEM_PROMPT.replace("{devices}", buildDeviceContext(devices) || "(koi device nahi)"),
+      messages: [{ role: "user", content }],
+      maxTokens: 400,
+    });
+    const json = extractJsonObject(raw);
+    if (json) {
+      const parsed = parseLlmActions(json, devices);
+      if (parsed && parsed.actions.length > 0) {
+        return { content: parsed.reply, proposal: parsed.actions };
+      }
+      if (parsed && parsed.reply) {
+        // JSON diya par koi valid action nahi — reply hi bolo (LLM ne device nahi mila hoga)
+        return { content: parsed.reply, proposal: null };
+      }
+      return null; // invalid JSON shape → fallback
+    }
+    // Plain conversational reply
+    return { content: raw, proposal: null };
+  } catch (err) {
+    console.error("[assistant] LLM failed — rule-based fallback:", err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Message flow: user message -> LLM (agar configured) / rule parse -> reply
 // ---------------------------------------------------------------------------
 
 export async function sendMessage(userId: number, chatId: number, content: string) {
@@ -310,6 +414,7 @@ export async function sendMessage(userId: number, chatId: number, content: strin
   });
 
   // Status / troubleshooting questions pehle — command flow me nahi jaane dena.
+  // (Rule-based deterministic hai — LLM se bhi pehle, taaki status hamesha sahi)
   const queryType = detectQueryType(content);
   if (queryType) {
     const replyText =
@@ -328,6 +433,26 @@ export async function sendMessage(userId: number, chatId: number, content: strin
     return { chat, userMessage, assistantMessage: { ...assistantMessage, content: replyText, proposal: null } };
   }
 
+  // Phase 7: LLM configured → try karo (conversational + control dono)
+  const llm = await tryLlmReply(content, devices);
+  if (llm) {
+    const assistantMessage = await prisma.assistantMessage.create({
+      data: { chatId, role: "assistant", content: encodeAssistantContent(llm.content, llm.proposal) },
+    });
+    if (chat.title === "AI Assist" && content.trim().length > 0) {
+      await prisma.assistantChat.update({
+        where: { id: chat.id },
+        data: { title: content.trim().slice(0, 60) },
+      });
+    }
+    return {
+      chat,
+      userMessage,
+      assistantMessage: { ...assistantMessage, content: llm.content, proposal: llm.proposal },
+    };
+  }
+
+  // Rule-based fallback (LLM off / fail / invalid)
   const parsed = parseIntent(content, devices);
   let replyText: string;
   let proposal: ParsedAction[] | null = null;

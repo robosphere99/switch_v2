@@ -2,11 +2,20 @@ import { Router } from "express";
 import crypto from "node:crypto";
 import { z } from "zod";
 import { requireAuth } from "../middleware/auth";
+import { rateLimit } from "../middleware/rateLimit";
 import { validateBody } from "../middleware/validate";
 import { prisma } from "../lib/prisma";
 import { AppError, ok } from "../lib/response";
 
 export const apiKeyRouter = Router();
+
+// API key creation — attacker ko unlimited keys banane se rokta hai.
+const createKeyLimiter = rateLimit({
+  name: "api-key:create",
+  windowMs: 60 * 60_000,
+  max: 20,
+  message: "Bahut zyada API keys bana rahe ho — 1 ghanta baad try karo",
+});
 
 const createSchema = z.object({
   label: z.string().min(1).max(100).optional(),
@@ -31,7 +40,7 @@ apiKeyRouter.get("/", requireAuth, async (req, res) => {
   ok(res, keys);
 });
 
-apiKeyRouter.post("/", requireAuth, validateBody(createSchema), async (req, res) => {
+apiKeyRouter.post("/", requireAuth, createKeyLimiter, validateBody(createSchema), async (req, res) => {
   const { raw, prefix } = generateKey();
   const key = await prisma.apiKey.create({
     data: {

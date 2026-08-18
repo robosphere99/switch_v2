@@ -98,6 +98,27 @@ export async function getUsageAnalytics(
   return data;
 }
 
+export interface AutomationSuggestion {
+  deviceId: number;
+  deviceName: string;
+  type: "daily";
+  time: string;
+  action: "on" | "off";
+  confidence: number;
+  days: number;
+  reason: string;
+}
+
+/** Phase 7 — usage patterns se automation suggestions. */
+export async function getAutomationSuggestions(
+  homeId: number,
+): Promise<ApiResponse<AutomationSuggestion[]>> {
+  const { data } = await api.get<ApiResponse<AutomationSuggestion[]>>(
+    `/homes/${homeId}/automations/suggestions`,
+  );
+  return data;
+}
+
 export async function getDeviceLogs(
   homeId: number,
   deviceId: number,

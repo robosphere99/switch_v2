@@ -272,6 +272,20 @@ CREATE TABLE `refresh_tokens` (
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- CreateTable
+CREATE TABLE `password_reset_tokens` (
+    `id` INTEGER NOT NULL AUTO_INCREMENT,
+    `userId` INTEGER NOT NULL,
+    `token_hash` VARCHAR(64) NOT NULL,
+    `expires_at` DATETIME(3) NOT NULL,
+    `used_at` DATETIME(3) NULL,
+    `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+
+    UNIQUE INDEX `password_reset_tokens_token_hash_key`(`token_hash`),
+    INDEX `password_reset_tokens_userId_idx`(`userId`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- CreateTable
 CREATE TABLE `notifications` (
     `id` INTEGER NOT NULL AUTO_INCREMENT,
     `userId` INTEGER NOT NULL,
@@ -469,7 +483,7 @@ CREATE TABLE `support_chat_settings` (
 -- CreateTable
 CREATE TABLE `app_meta` (
     `key` VARCHAR(64) NOT NULL,
-    `value` VARCHAR(255) NOT NULL,
+    `value` TEXT NOT NULL,
     `updated_at` DATETIME(3) NOT NULL,
 
     PRIMARY KEY (`key`)
@@ -561,6 +575,9 @@ ALTER TABLE `api_keys` ADD CONSTRAINT `api_keys_homeId_fkey` FOREIGN KEY (`homeI
 
 -- AddForeignKey
 ALTER TABLE `refresh_tokens` ADD CONSTRAINT `refresh_tokens_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `users`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE `password_reset_tokens` ADD CONSTRAINT `password_reset_tokens_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `users`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE `notifications` ADD CONSTRAINT `notifications_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `users`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;

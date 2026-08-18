@@ -44,3 +44,15 @@ export async function updateTheme(req: Request, res: Response) {
   const user = await authService.updateThemePref(req.user!.sub, req.body.theme as string);
   ok(res, user);
 }
+
+export async function forgotPassword(req: Request, res: Response) {
+  const { email } = req.body;
+  const result = await authService.requestPasswordReset(email as string);
+  ok(res, result);
+}
+
+export async function resetPassword(req: Request, res: Response) {
+  const { token, newPassword } = req.body;
+  await authService.resetPassword(token as string, newPassword as string);
+  ok(res, { message: "Password reset ho gaya — naye password se login karo" });
+}

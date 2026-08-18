@@ -12,7 +12,7 @@ import { getHealthMonitorState } from "../lib/healthMonitor";
 import { getLeakMonitorState } from "../lib/leakMonitor";
 import { AppError, ok } from "../lib/response";
 import { audit } from "../services/audit.service";
-import { createNotification } from "../services/notification.service";
+import { createNotification, createNotificationWithEmail } from "../services/notification.service";
 import { emitToHome } from "../lib/socket";
 import { generateSerials, updateOrderStatus } from "../services/shop.service";
 import { decryptSecret } from "../lib/crypto";
@@ -2253,6 +2253,31 @@ adminRouter.patch("/warranty/:id/status", async (req, res) => {
     entityId: id,
     meta: { serialCode: claim.serialCode },
   });
+
+  // User ko status change ki notification + EMAIL (Phase 6).
+  const statusMsg: Record<string, string> = {
+    approved: `Aapki warranty claim (${claim.serialCode}) APPROVED ho gayi — replacement/repair ke liye support se baat karo.`,
+    rejected: `Aapki warranty claim (${claim.serialCode}) REJECT ho gayi. Reason ke liye support se baat karo.`,
+    resolved: `Aapki warranty claim (${claim.serialCode}) RESOLVED ho gayi — issue sort ho gaya.`,
+  };
+  try {
+    await createNotificationWithEmail(
+      claim.userId,
+      {
+        category: "system",
+        type: status === "rejected" ? "warning" : "info",
+        title: `🛡️ Warranty ${status}: ${claim.serialCode}`,
+        body: statusMsg[status] ?? `Claim status update: ${status}`,
+      },
+      {
+        emailSubject: `🛡️ Warranty claim ${status} — ${claim.serialCode}`,
+        ctaUrl: "/warranty",
+        ctaLabel: "Warranty dekho",
+      },
+    );
+  } catch (err) {
+    console.error("[admin] warranty email failed", err);
+  }
   ok(res, { id: updated.id, status: updated.status });
 });
 

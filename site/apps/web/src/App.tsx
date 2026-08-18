@@ -11,6 +11,8 @@ import { Notifications } from "./pages/Notifications";
 import { MyBoards } from "./pages/MyBoards";
 import { Landing } from "./pages/Landing";
 import { Login } from "./pages/Login";
+import { ForgotPassword } from "./pages/ForgotPassword";
+import { ResetPassword } from "./pages/ResetPassword";
 import { Members } from "./pages/Members";
 import { Profile } from "./pages/Profile";
 import { Signup } from "./pages/Signup";
@@ -84,6 +86,8 @@ export default function App() {
           <Route path="/" element={<Landing />} />
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/shop" element={<Shop />} />
           <Route
             path="/checkout"

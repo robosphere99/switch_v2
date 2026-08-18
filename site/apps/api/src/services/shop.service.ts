@@ -2,7 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { encryptSecret } from "../lib/crypto";
 import { AppError } from "../lib/response";
-import { createNotification } from "./notification.service";
+import { createNotificationWithEmail } from "./notification.service";
 
 export interface CreateOrderInput {
   userId: number;
@@ -108,14 +108,22 @@ export async function createOrder(input: CreateOrderInput) {
     });
   });
 
-  // Order place hote hi user ko INFO notification — /notifications me dikhega.
+  // Order place hote hi user ko INFO notification + EMAIL (Phase 6).
   try {
-    await createNotification(input.userId, {
-      category: "system",
-      type: "info",
-      title: "📦 Order placed",
-      body: `Order ${order.orderNumber} — ₹${Number(order.totalAmount).toLocaleString("en-IN")}, ${order.items.length} item(s). Status: ${order.status}.`,
-    });
+    await createNotificationWithEmail(
+      input.userId,
+      {
+        category: "system",
+        type: "info",
+        title: "📦 Order placed",
+        body: `Order ${order.orderNumber} — ₹${Number(order.totalAmount).toLocaleString("en-IN")}, ${order.items.length} item(s). Status: ${order.status}.`,
+      },
+      {
+        emailSubject: `📦 Order ${order.orderNumber} placed — ₹${Number(order.totalAmount).toLocaleString("en-IN")}`,
+        ctaUrl: "/orders",
+        ctaLabel: "Order dekho",
+      },
+    );
   } catch (err) {
     // Notification failure se order kabhi fail na ho.
     console.error("[shop] order notification failed", err);
@@ -202,36 +210,52 @@ export async function updateOrderStatus(orderId: number, status: string) {
     });
   });
 
-  // Payment verified → user ko notification — order taiyaar hone ka confidence.
+  // Payment verified → user ko notification + EMAIL.
   if (status === "paid") {
     try {
-      await createNotification(updated.userId, {
-        category: "system",
-        type: "info",
-        title: "✅ Payment verified",
-        body: `Order ${updated.orderNumber} ka payment verify ho gaya — aapka order taiyaar ho raha hai.`,
-      });
+      await createNotificationWithEmail(
+        updated.userId,
+        {
+          category: "system",
+          type: "info",
+          title: "✅ Payment verified",
+          body: `Order ${updated.orderNumber} ka payment verify ho gaya — aapka order taiyaar ho raha hai.`,
+        },
+        { emailSubject: `✅ Payment verified — order ${updated.orderNumber}`, ctaUrl: "/orders", ctaLabel: "Order dekho" },
+      );
     } catch (err) {
       console.error("[shop] payment notification failed", err);
     }
   }
 
-  // Serial keys user ko notification me — shipped/delivered pe turant pata chale.
+  // Serial keys user ko notification + EMAIL me — shipped/delivered pe turant pata chale.
   if (status === "shipped" || status === "delivered") {
     const serialCodes = (updated.items ?? [])
       .map((i) => i.serialCode)
       .filter((c): c is string => Boolean(c));
     const keys = serialCodes.length ? serialCodes.join(", ") : "box sticker pe milenge";
     try {
-      await createNotification(updated.userId, {
-        category: "system",
-        type: "info",
-        title: status === "shipped" ? "🚚 Order shipped" : "📦 Order delivered",
-        body:
-          status === "shipped"
-            ? `Order ${updated.orderNumber} ship ho gaya. Aapke serial keys: ${keys} — Activate page pe daal kar device link karo.`
-            : `Order ${updated.orderNumber} deliver ho gaya! Serial keys: ${keys} — Activate page pe daal kar device add karo (box sticker pe bhi hain).`,
-      });
+      await createNotificationWithEmail(
+        updated.userId,
+        {
+          category: "system",
+          type: "info",
+          title: status === "shipped" ? "🚚 Order shipped" : "📦 Order delivered",
+          body:
+            status === "shipped"
+              ? `Order ${updated.orderNumber} ship ho gaya. Aapke serial keys: ${keys} — Activate page pe daal kar device link karo.`
+              : `Order ${updated.orderNumber} deliver ho gaya! Serial keys: ${keys} — Activate page pe daal kar device add karo (box sticker pe bhi hain).`,
+        },
+        {
+          emailSubject: status === "shipped" ? `🚚 Order ${updated.orderNumber} shipped` : `📦 Order ${updated.orderNumber} delivered`,
+          emailBody:
+            status === "shipped"
+              ? `Order ${updated.orderNumber} ship ho gaya. Serial keys: ${keys}\n\nActivate page pe serial daal kar device link karo.`
+              : `Order ${updated.orderNumber} deliver ho gaya! Serial keys: ${keys}\n\nActivate page pe serial daal kar device add karo (box sticker pe bhi hain).`,
+          ctaUrl: status === "shipped" ? "/activate" : "/activate",
+          ctaLabel: "Device activate karo",
+        },
+      );
     } catch (err) {
       console.error("[shop] status notification failed", err);
     }

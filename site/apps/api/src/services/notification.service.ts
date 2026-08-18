@@ -1,5 +1,6 @@
 import { prisma } from "../lib/prisma";
 import { emitToUser } from "../lib/socket";
+import { sendNotificationEmail } from "../lib/email.service";
 import type { Prisma } from "@prisma/client";
 import {
   buildNotificationDraft,
@@ -52,6 +53,38 @@ export async function createNotification(userId: number, input: CreateNotificati
     },
   });
   emitToUser(userId, "notification:new", notification);
+  return notification;
+}
+
+/**
+ * In-app notification + best-effort EMAIL (Phase 6) — order, warranty, offline
+ * alerts ke liye. Email kabhi fail nahi karta (SMTP na ho to silent skip).
+ */
+export async function createNotificationWithEmail(
+  userId: number,
+  input: CreateNotificationInput,
+  opts: { emailSubject?: string; emailBody?: string; ctaUrl?: string; ctaLabel?: string } = {},
+) {
+  const notification = await createNotification(userId, input);
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, username: true },
+    });
+    if (user?.email) {
+      await sendNotificationEmail({
+        to: user.email,
+        userName: user.username,
+        title: opts.emailSubject ?? input.title,
+        body: opts.emailBody ?? input.body ?? input.title,
+        ctaUrl: opts.ctaUrl,
+        ctaLabel: opts.ctaLabel,
+      });
+    }
+  } catch (err) {
+    // Email failure se notification/order kabhi fail na ho.
+    console.error(`[notify+email] email failed for user ${userId}:`, err instanceof Error ? err.message : err);
+  }
   return notification;
 }
 

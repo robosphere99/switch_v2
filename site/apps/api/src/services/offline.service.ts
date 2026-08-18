@@ -1,6 +1,6 @@
 import { prisma } from "../lib/prisma";
 import { emitDeviceUpdated, emitToHome } from "../lib/socket";
-import { createNotification } from "./notification.service";
+import { createNotificationWithEmail } from "./notification.service";
 import { fileLog } from "../lib/logger";
 
 let timer: NodeJS.Timeout | null = null;
@@ -55,12 +55,16 @@ async function checkOfflineDevicesInner(): Promise<void> {
     emitToHome(board.homeId, "esp:updated", { id: board.id, offline: true });
     const boardName = board.name ?? board.serialCode ?? `ESP-${board.macAddress.slice(-6).toUpperCase()}`;
     for (const m of board.home.members) {
-      await createNotification(m.userId, {
-        category: "device",
-        type: "warning",
-        title: `📡 Board offline: ${boardName}`,
-        body: `${boardName} ne 2+ min se sync nahi kiya — WiFi/power check karo.`,
-      });
+      await createNotificationWithEmail(
+        m.userId,
+        {
+          category: "device",
+          type: "warning",
+          title: `📡 Board offline: ${boardName}`,
+          body: `${boardName} ne 2+ min se sync nahi kiya — WiFi/power check karo.`,
+        },
+        { emailSubject: `📡 Board offline: ${boardName}` },
+      );
     }
     console.log(`[offline] board ${boardName} (${board.id}) marked offline`);
   }
@@ -76,12 +80,16 @@ async function checkOfflineDevicesInner(): Promise<void> {
     emitToHome(board.homeId, "esp:updated", { id: board.id, offline: false });
     const boardName = board.name ?? board.serialCode ?? `ESP-${board.macAddress.slice(-6).toUpperCase()}`;
     for (const m of board.home.members) {
-      await createNotification(m.userId, {
-        category: "device",
-        type: "info",
-        title: `✅ Board online: ${boardName}`,
-        body: `${boardName} wapas connected ho gaya.`,
-      });
+      await createNotificationWithEmail(
+        m.userId,
+        {
+          category: "device",
+          type: "info",
+          title: `✅ Board online: ${boardName}`,
+          body: `${boardName} wapas connected ho gaya.`,
+        },
+        { emailSubject: `✅ Board online: ${boardName}` },
+      );
     }
     console.log(`[offline] board ${boardName} (${board.id}) back online`);
   }
@@ -109,12 +117,16 @@ async function checkOfflineDevicesInner(): Promise<void> {
 
     const targetIds = device.home.members.map((m) => m.userId);
     for (const userId of targetIds) {
-      await createNotification(userId, {
-        category: "device",
-        type: "warning",
-        title: `📡 ${device.name} offline`,
-        body: `${device.name} ne 2+ min se sync nahi kiya. WiFi/device check karo.`,
-      });
+      await createNotificationWithEmail(
+        userId,
+        {
+          category: "device",
+          type: "warning",
+          title: `📡 ${device.name} offline`,
+          body: `${device.name} ne 2+ min se sync nahi kiya. WiFi/device check karo.`,
+        },
+        { emailSubject: `📡 ${device.name} offline` },
+      );
     }
     console.log(`[offline] ${device.name} (${device.id}) marked offline`);
   }
@@ -130,12 +142,16 @@ async function checkOfflineDevicesInner(): Promise<void> {
     await prisma.device.update({ where: { id: device.id }, data: { offline: false } });
     await emitDeviceUpdated(device.homeId, device.id);
     for (const userId of device.home.members.map((m) => m.userId)) {
-      await createNotification(userId, {
-        category: "device",
-        type: "info",
-        title: `✅ ${device.name} online`,
-        body: `${device.name} wapas connected ho gaya.`,
-      });
+      await createNotificationWithEmail(
+        userId,
+        {
+          category: "device",
+          type: "info",
+          title: `✅ ${device.name} online`,
+          body: `${device.name} wapas connected ho gaya.`,
+        },
+        { emailSubject: `✅ ${device.name} online` },
+      );
     }
     console.log(`[offline] ${device.name} (${device.id}) back online`);
   }

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { requireAuth } from "../middleware/auth";
 import { prisma } from "../lib/prisma";
 import { AppError, ok } from "../lib/response";
+import { createNotificationWithEmail } from "../services/notification.service";
 
 export const warrantyRouter = Router();
 
@@ -70,6 +71,26 @@ warrantyRouter.post("/", async (req, res) => {
     });
     return created;
   });
+
+  // User ko notification + EMAIL — claim receive hua.
+  try {
+    await createNotificationWithEmail(
+      req.user!.sub,
+      {
+        category: "system",
+        type: "info",
+        title: `🛡️ Warranty claim submitted (${serialCode})`,
+        body: `Aapki claim file ho gayi — team review kar ke status update karegi.`,
+      },
+      {
+        emailSubject: `🛡️ Warranty claim received — ${serialCode}`,
+        ctaUrl: "/warranty",
+        ctaLabel: "Claim status dekho",
+      },
+    );
+  } catch (err) {
+    console.error("[warranty] email failed", err);
+  }
 
   ok(res, {
     id: claim.id,

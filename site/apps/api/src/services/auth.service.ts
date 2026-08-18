@@ -8,6 +8,8 @@ import { prisma } from "../lib/prisma";
 import { AppError } from "../lib/response";
 import { logger } from "../lib/logger";
 import { persistEnvKey } from "../lib/envPersist";
+import { getSiteSettings } from "./siteSettings.service";
+import { sendPasswordResetEmail } from "../lib/email.service";
 
 function toAuthUser(user: User): AuthUser {
   return { id: user.id, username: user.username, email: user.email, role: user.role, themePref: user.themePref };
@@ -229,5 +231,100 @@ export async function logout(refreshToken: string): Promise<void> {
   });
   if (stored) {
     await prisma.refreshToken.update({ where: { id: stored.id }, data: { revokedAt: new Date() } });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Password reset (forgot-password) — 1-use hashed token, 30 min expiry.
+// ---------------------------------------------------------------------------
+
+const RESET_TOKEN_TTL_MS = 30 * 60 * 1000;
+
+/**
+ * Forgot-password: email pe reset link bhejo.
+ * User enumeration se bachne ke liye hamesha `{ sent: true }` — email exist
+ * na kare to bhi same response (bass koi mail nahi jata).
+ * SMTP configured nahi hai to reset link console/file-log me log hota hai
+ * (dev me kaam karne ke liye) — response me kabhi token nahi aata.
+ */
+export async function requestPasswordReset(email: string): Promise<{ sent: true }> {
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user) return { sent: true }; // same response — email exist nahi karne par bhi
+
+  // Pehle se pending (unused) tokens invalidate — ek time me sirf ek active link.
+  await prisma.passwordResetToken.updateMany({
+    where: { userId: user.id, usedAt: null },
+    data: { usedAt: new Date() },
+  });
+
+  const rawToken = crypto.randomBytes(32).toString("base64url");
+  const tokenHash = hashToken(rawToken);
+  await prisma.passwordResetToken.create({
+    data: {
+      userId: user.id,
+      tokenHash,
+      expiresAt: new Date(Date.now() + RESET_TOKEN_TTL_MS),
+    },
+  });
+
+  const s = await getSiteSettings().catch(() => null);
+  const siteName = s?.siteName || "SwitchNest";
+  const siteUrl = (s?.siteUrl || "").replace(/\/$/, "");
+  const resetUrl = siteUrl
+    ? `${siteUrl}/reset-password?token=${encodeURIComponent(rawToken)}`
+    : "";
+
+  const emailResult = await sendPasswordResetEmail({
+    to: user.email,
+    userName: user.username,
+    resetUrl,
+    siteName,
+  }).catch(() => ({ ok: false, error: "email service error" }));
+
+  if (!emailResult.ok) {
+    // SMTP nahi hai (ya fail) — link log karo taaki dev/self-hosted pe
+    // bina SMTP ke bhi reset ho sake. Response me kabhi nahi (security).
+    const hint = resetUrl || `${rawToken} (siteUrl set nahi hai)`;
+    logger.info(`[auth] password reset link for ${user.email}: ${hint}`);
+  }
+  return { sent: true };
+}
+
+/** Reset token ko verify karke password badlo — purane saare sessions logout. */
+export async function resetPassword(token: string, newPassword: string): Promise<void> {
+  const tokenHash = hashToken(token);
+  const record = await prisma.passwordResetToken.findUnique({ where: { tokenHash } });
+  if (!record || record.usedAt || record.expiresAt < new Date()) {
+    throw new AppError("INVALID_RESET_TOKEN", "Reset link invalid ya expired hai — naya link maango", 400);
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: record.userId } });
+  if (!user) throw new AppError("USER_NOT_FOUND", "User not found", 404);
+
+  const password = await bcrypt.hash(newPassword, 10);
+
+  await prisma.$transaction([
+    // Password change → tokenVersion bump: purane access tokens turant invalid.
+    prisma.user.update({
+      where: { id: user.id },
+      data: { password, tokenVersion: { increment: 1 } },
+    }),
+    // Saare refresh tokens revoke — har device se logout.
+    prisma.refreshToken.deleteMany({ where: { userId: user.id } }),
+    // Is token ko 1-use mark + baaki pending tokens bhi invalidate.
+    prisma.passwordResetToken.update({ where: { id: record.id }, data: { usedAt: new Date() } }),
+    prisma.passwordResetToken.updateMany({
+      where: { userId: user.id, usedAt: null },
+      data: { usedAt: new Date() },
+    }),
+  ]);
+
+  // System admin ka password reset → site/.env ADMIN_PASSWORD bhi sync.
+  if (user.role === "system_admin") {
+    const res = persistEnvKey("ADMIN_PASSWORD", newPassword);
+    logger.info(
+      res.ok ? "Admin password reset — .env ADMIN_PASSWORD synced" : "Admin password reset — .env sync FAILED",
+      res.ok ? { path: res.path } : undefined,
+    );
   }
 }
