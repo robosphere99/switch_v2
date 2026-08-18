@@ -39,11 +39,13 @@ void saveAdmin(const String& username, const String& password) {
 }
 
 String getAdminUsername() {
-  return preferences.getString(PREF_ADMIN_USER, "");
+  String val = preferences.getString(PREF_ADMIN_USER, "");
+  return val.isEmpty() ? DEFAULT_ADMIN_USER : val;
 }
 
 String getAdminPassword() {
-  return preferences.getString(PREF_ADMIN_PASSWORD, "");
+  String val = preferences.getString(PREF_ADMIN_PASSWORD, "");
+  return val.isEmpty() ? DEFAULT_ADMIN_PASSWORD : val;
 }
 
 void saveServer(const String& url, const String& apiKey) {
@@ -57,6 +59,14 @@ String getServerURL() {
 
 String getApiKey() {
   return preferences.getString(PREF_API_KEY, "");
+}
+
+void saveKeyInvalid(bool invalid) {
+  preferences.putBool(PREF_KEY_INVALID, invalid);
+}
+
+bool isKeyInvalid() {
+  return preferences.getBool(PREF_KEY_INVALID, false);
 }
 
 void saveSerialCode(const String& code) {

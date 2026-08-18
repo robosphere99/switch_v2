@@ -492,6 +492,10 @@ void handleLogin() {
 
   html += uiAuthBegin();
 
+  // Default credentials pre-fill karo (user ko dikh jaaye kya dalna hai)
+  String defUser = PreferencesManager::getAdminUsername();
+  defUser.replace("&", "&amp;"); defUser.replace("<", "&lt;"); defUser.replace(">", "&gt;");
+
   html += R"rawliteral(
 <div class="glass auth-card">
 <div class="logo">⚡</div>
@@ -499,9 +503,15 @@ void handleLogin() {
 <p class="sub">Smart Switch Controller</p>
 <form action="/login" method="POST">
 <label>Username</label>
-<input type="text" name="username" placeholder="Username" required>
+<input type="text" name="username" placeholder="Username" value=")rawliteral";
+  html += defUser;
+  html += R"rawliteral(" required>
 <label>Password</label>
-<input type="password" name="password" placeholder="Password" required>
+<div style="position:relative">
+<input type="password" name="password" id="pw" placeholder="Password" required style="width:100%;padding-right:40px">
+<button type="button" onclick="var i=document.getElementById('pw');i.type=(i.type==='password')?'text':'password';this.textContent=(i.type==='password')?'👁':'🙈'" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px">👁</button>
+</div>
+<p class="hint" style="margin-top:4px;font-size:11px;opacity:0.6">Default: admin / admin</p>
 <button type="submit">Login</button>
 </form>
 </div>
@@ -520,6 +530,9 @@ void handleSave() {
 
   // Setup page se hi server URL + API key — ek hi baar mein sab configure
   PreferencesManager::saveServer(server.arg("server_url"), server.arg("api_key"));
+
+  // Naya key setup se aaya — provisioning mode clear
+  PreferencesManager::saveKeyInvalid(false);
 
   PreferencesManager::saveAdmin(adminUser, adminPass);
   PreferencesManager::saveWiFi(wifiSSID, wifiPass);
@@ -584,7 +597,8 @@ void handleDashboard()
         WiFiManager::isDualMode(),
         WiFiManager::getAPIP(),
         WiFiManager::getAPSSID(),
-        WiFiManager::getHostname()
+        WiFiManager::getHostname(),
+        PreferencesManager::isKeyInvalid()
     );
 
     server.send(
@@ -777,7 +791,8 @@ void handleServer()
         "text/html",
         ServerPage(
             PreferencesManager::getServerURL(),
-            PreferencesManager::getApiKey()
+            PreferencesManager::getApiKey(),
+            PreferencesManager::isKeyInvalid()
         )
     );
 }
@@ -790,6 +805,14 @@ void handleServerSave()
         server.arg("api_key")
     );
 
+    // Naya key save hua — provisioning mode clear. Sync turant resume hoga.
+    if (PreferencesManager::isKeyInvalid())
+    {
+        PreferencesManager::saveKeyInvalid(false);
+        LedManager::setMode(LedManager::HEARTBEAT);
+        Serial.println("Key updated — provisioning mode cleared, sync resuming");
+    }
+
     server.sendHeader("Location", "/dashboard");
     server.send(303);
 }
@@ -800,6 +823,14 @@ void handleServerTest()
 
     if (ApiManager::downloadDevices())
     {
+        // Test pass — key sahi hai. Provisioning mode clear (agar set hua tha).
+        if (PreferencesManager::isKeyInvalid())
+        {
+            PreferencesManager::saveKeyInvalid(false);
+            LedManager::setMode(LedManager::HEARTBEAT);
+            Serial.println("Test OK — provisioning mode cleared");
+        }
+
         String json = "{\"success\":true,\"message\":\"Connection OK\",\"count\":";
         json += String(DeviceManager::getCount());
         json += "}";

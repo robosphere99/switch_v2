@@ -753,6 +753,7 @@ class FlasherApp:
             return
         self.set_busy(True)
         def work():
+            nonlocal serial_now, apikey_now
             try:
                 # Permanent bind — serial + API key order ke user se (confirm ke baad)
                 if not serial_now and self.cur_order_id:
