@@ -1,16 +1,26 @@
-import { Router } from "express";
+import express, { Router } from "express";
 import { getOpenApiSpec } from "../lib/openapi";
+import { esp32GuideHtml } from "../lib/esp32Guide";
+import { realtimeGuideHtml } from "../lib/realtimeGuide";
+import { swaggerUiDir } from "../lib/paths";
 
 export const docsRouter = Router();
 
-/** Swagger UI — CDN se (zero npm dependency). CDN na khule to plain page ka link. */
+/** Vendored Swagger UI assets — /api/docs/assets/* (CDN-free, offline + CSP-safe). */
+docsRouter.use("/assets", express.static(swaggerUiDir));
+
+/** Swagger UI — locally vendored (public/swagger-ui). Zero CDN dependency:
+ *  helmet ke CSP `script-src 'self'` inline/CDN scripts block karta hai,
+ *  isliye bundle + init script dono same-origin se serve hote hain. */
 const SWAGGER_UI_HTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SwitchNest API Docs</title>
-  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+  <link rel="icon" type="image/png" sizes="32x32" href="/api/docs/assets/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/api/docs/assets/favicon-16x16.png">
+  <link rel="stylesheet" href="/api/docs/assets/swagger-ui.css">
   <style>
     body { margin: 0; background: #fafafa; }
     .topbar { background: #0f172a; color: #fff; padding: 14px 24px; display: flex; align-items: center; gap: 12px; font-family: Arial, sans-serif; }
@@ -22,22 +32,14 @@ const SWAGGER_UI_HTML = `<!DOCTYPE html>
   <div class="topbar">
     <strong>📡 SwitchNest API</strong>
     <a href="/api/docs/openapi.json" target="_blank">openapi.json</a>
-    <a href="/api/docs/plain" target="_blank">Plain list (offline)</a>
+    <a href="/api/docs/plain" target="_blank">Plain list</a>
+    <a href="/api/docs/esp32" target="_blank">🛠 ESP32 guide</a>
+    <a href="/api/docs/esp32/hi" target="_blank" style="color:#fbbf24">हिंदी</a>
+    <a href="/api/docs/realtime" target="_blank">⚡ Realtime</a>
   </div>
   <div id="swagger-ui"></div>
-  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
-  <script>
-    window.onload = function () {
-      window.ui = SwaggerUIBundle({
-        url: '/api/docs/openapi.json',
-        dom_id: '#swagger-ui',
-        deepLinking: true,
-        displayRequestDuration: true,
-        persistAuthorization: true,
-        tryItOutEnabled: true,
-      });
-    };
-  </script>
+  <script src="/api/docs/assets/swagger-ui-bundle.js"></script>
+  <script src="/api/docs/assets/swagger-init.js"></script>
 </body>
 </html>`;
 
@@ -48,6 +50,22 @@ docsRouter.get("/", (_req, res) => {
 docsRouter.get("/openapi.json", (_req, res) => {
   res.json(getOpenApiSpec());
 });
+
+/** ESP32 integration guide — curl/python/node snippets + Arduino sketch. */
+docsRouter.get("/esp32", (_req, res) => {
+  res.type("html").send(esp32GuideHtml("en"));
+});
+
+/** Hindi (Devanagari) version of the ESP32 guide — Indian customers ke liye. */
+docsRouter.get("/esp32/hi", (_req, res) => {
+  res.type("html").send(esp32GuideHtml("hi"));
+});
+
+/** Realtime events guide (Socket.IO) — web push model + ESP32 command flow. */
+docsRouter.get("/realtime", (_req, res) => {
+  res.type("html").send(realtimeGuideHtml());
+});
+
 
 /** Offline-friendly: bina JS/CDN ke saare endpoints ki simple HTML list. */
 docsRouter.get("/plain", (_req, res) => {
@@ -92,7 +110,7 @@ docsRouter.get("/plain", (_req, res) => {
 <body style="font-family:Arial,Helvetica,sans-serif;margin:0;background:#fafafa">
   <div style="background:#0f172a;color:#fff;padding:16px 24px">
     <strong>📡 SwitchNest API — saare endpoints (${Object.keys(paths).length} paths)</strong>
-    <span style="color:#9ca3af;margin-left:16px">Offline list · Swagger UI: <a href="/api/docs" style="color:#60a5fa">/api/docs</a> · Raw: <a href="/api/docs/openapi.json" style="color:#60a5fa">openapi.json</a></span>
+    <span style="color:#9ca3af;margin-left:16px">Offline list · Swagger UI: <a href="/api/docs" style="color:#60a5fa">/api/docs</a> · Raw: <a href="/api/docs/openapi.json" style="color:#60a5fa">openapi.json</a> · ESP32 guide: <a href="/api/docs/esp32" style="color:#60a5fa">/api/docs/esp32</a> · Hindi: <a href="/api/docs/esp32/hi" style="color:#fbbf24">/api/docs/esp32/hi</a> · Realtime: <a href="/api/docs/realtime" style="color:#60a5fa">/api/docs/realtime</a></span>
   </div>
   <div style="max-width:1100px;margin:0 auto;padding:24px">
     <p style="color:#6b7280;font-size:14px">Auth: <code>Authorization: Bearer &lt;token&gt;</code> · ESP32: <code>?api_key=rs_...</code> · Envelope: <code>{ success, data }</code></p>
