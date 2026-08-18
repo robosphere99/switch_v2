@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { suggestAutomationsFromLogs } from "./automation.service";
+import { suggestAutomationsFromLogs, demoSuggestions } from "./automation.service";
 
 function log(deviceId: number, name: string, action: "on" | "off", dateStr: string, hour: number): {
   deviceId: number;
@@ -72,6 +72,35 @@ describe("suggestAutomationsFromLogs", () => {
 
   it("empty logs → no suggestions", () => {
     expect(suggestAutomationsFromLogs([])).toHaveLength(0);
+  });
+
+  it("demoSuggestions: home ke real devices se, demo flag + sample confidence", () => {
+    const res = demoSuggestions([
+      { id: 1, name: "Bulb" },
+      { id: 2, name: "Fan" },
+      { id: 3, name: "TV" },
+    ]);
+    expect(res).toHaveLength(3);
+    expect(res[0]).toMatchObject({
+      deviceId: 1,
+      deviceName: "Bulb",
+      type: "daily",
+      action: "on",
+      demo: true,
+    });
+    expect(res.every((s) => s.demo)).toBe(true);
+    expect(res[0].reason).toContain("Demo");
+    expect(res[0].confidence).toBe(0.6);
+  });
+
+  it("demoSuggestions: empty devices → koi demo nahi", () => {
+    expect(demoSuggestions([])).toHaveLength(0);
+  });
+
+  it("demoSuggestions: max 3, sirf available devices use hote hain", () => {
+    const res = demoSuggestions([1, 2, 3, 4, 5].map((id) => ({ id, name: `Dev${id}` })));
+    expect(res).toHaveLength(3);
+    expect(res.map((s) => s.deviceId)).toEqual([1, 2, 3]);
   });
 
   it("max 10 suggestions", () => {
