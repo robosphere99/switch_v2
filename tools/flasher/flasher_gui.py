@@ -253,22 +253,24 @@ class FlasherApp:
         self.cb_mode.bind("<<ComboboxSelected>>", self.on_server_mode)
         ttk.Button(row, text="Guide", command=self.open_guide)\
             .grid(row=1, column=2, padx=(8, 4), pady=(6, 0))
-        ttk.Label(row, text="ESP Server URL (board ko dikhe)")\
-            .grid(row=1, column=3, sticky="w", pady=(6, 0))
+        # ESP Server URL — sirf Localhost mode me dikhta hai;
+        # Live site pe auto-set hota hai (board seedha production server use karega).
         self.lan_ip = detect_lan_ip()
+        self.l_esp_label = ttk.Label(row, text="ESP Server URL")
+        self.l_esp_label.grid(row=1, column=3, sticky="w", pady=(6, 0))
         self.e_esp_server = ttk.Entry(row, width=30)
         self.e_esp_server.insert(0, f"http://{self.lan_ip}:4000")
         self.e_esp_server.grid(row=1, column=4, padx=4, pady=(6, 0))
-        ttk.Button(row, text="⟳", width=3, command=self.refresh_lan_ip)\
-            .grid(row=1, column=5, padx=(4, 0), pady=(6, 0))
-        # Detected LAN IP — Localhost mode me boards isi IP pe heartbeat bhejte
-        # hain; WiFi change / IP renew pe ⟳ se dobara detect karo.
+        self.b_refresh_lan = ttk.Button(row, text="⟳", width=3, command=self.refresh_lan_ip)
+        self.b_refresh_lan.grid(row=1, column=5, padx=(4, 0), pady=(6, 0))
         self.l_esp_hint = ttk.Label(
             row,
             text=f"Detected LAN IP: {self.lan_ip} — boards isi pe connect honge",
             foreground="#9ca3af",
         )
         self.l_esp_hint.grid(row=2, column=3, columnspan=3, sticky="w", pady=(2, 0))
+        # Live site pe auto-set + hide; initial state apply karo
+        self.on_server_mode()
 
         # Row 2 — order + device (wide fields — lamba order number ab pura dikhta hai)
         row = ttk.LabelFrame(f, text=" 2 · Order / Device ", padding=10)
@@ -416,8 +418,10 @@ class FlasherApp:
     # ---------------- actions ----------------
 
     def on_server_mode(self, _event=None):
-        """Mode switch — Live site ↔ Localhost. Site URL + ESP server URL
-        preset se fill hote hain (dono editable rehte hain — manual bhi kar sakte ho)."""
+        """Mode switch — Live site ↔ Localhost.
+
+        Live site  → ESP server URL auto production hai, box HIDE.
+        Localhost  → ESP server URL = LAN IP, box SHOW (editable)."""
         label = self.cb_mode.get()
         preset = next((p for p in SERVER_PRESETS if p[0] == label), None)
         if not preset:
@@ -425,15 +429,29 @@ class FlasherApp:
         _, api_url, web_url = preset
         self.e_server.delete(0, "end")
         self.e_server.insert(0, api_url)
-        if label == "Localhost":
-            esp = f"http://{detect_lan_ip()}:4000"
-        else:
-            esp = api_url  # live pe board seedha site se heartbeat karega
+
+        is_live = label != "Localhost"
+        esp = api_url if is_live else f"http://{detect_lan_ip()}:4000"
         self.e_esp_server.delete(0, "end")
         self.e_esp_server.insert(0, esp)
-        self.l_esp_hint.config(
-            text=f"Detected LAN IP: {self.lan_ip} — boards isi pe connect honge",
-        )
+
+        # Live site pe ESP server box chhupa do (auto hai, user ko dikhega nahi)
+        # Localhost pe dikha do (user ko pata hona chahiye boards kahan jayenge)
+        grid_kw = {"row": 1, "column": 3, "sticky": "w", "pady": (6, 0)}
+        if is_live:
+            self.l_esp_label.grid_forget()
+            self.e_esp_server.grid_forget()
+            self.b_refresh_lan.grid_forget()
+            self.l_esp_hint.config(
+                text=f"ESP server: {api_url} (board production server use karega)",
+            )
+        else:
+            self.l_esp_label.grid(**grid_kw)
+            self.e_esp_server.grid(row=1, column=4, padx=4, pady=(6, 0))
+            self.b_refresh_lan.grid(row=1, column=5, padx=(4, 0), pady=(6, 0))
+            self.l_esp_hint.config(
+                text=f"Detected LAN IP: {self.lan_ip} — boards isi pe connect honge",
+            )
         self._log(f"Mode: {label} — API {api_url} · ESP server {esp}", "info")
         self._log(f"Guide: {web_url}/admin/flasher-guide (📖 Guide se kholega)", "info")
 
