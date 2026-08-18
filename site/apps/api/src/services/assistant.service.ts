@@ -359,7 +359,7 @@ async function tryLlmReply(
   content: string,
   devices: DeviceBrief[],
 ): Promise<LlmReply | null> {
-  if (!aiConfigured()) return null;
+  if (!(await aiConfigured())) return null;
   try {
     const raw = await chatCompletion({
       system: LLM_SYSTEM_PROMPT.replace("{devices}", buildDeviceContext(devices) || "(koi device nahi)"),

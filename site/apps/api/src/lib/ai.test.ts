@@ -15,6 +15,17 @@ vi.mock("../config/env", () => ({
   corsOrigins: ["http://localhost:5173"],
 }));
 
+// siteSettings mock — DB/AI config ko deterministic rakho (env fallback path test karna hai).
+vi.mock("../services/siteSettings.service", () => ({
+  getSiteSettings: vi.fn().mockResolvedValue({
+    siteName: "Test", supportEmail: "", supportPhone: "", supportAddress: "", supportHours: "",
+    brandColor: "#2563eb", siteUrl: "", smtpHost: "", smtpPort: 0, smtpUser: "", smtpPass: "",
+    smtpFrom: "", smtpSecure: false, aiProvider: "", aiApiKey: "", aiBaseUrl: "", aiModel: "",
+  }),
+  updateSiteSettings: vi.fn(),
+  getPublicSiteSettings: vi.fn(),
+}));
+
 const { chatCompletion, aiConfigured, getAiConfig } = await import("./ai");
 const { extractJsonObject, parseLlmActions } = await import("../services/assistant.service");
 
@@ -24,12 +35,38 @@ const DEVICES = [
 ] as unknown as Parameters<typeof parseLlmActions>[1];
 
 describe("getAiConfig / aiConfigured", () => {
-  it("resolves OpenAI default base URL", () => {
-    const c = getAiConfig();
+  it("resolves OpenAI default base URL (env fallback)", async () => {
+    const c = await getAiConfig();
     expect(c.provider).toBe("openai");
     expect(c.baseUrl).toBe("https://api.openai.com/v1");
     expect(c.model).toBe("gpt-4o-mini");
-    expect(aiConfigured()).toBe(true);
+    expect(await aiConfigured()).toBe(true);
+  });
+
+  it("DB (admin settings) precedence — provider set ho to env override hota hai", async () => {
+    const { getSiteSettings } = await import("../services/siteSettings.service");
+    vi.mocked(getSiteSettings).mockResolvedValueOnce({
+      siteName: "Test", supportEmail: "", supportPhone: "", supportAddress: "", supportHours: "",
+      brandColor: "#2563eb", siteUrl: "", smtpHost: "", smtpPort: 0, smtpUser: "", smtpPass: "",
+      smtpFrom: "", smtpSecure: false,
+      aiProvider: "gemini", aiApiKey: "sk-db-plain", aiBaseUrl: "", aiModel: "gemini-2.0-flash",
+    });
+    const c = await getAiConfig();
+    expect(c.provider).toBe("gemini"); // env openai tha, DB gemini
+    expect(c.model).toBe("gemini-2.0-flash");
+    expect(c.apiKey).toBe("sk-db-plain");
+    expect(c.baseUrl).toBe("https://generativelanguage.googleapis.com/v1beta/openai");
+  });
+
+  it("DB provider blank ho to env fallback chalta hai", async () => {
+    const { getSiteSettings } = await import("../services/siteSettings.service");
+    vi.mocked(getSiteSettings).mockResolvedValueOnce({
+      siteName: "Test", supportEmail: "", supportPhone: "", supportAddress: "", supportHours: "",
+      brandColor: "#2563eb", siteUrl: "", smtpHost: "", smtpPort: 0, smtpUser: "", smtpPass: "",
+      smtpFrom: "", smtpSecure: false, aiProvider: "", aiApiKey: "", aiBaseUrl: "", aiModel: "",
+    });
+    const c = await getAiConfig();
+    expect(c.provider).toBe("openai"); // env se
   });
 });
 

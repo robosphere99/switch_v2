@@ -24,6 +24,7 @@ import { getRequestStats } from "../lib/requestTracker";
 import { getSiteSettings, updateSiteSettings } from "../services/siteSettings.service";
 import { setDbReady } from "../lib/dbState";
 import { sendEmail } from "../lib/email.service";
+import { chatCompletion, getAiConfig, aiConfigured } from "../lib/ai";
 
 export const adminRouter = Router();
 
@@ -164,13 +165,24 @@ const settingsSchema = z
     smtpPass: z.string().max(200).optional(), // blank = purana rakho
     smtpFrom: z.string().email().max(150).optional().or(z.literal("")),
     smtpSecure: z.boolean().optional(),
+    // AI assistant config (Phase 7) — UI se, env ke bajaye
+    aiProvider: z.enum(["openai", "gemini", "ollama", ""]).optional(),
+    aiApiKey: z.string().max(200).optional(), // blank = purana rakho
+    aiBaseUrl: z.string().max(200).optional().or(z.literal("")),
+    aiModel: z.string().max(100).optional(),
   })
   .refine((d) => Object.keys(d).length > 0, { message: "At least one field to update" });
 
 adminRouter.get("/settings", async (_req, res) => {
   const s = await getSiteSettings();
-  // smtpPass kabhi wapas nahi — sirf flag ki set hai ya nahi (UI placeholder ke liye)
-  ok(res, { ...s, smtpPass: s.smtpPass ? "********" : "", smtpPassSet: !!s.smtpPass });
+  // smtpPass / aiApiKey kabhi wapas nahi — sirf flags ki set hai ya nahi (UI placeholder)
+  ok(res, {
+    ...s,
+    smtpPass: s.smtpPass ? "********" : "",
+    smtpPassSet: !!s.smtpPass,
+    aiApiKey: s.aiApiKey ? "********" : "",
+    aiApiKeySet: !!s.aiApiKey,
+  });
 });
 
 adminRouter.put("/settings", validateBody(settingsSchema), async (req, res) => {
@@ -199,6 +211,26 @@ adminRouter.post("/settings/test-email", async (req, res) => {
     throw new AppError("SMTP_ERROR", `Email fail: ${r.error ?? "unknown"}`, 500);
   }
   ok(res, { sent: true });
+});
+
+/** AI config verify — chhota completion call, error ko readable message me. */
+adminRouter.post("/settings/ai-test", async (_req, res) => {
+  if (!(await aiConfigured())) {
+    throw new AppError("CONFIG_ERROR", "AI configured nahi hai — Settings me provider + model + API key daalo aur Save karo", 400);
+  }
+  const cfg = await getAiConfig();
+  try {
+    const reply = await chatCompletion({
+      system: "Reply with exactly: AI_OK",
+      messages: [{ role: "user", content: "ping" }],
+      maxTokens: 10,
+      timeoutMs: 20_000,
+    });
+    ok(res, { ok: true, reply, provider: cfg.provider, model: cfg.model });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new AppError("AI_ERROR", `AI call fail: ${msg}`, 502);
+  }
 });
 
 // ---------- Users ----------
