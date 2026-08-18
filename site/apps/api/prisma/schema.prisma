@@ -116,7 +116,6 @@ model User {
   status      UserStatus @default(active)
   createdAt   DateTime   @default(now()) @map("created_at")
   lastLoginAt DateTime?  @map("last_login_at")
-  loginCount  Int        @default(0) @map("login_count")
   themePref   String?    @db.VarChar(16) @map("theme_pref")
   tokenVersion Int       @default(0) @map("token_version")
 
@@ -300,7 +299,6 @@ model Device {
   otaRequestedAt    DateTime?  @map("ota_requested_at")
   otaProgress       Int?       @map("ota_progress")
   otaStatus         String?    @db.VarChar(32) @map("ota_status")
-  ledEnabled      Boolean    @default(true) @map("led_enabled")
   espId           Int?
   createdBy       Int
   createdAt       DateTime     @default(now()) @map("created_at")
@@ -422,9 +420,6 @@ model ApiKey {
   createdAt  DateTime  @default(now()) @map("created_at")
   expiresAt  DateTime? @map("expires_at")
   lastUsedAt DateTime? @map("last_used_at")
-  expiryNotifiedAt     DateTime? @map("expiry_notified_at")
-  expiryWarnedAt       DateTime? @map("expiry_warned_at")
-  expiryFinalWarnedAt  DateTime? @map("expiry_final_warned_at")
   revokedAt            DateTime? @map("revoked_at")
 
   user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
