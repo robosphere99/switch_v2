@@ -2,15 +2,55 @@ import { Router } from "express";
 import { prisma } from "../lib/prisma";
 import { AppError, ok } from "../lib/response";
 import { optionalAuth, requireAuth } from "../middleware/auth";
+import { rateLimit } from "../middleware/rateLimit";
 import { getRequestStats } from "../lib/requestTracker";
 import { audit } from "../services/audit.service";
 import { getPublicSiteSettings } from "../services/siteSettings.service";
 
 export const publicRouter = Router();
 
+// Public endpoints — spam / flood / abuser se bachao (per IP).
+// Chatbot (rule-based, thoda DB) — har minute max 20.
+const assistantLimiter = rateLimit({
+  name: "public:assistant",
+  windowMs: 60_000,
+  max: 20,
+  message: "Bahut zyada messages — thodi der baad try karo",
+});
+const adminAssistantLimiter = rateLimit({
+  name: "public:assistant-admin",
+  windowMs: 60_000,
+  max: 30,
+  message: "Bahut zyada messages — thodi der baad try karo",
+});
+// Contact form — spam protection (DB row + email pe jaata hai).
+const contactLimiter = rateLimit({
+  name: "public:contact",
+  windowMs: 60 * 60_000,
+  max: 5,
+  message: "Bahut zyada contact messages — 1 ghanta baad try karo",
+});
+const supportFormLimiter = rateLimit({
+  name: "public:support-form",
+  windowMs: 60 * 60_000,
+  max: 10,
+  message: "Bahut zyada support messages — 1 ghanta baad try karo",
+});
+// Cheap GETs — runaway loop se bachne ke liye bas defensive.
+const siteSettingsLimiter = rateLimit({
+  name: "public:site-settings",
+  windowMs: 60_000,
+  max: 120,
+});
+const mySupportLimiter = rateLimit({
+  name: "public:my-support",
+  windowMs: 60_000,
+  max: 60,
+});
+
 // Site-wide public settings (brand color, contact info) — login se pehle bhi
 // chahiye taaki theme + support details har jagah consistent rahe.
-publicRouter.get("/site-settings", async (_req, res) => {
+publicRouter.get("/site-settings", siteSettingsLimiter, async (_req, res) => {
   ok(res, await getPublicSiteSettings());
 });
 
@@ -149,7 +189,7 @@ function detectNeed(text: string, products: Array<{ id: number; name: string; mo
   return null;
 }
 
-publicRouter.post("/assistant", optionalAuth, async (req, res) => {
+publicRouter.post("/assistant", assistantLimiter, optionalAuth, async (req, res) => {
   const text = String(req.body?.message ?? "").trim();
   if (!text) return ok(res, { reply: "Kuch likho — e.g. '4 lights control karne hain' ya 'dimmer chahiye'.", chips: CHIPS });
 
@@ -395,7 +435,7 @@ async function adminAssistantReply(text: string): Promise<{ reply: string; produ
   };
 }
 
-publicRouter.post("/assistant/admin", requireAuth, async (req, res) => {
+publicRouter.post("/assistant/admin", adminAssistantLimiter, requireAuth, async (req, res) => {
   if (req.user!.role !== "system_admin") {
     throw new AppError("FORBIDDEN", "Admin access required", 403);
   }
@@ -406,7 +446,7 @@ publicRouter.post("/assistant/admin", requireAuth, async (req, res) => {
 // Public contact / feedback form
 // ---------------------------------------------------------------------------
 
-publicRouter.post("/contact", async (req, res) => {
+publicRouter.post("/contact", contactLimiter, async (req, res) => {
   const name = String(req.body?.name ?? "").trim().slice(0, 100);
   const email = String(req.body?.email ?? "").trim().slice(0, 120) || null;
   const phone = String(req.body?.phone ?? "").trim().slice(0, 20) || null;
@@ -424,7 +464,7 @@ publicRouter.post("/contact", async (req, res) => {
 });
 
 /** Logged-in user apni support tickets. */
-publicRouter.get("/support/my", requireAuth, async (req, res) => {
+publicRouter.get("/support/my", mySupportLimiter, requireAuth, async (req, res) => {
   const msgs = await prisma.contactMessage.findMany({
     where: { userId: req.user!.sub },
     orderBy: { createdAt: "desc" },
@@ -437,7 +477,7 @@ publicRouter.get("/support/my", requireAuth, async (req, res) => {
 // Authenticated support — logged-in users apne account se hi contact karein
 // ---------------------------------------------------------------------------
 
-publicRouter.post("/support", requireAuth, async (req, res) => {
+publicRouter.post("/support", supportFormLimiter, requireAuth, async (req, res) => {
   const subject = String(req.body?.subject ?? "Support").trim().slice(0, 150);
   const message = String(req.body?.message ?? "").trim();
   const phone = String(req.body?.phone ?? "").trim().slice(0, 20) || null;
