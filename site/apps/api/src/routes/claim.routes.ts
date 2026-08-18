@@ -1,10 +1,25 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth";
+import { rateLimit } from "../middleware/rateLimit";
 import { prisma } from "../lib/prisma";
 import { AppError, ok } from "../lib/response";
 import { audit } from "../services/audit.service";
 
 export const claimRouter = Router();
+
+// Serial brute-force / guessing se bachao — per IP. Claim ek heavy write
+// (serial registry + device + audit), isliye hourly limit tight rakhi hai.
+const claimLimiter = rateLimit({
+  name: "claim:create",
+  windowMs: 60 * 60_000,
+  max: 20,
+  message: "Bahut zyada claim attempts — 1 ghanta baad try karo",
+});
+const claimHomesLimiter = rateLimit({
+  name: "claim:homes",
+  windowMs: 60_000,
+  max: 60,
+});
 
 claimRouter.use(requireAuth);
 
@@ -32,13 +47,13 @@ async function claimableHomes(userId: number) {
   });
 }
 
-claimRouter.get("/homes", async (req, res) => {
+claimRouter.get("/homes", claimHomesLimiter, async (req, res) => {
   const homes = await claimableHomes(req.user!.sub);
   ok(res, homes.map((h) => h.home));
 });
 
 /** POST /api/claim  { serialCode, homeId } */
-claimRouter.post("/", async (req, res) => {
+claimRouter.post("/", claimLimiter, async (req, res) => {
   const serialCode = String(req.body?.serialCode ?? "").trim().toUpperCase();
   const homeId = Number(req.body?.homeId);
   if (!serialCode) throw new AppError("BAD_REQUEST", "Serial code is required");

@@ -2,11 +2,33 @@ import { Router } from "express";
 import { z } from "zod";
 import { requireAuth } from "../middleware/auth";
 import { validateBody, validateParams } from "../middleware/validate";
+import { rateLimit } from "../middleware/rateLimit";
 import { ok } from "../lib/response";
 import { prisma } from "../lib/prisma";
 import * as assistantService from "../services/assistant.service";
 
 export const assistantRouter = Router();
+
+// Assistant endpoints — LLM configured ho to har message ka cost hai,
+// isliye message/confirm pe tight limits (per IP).
+const chatCreateLimiter = rateLimit({
+  name: "assistant:create",
+  windowMs: 60 * 60_000,
+  max: 30,
+  message: "Bahut zyada chats — 1 ghanta baad try karo",
+});
+const messageLimiter = rateLimit({
+  name: "assistant:message",
+  windowMs: 60_000,
+  max: 20,
+  message: "Bahut fast messages — thodi der ruk kar bhejo",
+});
+const confirmLimiter = rateLimit({
+  name: "assistant:confirm",
+  windowMs: 60_000,
+  max: 30,
+  message: "Bahut zyada confirm requests — thodi der baad try karo",
+});
 
 const chatParams = z.object({ chatId: z.coerce.number().int().positive() });
 
@@ -27,7 +49,7 @@ async function membership(userId: number, homeId: number) {
 }
 
 // Create a chat for a home (any member of that home)
-assistantRouter.post("/chats", requireAuth, validateBody(createSchema), async (req, res) => {
+assistantRouter.post("/chats", chatCreateLimiter, requireAuth, validateBody(createSchema), async (req, res) => {
   const { homeId, title } = req.body;
   const member = await membership(req.user!.sub, homeId);
   if (!member) {
@@ -44,6 +66,7 @@ assistantRouter.get("/chats", requireAuth, async (req, res) => {
 // Send a message (any member of the chat's home)
 assistantRouter.post(
   "/chats/:chatId/messages",
+  messageLimiter,
   requireAuth,
   validateParams(chatParams),
   validateBody(messageSchema),
@@ -60,6 +83,7 @@ assistantRouter.post(
 // Confirm a proposal (member+ can execute)
 assistantRouter.post(
   "/chats/:chatId/confirm",
+  confirmLimiter,
   requireAuth,
   validateParams(chatParams),
   validateBody(confirmSchema),

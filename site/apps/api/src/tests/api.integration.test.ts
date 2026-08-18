@@ -286,6 +286,22 @@ describe.skipIf(!reachable)("api integration (real MySQL)", () => {
     expect(blocked.body!.error.code).toBe("RATE_LIMITED");
   });
 
+  it("public contact form: 5 allowed, 6th → 429 (spam protection)", async () => {
+    for (let i = 0; i < 5; i++) {
+      const r = await api("/api/public/contact", {
+        method: "POST",
+        body: { name: "SpamBot", message: `msg ${i}` },
+      });
+      expect(r.status).toBe(201);
+    }
+    const blocked = await api("/api/public/contact", {
+      method: "POST",
+      body: { name: "SpamBot", message: "6th attempt" },
+    });
+    expect(blocked.status).toBe(429);
+    expect(blocked.body!.error.code).toBe("RATE_LIMITED");
+  });
+
   // ---------- API keys + device API (ESP32) ----------
 
   it("api key create → device read-all works with it, 401 without", async () => {

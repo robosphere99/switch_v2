@@ -847,7 +847,7 @@ export function buildOpenApiSpec(): Record<string, unknown> {
         "**Auth:** saare endpoints `Authorization: Bearer <accessToken>` (login se).\n" +
         "**ESP32/device endpoints** (`/api/device/*`): `?api_key=rs_...` query param ya `Authorization: Bearer rs_...`.\n" +
         "**Envelope:** har response `{ success, data }` ya `{ success:false, error:{ code, message } }`.\n" +
-        "**Rate limits:** login 10/15min, signup 5/15min, API-key create 20/h, support send 10/min — 429 + Retry-After header.\n\n" +
+        "**Rate limits (per IP, 429 + Retry-After header):** login 10/15min · signup 5/15min · forgot-password 5/h · API-key create 20/h · support send 10/min · contact form 5/h · public assistant 20/min · claim 20/h · warranty status 30/min + claim 10/h · assistant chat message 20/min + confirm 30/min · ESP32 device API 1200/600 per min.\n\n" +
         "Raw spec: `GET /api/docs/openapi.json` · Offline list: `GET /api/docs/plain`",
       version: "2.2.0",
       contact: { name: "SwitchNest Support" },
