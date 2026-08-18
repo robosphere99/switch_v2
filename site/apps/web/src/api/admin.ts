@@ -142,10 +142,16 @@ export interface SiteSettingsPayload {
   smtpPass?: string;
   smtpFrom?: string;
   smtpSecure?: boolean;
+  /** AI assistant config — UI se (env ke bajaye). Blank key = purana rakho. */
+  aiProvider?: "openai" | "gemini" | "ollama" | "";
+  aiApiKey?: string;
+  aiBaseUrl?: string;
+  aiModel?: string;
 }
 
 export interface AdminSettings extends SiteSettingsPayload {
   smtpPassSet: boolean;
+  aiApiKeySet: boolean;
 }
 
 export async function getAdminSettings(): Promise<ApiResponse<AdminSettings>> {
@@ -161,6 +167,12 @@ export async function updateAdminSettings(patch: SiteSettingsPayload): Promise<A
 /** SMTP test mail — admin ke email pe. */
 export async function testAdminEmail(): Promise<ApiResponse<{ sent: boolean }>> {
   const { data } = await api.post("/admin/settings/test-email");
+  return data;
+}
+
+/** AI config test — chhota completion call, sahi chalta hai ya nahi. */
+export async function testAdminAi(): Promise<ApiResponse<{ ok: boolean; reply?: string; provider?: string; model?: string }>> {
+  const { data } = await api.post("/admin/settings/ai-test");
   return data;
 }
 

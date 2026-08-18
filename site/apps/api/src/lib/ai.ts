@@ -1,4 +1,6 @@
 import { env } from "../config/env";
+import { decryptSecret } from "./crypto";
+import { getSiteSettings } from "../services/siteSettings.service";
 
 /**
  * AI assistant — provider-agnostic chat completions client (Phase 7).
@@ -10,8 +12,10 @@ import { env } from "../config/env";
  *   - Gemini:        base https://generativelanguage.googleapis.com/v1beta/openai  model gemini-2.0-flash...
  *   - Ollama (local): base http://localhost:11434/v1           model llama3.2...
  *
- * Config env se (site/.env):
- *   AI_PROVIDER=openai|gemini|ollama   AI_API_KEY=...   AI_BASE_URL=...   AI_MODEL=...
+ * Config 2 jagah se:
+ *   1. Admin → Settings (app_meta, encrypted apiKey) — UI se set hota hai.
+ *   2. env fallback (site/.env): AI_PROVIDER/AI_API_KEY/AI_BASE_URL/AI_MODEL.
+ * DB wali precedence leti hai (UI = source of truth), env sirf fallback.
  * Provider empty → assistant rule-based (purana behaviour).
  */
 
@@ -28,7 +32,8 @@ const DEFAULT_BASE_URLS: Record<string, string> = {
   ollama: "http://localhost:11434/v1",
 };
 
-export function getAiConfig(): AiConfig {
+/** Env se config (site/.env) — fallback jab settings me kuch set na ho. */
+function envAiConfig(): AiConfig {
   const provider = (env.AI_PROVIDER || "").trim().toLowerCase();
   const configured = Boolean(provider && env.AI_MODEL);
   return {
@@ -40,9 +45,44 @@ export function getAiConfig(): AiConfig {
   };
 }
 
+/**
+ * Asli config — DB (admin settings) pehle, env fallback.
+ * DB ke aiProvider set ho to DB ki saari values precedence leti hain.
+ */
+export async function getAiConfig(): Promise<AiConfig> {
+  let db: Partial<AiConfig> = {};
+  try {
+    const s = await getSiteSettings();
+    if (s.aiProvider) {
+      let apiKey = "";
+      if (s.aiApiKey) {
+        try {
+          apiKey = decryptSecret(s.aiApiKey);
+        } catch {
+          apiKey = s.aiApiKey; // purana plaintext fallback
+        }
+      }
+      db = { provider: s.aiProvider, apiKey, baseUrl: s.aiBaseUrl, model: s.aiModel };
+    }
+  } catch {
+    /* DB down / not installed → env fallback */
+  }
+
+  const cfg: AiConfig = { ...envAiConfig(), ...db };
+  const configured = Boolean(cfg.provider && cfg.model);
+  if (!configured) {
+    return { provider: "", apiKey: "", baseUrl: "", model: "" };
+  }
+  return {
+    ...cfg,
+    provider: cfg.provider.trim().toLowerCase(),
+    baseUrl: (cfg.baseUrl.trim() || DEFAULT_BASE_URLS[cfg.provider] || "").replace(/\/$/, ""),
+  };
+}
+
 /** LLM configured hai? (provider + model set ho to) */
-export function aiConfigured(): boolean {
-  const c = getAiConfig();
+export async function aiConfigured(): Promise<boolean> {
+  const c = await getAiConfig();
   return Boolean(c.provider && c.model && c.baseUrl);
 }
 
@@ -61,7 +101,7 @@ export interface ChatCompletionOptions {
 
 /** Chat completion — reply text return karta hai. Failure pe throw (caller fallback karega). */
 export async function chatCompletion(opts: ChatCompletionOptions): Promise<string> {
-  const cfg = getAiConfig();
+  const cfg = await getAiConfig();
   if (!cfg.provider || !cfg.model || !cfg.baseUrl) {
     throw new Error("AI not configured (AI_PROVIDER/AI_MODEL)");
   }

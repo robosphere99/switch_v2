@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Check, Eye, Mail, Palette, Send } from "lucide-react";
-import { getAdminSettings, updateAdminSettings, testAdminEmail, resetSite } from "../api/admin";
+import { Bot, Check, Eye, Mail, Palette, Send } from "lucide-react";
+import { getAdminSettings, updateAdminSettings, testAdminEmail, testAdminAi, resetSite } from "../api/admin";
 import { updateProfile } from "../api/auth";
 import { useAuthStore } from "../stores/auth";
 import { useSiteStore } from "../stores/site";
@@ -50,6 +50,10 @@ export function AdminSettings() {
     smtpPass: string;
     smtpFrom: string;
     smtpSecure: boolean;
+    aiProvider: string;
+    aiApiKey: string;
+    aiBaseUrl: string;
+    aiModel: string;
   } | null>(null);
   const current = form ?? {
     siteName: s?.siteName ?? "",
@@ -65,8 +69,13 @@ export function AdminSettings() {
     smtpPass: "",
     smtpFrom: s?.smtpFrom ?? "",
     smtpSecure: s?.smtpSecure ?? false,
+    aiProvider: s?.aiProvider ?? "",
+    aiApiKey: "",
+    aiBaseUrl: s?.aiBaseUrl ?? "",
+    aiModel: s?.aiModel ?? "",
   };
   const smtpPassSet = s?.smtpPassSet ?? false;
+  const aiApiKeySet = s?.aiApiKeySet ?? false;
 
   // Theme preview modal state
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -88,6 +97,11 @@ export function AdminSettings() {
         ...(current.smtpPass ? { smtpPass: current.smtpPass } : {}),
         smtpFrom: current.smtpFrom,
         smtpSecure: current.smtpSecure,
+        // AI config — env ke bajaye UI se
+        aiProvider: (current.aiProvider || "") as "openai" | "gemini" | "ollama" | "",
+        ...(current.aiApiKey ? { aiApiKey: current.aiApiKey } : {}),
+        aiBaseUrl: current.aiBaseUrl,
+        aiModel: current.aiModel,
       }),
     onSuccess: (res) => {
       if (res.success) {
@@ -115,6 +129,24 @@ export function AdminSettings() {
       const anyE = e as { response?: { data?: { error?: { message?: string } } } };
       const msg = anyE.response?.data?.error?.message ?? String((e as Error).message ?? e);
       setMailMsg({ ok: false, text: msg });
+    },
+  });
+
+  // AI test — config verify (chhota completion call)
+  const [aiMsg, setAiMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const testAi = useMutation({
+    mutationFn: () => testAdminAi(),
+    onSuccess: (res) => {
+      if (res.success) {
+        setAiMsg({ ok: true, text: `AI sahi chal raha hai ✅ (${res.data.provider} · ${res.data.model}) — reply: "${res.data.reply}"` });
+      } else {
+        setAiMsg({ ok: false, text: res.error.message });
+      }
+    },
+    onError: (e) => {
+      const anyE = e as { response?: { data?: { error?: { message?: string } } } };
+      const msg = anyE.response?.data?.error?.message ?? String((e as Error).message ?? e);
+      setAiMsg({ ok: false, text: msg });
     },
   });
 
@@ -450,6 +482,88 @@ export function AdminSettings() {
         {mailMsg && (
           <p className={`mt-3 text-sm ${mailMsg.ok ? "text-emerald-600" : "text-red-500"}`}>{mailMsg.text}</p>
         )}
+      </Section>
+
+      {/* AI assistant — Phase 7 provider config (UI se, env ke bajaye) */}
+      <Section title="🤖 AI Assistant (OpenAI / Gemini / Ollama)">
+        <p className="mb-4 text-sm text-gray-500">
+          Assistant page ka conversational reply isi config se chalta hai (rule-based parser ka
+          LLM upgrade). Provider + model + API key daalo, Save karo, phir <b>Test AI</b> se verify
+          karo. Key <b>encrypted</b> store hoti hai — kabhi wapas nahi dikhti. Ollama me API key
+          optional hai (local). Blank chhodo to purani values rahengi.
+        </p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Provider</span>
+            <select
+              value={current.aiProvider}
+              onChange={(e) => setForm({ ...current, aiProvider: e.target.value })}
+              className="w-full rounded-lg border border-gray-300 bg-night-900 px-3 py-2 outline-none focus:border-brand"
+            >
+              <option value="">Off (rule-based assistant)</option>
+              <option value="openai">OpenAI (GPT)</option>
+              <option value="gemini">Gemini (Google)</option>
+              <option value="ollama">Ollama (local)</option>
+            </select>
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Model</span>
+            <input
+              value={current.aiModel}
+              onChange={(e) => setForm({ ...current, aiModel: e.target.value })}
+              placeholder="gpt-4o-mini · gemini-2.0-flash · llama3.2"
+              className="w-full rounded-lg border border-gray-300 bg-night-900 px-3 py-2 outline-none focus:border-brand"
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">API key</span>
+            <input
+              type="password"
+              value={current.aiApiKey}
+              onChange={(e) => setForm({ ...current, aiApiKey: e.target.value })}
+              placeholder={aiApiKeySet ? "•••••••• (set hai — blank chhodo to wahi rahega)" : "sk-... (Ollama me optional)"}
+              autoComplete="new-password"
+              className="w-full rounded-lg border border-gray-300 bg-night-900 px-3 py-2 outline-none focus:border-brand"
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Base URL (optional)</span>
+            <input
+              value={current.aiBaseUrl}
+              onChange={(e) => setForm({ ...current, aiBaseUrl: e.target.value })}
+              placeholder="blank = provider default (OpenAI/Gemini/Ollama)"
+              className="w-full rounded-lg border border-gray-300 bg-night-900 px-3 py-2 outline-none focus:border-brand"
+            />
+          </label>
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button
+            onClick={() => {
+              setAiMsg(null);
+              saveSettings.mutate();
+            }}
+            disabled={saveBusy}
+            className="rounded-lg bg-brand px-5 py-2 text-sm font-semibold text-white transition hover:brightness-110 disabled:opacity-40"
+          >
+            {saveBusy ? "Saving…" : "💾 Save AI config"}
+          </button>
+          <button
+            onClick={() => testAi.mutate()}
+            disabled={testAi.isPending}
+            className="flex items-center gap-1.5 rounded-lg border border-brand/40 bg-brand/10 px-4 py-2 text-sm font-semibold text-brand transition hover:bg-brand/20 disabled:opacity-40"
+          >
+            <Bot className="h-3.5 w-3.5" />
+            {testAi.isPending ? "Test ho raha hai…" : "Test AI"}
+          </button>
+          <span className="flex items-center gap-1 text-xs text-gray-500">
+            {current.aiProvider && current.aiModel ? (
+              <span className="text-emerald-600">● Configured ({current.aiProvider})</span>
+            ) : (
+              <span className="text-gray-500">○ Rule-based mode (LLM off)</span>
+            )}
+          </span>
+        </div>
+        {aiMsg && <p className={`mt-3 text-sm ${aiMsg.ok ? "text-emerald-600" : "text-red-500"}`}>{aiMsg.text}</p>}
       </Section>
 
       {/* Admin account */}
