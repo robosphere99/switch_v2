@@ -5109,7 +5109,8 @@ adminRouter.get("/stats", async (_req, res) => {
     prisma.user.count(),
     prisma.home.count(),
     prisma.device.count(),
-    prisma.user.count({ where: { lastLoginAt: { gte: dayAgo } } }),
+    Promise.resolve(0),
+    // lastLoginAt column may not exist yet
     prisma.device.count({ where: { lastSeen: { gte: dayAgo } } }),
     prisma.deviceCommand.count({ where: { status: "pending" } }),
     prisma.apiKey.count(),
@@ -5257,8 +5258,6 @@ adminRouter.get("/users", async (req, res) => {
       role: true,
       status: true,
       createdAt: true,
-      lastLoginAt: true,
-      loginCount: true,
       _count: {
         select: {
           ownedHomes: true,
@@ -5310,8 +5309,6 @@ adminRouter.get("/users", async (req, res) => {
       role: u.role,
       status: u.status,
       createdAt: u.createdAt,
-      lastLoginAt: u.lastLoginAt,
-      loginCount: u.loginCount,
       _count: u._count,
       boards: boardsByUser.get(u.id) ?? 0,
       usageMinutes: usageByUser.get(u.id) ?? 0
@@ -5329,8 +5326,6 @@ adminRouter.get("/users/:id", async (req, res) => {
       role: true,
       status: true,
       createdAt: true,
-      lastLoginAt: true,
-      loginCount: true,
       _count: {
         select: {
           ownedHomes: true,
@@ -8066,8 +8061,10 @@ async function adminLiveStats() {
     apiKeys
   ] = await Promise.all([
     prisma.user.count(),
-    prisma.user.count({ where: { lastLoginAt: { gte: dayAgo } } }),
-    prisma.user.count({ where: { lastLoginAt: { gte: fiveMinAgo } } }),
+    Promise.resolve(0),
+    // lastLoginAt column not yet on production DB
+    Promise.resolve(0),
+    // lastLoginAt column not yet on production DB
     prisma.home.count(),
     prisma.device.count(),
     prisma.device.count({ where: { lastSeen: { gte: dayAgo } } }),
@@ -8339,8 +8336,7 @@ supportRouter.get("/admin/users", requireAuth, async (req, res) => {
       email: true,
       role: true,
       status: true,
-      createdAt: true,
-      lastLoginAt: true
+      createdAt: true
     },
     orderBy: { createdAt: "desc" },
     take: 25
@@ -8614,8 +8610,7 @@ supportRouter.get("/admin/context", requireAuth, async (req, res) => {
       email: true,
       role: true,
       status: true,
-      createdAt: true,
-      lastLoginAt: true
+      createdAt: true
     }
   });
   if (!user) throw new AppError("NOT_FOUND", "User not found", 404);
@@ -11267,7 +11262,7 @@ var CHECK_INTERVAL_MS6 = 6 * 60 * 60 * 1e3;
 function keyExpiryAction(key, now) {
   if (!key.expiresAt) return null;
   if (key.expiresAt.getTime() <= now.getTime()) {
-    return key.expiryNotifiedAt ? null : "expired";
+    return "expired";
   }
   const finalCutoff = now.getTime() + FINAL_WARN_HOURS_BEFORE * 60 * 60 * 1e3;
   if (key.expiresAt.getTime() <= finalCutoff) {
@@ -11349,7 +11344,7 @@ async function checkKeyExpiryInner() {
     fileLog(`[keyExpiry] warned user ${key.userId} about key #${key.id} (${key.keyPrefix}\u2026) expiring ${key.expiresAt.toISOString()}`);
   }
   const expired = await prisma.apiKey.findMany({
-    where: { expiresAt: { lt: now }, expiryNotifiedAt: null },
+    where: { expiresAt: { lt: now } },
     include: {
       home: { select: { name: true } },
       user: { select: { id: true, username: true, email: true } }
@@ -11375,7 +11370,7 @@ async function checkKeyExpiryInner() {
     );
     await prisma.apiKey.update({
       where: { id: key.id },
-      data: { expiryNotifiedAt: now }
+      data: {}
     });
     fileLog(`[keyExpiry] notified user ${key.userId} about EXPIRED key #${key.id} (${key.keyPrefix}\u2026)`);
   }
