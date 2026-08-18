@@ -29,6 +29,10 @@ jobs:
         working-directory: site
         run: npm run test
 
+      - name: OpenAPI docs in sync
+        working-directory: site
+        run: npm run docs:check
+
       - name: Build
         working-directory: site
         run: npm run build
