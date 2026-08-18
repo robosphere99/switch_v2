@@ -105,7 +105,7 @@ var init_firmware_service = __esm({
 import { createServer } from "http";
 
 // src/app.ts
-import express from "express";
+import express2 from "express";
 import cors from "cors";
 import helmet from "helmet";
 import path10 from "node:path";
@@ -152,7 +152,14 @@ var envSchema = z.object({
   ADMIN_EMAIL: z.string().default("admin@switchnest.local"),
   ADMIN_PASSWORD: z.string().default("admin123"),
   // Install ko lock karne ke liye (installed flag ke saath match karta hai)
-  INSTALL_TOKEN: z.string().optional().default("")
+  INSTALL_TOKEN: z.string().optional().default(""),
+  // AI assistant (Phase 7) — OpenAI-compatible API (OpenAI / Gemini / Ollama)
+  AI_PROVIDER: z.string().default(""),
+  // openai | gemini | ollama | "" (off → rule-based)
+  AI_API_KEY: z.string().default(""),
+  AI_BASE_URL: z.string().default(""),
+  // empty → provider default
+  AI_MODEL: z.string().default("")
 });
 var parsed = envSchema.safeParse(process.env);
 if (!parsed.success) {
@@ -267,6 +274,7 @@ var repoRoot = findRepoRoot(process.cwd());
 var firmwareDir = repoRoot ? path3.join(repoRoot, "hardware", "firmware") : path3.resolve(process.cwd(), "../../../hardware/firmware");
 var attachmentDir = repoRoot ? path3.join(repoRoot, "hardware", "attachments") : path3.resolve(process.cwd(), "../../../hardware/attachments");
 var webDist = repoRoot ? path3.join(repoRoot, "site", "apps", "web", "dist") : path3.resolve(process.cwd(), "../../apps/web/dist");
+var swaggerUiDir = repoRoot ? path3.join(repoRoot, "site", "apps", "api", "public", "swagger-ui") : path3.resolve(process.cwd(), "public/swagger-ui");
 
 // src/routes/index.ts
 import { Router as Router17 } from "express";
@@ -280,7 +288,7 @@ init_prisma();
 
 // src/services/auth.service.ts
 import bcrypt from "bcryptjs";
-import crypto from "node:crypto";
+import crypto2 from "node:crypto";
 import jwt from "jsonwebtoken";
 init_prisma();
 
@@ -315,12 +323,411 @@ function persistEnvKey(key, value) {
   return persistEnvKeys([[key, value]]);
 }
 
+// src/services/siteSettings.service.ts
+init_prisma();
+
+// src/lib/crypto.ts
+import crypto from "node:crypto";
+var KEY = crypto.createHash("sha256").update(env.WIFI_ENC_KEY).digest();
+function encryptSecret(plain) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", KEY, iv);
+  const enc = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `${iv.toString("base64")}.${tag.toString("base64")}.${enc.toString("base64")}`;
+}
+function decryptSecret(payload) {
+  const [ivB64, tagB64, dataB64] = payload.split(".");
+  if (!ivB64 || !tagB64 || !dataB64) throw new Error("Invalid encrypted payload");
+  const decipher = crypto.createDecipheriv("aes-256-gcm", KEY, Buffer.from(ivB64, "base64"));
+  decipher.setAuthTag(Buffer.from(tagB64, "base64"));
+  return Buffer.concat([
+    decipher.update(Buffer.from(dataB64, "base64")),
+    decipher.final()
+  ]).toString("utf8");
+}
+
+// src/services/siteSettings.service.ts
+var DEFAULT_SITE_SETTINGS = {
+  siteName: "SwitchNest",
+  supportEmail: "support@switchnest.in",
+  supportPhone: "+91 98765 43210",
+  supportAddress: "SwitchNest Labs, Sector 62, Noida, UP 201309",
+  supportHours: "Mon\u2013Sat \xB7 9:00 AM \u2013 7:00 PM",
+  brandColor: "#2563eb",
+  siteUrl: "https://onlineswitch.bhartitechnical.com",
+  // SMTP defaults yahan empty — asli defaults (587, STARTTLS) email.service me resolve hote hain,
+  // taaki SMTP_* env vars hamesha precedence le saken jab settings me kuch set na ho.
+  smtpHost: "",
+  smtpPort: 0,
+  smtpUser: "",
+  smtpPass: "",
+  smtpFrom: "",
+  smtpSecure: false,
+  aiProvider: "",
+  aiApiKey: "",
+  aiBaseUrl: "",
+  aiModel: ""
+};
+var KEY2 = "site_settings";
+async function getSiteSettings() {
+  try {
+    const row = await prisma.appMeta.findUnique({ where: { key: KEY2 } });
+    if (row?.value) {
+      return { ...DEFAULT_SITE_SETTINGS, ...JSON.parse(row.value) };
+    }
+  } catch {
+  }
+  return DEFAULT_SITE_SETTINGS;
+}
+async function getPublicSiteSettings() {
+  const s = await getSiteSettings();
+  const {
+    smtpHost: _h,
+    smtpPort: _p,
+    smtpUser: _u,
+    smtpPass: _pp,
+    smtpFrom: _f,
+    smtpSecure: _sc,
+    aiProvider: _ap,
+    aiApiKey: _ak,
+    aiBaseUrl: _ab,
+    aiModel: _am,
+    ...pub
+  } = s;
+  return pub;
+}
+async function updateSiteSettings(patch) {
+  const current = await getSiteSettings();
+  const next = { ...current, ...patch };
+  if (patch.smtpPass !== void 0) {
+    if (patch.smtpPass) next.smtpPass = encryptSecret(patch.smtpPass);
+    else next.smtpPass = current.smtpPass;
+  }
+  if (patch.aiApiKey !== void 0) {
+    if (patch.aiApiKey) next.aiApiKey = encryptSecret(patch.aiApiKey);
+    else next.aiApiKey = current.aiApiKey;
+  }
+  await prisma.appMeta.upsert({
+    where: { key: KEY2 },
+    create: { key: KEY2, value: JSON.stringify(next) },
+    update: { value: JSON.stringify(next) }
+  });
+  return next;
+}
+
+// src/lib/email.service.ts
+import * as net from "node:net";
+import * as tls from "node:tls";
+import * as os2 from "node:os";
+async function getSmtpConfig() {
+  const s = await getSiteSettings().catch(() => null);
+  let pass = "";
+  if (s?.smtpPass) {
+    try {
+      pass = decryptSecret(s.smtpPass);
+    } catch {
+      pass = s.smtpPass;
+    }
+  }
+  return {
+    host: s?.smtpHost || process.env.SMTP_HOST || "",
+    port: s?.smtpPort || Number(process.env.SMTP_PORT) || 587,
+    user: s?.smtpUser || process.env.SMTP_USER || "",
+    pass: pass || process.env.SMTP_PASS || "",
+    from: s?.smtpFrom || process.env.SMTP_FROM || s?.supportEmail || env.ADMIN_EMAIL,
+    secure: s?.smtpSecure || process.env.SMTP_SECURE === "true"
+  };
+}
+function isEmailConfigured(cfg) {
+  return !!(cfg.host && cfg.user && cfg.pass);
+}
+function createReader(sock, timeoutMs) {
+  let buf = "";
+  let pending = null;
+  let timer5 = null;
+  const tryResolve = () => {
+    if (!pending || !buf.endsWith("\r\n")) return false;
+    const lines = buf.split("\r\n").filter((l) => l.length > 0);
+    const last = lines[lines.length - 1] ?? "";
+    if (!/^\d{3} /.test(last)) return false;
+    const p = pending;
+    pending = null;
+    if (timer5) clearTimeout(timer5);
+    buf = "";
+    p.resolve(lines);
+    return true;
+  };
+  const onData = (chunk) => {
+    buf += chunk.toString("utf8");
+    tryResolve();
+  };
+  sock.on("data", onData);
+  return {
+    next() {
+      if (pending) return Promise.reject(new Error("SMTP: concurrent read"));
+      return new Promise((resolve4, reject) => {
+        pending = { resolve: resolve4, reject };
+        timer5 = setTimeout(() => {
+          if (pending) {
+            const p = pending;
+            pending = null;
+            p.reject(new Error("SMTP timeout"));
+          }
+        }, timeoutMs);
+        tryResolve();
+      });
+    },
+    detach() {
+      sock.off("data", onData);
+      if (timer5) clearTimeout(timer5);
+    }
+  };
+}
+function send(sock, line) {
+  sock.write(line + "\r\n");
+}
+function encodeHeader(value) {
+  return /[^\x20-\x7E]/.test(value) ? `=?UTF-8?B?${Buffer.from(value, "utf8").toString("base64")}?=` : value;
+}
+function buildMessage(from, to, subject, text, html) {
+  const date = (/* @__PURE__ */ new Date()).toUTCString();
+  const boundary = `----switchnest_${Date.now().toString(36)}`;
+  const head = [
+    `Date: ${date}`,
+    `From: ${encodeHeader("SwitchNest")} <${from}>`,
+    `To: <${to}>`,
+    `Subject: ${encodeHeader(subject)}`,
+    "MIME-Version: 1.0"
+  ];
+  const b64 = (s) => Buffer.from(s, "utf8").toString("base64");
+  const lines = html ? [
+    ...head,
+    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    "",
+    `--${boundary}`,
+    "Content-Type: text/plain; charset=UTF-8",
+    "Content-Transfer-Encoding: base64",
+    "",
+    b64(text),
+    `--${boundary}`,
+    "Content-Type: text/html; charset=UTF-8",
+    "Content-Transfer-Encoding: base64",
+    "",
+    b64(html),
+    `--${boundary}--`,
+    "."
+  ] : [
+    ...head,
+    "Content-Type: text/plain; charset=UTF-8",
+    "Content-Transfer-Encoding: base64",
+    "",
+    b64(text),
+    "."
+  ];
+  return lines.join("\r\n");
+}
+async function sendEmail(opts) {
+  const cfg = await getSmtpConfig().catch(() => null);
+  if (!cfg || !isEmailConfigured(cfg)) {
+    logger.warn(`[email] SMTP configured nahi hai \u2014 email skip (to=${opts.to})`);
+    return { ok: false, skipped: true, error: "SMTP not configured" };
+  }
+  return new Promise((resolve4) => {
+    let sock;
+    try {
+      sock = net.connect({ host: cfg.host, port: cfg.port });
+    } catch (e) {
+      logger.error("[email] connect error", e);
+      return resolve4({ ok: false, error: String(e) });
+    }
+    let reader = createReader(sock, 2e4);
+    let done = false;
+    const fail2 = (msg) => {
+      if (done) return;
+      done = true;
+      try {
+        reader.detach();
+        sock.destroy();
+      } catch {
+      }
+      logger.warn(`[email] SMTP fail (${cfg.host}): ${msg}`);
+      resolve4({ ok: false, error: msg });
+    };
+    const succeed = () => {
+      if (done) return;
+      done = true;
+      try {
+        reader.detach();
+        sock.destroy();
+      } catch {
+      }
+      logger.info(`[email] sent to ${opts.to}`);
+      resolve4({ ok: true });
+    };
+    sock.on("error", (e) => fail2(String(e.message || e)));
+    (async () => {
+      try {
+        let r = await reader.next();
+        if (!r[0]?.startsWith("220")) return fail2(`Greeting: ${r[0] ?? "no response"}`);
+        const ehloName = os2.hostname() || "switchnest";
+        send(sock, `EHLO ${ehloName}`);
+        r = await reader.next();
+        let ehlo = r.join("\r\n");
+        const useTls = cfg.secure || cfg.port === 465;
+        if (!useTls && /STARTTLS/i.test(ehlo)) {
+          send(sock, "STARTTLS");
+          r = await reader.next();
+          if (!r[0]?.startsWith("220")) return fail2(`STARTTLS: ${r[0]}`);
+          reader.detach();
+          sock = tls.connect({ socket: sock, servername: cfg.host });
+          reader = createReader(sock, 2e4);
+          await new Promise((res, rej) => {
+            sock.once("secureConnect", () => res());
+            sock.once("error", rej);
+          });
+          sock.on("error", (e) => fail2(String(e.message || e)));
+          send(sock, `EHLO ${ehloName}`);
+          r = await reader.next();
+          ehlo = r.join("\r\n");
+        }
+        const mech = ehlo.toUpperCase();
+        if (/AUTH/.test(mech) && !/AUTH=NONE/.test(mech)) {
+          if (/LOGIN/.test(mech)) {
+            send(sock, "AUTH LOGIN");
+            r = await reader.next();
+            if (!r[0]?.startsWith("334")) return fail2(`AUTH LOGIN: ${r[0]}`);
+            send(sock, Buffer.from(cfg.user, "utf8").toString("base64"));
+            r = await reader.next();
+            if (!r[0]?.startsWith("334")) return fail2(`AUTH user: ${r[0]}`);
+            send(sock, Buffer.from(cfg.pass, "utf8").toString("base64"));
+            r = await reader.next();
+            if (!r[0]?.startsWith("235")) return fail2(`AUTH pass: ${r[0]}`);
+          } else if (/PLAIN/.test(mech)) {
+            const token = Buffer.from(`\0${cfg.user}\0${cfg.pass}`, "utf8").toString("base64");
+            send(sock, `AUTH PLAIN ${token}`);
+            r = await reader.next();
+            if (!r[0]?.startsWith("235")) return fail2(`AUTH PLAIN: ${r[0]}`);
+          } else {
+            return fail2("No supported AUTH mechanism (LOGIN/PLAIN required)");
+          }
+        }
+        send(sock, `MAIL FROM:<${cfg.from}>`);
+        r = await reader.next();
+        if (!r[0]?.startsWith("250")) return fail2(`MAIL FROM: ${r[0]}`);
+        send(sock, `RCPT TO:<${opts.to}>`);
+        r = await reader.next();
+        if (!r[0]?.startsWith("250")) return fail2(`RCPT TO: ${r[0]}`);
+        send(sock, "DATA");
+        r = await reader.next();
+        if (!r[0]?.startsWith("354")) return fail2(`DATA: ${r[0]}`);
+        send(sock, buildMessage(cfg.from, opts.to, opts.subject, opts.text, opts.html));
+        r = await reader.next();
+        if (!r[0]?.startsWith("250")) return fail2(`send: ${r[0]}`);
+        send(sock, "QUIT");
+        try {
+          r = await reader.next();
+          if (!r[0]?.startsWith("221")) return fail2(`QUIT: ${r[0]}`);
+        } catch {
+        }
+        succeed();
+      } catch (e) {
+        fail2(e instanceof Error ? e.message : String(e));
+      }
+    })();
+  });
+}
+async function sendSupportReplyEmail(opts) {
+  const s = await getSiteSettings().catch(() => null);
+  const siteName = s?.siteName || "SwitchNest";
+  const siteUrl = s?.siteUrl || "";
+  const subject = `\u{1F6E0}\uFE0F ${siteName} Support \u2014 Admin ne reply kiya`;
+  const text = [
+    `Namaste ${opts.userName},`,
+    "",
+    `Aapke support message pe ${siteName} team ne reply kiya hai:`,
+    "",
+    `"${opts.replyText}"`,
+    "",
+    siteUrl ? `Reply dekhne aur jawab dene ke liye: ${siteUrl}` : "Support chat khol kar turant jawab de sakte ho.",
+    "",
+    `\u2014 ${siteName} Support Team`
+  ].join("\n");
+  const html = `
+    <div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;padding:24px">
+      <h2 style="color:#2563eb;margin:0 0 16px">${siteName} Support</h2>
+      <p style="font-size:15px;color:#333">Namaste <b>${opts.userName}</b>,</p>
+      <p style="font-size:15px;color:#333">Aapke support message pe team ne reply kiya hai:</p>
+      <div style="border-left:4px solid #2563eb;background:#f5f7fb;padding:12px 16px;border-radius:8px;color:#333;white-space:pre-wrap">${opts.replyText.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c])}</div>
+      ${siteUrl ? `<p style="font-size:15px;color:#333;margin-top:16px">Reply dekhne aur jawab dene ke liye: <a href="${siteUrl}" style="color:#2563eb">${siteUrl}</a></p>` : ""}
+      <p style="font-size:13px;color:#888;margin-top:24px">\u2014 ${siteName} Support Team</p>
+    </div>
+  `.trim();
+  return sendEmail({ to: opts.to, subject, text, html });
+}
+async function sendNotificationEmail(opts) {
+  const s = await getSiteSettings().catch(() => null);
+  const siteName = opts.siteName || s?.siteName || "SwitchNest";
+  const siteUrl = (s?.siteUrl || "").replace(/\/$/, "");
+  const subject = `${siteName} \u2014 ${opts.title}`;
+  const bodyText = opts.body?.trim() ? opts.body.trim() : "";
+  const text = [
+    `Namaste ${opts.userName},`,
+    "",
+    opts.title,
+    bodyText ? "" : void 0,
+    bodyText,
+    opts.ctaUrl ? `
+Yahan dekho: ${opts.ctaUrl}` : void 0,
+    "",
+    siteUrl ? `\u2014 ${siteName} Team \xB7 ${siteUrl}` : `\u2014 ${siteName} Team`
+  ].filter((l) => Boolean(l)).join("\n");
+  const html = `
+    <div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;padding:24px">
+      <h2 style="color:#2563eb;margin:0 0 8px">${siteName}</h2>
+      <p style="font-size:15px;color:#333">Namaste <b>${opts.userName}</b>,</p>
+      <h3 style="margin:8px 0;color:#111">${opts.title}</h3>
+      ${bodyText ? `<p style="font-size:15px;color:#333;white-space:pre-wrap">${bodyText.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c])}</p>` : ""}
+      ${opts.ctaUrl ? `<p style="margin:20px 0"><a href="${opts.ctaUrl}" style="background:#2563eb;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600">${opts.ctaLabel ?? "Dekho"}</a></p>` : ""}
+      <p style="font-size:13px;color:#888;margin-top:24px">\u2014 ${siteName} Team${siteUrl ? ` \xB7 <a href="${siteUrl}" style="color:#888">${siteUrl}</a>` : ""}</p>
+    </div>
+  `.trim();
+  return sendEmail({ to: opts.to, subject, text, html });
+}
+async function sendPasswordResetEmail(opts) {
+  const siteName = opts.siteName || "SwitchNest";
+  const subject = `\u{1F511} ${siteName} \u2014 Password reset`;
+  const text = [
+    `Namaste ${opts.userName},`,
+    "",
+    `Aapne ${siteName} pe password reset maanga hai.`,
+    "",
+    opts.resetUrl ? `Password reset karne ke liye ye link 30 min ke andar kholo:` : "Password reset karne ke liye app ke Login page pe 'Forgot password?' ka link use karo.",
+    opts.resetUrl || "",
+    "",
+    "Agar aapne ye request nahi bheji to is email ko ignore kar do \u2014 aapka password change nahi hoga.",
+    "",
+    `\u2014 ${siteName} Team`
+  ].filter((l) => l !== "").join("\n");
+  const html = `
+    <div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;padding:24px">
+      <h2 style="color:#2563eb;margin:0 0 16px">${siteName}</h2>
+      <p style="font-size:15px;color:#333">Namaste <b>${opts.userName}</b>,</p>
+      <p style="font-size:15px;color:#333">Aapne <b>${siteName}</b> pe password reset maanga hai. Ye link <b>30 min</b> ke liye valid hai:</p>
+      ${opts.resetUrl ? `<p style="margin:20px 0"><a href="${opts.resetUrl}" style="background:#2563eb;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600">Password Reset karo</a></p>` : `<p style="font-size:15px;color:#333">Password reset karne ke liye app ke Login page pe 'Forgot password?' ka link use karo.</p>`}
+      <p style="font-size:13px;color:#888">Agar aapne ye request nahi bheji to is email ko ignore kar do \u2014 aapka password change nahi hoga.</p>
+      <p style="font-size:13px;color:#888;margin-top:24px">\u2014 ${siteName} Team</p>
+    </div>
+  `.trim();
+  return sendEmail({ to: opts.to, subject, text, html });
+}
+
 // src/services/auth.service.ts
 function toAuthUser(user) {
   return { id: user.id, username: user.username, email: user.email, role: user.role, themePref: user.themePref };
 }
 function hashToken(token) {
-  return crypto.createHash("sha256").update(token).digest("hex");
+  return crypto2.createHash("sha256").update(token).digest("hex");
 }
 function signAccessToken(user) {
   return jwt.sign(
@@ -330,14 +737,14 @@ function signAccessToken(user) {
       email: user.email,
       role: user.role,
       ver: user.tokenVersion,
-      jti: crypto.randomUUID()
+      jti: crypto2.randomUUID()
     },
     env.JWT_ACCESS_SECRET,
     { expiresIn: env.JWT_ACCESS_EXPIRES }
   );
 }
 function signRefreshToken(user) {
-  return jwt.sign({ sub: user.id, ver: user.tokenVersion, jti: crypto.randomUUID() }, env.JWT_REFRESH_SECRET, {
+  return jwt.sign({ sub: user.id, ver: user.tokenVersion, jti: crypto2.randomUUID() }, env.JWT_REFRESH_SECRET, {
     expiresIn: env.JWT_REFRESH_EXPIRES
   });
 }
@@ -424,7 +831,10 @@ async function login(usernameEmail, password) {
   if (user.status !== "active") {
     throw new AppError("ACCOUNT_SUSPENDED", "Account is suspended", 403);
   }
-  await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: /* @__PURE__ */ new Date() } });
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { lastLoginAt: /* @__PURE__ */ new Date(), loginCount: { increment: 1 } }
+  });
   return issueTokens(user);
 }
 async function issueTokens(user) {
@@ -473,6 +883,71 @@ async function logout(refreshToken) {
     await prisma.refreshToken.update({ where: { id: stored.id }, data: { revokedAt: /* @__PURE__ */ new Date() } });
   }
 }
+var RESET_TOKEN_TTL_MS = 30 * 60 * 1e3;
+async function requestPasswordReset(email) {
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user) return { sent: true };
+  await prisma.passwordResetToken.updateMany({
+    where: { userId: user.id, usedAt: null },
+    data: { usedAt: /* @__PURE__ */ new Date() }
+  });
+  const rawToken = crypto2.randomBytes(32).toString("base64url");
+  const tokenHash = hashToken(rawToken);
+  await prisma.passwordResetToken.create({
+    data: {
+      userId: user.id,
+      tokenHash,
+      expiresAt: new Date(Date.now() + RESET_TOKEN_TTL_MS)
+    }
+  });
+  const s = await getSiteSettings().catch(() => null);
+  const siteName = s?.siteName || "SwitchNest";
+  const siteUrl = (s?.siteUrl || "").replace(/\/$/, "");
+  const resetUrl = siteUrl ? `${siteUrl}/reset-password?token=${encodeURIComponent(rawToken)}` : "";
+  const emailResult = await sendPasswordResetEmail({
+    to: user.email,
+    userName: user.username,
+    resetUrl,
+    siteName
+  }).catch(() => ({ ok: false, error: "email service error" }));
+  if (!emailResult.ok) {
+    const hint = resetUrl || `${rawToken} (siteUrl set nahi hai)`;
+    logger.info(`[auth] password reset link for ${user.email}: ${hint}`);
+  }
+  return { sent: true };
+}
+async function resetPassword(token, newPassword) {
+  const tokenHash = hashToken(token);
+  const record = await prisma.passwordResetToken.findUnique({ where: { tokenHash } });
+  if (!record || record.usedAt || record.expiresAt < /* @__PURE__ */ new Date()) {
+    throw new AppError("INVALID_RESET_TOKEN", "Reset link invalid ya expired hai \u2014 naya link maango", 400);
+  }
+  const user = await prisma.user.findUnique({ where: { id: record.userId } });
+  if (!user) throw new AppError("USER_NOT_FOUND", "User not found", 404);
+  const password = await bcrypt.hash(newPassword, 10);
+  await prisma.$transaction([
+    // Password change → tokenVersion bump: purane access tokens turant invalid.
+    prisma.user.update({
+      where: { id: user.id },
+      data: { password, tokenVersion: { increment: 1 } }
+    }),
+    // Saare refresh tokens revoke — har device se logout.
+    prisma.refreshToken.deleteMany({ where: { userId: user.id } }),
+    // Is token ko 1-use mark + baaki pending tokens bhi invalidate.
+    prisma.passwordResetToken.update({ where: { id: record.id }, data: { usedAt: /* @__PURE__ */ new Date() } }),
+    prisma.passwordResetToken.updateMany({
+      where: { userId: user.id, usedAt: null },
+      data: { usedAt: /* @__PURE__ */ new Date() }
+    })
+  ]);
+  if (user.role === "system_admin") {
+    const res = persistEnvKey("ADMIN_PASSWORD", newPassword);
+    logger.info(
+      res.ok ? "Admin password reset \u2014 .env ADMIN_PASSWORD synced" : "Admin password reset \u2014 .env sync FAILED",
+      res.ok ? { path: res.path } : void 0
+    );
+  }
+}
 
 // src/controllers/auth.controller.ts
 async function signup2(req, res) {
@@ -509,6 +984,16 @@ async function updateProfile2(req, res) {
 async function updateTheme(req, res) {
   const user = await updateThemePref(req.user.sub, req.body.theme);
   ok(res, user);
+}
+async function forgotPassword(req, res) {
+  const { email } = req.body;
+  const result = await requestPasswordReset(email);
+  ok(res, result);
+}
+async function resetPassword2(req, res) {
+  const { token, newPassword } = req.body;
+  await resetPassword(token, newPassword);
+  ok(res, { message: "Password reset ho gaya \u2014 naye password se login karo" });
 }
 
 // src/middleware/auth.ts
@@ -555,6 +1040,63 @@ var optionalAuth = async (req, _res, next) => {
   next();
 };
 
+// src/middleware/rateLimit.ts
+var store = /* @__PURE__ */ new Map();
+var sweepTimer = null;
+function sweepExpired() {
+  const now = Date.now();
+  for (const [key, b] of store) {
+    if (b.resetAt <= now) store.delete(key);
+  }
+}
+function ensureSweep() {
+  if (sweepTimer) return;
+  sweepTimer = setInterval(sweepExpired, 6e4);
+  sweepTimer.unref?.();
+}
+function clientIp(req) {
+  const xff = req.headers["x-forwarded-for"];
+  if (typeof xff === "string" && xff.trim().length > 0) {
+    const first = xff.split(",")[0]?.trim();
+    if (first) return first;
+  }
+  return req.ip || req.socket?.remoteAddress || "unknown";
+}
+function rateLimit(opts) {
+  ensureSweep();
+  return (req, res, next) => {
+    if (opts.skip?.(req)) return next();
+    const key = `${opts.name}:${opts.keyGenerator ? opts.keyGenerator(req) : clientIp(req)}`;
+    const now = Date.now();
+    let bucket = store.get(key);
+    if (!bucket || bucket.resetAt <= now) {
+      bucket = { count: 0, resetAt: now + opts.windowMs };
+      store.set(key, bucket);
+    }
+    bucket.count += 1;
+    res.setHeader("X-RateLimit-Limit", String(opts.max));
+    res.setHeader("X-RateLimit-Remaining", String(Math.max(0, opts.max - bucket.count)));
+    res.setHeader("X-RateLimit-Reset", String(Math.ceil(bucket.resetAt / 1e3)));
+    if (bucket.count > opts.max) {
+      sendTooMany(res, opts.message, bucket.resetAt - now);
+      return;
+    }
+    next();
+  };
+}
+function sendTooMany(res, message, retryAfterMs) {
+  const retryAfterSec = Math.max(1, Math.ceil(retryAfterMs / 1e3));
+  res.setHeader("Retry-After", String(retryAfterSec));
+  res.status(429).json({
+    success: false,
+    error: {
+      code: "RATE_LIMITED",
+      message: message ?? "Bahut zyada requests \u2014 thodi der baad try karo",
+      details: { retryAfterSec }
+    }
+  });
+}
+
 // src/middleware/validate.ts
 function validateBody(schema) {
   return (req, _res, next) => {
@@ -577,6 +1119,36 @@ function validateParams(schema) {
 
 // src/routes/auth.routes.ts
 var authRouter = Router();
+var loginLimiter = rateLimit({
+  name: "auth:login",
+  windowMs: 15 * 6e4,
+  max: 10,
+  message: "Bahut zyada login attempts \u2014 15 min baad dobara try karo"
+});
+var signupLimiter = rateLimit({
+  name: "auth:signup",
+  windowMs: 15 * 6e4,
+  max: 5,
+  message: "Bahut zyada signup attempts \u2014 thodi der baad try karo"
+});
+var refreshLimiter = rateLimit({
+  name: "auth:refresh",
+  windowMs: 15 * 6e4,
+  max: 30,
+  message: "Bahut zyada refresh attempts \u2014 thodi der baad try karo"
+});
+var forgotLimiter = rateLimit({
+  name: "auth:forgot",
+  windowMs: 60 * 6e4,
+  max: 5,
+  message: "Bahut zyada reset requests \u2014 1 ghanta baad try karo"
+});
+var resetLimiter = rateLimit({
+  name: "auth:reset",
+  windowMs: 15 * 6e4,
+  max: 10,
+  message: "Bahut zyada reset attempts \u2014 15 min baad try karo"
+});
 var signupSchema = z2.object({
   username: z2.string().min(3).max(50),
   email: z2.string().email().max(100),
@@ -602,10 +1174,19 @@ var profileSchema = z2.object({
   currentPassword: z2.string().min(1).max(255).optional(),
   newPassword: z2.string().min(6).max(255).optional()
 }).refine((d) => Object.keys(d).length > 0, { message: "Nothing to update" });
-authRouter.post("/signup", validateBody(signupSchema), signup2);
-authRouter.post("/login", validateBody(loginSchema), login2);
-authRouter.post("/refresh", validateBody(refreshSchema), refresh2);
+var forgotPasswordSchema = z2.object({
+  email: z2.string().email().max(100)
+});
+var resetPasswordSchema = z2.object({
+  token: z2.string().min(10).max(200),
+  newPassword: z2.string().min(6).max(255)
+});
+authRouter.post("/signup", signupLimiter, validateBody(signupSchema), signup2);
+authRouter.post("/login", loginLimiter, validateBody(loginSchema), login2);
+authRouter.post("/refresh", refreshLimiter, validateBody(refreshSchema), refresh2);
 authRouter.post("/logout", validateBody(logoutSchema), logout2);
+authRouter.post("/forgot-password", forgotLimiter, validateBody(forgotPasswordSchema), forgotPassword);
+authRouter.post("/reset-password", resetLimiter, validateBody(resetPasswordSchema), resetPassword2);
 authRouter.get("/me", requireAuth, me);
 authRouter.patch("/me", requireAuth, validateBody(profileSchema), updateProfile2);
 authRouter.put("/theme", requireAuth, validateBody(themeSchema), updateTheme);
@@ -965,6 +1546,28 @@ async function createNotification(userId, input) {
   emitToUser(userId, "notification:new", notification);
   return notification;
 }
+async function createNotificationWithEmail(userId, input, opts = {}) {
+  const notification = await createNotification(userId, input);
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, username: true }
+    });
+    if (user?.email) {
+      await sendNotificationEmail({
+        to: user.email,
+        userName: user.username,
+        title: opts.emailSubject ?? input.title,
+        body: opts.emailBody ?? input.body ?? input.title,
+        ctaUrl: opts.ctaUrl,
+        ctaLabel: opts.ctaLabel
+      });
+    }
+  } catch (err) {
+    console.error(`[notify+email] email failed for user ${userId}:`, err instanceof Error ? err.message : err);
+  }
+  return notification;
+}
 async function listNotifications(userId, args = {}) {
   const page = Math.max(1, Math.floor(args.page ?? 1));
   const pageSize = Math.min(50, Math.max(1, Math.floor(args.pageSize ?? 20)));
@@ -1089,6 +1692,38 @@ async function setDeviceStatus(input) {
         logType: "status_change",
         logMessage: `Device turned ${input.status}`
       }
+    })
+  ]);
+  const updated = await prisma.device.findUnique({ where: { id: device.id } });
+  if (updated) await emitDeviceUpdated(input.homeId, updated.id);
+  return updated;
+}
+async function sendDeviceCommand(input) {
+  const device = await prisma.device.findFirst({
+    where: { id: input.deviceId, homeId: input.homeId }
+  });
+  if (!device) {
+    throw new AppError("DEVICE_NOT_FOUND", "Device nahi mila is home me", 404);
+  }
+  const membership2 = prisma.deviceAccess ? await prisma.homeMember.findUnique({
+    where: { homeId_userId: { homeId: input.homeId, userId: input.actorId } },
+    select: { restricted: true }
+  }) : null;
+  if (membership2?.restricted && prisma.deviceAccess) {
+    const granted = await prisma.deviceAccess.findUnique({
+      where: { deviceId_userId: { deviceId: device.id, userId: input.actorId } }
+    });
+    if (!granted) {
+      throw new AppError("FORBIDDEN", "Is device ka access nahi hai (child mode)", 403);
+    }
+  }
+  await prisma.$transaction([
+    ...input.ledEnabled !== void 0 ? [prisma.device.update({ where: { id: device.id }, data: { ledEnabled: input.ledEnabled } })] : [],
+    prisma.deviceCommand.create({
+      data: { deviceId: device.id, actorId: input.actorId, command: input.command }
+    }),
+    prisma.deviceLog.create({
+      data: { deviceId: device.id, actorId: input.actorId, logType: input.logType, logMessage: input.logMessage }
     })
   ]);
   const updated = await prisma.device.findUnique({ where: { id: device.id } });
@@ -1228,6 +1863,15 @@ async function listMyBoards(userId) {
     orderBy: { createdAt: "asc" }
   });
   const homeIds = homes.map((h) => h.id);
+  const homeApiKeys = await prisma.apiKey.findMany({
+    where: { homeId: { in: homeIds }, revokedAt: null },
+    select: { homeId: true, keyPrefix: true, expiresAt: true },
+    orderBy: [{ homeId: "asc" }, { createdAt: "desc" }]
+  });
+  const apiKeyByHome = /* @__PURE__ */ new Map();
+  for (const k of homeApiKeys) {
+    if (k.homeId && !apiKeyByHome.has(k.homeId)) apiKeyByHome.set(k.homeId, k);
+  }
   const boards = await prisma.espDevice.findMany({
     where: { homeId: { in: homeIds } },
     include: {
@@ -1238,15 +1882,51 @@ async function listMyBoards(userId) {
           type: true,
           status: true,
           offline: true,
-          lastSeen: true
+          lastSeen: true,
+          ledEnabled: true
         },
         orderBy: { id: "asc" }
       }
     },
     orderBy: { id: "asc" }
   });
+  const espIds = boards.map((b) => b.id);
+  const deviceIds = boards.flatMap((b) => b.devices.map((d) => d.id));
+  const logs2 = await prisma.auditLog.findMany({
+    where: {
+      OR: [
+        { entity: "esp", entityId: { in: espIds } },
+        ...deviceIds.length > 0 ? [{ entity: "device", entityId: { in: deviceIds } }] : []
+      ]
+    },
+    include: { actor: { select: { username: true } } },
+    orderBy: { createdAt: "desc" },
+    take: 500
+  });
+  const deviceToEsp = /* @__PURE__ */ new Map();
+  for (const b of boards) for (const d of b.devices) deviceToEsp.set(d.id, b.id);
+  const historyByEsp = /* @__PURE__ */ new Map();
+  for (const log2 of logs2) {
+    if (log2.entityId === null || log2.entityId === void 0) continue;
+    const espId = log2.entity === "esp" ? log2.entityId : deviceToEsp.get(log2.entityId);
+    if (!espId) continue;
+    const arr = historyByEsp.get(espId) ?? [];
+    if (arr.length >= 12) continue;
+    arr.push({
+      id: log2.id,
+      action: log2.action,
+      createdAt: log2.createdAt,
+      actor: log2.actor?.username ?? null,
+      meta: log2.meta
+    });
+    historyByEsp.set(espId, arr);
+  }
+  const withHistory = boards.map((b) => ({
+    ...b,
+    history: historyByEsp.get(b.id) ?? []
+  }));
   const byHome = /* @__PURE__ */ new Map();
-  for (const b of boards) {
+  for (const b of withHistory) {
     const arr = byHome.get(b.homeId) ?? [];
     arr.push(b);
     byHome.set(b.homeId, arr);
@@ -1255,7 +1935,13 @@ async function listMyBoards(userId) {
     homeId: h.id,
     homeName: h.name,
     role: h.members[0]?.role ?? "member",
-    boards: byHome.get(h.id) ?? []
+    apiKey: apiKeyByHome.get(h.id) ?? null,
+    boards: (byHome.get(h.id) ?? []).map((b) => ({
+      ...b,
+      // Hotspot password = serial code (firmware me serial = AP password)
+      hotspotName: b.serialCode ? `SwitchNest-${b.serialCode}` : null,
+      hotspotPassword: b.serialCode ?? null
+    }))
   }));
 }
 async function requestOta(homeId, deviceId, actorId) {
@@ -1345,6 +2031,43 @@ async function bulkSetStatus2(req, res) {
     status: req.body.status
   });
   ok(res, updated);
+}
+async function restart(req, res) {
+  const device = await sendDeviceCommand({
+    homeId: Number(req.params.homeId),
+    deviceId: Number(req.params.deviceId),
+    actorId: req.user.sub,
+    command: "reboot",
+    logType: "remote_restart",
+    logMessage: "Remote restart requested"
+  });
+  ok(res, device);
+}
+async function setWifi(req, res) {
+  const ssid = String(req.body.ssid).trim();
+  const pass = String(req.body.password ?? "");
+  const device = await sendDeviceCommand({
+    homeId: Number(req.params.homeId),
+    deviceId: Number(req.params.deviceId),
+    actorId: req.user.sub,
+    command: `setwifi:${ssid}|${pass}`,
+    logType: "remote_wifi",
+    logMessage: `Remote WiFi set: ${ssid}`
+  });
+  ok(res, device);
+}
+async function setLed(req, res) {
+  const enabled = req.body.enabled === true;
+  const device = await sendDeviceCommand({
+    homeId: Number(req.params.homeId),
+    deviceId: Number(req.params.deviceId),
+    actorId: req.user.sub,
+    command: `led:${enabled ? "on" : "off"}`,
+    logType: "remote_led",
+    logMessage: `Status LED ${enabled ? "enabled" : "disabled"}`,
+    ledEnabled: enabled
+  });
+  ok(res, device);
 }
 async function update(req, res) {
   const device = await updateDevice(
@@ -1461,10 +2184,10 @@ import { z as z4 } from "zod";
 
 // src/services/member.service.ts
 init_prisma();
-import crypto2 from "node:crypto";
+import crypto3 from "node:crypto";
 function generateInviteCode() {
   const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-  const bytes = crypto2.randomBytes(8);
+  const bytes = crypto3.randomBytes(8);
   return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
 }
 async function listMembers(homeId, viewerRole) {
@@ -1901,6 +2624,106 @@ async function getUsageAnalytics(homeId, days) {
   );
 }
 
+// src/services/automation.service.ts
+init_prisma();
+var MIN_DAYS = 2;
+var MIN_CONFIDENCE = 0.5;
+function suggestAutomationsFromLogs(logs2, minDays = MIN_DAYS, minConfidence = MIN_CONFIDENCE) {
+  const byDevice = /* @__PURE__ */ new Map();
+  for (const log2 of logs2) {
+    const msg = log2.logMessage.trim();
+    if (!msg.endsWith("on") && !msg.endsWith("off")) continue;
+    const action = msg.endsWith("on") ? "on" : "off";
+    const d = log2.createdAt;
+    const dateKey = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+    const hourKey2 = `${String(d.getHours()).padStart(2, "0")}:00`;
+    const dev = byDevice.get(log2.deviceId) ?? {
+      name: log2.deviceName,
+      days: /* @__PURE__ */ new Set(),
+      hours: /* @__PURE__ */ new Map()
+      // "07:00:on" -> set of dates
+    };
+    dev.days.add(dateKey);
+    const slotKey = `${hourKey2}|${action}`;
+    const slot = dev.hours.get(slotKey) ?? /* @__PURE__ */ new Set();
+    slot.add(dateKey);
+    dev.hours.set(slotKey, slot);
+    byDevice.set(log2.deviceId, dev);
+  }
+  const suggestions = [];
+  for (const [deviceId, dev] of byDevice) {
+    const totalDays = dev.days.size;
+    if (totalDays < minDays) continue;
+    for (const [slotKey, dates] of dev.hours) {
+      const [time, action] = slotKey.split("|");
+      const confidence = dates.size / totalDays;
+      if (confidence < minConfidence) continue;
+      const hour = Number(time.slice(0, 2));
+      const period = hour < 12 ? "subah" : hour < 17 ? "dopahar" : hour < 21 ? "shaam" : "raat";
+      suggestions.push({
+        deviceId,
+        deviceName: dev.name,
+        type: "daily",
+        time,
+        action,
+        confidence: Math.round(confidence * 100) / 100,
+        days: dates.size,
+        reason: `Aap "${dev.name}" ${time} baje (${period}) ${action === "on" ? "ON" : "OFF"} karte ho \u2014 ${dates.size}/${totalDays} din me.`
+      });
+    }
+  }
+  return suggestions.sort((a, b) => b.confidence - a.confidence).slice(0, 10);
+}
+var DEMO_PATTERNS = [
+  { time: "07:00", action: "on", note: "subah ON \u2014 din ki shuruaat" },
+  { time: "18:00", action: "on", note: "shaam ON \u2014 ghar aate hi" },
+  { time: "21:30", action: "off", note: "raat OFF \u2014 sone se pehle" }
+];
+function demoSuggestions(devices) {
+  return devices.slice(0, 3).map((d, i) => {
+    const p = DEMO_PATTERNS[i % DEMO_PATTERNS.length];
+    return {
+      deviceId: d.id,
+      deviceName: d.name,
+      type: "daily",
+      time: p.time,
+      action: p.action,
+      confidence: 0.6,
+      days: 3,
+      reason: `Demo: "${d.name}" ko ${p.time} baje ${p.action === "on" ? "ON" : "OFF"} karna \u2014 ${p.note}. (Aapke usage data se nahi \u2014 schedule bana ke try karo.)`,
+      demo: true
+    };
+  });
+}
+async function getAutomationSuggestions(homeId) {
+  const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1e3);
+  const logs2 = await prisma.deviceLog.findMany({
+    where: {
+      logType: "status_change",
+      createdAt: { gte: since },
+      device: { homeId }
+    },
+    include: { device: { select: { id: true, name: true } } },
+    orderBy: { createdAt: "asc" }
+  });
+  const real = suggestAutomationsFromLogs(
+    logs2.map((l) => ({
+      deviceId: l.deviceId,
+      deviceName: l.device.name,
+      logMessage: l.logMessage,
+      createdAt: l.createdAt
+    }))
+  );
+  if (real.length > 0) return real;
+  const devices = await prisma.device.findMany({
+    where: { homeId },
+    select: { id: true, name: true },
+    orderBy: { id: "asc" },
+    take: 10
+  });
+  return demoSuggestions(devices);
+}
+
 // src/routes/device.routes.ts
 var deviceRouter = Router4();
 var idParams3 = z5.object({ homeId: z5.coerce.number().int().positive() });
@@ -1915,6 +2738,11 @@ var createSchema2 = z5.object({
   serialNumber: z5.string().min(1).max(64).optional()
 });
 var statusSchema = z5.object({ status: z5.enum(["on", "off"]) });
+var wifiSchema = z5.object({
+  ssid: z5.string().min(1).max(64),
+  password: z5.string().max(64).optional().or(z5.literal(""))
+});
+var ledSchema = z5.object({ enabled: z5.boolean() });
 var bulkStatusSchema = z5.object({
   deviceIds: z5.array(z5.number().int().positive()).min(1).max(50),
   status: z5.enum(["on", "off"])
@@ -1978,6 +2806,29 @@ deviceRouter.delete(
   remove3
 );
 deviceRouter.post(
+  "/:homeId/devices/:deviceId/restart",
+  requireAuth,
+  validateParams(deviceParams),
+  requireHomeMember("member"),
+  restart
+);
+deviceRouter.post(
+  "/:homeId/devices/:deviceId/wifi",
+  requireAuth,
+  validateParams(deviceParams),
+  requireHomeMember("member"),
+  validateBody(wifiSchema),
+  setWifi
+);
+deviceRouter.post(
+  "/:homeId/devices/:deviceId/led",
+  requireAuth,
+  validateParams(deviceParams),
+  requireHomeMember("member"),
+  validateBody(ledSchema),
+  setLed
+);
+deviceRouter.post(
   "/:homeId/devices/:deviceId/ota",
   requireAuth,
   validateParams(deviceParams),
@@ -2002,6 +2853,15 @@ deviceRouter.get(
     ok(res, await getUsageAnalytics(Number(req.params.homeId), days));
   }
 );
+deviceRouter.get(
+  "/:homeId/automations/suggestions",
+  requireAuth,
+  validateParams(idParams3),
+  requireHomeMember("viewer"),
+  async (req, res) => {
+    ok(res, await getAutomationSuggestions(Number(req.params.homeId)));
+  }
+);
 
 // src/routes/deviceApi.routes.ts
 import { Router as Router5 } from "express";
@@ -2009,9 +2869,9 @@ import { z as z6 } from "zod";
 
 // src/middleware/apiKey.ts
 init_prisma();
-import crypto3 from "node:crypto";
+import crypto4 from "node:crypto";
 function hashKey(raw) {
-  return crypto3.createHash("sha256").update(raw).digest("hex");
+  return crypto4.createHash("sha256").update(raw).digest("hex");
 }
 function extractKey(req) {
   const header = req.headers.authorization;
@@ -2033,6 +2893,9 @@ var requireApiKey = async (req, _res, next) => {
     const key = await prisma.apiKey.findUnique({ where: { keyHash: hashKey(raw) } });
     if (!key) {
       return next(new AppError("UNAUTHORIZED", "Invalid api_key", 401));
+    }
+    if (key.revokedAt) {
+      return next(new AppError("UNAUTHORIZED", "API key has been revoked", 401));
     }
     if (key.expiresAt && key.expiresAt < /* @__PURE__ */ new Date()) {
       return next(new AppError("UNAUTHORIZED", "API key has expired", 401));
@@ -2151,6 +3014,10 @@ async function heartbeat(key, input, baseUrl) {
   }
   const macTail = macKey.replace(/:/g, "").slice(-6).toUpperCase();
   if (macKey) {
+    const existing = await prisma.espDevice.findFirst({
+      where: { macAddress: macKey },
+      select: { id: true, serialCode: true }
+    });
     esp = await prisma.espDevice.upsert({
       where: { macAddress: macKey },
       create: {
@@ -2175,7 +3042,8 @@ async function heartbeat(key, input, baseUrl) {
         ipAddress: ip ?? void 0,
         firmwareVersion: fw ?? void 0,
         lastSeen: /* @__PURE__ */ new Date(),
-        offline: false
+        offline: false,
+        ...attachSerial && existing?.serialCode && attachSerial !== existing.serialCode ? { name: `${attachSerial} \xB7 ${ssid ?? "SwitchNest"}` } : {}
       }
     });
     emitToHome(homeId, "esp:updated", esp);
@@ -2322,6 +3190,18 @@ async function ackCommand(key, commandId, deviceId, status) {
 
 // src/routes/deviceApi.routes.ts
 var deviceApiRouter = Router5();
+var readLimiter = rateLimit({
+  name: "device:read",
+  windowMs: 6e4,
+  max: 1200,
+  message: "Too many device API requests"
+});
+var mutateLimiter = rateLimit({
+  name: "device:mutate",
+  windowMs: 6e4,
+  max: 600,
+  message: "Too many device API requests"
+});
 var keyQuery = z6.object({
   api_key: z6.string().min(1),
   // Long-poll mode (ESP32 v2 firmware): `long=1&hold=20` — server response ko
@@ -2354,18 +3234,21 @@ var heartbeatSchema = z6.object({
 });
 deviceApiRouter.get(
   "/read-all",
+  readLimiter,
   validateQuery(keyQuery),
   requireApiKey,
   async (req, res) => ok(res, { devices: await readAll(req.apiKey) })
 );
 deviceApiRouter.post(
   "/update",
+  mutateLimiter,
   requireApiKey,
   validateBody(updateSchema2),
   async (req, res) => ok(res, await updateFromDevice(req.apiKey, req.body.device_id, req.body.status))
 );
 deviceApiRouter.post(
   "/heartbeat",
+  mutateLimiter,
   requireApiKey,
   validateBody(heartbeatSchema),
   async (req, res) => {
@@ -2397,6 +3280,7 @@ var otaProgressSchema = z6.object({
 });
 deviceApiRouter.post(
   "/ota-progress",
+  mutateLimiter,
   requireApiKey,
   validateBody(otaProgressSchema),
   async (req, res) => ok(res, await reportOtaProgress(req.apiKey, {
@@ -2427,6 +3311,7 @@ deviceApiRouter.get(
 );
 deviceApiRouter.post(
   "/commands/ack",
+  mutateLimiter,
   requireApiKey,
   validateBody(ackSchema),
   async (req, res) => ok(
@@ -2442,30 +3327,37 @@ deviceApiRouter.post(
 
 // src/routes/apiKey.routes.ts
 import { Router as Router6 } from "express";
-import crypto4 from "node:crypto";
+import crypto5 from "node:crypto";
 import { z as z7 } from "zod";
 init_prisma();
 var apiKeyRouter = Router6();
+var createKeyLimiter = rateLimit({
+  name: "api-key:create",
+  windowMs: 60 * 6e4,
+  max: 20,
+  message: "Bahut zyada API keys bana rahe ho \u2014 1 ghanta baad try karo"
+});
 var createSchema3 = z7.object({
   label: z7.string().min(1).max(100).optional(),
   homeId: z7.coerce.number().int().positive().optional(),
   expiresInDays: z7.coerce.number().int().positive().max(3650).optional()
 });
 function hashKey2(raw) {
-  return crypto4.createHash("sha256").update(raw).digest("hex");
+  return crypto5.createHash("sha256").update(raw).digest("hex");
 }
 function generateKey() {
-  const raw = `rs_${crypto4.randomBytes(24).toString("hex")}`;
+  const raw = `rs_${crypto5.randomBytes(24).toString("hex")}`;
   return { raw, prefix: raw.slice(0, 8) };
 }
 apiKeyRouter.get("/", requireAuth, async (req, res) => {
   const keys = await prisma.apiKey.findMany({
     where: { userId: req.user.sub },
+    include: { home: { select: { id: true, name: true } } },
     orderBy: { createdAt: "desc" }
   });
   ok(res, keys);
 });
-apiKeyRouter.post("/", requireAuth, validateBody(createSchema3), async (req, res) => {
+apiKeyRouter.post("/", requireAuth, createKeyLimiter, validateBody(createSchema3), async (req, res) => {
   const { raw, prefix } = generateKey();
   const key = await prisma.apiKey.create({
     data: {
@@ -2574,12 +3466,17 @@ function parseCron(expr) {
   if (parts.length !== 5) {
     throw new AppError("BAD_REQUEST", "Cron must have 5 fields: minute hour day-of-month month day-of-week");
   }
+  const dow = parseField(parts[4], 0, 6);
+  if (dow.has(7)) {
+    dow.delete(7);
+    dow.add(0);
+  }
   return {
     minutes: parseField(parts[0], 0, 59),
     hours: parseField(parts[1], 0, 23),
     dom: parseField(parts[2], 1, 31),
     months: parseField(parts[3], 1, 12),
-    dow: parseField(parts[4], 0, 7)
+    dow
   };
 }
 function matches(cron, d) {
@@ -2802,6 +3699,97 @@ init_prisma();
 // src/services/assistant.service.ts
 init_prisma();
 init_audit_service();
+
+// src/lib/ai.ts
+var DEFAULT_BASE_URLS = {
+  openai: "https://api.openai.com/v1",
+  gemini: "https://generativelanguage.googleapis.com/v1beta/openai",
+  ollama: "http://localhost:11434/v1"
+};
+function envAiConfig() {
+  const provider = (env.AI_PROVIDER || "").trim().toLowerCase();
+  const configured = Boolean(provider && env.AI_MODEL);
+  return {
+    provider,
+    apiKey: env.AI_API_KEY?.trim() ?? "",
+    baseUrl: (env.AI_BASE_URL?.trim() || DEFAULT_BASE_URLS[provider] || "").replace(/\/$/, ""),
+    model: env.AI_MODEL?.trim() ?? "",
+    ...configured ? {} : { provider: "", model: "" }
+  };
+}
+async function getAiConfig() {
+  let db = {};
+  try {
+    const s = await getSiteSettings();
+    if (s.aiProvider) {
+      let apiKey = "";
+      if (s.aiApiKey) {
+        try {
+          apiKey = decryptSecret(s.aiApiKey);
+        } catch {
+          apiKey = s.aiApiKey;
+        }
+      }
+      db = { provider: s.aiProvider, apiKey, baseUrl: s.aiBaseUrl, model: s.aiModel };
+    }
+  } catch {
+  }
+  const cfg = { ...envAiConfig(), ...db };
+  const configured = Boolean(cfg.provider && cfg.model);
+  if (!configured) {
+    return { provider: "", apiKey: "", baseUrl: "", model: "" };
+  }
+  return {
+    ...cfg,
+    provider: cfg.provider.trim().toLowerCase(),
+    baseUrl: (cfg.baseUrl.trim() || DEFAULT_BASE_URLS[cfg.provider] || "").replace(/\/$/, "")
+  };
+}
+async function aiConfigured() {
+  const c = await getAiConfig();
+  return Boolean(c.provider && c.model && c.baseUrl);
+}
+async function chatCompletion(opts) {
+  const cfg = await getAiConfig();
+  if (!cfg.provider || !cfg.model || !cfg.baseUrl) {
+    throw new Error("AI not configured (AI_PROVIDER/AI_MODEL)");
+  }
+  if (cfg.provider !== "ollama" && !cfg.apiKey) {
+    throw new Error(`AI provider "${cfg.provider}" ke liye AI_API_KEY chahiye`);
+  }
+  const timeoutMs = opts.timeoutMs ?? 25e3;
+  const controller = new AbortController();
+  const timer5 = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${cfg.baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}
+      },
+      body: JSON.stringify({
+        model: cfg.model,
+        messages: [{ role: "system", content: opts.system }, ...opts.messages],
+        temperature: opts.temperature ?? 0.3,
+        max_tokens: opts.maxTokens ?? 500
+      }),
+      signal: controller.signal
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`LLM API ${res.status}: ${body.slice(0, 200)}`);
+    }
+    const data = await res.json();
+    if (data.error?.message) throw new Error(`LLM error: ${data.error.message}`);
+    const content = data.choices?.[0]?.message?.content;
+    if (!content) throw new Error("LLM: empty response");
+    return content.trim();
+  } finally {
+    clearTimeout(timer5);
+  }
+}
+
+// src/services/assistant.service.ts
 var ON_PATTERNS = [
   /\b(turn\s+)?on\b/,
   /\bstart\b/,
@@ -2868,7 +3856,9 @@ function parseIntent(text, devices) {
   return {
     action,
     actions: action ? matches2.map((d) => ({ deviceId: d.id, deviceName: d.name, action })) : [],
-    matchedBy: all ? "all" : types.length > 0 ? `type:${types.join(",")}` : matches2.length > 0 ? "name" : "none"
+    // Asli match kaise hua: type keyword ("saare lights" → type, sirf lights,
+    // "all" nahi) > all > exact name > kuch nahi.
+    matchedBy: types.length > 0 ? `type:${types.join(",")}` : all ? "all" : matches2.length > 0 ? "name" : "none"
   };
 }
 async function createChat(userId, homeId, title) {
@@ -2995,6 +3985,75 @@ function buildTroubleshootReply(devices, content) {
 
 Aur madad chahiye? Board level ki details ke liye admin/support se baat karo.`;
 }
+function buildDeviceContext(devices) {
+  return devices.map((d) => `- id=${d.id} name="${d.name}" type=${d.type} status=${d.status}`).join("\n");
+}
+var LLM_SYSTEM_PROMPT = `Tu SwitchNest ka AI assistant hai \u2014 smart-home device control + chat helper.
+Reply Hinglish me do (Roman Hindi + thoda English), chhota aur friendly.
+
+Home ke devices (sirf inhi ids use karo):
+{devices}
+
+Rules:
+1. Agar user device ON/OFF karna chahta hai to SIRF ye JSON format do (koi aur text nahi, code fence bhi nahi):
+{"actions":[{"deviceId":1,"action":"on"}],"reply":"<chhota confirm message>"}
+   - Device name/type se sahi id match karo (case-insensitive).
+   - Group request ("saare lights", "all fans") me saare matching devices ke actions do.
+   - Action sirf "on" ya "off" ho sakta hai.
+2. Agar user sirf sawaal/puchta hai (help, status, baat-cheet) to seedha normal reply do \u2014 bina JSON.
+3. Kabhi bhi devices list me na ho to us device ka action mat do \u2014 reply me bata do ki device nahi mila.`;
+function extractJsonObject(text) {
+  const cleaned = text.replace(/```(?:json)?/gi, "").trim();
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
+  if (start === -1 || end === -1 || end <= start) return null;
+  try {
+    const parsed2 = JSON.parse(cleaned.slice(start, end + 1));
+    return parsed2 && typeof parsed2 === "object" ? parsed2 : null;
+  } catch {
+    return null;
+  }
+}
+function parseLlmActions(raw, devices) {
+  const reply = typeof raw.reply === "string" ? raw.reply.trim() : "";
+  const actionsRaw = Array.isArray(raw.actions) ? raw.actions : [];
+  const deviceMap = new Map(devices.map((d) => [d.id, d]));
+  const actions = [];
+  for (const a of actionsRaw) {
+    const o = a;
+    const deviceId = Number(o.deviceId);
+    const device = deviceMap.get(deviceId);
+    if (!device) continue;
+    if (o.action !== "on" && o.action !== "off") continue;
+    actions.push({ deviceId, deviceName: device.name, action: o.action });
+  }
+  return { reply: reply || (actions.length ? "Confirm karo to execute ho jayega." : ""), actions };
+}
+async function tryLlmReply(content, devices) {
+  if (!await aiConfigured()) return null;
+  try {
+    const raw = await chatCompletion({
+      system: LLM_SYSTEM_PROMPT.replace("{devices}", buildDeviceContext(devices) || "(koi device nahi)"),
+      messages: [{ role: "user", content }],
+      maxTokens: 400
+    });
+    const json = extractJsonObject(raw);
+    if (json) {
+      const parsed2 = parseLlmActions(json, devices);
+      if (parsed2 && parsed2.actions.length > 0) {
+        return { content: parsed2.reply, proposal: parsed2.actions };
+      }
+      if (parsed2 && parsed2.reply) {
+        return { content: parsed2.reply, proposal: null };
+      }
+      return null;
+    }
+    return { content: raw, proposal: null };
+  } catch (err) {
+    console.error("[assistant] LLM failed \u2014 rule-based fallback:", err instanceof Error ? err.message : err);
+    return null;
+  }
+}
 async function sendMessage(userId, chatId, content) {
   const chat = await getChat(userId, chatId);
   if (!chat) throw new AppError("NOT_FOUND", "Chat not found", 404);
@@ -3028,6 +4087,23 @@ async function sendMessage(userId, chatId, content) {
       });
     }
     return { chat, userMessage, assistantMessage: { ...assistantMessage2, content: replyText2, proposal: null } };
+  }
+  const llm = await tryLlmReply(content, devices);
+  if (llm) {
+    const assistantMessage2 = await prisma.assistantMessage.create({
+      data: { chatId, role: "assistant", content: encodeAssistantContent(llm.content, llm.proposal) }
+    });
+    if (chat.title === "AI Assist" && content.trim().length > 0) {
+      await prisma.assistantChat.update({
+        where: { id: chat.id },
+        data: { title: content.trim().slice(0, 60) }
+      });
+    }
+    return {
+      chat,
+      userMessage,
+      assistantMessage: { ...assistantMessage2, content: llm.content, proposal: llm.proposal }
+    };
   }
   const parsed2 = parseIntent(content, devices);
   let replyText;
@@ -3104,6 +4180,24 @@ async function confirmProposal(userId, chatId, messageId) {
 
 // src/routes/assistant.routes.ts
 var assistantRouter = Router10();
+var chatCreateLimiter = rateLimit({
+  name: "assistant:create",
+  windowMs: 60 * 6e4,
+  max: 30,
+  message: "Bahut zyada chats \u2014 1 ghanta baad try karo"
+});
+var messageLimiter = rateLimit({
+  name: "assistant:message",
+  windowMs: 6e4,
+  max: 20,
+  message: "Bahut fast messages \u2014 thodi der ruk kar bhejo"
+});
+var confirmLimiter = rateLimit({
+  name: "assistant:confirm",
+  windowMs: 6e4,
+  max: 30,
+  message: "Bahut zyada confirm requests \u2014 thodi der baad try karo"
+});
 var chatParams = z11.object({ chatId: z11.coerce.number().int().positive() });
 var createSchema6 = z11.object({
   homeId: z11.number().int().positive(),
@@ -3116,7 +4210,7 @@ async function membership(userId, homeId) {
     where: { homeId_userId: { homeId, userId } }
   });
 }
-assistantRouter.post("/chats", requireAuth, validateBody(createSchema6), async (req, res) => {
+assistantRouter.post("/chats", chatCreateLimiter, requireAuth, validateBody(createSchema6), async (req, res) => {
   const { homeId, title } = req.body;
   const member = await membership(req.user.sub, homeId);
   if (!member) {
@@ -3129,6 +4223,7 @@ assistantRouter.get("/chats", requireAuth, async (req, res) => {
 });
 assistantRouter.post(
   "/chats/:chatId/messages",
+  messageLimiter,
   requireAuth,
   validateParams(chatParams),
   validateBody(messageSchema),
@@ -3143,6 +4238,7 @@ assistantRouter.post(
 );
 assistantRouter.post(
   "/chats/:chatId/confirm",
+  confirmLimiter,
   requireAuth,
   validateParams(chatParams),
   validateBody(confirmSchema),
@@ -3260,7 +4356,7 @@ async function checkOnce() {
   let err = null;
   if (lastSeenHost) {
     const ctrl = new AbortController();
-    const timer4 = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+    const timer5 = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
     try {
       const res = await fetch(`https://${lastSeenHost}/api/health`, {
         signal: ctrl.signal,
@@ -3274,7 +4370,7 @@ async function checkOnce() {
       err = anyErr?.name === "AbortError" ? "timeout" : String(anyErr?.cause?.code || anyErr?.name || e);
       ok2 = false;
     } finally {
-      clearTimeout(timer4);
+      clearTimeout(timer5);
     }
   } else {
     ok2 = isDbReady();
@@ -3570,29 +4666,6 @@ init_audit_service();
 
 // src/services/shop.service.ts
 init_prisma();
-
-// src/lib/crypto.ts
-import crypto5 from "node:crypto";
-var KEY = crypto5.createHash("sha256").update(env.WIFI_ENC_KEY).digest();
-function encryptSecret(plain) {
-  const iv = crypto5.randomBytes(12);
-  const cipher = crypto5.createCipheriv("aes-256-gcm", KEY, iv);
-  const enc = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return `${iv.toString("base64")}.${tag.toString("base64")}.${enc.toString("base64")}`;
-}
-function decryptSecret(payload) {
-  const [ivB64, tagB64, dataB64] = payload.split(".");
-  if (!ivB64 || !tagB64 || !dataB64) throw new Error("Invalid encrypted payload");
-  const decipher = crypto5.createDecipheriv("aes-256-gcm", KEY, Buffer.from(ivB64, "base64"));
-  decipher.setAuthTag(Buffer.from(tagB64, "base64"));
-  return Buffer.concat([
-    decipher.update(Buffer.from(dataB64, "base64")),
-    decipher.final()
-  ]).toString("utf8");
-}
-
-// src/services/shop.service.ts
 var ORDER_STATUS_FLOW = {
   pending: ["paid", "cancelled"],
   paid: ["shipped", "cancelled"],
@@ -3676,12 +4749,20 @@ async function createOrder(input) {
     });
   });
   try {
-    await createNotification(input.userId, {
-      category: "system",
-      type: "info",
-      title: "\u{1F4E6} Order placed",
-      body: `Order ${order.orderNumber} \u2014 \u20B9${Number(order.totalAmount).toLocaleString("en-IN")}, ${order.items.length} item(s). Status: ${order.status}.`
-    });
+    await createNotificationWithEmail(
+      input.userId,
+      {
+        category: "system",
+        type: "info",
+        title: "\u{1F4E6} Order placed",
+        body: `Order ${order.orderNumber} \u2014 \u20B9${Number(order.totalAmount).toLocaleString("en-IN")}, ${order.items.length} item(s). Status: ${order.status}.`
+      },
+      {
+        emailSubject: `\u{1F4E6} Order ${order.orderNumber} placed \u2014 \u20B9${Number(order.totalAmount).toLocaleString("en-IN")}`,
+        ctaUrl: "/orders",
+        ctaLabel: "Order dekho"
+      }
+    );
   } catch (err) {
     console.error("[shop] order notification failed", err);
   }
@@ -3753,19 +4834,25 @@ async function updateOrderStatus(orderId, status) {
       where: { id: order.id },
       data: {
         status,
-        paymentStatus: status === "paid" ? "paid" : order.paymentStatus
+        paymentStatus: status === "paid" ? "paid" : order.paymentStatus,
+        ...status === "shipped" ? { shippedAt: /* @__PURE__ */ new Date() } : {},
+        ...status === "delivered" ? { deliveredAt: /* @__PURE__ */ new Date() } : {}
       },
       include: { items: true, user: { select: { id: true, username: true, email: true } } }
     });
   });
   if (status === "paid") {
     try {
-      await createNotification(updated.userId, {
-        category: "system",
-        type: "info",
-        title: "\u2705 Payment verified",
-        body: `Order ${updated.orderNumber} ka payment verify ho gaya \u2014 aapka order taiyaar ho raha hai.`
-      });
+      await createNotificationWithEmail(
+        updated.userId,
+        {
+          category: "system",
+          type: "info",
+          title: "\u2705 Payment verified",
+          body: `Order ${updated.orderNumber} ka payment verify ho gaya \u2014 aapka order taiyaar ho raha hai.`
+        },
+        { emailSubject: `\u2705 Payment verified \u2014 order ${updated.orderNumber}`, ctaUrl: "/orders", ctaLabel: "Order dekho" }
+      );
     } catch (err) {
       console.error("[shop] payment notification failed", err);
     }
@@ -3774,17 +4861,106 @@ async function updateOrderStatus(orderId, status) {
     const serialCodes = (updated.items ?? []).map((i) => i.serialCode).filter((c) => Boolean(c));
     const keys = serialCodes.length ? serialCodes.join(", ") : "box sticker pe milenge";
     try {
-      await createNotification(updated.userId, {
-        category: "system",
-        type: "info",
-        title: status === "shipped" ? "\u{1F69A} Order shipped" : "\u{1F4E6} Order delivered",
-        body: status === "shipped" ? `Order ${updated.orderNumber} ship ho gaya. Aapke serial keys: ${keys} \u2014 Activate page pe daal kar device link karo.` : `Order ${updated.orderNumber} deliver ho gaya! Serial keys: ${keys} \u2014 Activate page pe daal kar device add karo (box sticker pe bhi hain).`
-      });
+      await createNotificationWithEmail(
+        updated.userId,
+        {
+          category: "system",
+          type: "info",
+          title: status === "shipped" ? "\u{1F69A} Order shipped" : "\u{1F4E6} Order delivered",
+          body: status === "shipped" ? `Order ${updated.orderNumber} ship ho gaya. Aapke serial keys: ${keys} \u2014 Activate page pe daal kar device link karo.` : `Order ${updated.orderNumber} deliver ho gaya! Serial keys: ${keys} \u2014 Activate page pe daal kar device add karo (box sticker pe bhi hain).`
+        },
+        {
+          emailSubject: status === "shipped" ? `\u{1F69A} Order ${updated.orderNumber} shipped` : `\u{1F4E6} Order ${updated.orderNumber} delivered`,
+          emailBody: status === "shipped" ? `Order ${updated.orderNumber} ship ho gaya. Serial keys: ${keys}
+
+Activate page pe serial daal kar device link karo.` : `Order ${updated.orderNumber} deliver ho gaya! Serial keys: ${keys}
+
+Activate page pe serial daal kar device add karo (box sticker pe bhi hain).`,
+          ctaUrl: status === "shipped" ? "/activate" : "/activate",
+          ctaLabel: "Device activate karo"
+        }
+      );
     } catch (err) {
       console.error("[shop] status notification failed", err);
     }
   }
   return updated;
+}
+
+// src/lib/billVerify.ts
+import crypto6 from "node:crypto";
+var SECRET = crypto6.createHash("sha256").update(env.JWT_ACCESS_SECRET).digest();
+function signBillToken(orderId) {
+  const sig = crypto6.createHmac("sha256", SECRET).update(`bill:${orderId}`).digest("base64url");
+  return `${orderId}.${sig}`;
+}
+function verifyBillToken(token) {
+  const dot = token.indexOf(".");
+  if (dot <= 0) return null;
+  const idPart = token.slice(0, dot);
+  const sig = token.slice(dot + 1);
+  const orderId = Number(idPart);
+  if (!Number.isSafeInteger(orderId) || orderId <= 0) return null;
+  const expected = crypto6.createHmac("sha256", SECRET).update(`bill:${orderId}`).digest("base64url");
+  const a = Buffer.from(sig);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return null;
+  try {
+    if (!crypto6.timingSafeEqual(a, b)) return null;
+  } catch {
+    return null;
+  }
+  return { orderId };
+}
+
+// src/lib/lanIp.ts
+import dgram from "node:dgram";
+import os3 from "node:os";
+function detectLanIp() {
+  const candidates = ["192.168.1.1", "192.168.0.1", "10.0.0.1", "172.16.0.1", "8.8.8.8"];
+  const fromInterfaces = () => {
+    for (const ifaces of Object.values(os3.networkInterfaces())) {
+      for (const iface of ifaces ?? []) {
+        if (iface.family === "IPv4" && !iface.internal) return iface.address;
+      }
+    }
+    return "192.168.1.100";
+  };
+  return new Promise((resolve4) => {
+    let i = 0;
+    const tryNext = () => {
+      if (i >= candidates.length) {
+        resolve4(fromInterfaces());
+        return;
+      }
+      const target = candidates[i++];
+      const sock = dgram.createSocket("udp4");
+      const fail2 = () => {
+        try {
+          sock.close();
+        } catch {
+        }
+        tryNext();
+      };
+      sock.on("error", fail2);
+      sock.on("connect", () => {
+        let ip = "";
+        try {
+          ip = sock.address().address;
+          sock.close();
+        } catch {
+        }
+        if (ip && !ip.startsWith("127.")) resolve4(ip);
+        else tryNext();
+      });
+      try {
+        sock.connect(80, target);
+      } catch {
+        fail2();
+      }
+    };
+    tryNext();
+  });
 }
 
 // src/routes/admin.routes.ts
@@ -3875,307 +5051,8 @@ async function flushRequestTracker() {
   }
 }
 
-// src/services/siteSettings.service.ts
-init_prisma();
-var DEFAULT_SITE_SETTINGS = {
-  siteName: "SwitchNest",
-  supportEmail: "support@switchnest.in",
-  supportPhone: "+91 98765 43210",
-  supportAddress: "SwitchNest Labs, Sector 62, Noida, UP 201309",
-  supportHours: "Mon\u2013Sat \xB7 9:00 AM \u2013 7:00 PM",
-  brandColor: "#2563eb",
-  siteUrl: "https://onlineswitch.bhartitechnical.com",
-  // SMTP defaults yahan empty — asli defaults (587, STARTTLS) email.service me resolve hote hain,
-  // taaki SMTP_* env vars hamesha precedence le saken jab settings me kuch set na ho.
-  smtpHost: "",
-  smtpPort: 0,
-  smtpUser: "",
-  smtpPass: "",
-  smtpFrom: "",
-  smtpSecure: false
-};
-var KEY2 = "site_settings";
-async function getSiteSettings() {
-  try {
-    const row = await prisma.appMeta.findUnique({ where: { key: KEY2 } });
-    if (row?.value) {
-      return { ...DEFAULT_SITE_SETTINGS, ...JSON.parse(row.value) };
-    }
-  } catch {
-  }
-  return DEFAULT_SITE_SETTINGS;
-}
-async function getPublicSiteSettings() {
-  const s = await getSiteSettings();
-  const { smtpHost: _h, smtpPort: _p, smtpUser: _u, smtpPass: _pp, smtpFrom: _f, smtpSecure: _sc, ...pub } = s;
-  return pub;
-}
-async function updateSiteSettings(patch) {
-  const current = await getSiteSettings();
-  const next = { ...current, ...patch };
-  if (patch.smtpPass !== void 0) {
-    if (patch.smtpPass) next.smtpPass = encryptSecret(patch.smtpPass);
-    else next.smtpPass = current.smtpPass;
-  }
-  await prisma.appMeta.upsert({
-    where: { key: KEY2 },
-    create: { key: KEY2, value: JSON.stringify(next) },
-    update: { value: JSON.stringify(next) }
-  });
-  return next;
-}
-
-// src/lib/email.service.ts
-import * as net from "node:net";
-import * as tls from "node:tls";
-import * as os2 from "node:os";
-async function getSmtpConfig() {
-  const s = await getSiteSettings().catch(() => null);
-  let pass = "";
-  if (s?.smtpPass) {
-    try {
-      pass = decryptSecret(s.smtpPass);
-    } catch {
-      pass = s.smtpPass;
-    }
-  }
-  return {
-    host: s?.smtpHost || process.env.SMTP_HOST || "",
-    port: s?.smtpPort || Number(process.env.SMTP_PORT) || 587,
-    user: s?.smtpUser || process.env.SMTP_USER || "",
-    pass: pass || process.env.SMTP_PASS || "",
-    from: s?.smtpFrom || process.env.SMTP_FROM || s?.supportEmail || env.ADMIN_EMAIL,
-    secure: s?.smtpSecure || process.env.SMTP_SECURE === "true"
-  };
-}
-function isEmailConfigured(cfg) {
-  return !!(cfg.host && cfg.user && cfg.pass);
-}
-function createReader(sock, timeoutMs) {
-  let buf = "";
-  let pending = null;
-  let timer4 = null;
-  const tryResolve = () => {
-    if (!pending || !buf.endsWith("\r\n")) return false;
-    const lines = buf.split("\r\n").filter((l) => l.length > 0);
-    const last = lines[lines.length - 1] ?? "";
-    if (!/^\d{3} /.test(last)) return false;
-    const p = pending;
-    pending = null;
-    if (timer4) clearTimeout(timer4);
-    buf = "";
-    p.resolve(lines);
-    return true;
-  };
-  const onData = (chunk) => {
-    buf += chunk.toString("utf8");
-    tryResolve();
-  };
-  sock.on("data", onData);
-  return {
-    next() {
-      if (pending) return Promise.reject(new Error("SMTP: concurrent read"));
-      return new Promise((resolve4, reject) => {
-        pending = { resolve: resolve4, reject };
-        timer4 = setTimeout(() => {
-          if (pending) {
-            const p = pending;
-            pending = null;
-            p.reject(new Error("SMTP timeout"));
-          }
-        }, timeoutMs);
-        tryResolve();
-      });
-    },
-    detach() {
-      sock.off("data", onData);
-      if (timer4) clearTimeout(timer4);
-    }
-  };
-}
-function send(sock, line) {
-  sock.write(line + "\r\n");
-}
-function encodeHeader(value) {
-  return /[^\x20-\x7E]/.test(value) ? `=?UTF-8?B?${Buffer.from(value, "utf8").toString("base64")}?=` : value;
-}
-function buildMessage(from, to, subject, text, html) {
-  const date = (/* @__PURE__ */ new Date()).toUTCString();
-  const boundary = `----switchnest_${Date.now().toString(36)}`;
-  const head = [
-    `Date: ${date}`,
-    `From: ${encodeHeader("SwitchNest")} <${from}>`,
-    `To: <${to}>`,
-    `Subject: ${encodeHeader(subject)}`,
-    "MIME-Version: 1.0"
-  ];
-  const b64 = (s) => Buffer.from(s, "utf8").toString("base64");
-  const lines = html ? [
-    ...head,
-    `Content-Type: multipart/alternative; boundary="${boundary}"`,
-    "",
-    `--${boundary}`,
-    "Content-Type: text/plain; charset=UTF-8",
-    "Content-Transfer-Encoding: base64",
-    "",
-    b64(text),
-    `--${boundary}`,
-    "Content-Type: text/html; charset=UTF-8",
-    "Content-Transfer-Encoding: base64",
-    "",
-    b64(html),
-    `--${boundary}--`,
-    "."
-  ] : [
-    ...head,
-    "Content-Type: text/plain; charset=UTF-8",
-    "Content-Transfer-Encoding: base64",
-    "",
-    b64(text),
-    "."
-  ];
-  return lines.join("\r\n");
-}
-async function sendEmail(opts) {
-  const cfg = await getSmtpConfig().catch(() => null);
-  if (!cfg || !isEmailConfigured(cfg)) {
-    logger.warn(`[email] SMTP configured nahi hai \u2014 email skip (to=${opts.to})`);
-    return { ok: false, skipped: true, error: "SMTP not configured" };
-  }
-  return new Promise((resolve4) => {
-    let sock;
-    try {
-      sock = net.connect({ host: cfg.host, port: cfg.port });
-    } catch (e) {
-      logger.error("[email] connect error", e);
-      return resolve4({ ok: false, error: String(e) });
-    }
-    let reader = createReader(sock, 2e4);
-    let done = false;
-    const fail2 = (msg) => {
-      if (done) return;
-      done = true;
-      try {
-        reader.detach();
-        sock.destroy();
-      } catch {
-      }
-      logger.warn(`[email] SMTP fail (${cfg.host}): ${msg}`);
-      resolve4({ ok: false, error: msg });
-    };
-    const succeed = () => {
-      if (done) return;
-      done = true;
-      try {
-        reader.detach();
-        sock.destroy();
-      } catch {
-      }
-      logger.info(`[email] sent to ${opts.to}`);
-      resolve4({ ok: true });
-    };
-    sock.on("error", (e) => fail2(String(e.message || e)));
-    (async () => {
-      try {
-        let r = await reader.next();
-        if (!r[0]?.startsWith("220")) return fail2(`Greeting: ${r[0] ?? "no response"}`);
-        const ehloName = os2.hostname() || "switchnest";
-        send(sock, `EHLO ${ehloName}`);
-        r = await reader.next();
-        let ehlo = r.join("\r\n");
-        const useTls = cfg.secure || cfg.port === 465;
-        if (!useTls && /STARTTLS/i.test(ehlo)) {
-          send(sock, "STARTTLS");
-          r = await reader.next();
-          if (!r[0]?.startsWith("220")) return fail2(`STARTTLS: ${r[0]}`);
-          reader.detach();
-          sock = tls.connect({ socket: sock, servername: cfg.host });
-          reader = createReader(sock, 2e4);
-          await new Promise((res, rej) => {
-            sock.once("secureConnect", () => res());
-            sock.once("error", rej);
-          });
-          sock.on("error", (e) => fail2(String(e.message || e)));
-          send(sock, `EHLO ${ehloName}`);
-          r = await reader.next();
-          ehlo = r.join("\r\n");
-        }
-        const mech = ehlo.toUpperCase();
-        if (/AUTH/.test(mech) && !/AUTH=NONE/.test(mech)) {
-          if (/LOGIN/.test(mech)) {
-            send(sock, "AUTH LOGIN");
-            r = await reader.next();
-            if (!r[0]?.startsWith("334")) return fail2(`AUTH LOGIN: ${r[0]}`);
-            send(sock, Buffer.from(cfg.user, "utf8").toString("base64"));
-            r = await reader.next();
-            if (!r[0]?.startsWith("334")) return fail2(`AUTH user: ${r[0]}`);
-            send(sock, Buffer.from(cfg.pass, "utf8").toString("base64"));
-            r = await reader.next();
-            if (!r[0]?.startsWith("235")) return fail2(`AUTH pass: ${r[0]}`);
-          } else if (/PLAIN/.test(mech)) {
-            const token = Buffer.from(`\0${cfg.user}\0${cfg.pass}`, "utf8").toString("base64");
-            send(sock, `AUTH PLAIN ${token}`);
-            r = await reader.next();
-            if (!r[0]?.startsWith("235")) return fail2(`AUTH PLAIN: ${r[0]}`);
-          } else {
-            return fail2("No supported AUTH mechanism (LOGIN/PLAIN required)");
-          }
-        }
-        send(sock, `MAIL FROM:<${cfg.from}>`);
-        r = await reader.next();
-        if (!r[0]?.startsWith("250")) return fail2(`MAIL FROM: ${r[0]}`);
-        send(sock, `RCPT TO:<${opts.to}>`);
-        r = await reader.next();
-        if (!r[0]?.startsWith("250")) return fail2(`RCPT TO: ${r[0]}`);
-        send(sock, "DATA");
-        r = await reader.next();
-        if (!r[0]?.startsWith("354")) return fail2(`DATA: ${r[0]}`);
-        send(sock, buildMessage(cfg.from, opts.to, opts.subject, opts.text, opts.html));
-        r = await reader.next();
-        if (!r[0]?.startsWith("250")) return fail2(`send: ${r[0]}`);
-        send(sock, "QUIT");
-        try {
-          r = await reader.next();
-          if (!r[0]?.startsWith("221")) return fail2(`QUIT: ${r[0]}`);
-        } catch {
-        }
-        succeed();
-      } catch (e) {
-        fail2(e instanceof Error ? e.message : String(e));
-      }
-    })();
-  });
-}
-async function sendSupportReplyEmail(opts) {
-  const s = await getSiteSettings().catch(() => null);
-  const siteName = s?.siteName || "SwitchNest";
-  const siteUrl = s?.siteUrl || "";
-  const subject = `\u{1F6E0}\uFE0F ${siteName} Support \u2014 Admin ne reply kiya`;
-  const text = [
-    `Namaste ${opts.userName},`,
-    "",
-    `Aapke support message pe ${siteName} team ne reply kiya hai:`,
-    "",
-    `"${opts.replyText}"`,
-    "",
-    siteUrl ? `Reply dekhne aur jawab dene ke liye: ${siteUrl}` : "Support chat khol kar turant jawab de sakte ho.",
-    "",
-    `\u2014 ${siteName} Support Team`
-  ].join("\n");
-  const html = `
-    <div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;padding:24px">
-      <h2 style="color:#2563eb;margin:0 0 16px">${siteName} Support</h2>
-      <p style="font-size:15px;color:#333">Namaste <b>${opts.userName}</b>,</p>
-      <p style="font-size:15px;color:#333">Aapke support message pe team ne reply kiya hai:</p>
-      <div style="border-left:4px solid #2563eb;background:#f5f7fb;padding:12px 16px;border-radius:8px;color:#333;white-space:pre-wrap">${opts.replyText.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c])}</div>
-      ${siteUrl ? `<p style="font-size:15px;color:#333;margin-top:16px">Reply dekhne aur jawab dene ke liye: <a href="${siteUrl}" style="color:#2563eb">${siteUrl}</a></p>` : ""}
-      <p style="font-size:13px;color:#888;margin-top:24px">\u2014 ${siteName} Support Team</p>
-    </div>
-  `.trim();
-  return sendEmail({ to: opts.to, subject, text, html });
-}
-
 // src/routes/admin.routes.ts
+import bcrypt2 from "bcryptjs";
 var adminRouter = Router11();
 function requireAdmin(req, _res, next) {
   if (req.user?.role !== "system_admin") {
@@ -4299,11 +5176,23 @@ var settingsSchema = z12.object({
   smtpPass: z12.string().max(200).optional(),
   // blank = purana rakho
   smtpFrom: z12.string().email().max(150).optional().or(z12.literal("")),
-  smtpSecure: z12.boolean().optional()
+  smtpSecure: z12.boolean().optional(),
+  // AI assistant config (Phase 7) — UI se, env ke bajaye
+  aiProvider: z12.enum(["openai", "gemini", "ollama", ""]).optional(),
+  aiApiKey: z12.string().max(200).optional(),
+  // blank = purana rakho
+  aiBaseUrl: z12.string().max(200).optional().or(z12.literal("")),
+  aiModel: z12.string().max(100).optional()
 }).refine((d) => Object.keys(d).length > 0, { message: "At least one field to update" });
 adminRouter.get("/settings", async (_req, res) => {
   const s = await getSiteSettings();
-  ok(res, { ...s, smtpPass: s.smtpPass ? "********" : "", smtpPassSet: !!s.smtpPass });
+  ok(res, {
+    ...s,
+    smtpPass: s.smtpPass ? "********" : "",
+    smtpPassSet: !!s.smtpPass,
+    aiApiKey: s.aiApiKey ? "********" : "",
+    aiApiKeySet: !!s.aiApiKey
+  });
 });
 adminRouter.put("/settings", validateBody(settingsSchema), async (req, res) => {
   ok(res, await updateSiteSettings(req.body));
@@ -4330,6 +5219,24 @@ adminRouter.post("/settings/test-email", async (req, res) => {
   }
   ok(res, { sent: true });
 });
+adminRouter.post("/settings/ai-test", async (_req, res) => {
+  if (!await aiConfigured()) {
+    throw new AppError("CONFIG_ERROR", "AI configured nahi hai \u2014 Settings me provider + model + API key daalo aur Save karo", 400);
+  }
+  const cfg = await getAiConfig();
+  try {
+    const reply = await chatCompletion({
+      system: "Reply with exactly: AI_OK",
+      messages: [{ role: "user", content: "ping" }],
+      maxTokens: 10,
+      timeoutMs: 2e4
+    });
+    ok(res, { ok: true, reply, provider: cfg.provider, model: cfg.model });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new AppError("AI_ERROR", `AI call fail: ${msg}`, 502);
+  }
+});
 adminRouter.get("/users", async (req, res) => {
   const q = String(req.query.q ?? "").trim();
   const users = await prisma.user.findMany({
@@ -4341,7 +5248,18 @@ adminRouter.get("/users", async (req, res) => {
       status: true,
       createdAt: true,
       lastLoginAt: true,
-      _count: { select: { ownedHomes: true, memberships: true } }
+      loginCount: true,
+      _count: {
+        select: {
+          ownedHomes: true,
+          memberships: true,
+          orders: true,
+          apiKeys: true,
+          createdDevices: true,
+          claimedSerials: true,
+          warrantyClaims: true
+        }
+      }
     },
     where: q ? {
       OR: [
@@ -4352,7 +5270,195 @@ adminRouter.get("/users", async (req, res) => {
     orderBy: { createdAt: "desc" },
     take: 200
   });
-  ok(res, users);
+  const userIds = users.map((u) => u.id);
+  const memberships = await prisma.homeMember.findMany({
+    where: { userId: { in: userIds } },
+    select: { userId: true, homeId: true }
+  });
+  const espCounts = await prisma.espDevice.groupBy({
+    by: ["homeId"],
+    where: { homeId: { in: memberships.map((m) => m.homeId) } },
+    _count: { _all: true }
+  });
+  const espByHome = new Map(espCounts.map((e) => [e.homeId, e._count._all]));
+  const boardsByUser = /* @__PURE__ */ new Map();
+  for (const m of memberships) {
+    boardsByUser.set(m.userId, (boardsByUser.get(m.userId) ?? 0) + (espByHome.get(m.homeId) ?? 0));
+  }
+  const usageRows = await prisma.deviceUsage.groupBy({
+    by: ["userId"],
+    where: { userId: { in: userIds } },
+    _sum: { onMinutes: true }
+  });
+  const usageByUser = new Map(usageRows.map((r) => [r.userId, r._sum.onMinutes ?? 0]));
+  ok(
+    res,
+    users.map((u) => ({
+      id: u.id,
+      username: u.username,
+      email: u.email,
+      role: u.role,
+      status: u.status,
+      createdAt: u.createdAt,
+      lastLoginAt: u.lastLoginAt,
+      loginCount: u.loginCount,
+      _count: u._count,
+      boards: boardsByUser.get(u.id) ?? 0,
+      usageMinutes: usageByUser.get(u.id) ?? 0
+    }))
+  );
+});
+adminRouter.get("/users/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  const user = await prisma.user.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      username: true,
+      email: true,
+      role: true,
+      status: true,
+      createdAt: true,
+      lastLoginAt: true,
+      loginCount: true,
+      _count: {
+        select: {
+          ownedHomes: true,
+          orders: true,
+          apiKeys: true,
+          createdDevices: true,
+          claimedSerials: true,
+          warrantyClaims: true,
+          contactMessages: true
+        }
+      },
+      memberships: {
+        select: {
+          home: { select: { id: true, name: true } },
+          role: true
+        },
+        orderBy: { role: "asc" }
+      },
+      orders: {
+        select: {
+          id: true,
+          orderNumber: true,
+          status: true,
+          paymentStatus: true,
+          totalAmount: true,
+          createdAt: true
+        },
+        orderBy: { createdAt: "desc" },
+        take: 10
+      },
+      apiKeys: {
+        select: {
+          id: true,
+          keyPrefix: true,
+          label: true,
+          createdAt: true,
+          expiresAt: true,
+          revokedAt: true,
+          lastUsedAt: true,
+          home: { select: { name: true } }
+        },
+        orderBy: { createdAt: "desc" },
+        take: 20
+      }
+    }
+  });
+  if (!user) throw new AppError("NOT_FOUND", "User not found", 404);
+  const espCounts = await prisma.espDevice.groupBy({
+    by: ["homeId"],
+    where: { homeId: { in: user.memberships.map((m) => m.home.id) } },
+    _count: { _all: true }
+  });
+  const boards = espCounts.reduce((n, e) => n + e._count._all, 0);
+  const usageAgg = await prisma.deviceUsage.aggregate({
+    where: { userId: user.id },
+    _sum: { onMinutes: true }
+  });
+  ok(res, {
+    ...user,
+    boards,
+    usageMinutes: usageAgg._sum.onMinutes ?? 0
+  });
+});
+var createUserSchema = z12.object({
+  username: z12.string().min(3).max(50),
+  email: z12.string().email().max(100),
+  password: z12.string().min(6).max(255),
+  role: z12.enum(["user", "system_admin"]).optional()
+});
+adminRouter.post("/users", validateBody(createUserSchema), async (req, res) => {
+  const { username, email, password, role } = req.body;
+  const exists = await prisma.user.findFirst({
+    where: { OR: [{ username }, { email }] },
+    select: { id: true }
+  });
+  if (exists) throw new AppError("USER_EXISTS", "Username ya email already exists", 409);
+  const hashed = await bcrypt2.hash(password, 10);
+  const user = await prisma.user.create({
+    data: { username, email, password: hashed, role: role ?? "user" },
+    select: { id: true, username: true, email: true, role: true, status: true, createdAt: true }
+  });
+  await audit(req.user.sub, "admin.user.create", {
+    entity: "user",
+    entityId: user.id,
+    meta: { username: user.username, email: user.email, role: user.role }
+  });
+  ok(res, user, 201);
+});
+adminRouter.post("/users/:id/send-reset-email", async (req, res) => {
+  const id = Number(req.params.id);
+  const user = await prisma.user.findUnique({
+    where: { id },
+    select: { id: true, username: true, email: true }
+  });
+  if (!user) throw new AppError("NOT_FOUND", "User not found", 404);
+  await requestPasswordReset(user.email);
+  await audit(req.user.sub, "admin.user.sendResetEmail", {
+    entity: "user",
+    entityId: id,
+    meta: { username: user.username, email: user.email }
+  });
+  ok(res, { sent: true, message: `Password reset email bheja (${user.email})` });
+});
+var broadcastLimiter = rateLimit({
+  name: "admin:broadcast",
+  windowMs: 60 * 6e4,
+  max: 5,
+  message: "Bahut zyada broadcasts \u2014 1 ghanta baad try karo"
+});
+var broadcastSchema = z12.object({
+  title: z12.string().trim().min(1).max(120),
+  body: z12.string().trim().min(1).max(2e3),
+  sendEmail: z12.boolean().optional()
+});
+adminRouter.post("/broadcast", broadcastLimiter, validateBody(broadcastSchema), async (req, res) => {
+  const { title, body, sendEmail: sendEmail2 } = req.body;
+  const targets = await prisma.user.findMany({
+    where: { role: "user", status: "active" },
+    select: { id: true }
+  });
+  let emailed = 0;
+  for (const t of targets) {
+    if (sendEmail2) {
+      await createNotificationWithEmail(
+        t.id,
+        { category: "system", type: "info", title, body },
+        { emailSubject: title, emailBody: body }
+      );
+      emailed++;
+    } else {
+      await createNotification(t.id, { category: "system", type: "info", title, body });
+    }
+  }
+  await audit(req.user.sub, "admin.broadcast", {
+    entity: "site",
+    meta: { title, targets: targets.length, emailed }
+  });
+  ok(res, { sent: targets.length, emailed });
 });
 adminRouter.patch("/users/:id/status", async (req, res) => {
   const id = Number(req.params.id);
@@ -4607,9 +5713,9 @@ adminRouter.post("/api-keys", async (req, res) => {
     homeId = home?.id ?? null;
   }
   const label = String(req.body?.label ?? "factory").slice(0, 100);
-  const crypto7 = await import("node:crypto");
-  const plain = `rs_${crypto7.randomBytes(9).toString("base64url").replace(/-/g, "").slice(0, 16)}`;
-  const keyHash = crypto7.createHash("sha256").update(plain).digest("hex");
+  const crypto8 = await import("node:crypto");
+  const plain = `rs_${crypto8.randomBytes(9).toString("base64url").replace(/-/g, "").slice(0, 16)}`;
+  const keyHash = crypto8.createHash("sha256").update(plain).digest("hex");
   const keyPrefix = plain.slice(0, 8);
   await prisma.apiKey.create({ data: { userId, homeId, label, keyHash, keyPrefix } });
   await audit(req.user.sub, "admin.apikey.create", {
@@ -4840,7 +5946,7 @@ async function fetchCiStatus(sha) {
   if (ciCache.key === cacheKey && now - ciCache.at < 3e5) return ciCache.value;
   const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
   const q = sha ? `head_sha=${sha}` : "branch=main";
-  const store = (v) => {
+  const store2 = (v) => {
     ciCache.key = cacheKey;
     ciCache.at = now;
     ciCache.value = v;
@@ -4856,16 +5962,16 @@ async function fetchCiStatus(sha) {
       signal: AbortSignal.timeout(8e3)
     });
     if (res.status === 401 || res.status === 403 || res.status === 404) {
-      return store(
+      return store2(
         token ? { status: "unknown", reason: `GitHub API ${res.status}` } : { status: "unknown", reason: "private repo \u2014 GITHUB_TOKEN env me daalo" }
       );
     }
-    if (!res.ok) return store({ status: "unknown", reason: `GitHub API ${res.status}` });
+    if (!res.ok) return store2({ status: "unknown", reason: `GitHub API ${res.status}` });
     const data = await res.json();
     const run = data.workflow_runs?.[0];
-    if (!run) return store({ status: "unknown", reason: "no workflow runs yet" });
+    if (!run) return store2({ status: "unknown", reason: "no workflow runs yet" });
     const conclusion = run.conclusion;
-    return store({
+    return store2({
       status: conclusion === "success" ? "pass" : conclusion === "failure" || conclusion === "cancelled" || conclusion === "timed_out" || conclusion === "action_required" ? "fail" : run.status === "completed" ? "unknown" : "pending",
       runId: run.id,
       workflow: run.name ?? void 0,
@@ -4898,6 +6004,47 @@ async function fetchLatestMain() {
   }
   return latestCache.value;
 }
+function isAncestorOf(ancestor, head) {
+  try {
+    execSync(`git merge-base --is-ancestor ${ancestor} ${head}`, {
+      stdio: "ignore",
+      windowsHide: true,
+      timeout: 5e3
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+adminRouter.get("/lan-info", async (_req, res) => {
+  const lanIp = await detectLanIp();
+  ok(res, { lanIp, espServerUrl: `http://${lanIp}:4000` });
+});
+var checkUrlLimiter = rateLimit({
+  name: "admin:check-url",
+  windowMs: 6e4,
+  max: 30,
+  message: "Bahut zyada URL checks \u2014 thodi der baad try karo"
+});
+var checkUrlSchema = z12.object({ url: z12.string().min(1).max(300) });
+adminRouter.post("/check-url", checkUrlLimiter, validateBody(checkUrlSchema), async (req, res) => {
+  const raw = String(req.body.url ?? "").trim();
+  if (!/^https?:\/\//i.test(raw)) {
+    throw new AppError("VALIDATION_ERROR", "URL http:// ya https:// se shuru hona chahiye", 400);
+  }
+  const started = Date.now();
+  try {
+    const ctrl = new AbortController();
+    const timer5 = setTimeout(() => ctrl.abort(), 6e3);
+    const r = await fetch(raw, { signal: ctrl.signal });
+    clearTimeout(timer5);
+    ok(res, { ok: true, status: r.status, ms: Date.now() - started });
+  } catch (err) {
+    const aborted = err instanceof Error && err.name === "AbortError";
+    const msg = aborted ? "Timeout \u2014 6s me koi response nahi (URL galat ya server down?)" : err instanceof Error ? err.message : String(err);
+    ok(res, { ok: false, error: msg, ms: Date.now() - started });
+  }
+});
 adminRouter.get("/deploy-info", async (_req, res) => {
   let marker = null;
   const markerPath = path7.resolve(process.cwd(), "../logs/deploy.json");
@@ -4926,8 +6073,9 @@ adminRouter.get("/deploy-info", async (_req, res) => {
   const ciSha = marker?.commit || git?.commit || build?.commit || void 0;
   const ci = await fetchCiStatus(ciSha);
   const latest = await fetchLatestMain();
-  const deployedCommit = marker?.commit || build?.commit || git?.commit || null;
-  const deployedAt = marker?.deployedAt || build?.builtAt || null;
+  const deployedSource = marker?.commit ? "marker" : git?.commit ? "git" : build?.commit ? "build" : null;
+  const deployedCommit = marker?.commit || git?.commit || build?.commit || null;
+  const deployedAt = deployedSource === "marker" ? marker?.deployedAt || null : deployedSource === "build" ? build?.builtAt || null : null;
   const latestCommit = latest?.commit || null;
   const latestTs = latest?.ts || null;
   const markerTrusted = marker?.commit ? marker?.source !== "build" : true;
@@ -4935,7 +6083,11 @@ adminRouter.get("/deploy-info", async (_req, res) => {
   let syncAgeMin = null;
   if (markerTrusted && deployedCommit && latestCommit && latestTs) {
     syncAgeMin = Math.round((Date.now() - new Date(latestTs).getTime()) / 6e4);
-    syncStatus = deployedCommit === latestCommit ? "synced" : syncAgeMin > 5 ? "lagging" : "pending";
+    if (deployedCommit === latestCommit) syncStatus = "synced";
+    else if (syncAgeMin > 5) {
+      const aheadOfMain = deployedSource === "git" && git?.commit && latestCommit ? isAncestorOf(latestCommit, git.commit) : false;
+      syncStatus = aheadOfMain ? "local" : "lagging";
+    } else syncStatus = "pending";
   }
   ok(res, {
     marker,
@@ -4946,6 +6098,7 @@ adminRouter.get("/deploy-info", async (_req, res) => {
     sync: {
       status: syncStatus,
       deployedCommit,
+      deployedSource,
       latestCommit,
       ageMin: syncAgeMin,
       since: latest?.ts || null
@@ -5298,9 +6451,9 @@ adminRouter.post("/esp/:id/key", async (req, res) => {
     include: { home: { select: { id: true, ownerId: true } } }
   });
   if (!esp?.home) throw new AppError("NOT_FOUND", "ESP ya home nahi mila");
-  const crypto7 = await import("node:crypto");
-  const plain = `rs_${crypto7.randomBytes(9).toString("base64url").replace(/-/g, "").slice(0, 16)}`;
-  const keyHash = crypto7.createHash("sha256").update(plain).digest("hex");
+  const crypto8 = await import("node:crypto");
+  const plain = `rs_${crypto8.randomBytes(9).toString("base64url").replace(/-/g, "").slice(0, 16)}`;
+  const keyHash = crypto8.createHash("sha256").update(plain).digest("hex");
   const keyPrefix = plain.slice(0, 8);
   await prisma.apiKey.create({
     data: {
@@ -5317,6 +6470,69 @@ adminRouter.post("/esp/:id/key", async (req, res) => {
     meta: { homeId: esp.home.id }
   });
   ok(res, { apiKey: plain, keyPrefix });
+});
+adminRouter.get("/esp/issues", async (req, res) => {
+  const esps = await prisma.espDevice.findMany({
+    select: {
+      id: true,
+      homeId: true,
+      macAddress: true,
+      name: true,
+      ssid: true,
+      serialCode: true,
+      modelCode: true,
+      ipAddress: true,
+      firmwareVersion: true,
+      lastSeen: true,
+      offline: true,
+      home: {
+        select: {
+          id: true,
+          name: true,
+          owner: { select: { username: true } }
+        }
+      }
+    },
+    orderBy: { lastSeen: "asc" },
+    take: 500
+  });
+  const now = Date.now();
+  const DAY = 864e5;
+  const issues = esps.map((e) => {
+    const expectedName = e.serialCode && e.ssid ? `${e.serialCode} \xB7 ${e.ssid}` : null;
+    const nameMismatch = !!e.name && !!expectedName && e.name !== expectedName && e.name.includes(" \xB7 ");
+    const lastSeenMs = e.lastSeen ? e.lastSeen.getTime() : null;
+    const staleDays = lastSeenMs ? Math.floor((now - lastSeenMs) / DAY) : null;
+    const stale = e.offline && (lastSeenMs === null || now - lastSeenMs > DAY);
+    return {
+      id: e.id,
+      homeId: e.homeId,
+      macAddress: e.macAddress,
+      name: e.name,
+      expectedName,
+      nameMismatch,
+      ssid: e.ssid,
+      serialCode: e.serialCode,
+      modelCode: e.modelCode,
+      ipAddress: e.ipAddress,
+      firmwareVersion: e.firmwareVersion,
+      lastSeen: e.lastSeen,
+      offline: e.offline,
+      stale,
+      staleDays,
+      home: e.home ? { id: e.home.id, name: e.home.name, owner: e.home.owner?.username ?? null } : null
+    };
+  });
+  const filtered = issues.filter((i) => i.nameMismatch || i.stale);
+  filtered.sort((a, b) => {
+    if (a.nameMismatch !== b.nameMismatch) return a.nameMismatch ? -1 : 1;
+    return (a.staleDays ?? 0) - (b.staleDays ?? 0);
+  });
+  ok(res, {
+    issues: filtered,
+    mismatchCount: filtered.filter((i) => i.nameMismatch).length,
+    staleCount: filtered.filter((i) => i.stale).length
+  });
 });
 adminRouter.patch("/esp/:id", async (req, res) => {
   const id = Number(req.params.id);
@@ -5627,7 +6843,7 @@ adminRouter.get("/esp/:id/probe", async (req, res) => {
   const url = `http://${ip}/`;
   const started = Date.now();
   const controller = new AbortController();
-  const timer4 = setTimeout(() => controller.abort(), 3e3);
+  const timer5 = setTimeout(() => controller.abort(), 3e3);
   try {
     const r = await fetch(url, {
       signal: controller.signal,
@@ -5638,7 +6854,7 @@ adminRouter.get("/esp/:id/probe", async (req, res) => {
   } catch {
     return ok(res, { reachable: false, reason: "unreachable", latencyMs: Date.now() - started });
   } finally {
-    clearTimeout(timer4);
+    clearTimeout(timer5);
   }
 });
 adminRouter.get("/products", async (_req, res) => {
@@ -5713,7 +6929,7 @@ adminRouter.get("/orders/:id", async (req, res) => {
     }
   });
   if (!order) throw new AppError("NOT_FOUND", "Order not found");
-  ok(res, order);
+  ok(res, { ...order, verifyToken: signBillToken(order.id) });
 });
 adminRouter.patch("/orders/:id/status", async (req, res) => {
   const id = Number(req.params.id);
@@ -5729,12 +6945,24 @@ adminRouter.patch("/orders/:id/status", async (req, res) => {
 adminRouter.get("/serials", async (req, res) => {
   const status = req.query.status ? String(req.query.status) : void 0;
   const productId = req.query.productId ? Number(req.query.productId) : void 0;
+  const orderId = req.query.orderId ? Number(req.query.orderId) : void 0;
   const serials = await prisma.serialRegistry.findMany({
     where: {
       ...status ? { status } : {},
-      ...productId ? { productId } : {}
+      ...productId ? { productId } : {},
+      ...orderId ? { orderId } : {}
     },
-    include: {
+    select: {
+      id: true,
+      serialCode: true,
+      productId: true,
+      orderId: true,
+      userId: true,
+      homeId: true,
+      status: true,
+      createdAt: true,
+      claimedAt: true,
+      testedAt: true,
       product: { select: { id: true, name: true, modelCode: true } },
       user: { select: { id: true, username: true, email: true } },
       order: { select: { id: true, orderNumber: true, status: true } }
@@ -5880,9 +7108,9 @@ adminRouter.get("/orders/:id/provision", async (req, res) => {
       wifiPassword = null;
     }
   }
-  const crypto7 = await import("node:crypto");
-  const plain = `rs_${crypto7.randomBytes(9).toString("base64url").replace(/-/g, "").slice(0, 16)}`;
-  const keyHash = crypto7.createHash("sha256").update(plain).digest("hex");
+  const crypto8 = await import("node:crypto");
+  const plain = `rs_${crypto8.randomBytes(9).toString("base64url").replace(/-/g, "").slice(0, 16)}`;
+  const keyHash = crypto8.createHash("sha256").update(plain).digest("hex");
   const keyPrefix = plain.slice(0, 8);
   const home = await prisma.home.findFirst({ where: { ownerId: order.userId } });
   if (home) {
@@ -5982,6 +7210,29 @@ adminRouter.patch("/warranty/:id/status", async (req, res) => {
     entityId: id,
     meta: { serialCode: claim.serialCode }
   });
+  const statusMsg = {
+    approved: `Aapki warranty claim (${claim.serialCode}) APPROVED ho gayi \u2014 replacement/repair ke liye support se baat karo.`,
+    rejected: `Aapki warranty claim (${claim.serialCode}) REJECT ho gayi. Reason ke liye support se baat karo.`,
+    resolved: `Aapki warranty claim (${claim.serialCode}) RESOLVED ho gayi \u2014 issue sort ho gaya.`
+  };
+  try {
+    await createNotificationWithEmail(
+      claim.userId,
+      {
+        category: "system",
+        type: status === "rejected" ? "warning" : "info",
+        title: `\u{1F6E1}\uFE0F Warranty ${status}: ${claim.serialCode}`,
+        body: statusMsg[status] ?? `Claim status update: ${status}`
+      },
+      {
+        emailSubject: `\u{1F6E1}\uFE0F Warranty claim ${status} \u2014 ${claim.serialCode}`,
+        ctaUrl: "/warranty",
+        ctaLabel: "Warranty dekho"
+      }
+    );
+  } catch (err) {
+    console.error("[admin] warranty email failed", err);
+  }
   ok(res, { id: updated.id, status: updated.status });
 });
 adminRouter.get("/contact", async (_req, res) => {
@@ -6077,7 +7328,7 @@ init_prisma();
 init_audit_service();
 
 // src/services/payment.service.ts
-import crypto6 from "node:crypto";
+import crypto7 from "node:crypto";
 function razorpayConfigured() {
   return Boolean(env.RAZORPAY_KEY_ID && env.RAZORPAY_KEY_SECRET);
 }
@@ -6092,7 +7343,7 @@ async function createRazorpayOrder(amountInr, receipt) {
   return res.json();
 }
 function verifyRazorpaySignature(orderId, paymentId, signature) {
-  const expected = crypto6.createHmac("sha256", env.RAZORPAY_KEY_SECRET).update(`${orderId}|${paymentId}`).digest("hex");
+  const expected = crypto7.createHmac("sha256", env.RAZORPAY_KEY_SECRET).update(`${orderId}|${paymentId}`).digest("hex");
   return expected === signature;
 }
 
@@ -6144,7 +7395,52 @@ shopRouter.get("/orders", requireAuth, async (req, res) => {
     include: { items: true },
     orderBy: { createdAt: "desc" }
   });
-  ok(res, orders);
+  const serialCodes = [...new Set(orders.flatMap((o) => o.items.map((i) => i.serialCode).filter(Boolean)))];
+  const claimedSet = /* @__PURE__ */ new Set();
+  if (serialCodes.length > 0) {
+    const rows = await prisma.serialRegistry.findMany({
+      where: { serialCode: { in: serialCodes } },
+      select: { serialCode: true, status: true }
+    });
+    for (const r of rows) {
+      if (r.status === "claimed") claimedSet.add(r.serialCode);
+    }
+  }
+  ok(
+    res,
+    orders.map((o) => {
+      const codes = o.items.map((i) => i.serialCode).filter(Boolean);
+      return {
+        ...o,
+        allClaimed: codes.length > 0 && codes.every((c) => claimedSet.has(c))
+      };
+    })
+  );
+});
+shopRouter.get("/orders/:id/stickers", requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const order = await prisma.order.findUnique({
+    where: { id },
+    select: { id: true, orderNumber: true, userId: true, status: true }
+  });
+  if (!order || order.userId !== req.user.sub) {
+    throw new AppError("NOT_FOUND", "Order not found", 404);
+  }
+  const serials = await prisma.serialRegistry.findMany({
+    where: { orderId: id },
+    include: {
+      product: { select: { id: true, name: true, modelCode: true } },
+      user: { select: { id: true, username: true, email: true } },
+      order: { select: { id: true, orderNumber: true, status: true } }
+    },
+    orderBy: { id: "asc" }
+  });
+  const enriched = serials.map((s, i) => ({
+    ...s,
+    orderIdx: i + 1,
+    orderTotal: serials.length
+  }));
+  ok(res, { orderId: id, orderNumber: order.orderNumber, status: order.status, serials: enriched });
 });
 shopRouter.post("/orders/:id/cancel", requireAuth, async (req, res) => {
   const id = Number(req.params.id);
@@ -6242,6 +7538,17 @@ import { Router as Router13 } from "express";
 init_prisma();
 init_audit_service();
 var claimRouter = Router13();
+var claimLimiter = rateLimit({
+  name: "claim:create",
+  windowMs: 60 * 6e4,
+  max: 20,
+  message: "Bahut zyada claim attempts \u2014 1 ghanta baad try karo"
+});
+var claimHomesLimiter = rateLimit({
+  name: "claim:homes",
+  windowMs: 6e4,
+  max: 60
+});
 claimRouter.use(requireAuth);
 var TYPE_BY_MODEL = {
   "2CH": "custom",
@@ -6264,11 +7571,11 @@ async function claimableHomes(userId) {
     include: { home: { select: { id: true, name: true } } }
   });
 }
-claimRouter.get("/homes", async (req, res) => {
+claimRouter.get("/homes", claimHomesLimiter, async (req, res) => {
   const homes = await claimableHomes(req.user.sub);
   ok(res, homes.map((h) => h.home));
 });
-claimRouter.post("/", async (req, res) => {
+claimRouter.post("/", claimLimiter, async (req, res) => {
   const serialCode = String(req.body?.serialCode ?? "").trim().toUpperCase();
   const homeId = Number(req.body?.homeId);
   if (!serialCode) throw new AppError("BAD_REQUEST", "Serial code is required");
@@ -6336,8 +7643,25 @@ claimRouter.post("/", async (req, res) => {
 import { Router as Router14 } from "express";
 init_prisma();
 var warrantyRouter = Router14();
+var statusLimiter = rateLimit({
+  name: "warranty:status",
+  windowMs: 6e4,
+  max: 30,
+  message: "Bahut zyada serial checks \u2014 thodi der baad try karo"
+});
+var claimLimiter2 = rateLimit({
+  name: "warranty:claim",
+  windowMs: 60 * 6e4,
+  max: 10,
+  message: "Bahut zyada claim attempts \u2014 1 ghanta baad try karo"
+});
+var mineLimiter = rateLimit({
+  name: "warranty:mine",
+  windowMs: 6e4,
+  max: 60
+});
 warrantyRouter.use(requireAuth);
-warrantyRouter.get("/status", async (req, res) => {
+warrantyRouter.get("/status", statusLimiter, async (req, res) => {
   const code = String(req.query.serial ?? "").trim().toUpperCase();
   if (!code) throw new AppError("BAD_REQUEST", "serial query required");
   const serial = await prisma.serialRegistry.findUnique({
@@ -6357,7 +7681,7 @@ warrantyRouter.get("/status", async (req, res) => {
     claimedAt: serial.claimedAt
   });
 });
-warrantyRouter.post("/", async (req, res) => {
+warrantyRouter.post("/", claimLimiter2, async (req, res) => {
   const serialCode = String(req.body?.serialCode ?? "").trim().toUpperCase();
   const reason = String(req.body?.reason ?? "").trim();
   const description = String(req.body?.description ?? "").trim() || void 0;
@@ -6392,6 +7716,24 @@ warrantyRouter.post("/", async (req, res) => {
     });
     return created;
   });
+  try {
+    await createNotificationWithEmail(
+      req.user.sub,
+      {
+        category: "system",
+        type: "info",
+        title: `\u{1F6E1}\uFE0F Warranty claim submitted (${serialCode})`,
+        body: `Aapki claim file ho gayi \u2014 team review kar ke status update karegi.`
+      },
+      {
+        emailSubject: `\u{1F6E1}\uFE0F Warranty claim received \u2014 ${serialCode}`,
+        ctaUrl: "/warranty",
+        ctaLabel: "Claim status dekho"
+      }
+    );
+  } catch (err) {
+    console.error("[warranty] email failed", err);
+  }
   ok(res, {
     id: claim.id,
     serialCode,
@@ -6401,7 +7743,7 @@ warrantyRouter.post("/", async (req, res) => {
     createdAt: claim.createdAt
   }, 201);
 });
-warrantyRouter.get("/mine", async (req, res) => {
+warrantyRouter.get("/mine", mineLimiter, async (req, res) => {
   const [claims, serials] = await Promise.all([
     prisma.warrantyClaim.findMany({
       where: { userId: req.user.sub },
@@ -6422,8 +7764,92 @@ init_prisma();
 import { Router as Router15 } from "express";
 init_audit_service();
 var publicRouter = Router15();
-publicRouter.get("/site-settings", async (_req, res) => {
+var assistantLimiter = rateLimit({
+  name: "public:assistant",
+  windowMs: 6e4,
+  max: 20,
+  message: "Bahut zyada messages \u2014 thodi der baad try karo"
+});
+var adminAssistantLimiter = rateLimit({
+  name: "public:assistant-admin",
+  windowMs: 6e4,
+  max: 30,
+  message: "Bahut zyada messages \u2014 thodi der baad try karo"
+});
+var contactLimiter = rateLimit({
+  name: "public:contact",
+  windowMs: 60 * 6e4,
+  max: 5,
+  message: "Bahut zyada contact messages \u2014 1 ghanta baad try karo"
+});
+var supportFormLimiter = rateLimit({
+  name: "public:support-form",
+  windowMs: 60 * 6e4,
+  max: 10,
+  message: "Bahut zyada support messages \u2014 1 ghanta baad try karo"
+});
+var siteSettingsLimiter = rateLimit({
+  name: "public:site-settings",
+  windowMs: 6e4,
+  max: 120
+});
+var mySupportLimiter = rateLimit({
+  name: "public:my-support",
+  windowMs: 6e4,
+  max: 60
+});
+publicRouter.get("/site-settings", siteSettingsLimiter, async (_req, res) => {
   ok(res, await getPublicSiteSettings());
+});
+var verifyBillLimiter = rateLimit({
+  name: "public:verify-bill",
+  windowMs: 6e4,
+  max: 120,
+  message: "Bahut zyada verify requests \u2014 thodi der baad try karo"
+});
+publicRouter.get("/verify/bill/:token", verifyBillLimiter, async (req, res) => {
+  const payload = verifyBillToken(typeof req.params.token === "string" ? req.params.token : "");
+  if (!payload) {
+    return ok(res, { verified: false, reason: "invalid_token" });
+  }
+  const order = await prisma.order.findUnique({
+    where: { id: payload.orderId },
+    include: {
+      items: { orderBy: { id: "asc" } },
+      user: { select: { username: true } },
+      serials: {
+        include: { product: { select: { name: true, modelCode: true } } },
+        orderBy: { id: "asc" }
+      }
+    }
+  });
+  if (!order) return ok(res, { verified: false, reason: "not_found" });
+  const items = order.items.map((i) => ({
+    productName: i.productName,
+    quantity: i.quantity,
+    price: i.price.toString(),
+    serialCode: i.serialCode
+  }));
+  const serials = order.serials.map((s) => ({
+    serialCode: s.serialCode,
+    modelCode: s.product.modelCode,
+    status: s.status,
+    tested: Boolean(s.testedAt),
+    testedAt: s.testedAt,
+    claimedAt: s.claimedAt,
+    warrantyStatus: s.warrantyStatus
+  }));
+  ok(res, {
+    verified: true,
+    orderNumber: order.orderNumber,
+    createdAt: order.createdAt,
+    status: order.status,
+    paymentStatus: order.paymentStatus,
+    totalAmount: order.totalAmount.toString(),
+    buyer: { name: order.shippingName, username: order.user?.username ?? null },
+    items,
+    serials
+  });
 });
 var CHIPS = [
   "Kis board ki zaroorat hai?",
@@ -6530,7 +7956,7 @@ function detectNeed(text, products) {
   }
   return null;
 }
-publicRouter.post("/assistant", optionalAuth, async (req, res) => {
+publicRouter.post("/assistant", assistantLimiter, optionalAuth, async (req, res) => {
   const text = String(req.body?.message ?? "").trim();
   if (!text) return ok(res, { reply: "Kuch likho \u2014 e.g. '4 lights control karne hain' ya 'dimmer chahiye'.", chips: CHIPS });
   if (req.user?.role === "system_admin") {
@@ -6707,13 +8133,13 @@ async function adminAssistantReply(text) {
     chips: ADMIN_CHIPS
   };
 }
-publicRouter.post("/assistant/admin", requireAuth, async (req, res) => {
+publicRouter.post("/assistant/admin", adminAssistantLimiter, requireAuth, async (req, res) => {
   if (req.user.role !== "system_admin") {
     throw new AppError("FORBIDDEN", "Admin access required", 403);
   }
   return ok(res, await adminAssistantReply(String(req.body?.message ?? "").trim()));
 });
-publicRouter.post("/contact", async (req, res) => {
+publicRouter.post("/contact", contactLimiter, async (req, res) => {
   const name = String(req.body?.name ?? "").trim().slice(0, 100);
   const email = String(req.body?.email ?? "").trim().slice(0, 120) || null;
   const phone = String(req.body?.phone ?? "").trim().slice(0, 20) || null;
@@ -6727,7 +8153,7 @@ publicRouter.post("/contact", async (req, res) => {
   });
   ok(res, { id: created.id, status: created.status }, 201);
 });
-publicRouter.get("/support/my", requireAuth, async (req, res) => {
+publicRouter.get("/support/my", mySupportLimiter, requireAuth, async (req, res) => {
   const msgs = await prisma.contactMessage.findMany({
     where: { userId: req.user.sub },
     orderBy: { createdAt: "desc" },
@@ -6735,7 +8161,7 @@ publicRouter.get("/support/my", requireAuth, async (req, res) => {
   });
   ok(res, msgs);
 });
-publicRouter.post("/support", requireAuth, async (req, res) => {
+publicRouter.post("/support", supportFormLimiter, requireAuth, async (req, res) => {
   const subject = String(req.body?.subject ?? "Support").trim().slice(0, 150);
   const message = String(req.body?.message ?? "").trim();
   const phone = String(req.body?.phone ?? "").trim().slice(0, 20) || null;
@@ -6814,6 +8240,18 @@ function deleteAttachmentFile(filename) {
 
 // src/routes/support.routes.ts
 var supportRouter = Router16();
+var userSendLimiter = rateLimit({
+  name: "support:user-send",
+  windowMs: 6e4,
+  max: 10,
+  message: "Bahut fast messages bhej rahe ho \u2014 thodi der ruk kar bhejo"
+});
+var adminSendLimiter = rateLimit({
+  name: "support:admin-send",
+  windowMs: 6e4,
+  max: 30,
+  message: "Bahut fast messages bhej rahe ho \u2014 thodi der ruk kar bhejo"
+});
 var MAX_ATTACHMENT_BYTES = 2 * 1024 * 1024;
 var ALLOWED_TYPES = /^(image\/(png|jpe?g|gif|webp|heic)|application\/pdf|text\/plain)$/;
 var attachmentFields = {
@@ -6877,6 +8315,42 @@ async function isMuted(viewerId, peerUserId) {
   }).catch(() => null);
   return !!s?.mutedAt;
 }
+supportRouter.get("/admin/users", requireAuth, async (req, res) => {
+  if (req.user.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
+  const q = String(req.query.q ?? "").trim().toLowerCase();
+  if (q.length < 2) return ok(res, { users: [] });
+  const users = await prisma.user.findMany({
+    where: {
+      OR: [{ username: { contains: q } }, { email: { contains: q } }]
+    },
+    select: {
+      id: true,
+      username: true,
+      email: true,
+      role: true,
+      status: true,
+      createdAt: true,
+      lastLoginAt: true
+    },
+    orderBy: { createdAt: "desc" },
+    take: 25
+  });
+  const info = await supportModel().groupBy({
+    by: ["userId"],
+    where: { userId: { in: users.map((u) => u.id) }, deletedAt: null },
+    _count: { _all: true },
+    _max: { createdAt: true }
+  });
+  const infoMap = new Map(info.map((m) => [m.userId, { count: m._count._all, lastAt: m._max.createdAt }]));
+  ok(
+    res,
+    users.map((u) => ({
+      ...u,
+      messageCount: infoMap.get(u.id)?.count ?? 0,
+      lastMessageAt: infoMap.get(u.id)?.lastAt ?? null
+    }))
+  );
+});
 supportRouter.get("/admin/messages", requireAuth, async (req, res) => {
   const userId = Number(req.query.userId);
   if (!Number.isInteger(userId) || userId <= 0) throw new AppError("VALIDATION_ERROR", "userId required", 400);
@@ -6905,7 +8379,7 @@ var adminSendSchema = z13.object({
   }
   refineAttachment(d, ctx);
 });
-supportRouter.post("/admin/messages", requireAuth, validateBody(adminSendSchema), async (req, res) => {
+supportRouter.post("/admin/messages", requireAuth, adminSendLimiter, validateBody(adminSendSchema), async (req, res) => {
   if (req.user.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
   const { userId, message } = req.body;
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, username: true, email: true } });
@@ -6967,7 +8441,7 @@ var userSendSchema = z13.object({
   }
   refineAttachment(d, ctx);
 });
-supportRouter.post("/messages", requireAuth, validateBody(userSendSchema), async (req, res) => {
+supportRouter.post("/messages", requireAuth, userSendLimiter, validateBody(userSendSchema), async (req, res) => {
   const userId = req.user.sub;
   const created = await supportModel().create({
     data: {
@@ -7317,6 +8791,24 @@ apiRouter.use("/shop", shopRouter);
 apiRouter.use("/claim", claimRouter);
 apiRouter.use("/warranty", warrantyRouter);
 apiRouter.use("/public", publicRouter);
+var apiMounts = [
+  { router: authRouter, prefix: "/auth" },
+  { router: homeRouter, prefix: "/homes" },
+  { router: memberRouter, prefix: "/homes" },
+  { router: deviceRouter, prefix: "/homes" },
+  { router: roomRouter, prefix: "/homes" },
+  { router: scheduleRouter, prefix: "/homes" },
+  { router: deviceApiRouter, prefix: "/device" },
+  { router: apiKeyRouter, prefix: "/api-keys" },
+  { router: notificationRouter, prefix: "/notifications" },
+  { router: supportRouter, prefix: "/support" },
+  { router: assistantRouter, prefix: "/assistant" },
+  { router: adminRouter, prefix: "/admin" },
+  { router: shopRouter, prefix: "/shop" },
+  { router: claimRouter, prefix: "/claim" },
+  { router: warrantyRouter, prefix: "/warranty" },
+  { router: publicRouter, prefix: "/public" }
+];
 apiRouter.get("/firmware/current", requireAuth, async (_req, res) => {
   const versions = await prisma.firmwareVersion.findMany({
     where: { isCurrent: true },
@@ -7331,7 +8823,7 @@ import { Router as Router18 } from "express";
 import mysql from "mysql2/promise";
 import fs8 from "node:fs";
 import path9 from "node:path";
-import bcrypt2 from "bcryptjs";
+import bcrypt3 from "bcryptjs";
 init_prisma();
 
 // src/services/scheduler.service.ts
@@ -7440,6 +8932,78 @@ init_prisma();
 var timer2 = null;
 var OFFLINE_THRESHOLD_MS = 12e4;
 var CHECK_INTERVAL_MS4 = 6e4;
+function groupOfflineEvents(items) {
+  const byHome = /* @__PURE__ */ new Map();
+  for (const it of items) {
+    const arr = byHome.get(it.homeId) ?? [];
+    arr.push(it);
+    byHome.set(it.homeId, arr);
+  }
+  return [...byHome.values()];
+}
+var plural2 = (n, word) => `${n} ${word}${n > 1 ? "s" : ""}`;
+function describeGroup(group) {
+  const boards = group.filter((i) => i.kind === "board").length;
+  const devices = group.filter((i) => i.kind === "device").length;
+  const parts = [];
+  if (boards) parts.push(plural2(boards, "board"));
+  if (devices) parts.push(plural2(devices, "device"));
+  return parts.join(" + ");
+}
+function offlineSummaryText(group) {
+  if (group.length < 2) return null;
+  const names = group.map((i) => i.name).join(", ");
+  return {
+    title: `\u26A0\uFE0F Power cut detected \u2014 ${describeGroup(group)} offline`,
+    body: `${names} ek saath offline ho gaye \u2014 lagta hai power/WiFi cut hai. Power wapas aate hi sab wapas online ho jayenge.`
+  };
+}
+function recoverySummaryText(group) {
+  if (group.length < 2) return null;
+  return {
+    title: `\u2705 Power restored \u2014 ${describeGroup(group)} online`,
+    body: "Sab wapas connected ho gaye \u2014 ab koi action nahi chahiye."
+  };
+}
+async function membersForHome(homeId) {
+  const rows = await prisma.homeMember.findMany({
+    where: { homeId, role: { in: ["owner", "admin"] } },
+    select: { userId: true }
+  });
+  return rows.map((r) => r.userId);
+}
+async function notifyGroup(group, direction) {
+  const homeId = group[0].homeId;
+  const summary = direction === "offline" ? offlineSummaryText(group) : recoverySummaryText(group);
+  const members = await membersForHome(homeId);
+  if (members.length === 0) return;
+  if (summary) {
+    for (const userId of members) {
+      await createNotificationWithEmail(
+        userId,
+        {
+          category: "device",
+          type: direction === "offline" ? "warning" : "info",
+          title: summary.title,
+          body: summary.body
+        },
+        { emailSubject: summary.title }
+      );
+    }
+    return;
+  }
+  for (const it of group) {
+    const title = direction === "offline" ? `\u{1F4E1} ${it.name} offline` : `\u2705 ${it.name} online`;
+    const body = direction === "offline" ? `${it.name} ne 2+ min se sync nahi kiya \u2014 WiFi/power check karo.` : `${it.name} wapas connected ho gaya.`;
+    for (const userId of members) {
+      await createNotificationWithEmail(
+        userId,
+        { category: "device", type: direction === "offline" ? "warning" : "info", title, body },
+        { emailSubject: title }
+      );
+    }
+  }
+}
 function startOfflineWatcher() {
   if (timer2) return;
   timer2 = setInterval(checkOfflineDevices, CHECK_INTERVAL_MS4);
@@ -7462,43 +9026,31 @@ async function checkOfflineDevicesInner() {
   const cutoff = new Date(Date.now() - OFFLINE_THRESHOLD_MS);
   const staleBoards = await prisma.espDevice.findMany({
     where: { lastSeen: { lt: cutoff }, offline: false },
-    include: { home: { include: { members: { where: { role: { in: ["owner", "admin"] } } } } } },
+    select: { id: true, homeId: true, name: true, serialCode: true, macAddress: true },
     take: 50
   });
   const anyStaleBoardIds = new Set(
     (await prisma.espDevice.findMany({ where: { lastSeen: { lt: cutoff } }, select: { id: true } })).map((b) => b.id)
   );
+  const offlineEvents = [];
   for (const board of staleBoards) {
     await prisma.espDevice.update({ where: { id: board.id }, data: { offline: true } });
     emitToHome(board.homeId, "esp:updated", { id: board.id, offline: true });
     const boardName = board.name ?? board.serialCode ?? `ESP-${board.macAddress.slice(-6).toUpperCase()}`;
-    for (const m of board.home.members) {
-      await createNotification(m.userId, {
-        category: "device",
-        type: "warning",
-        title: `\u{1F4E1} Board offline: ${boardName}`,
-        body: `${boardName} ne 2+ min se sync nahi kiya \u2014 WiFi/power check karo.`
-      });
-    }
+    offlineEvents.push({ homeId: board.homeId, name: boardName, kind: "board" });
     console.log(`[offline] board ${boardName} (${board.id}) marked offline`);
   }
   const backBoards = await prisma.espDevice.findMany({
     where: { offline: true, lastSeen: { gte: cutoff } },
-    include: { home: { include: { members: { where: { role: { in: ["owner", "admin"] } } } } } },
+    select: { id: true, homeId: true, name: true, serialCode: true, macAddress: true },
     take: 50
   });
+  const onlineEvents = [];
   for (const board of backBoards) {
     await prisma.espDevice.update({ where: { id: board.id }, data: { offline: false } });
     emitToHome(board.homeId, "esp:updated", { id: board.id, offline: false });
     const boardName = board.name ?? board.serialCode ?? `ESP-${board.macAddress.slice(-6).toUpperCase()}`;
-    for (const m of board.home.members) {
-      await createNotification(m.userId, {
-        category: "device",
-        type: "info",
-        title: `\u2705 Board online: ${boardName}`,
-        body: `${boardName} wapas connected ho gaya.`
-      });
-    }
+    onlineEvents.push({ homeId: board.homeId, name: boardName, kind: "board" });
     console.log(`[offline] board ${boardName} (${board.id}) back online`);
   }
   const stale = await prisma.device.findMany({
@@ -7506,7 +9058,7 @@ async function checkOfflineDevicesInner() {
       lastSeen: { lt: cutoff },
       ...anyStaleBoardIds.size ? { OR: [{ espId: null }, { espId: { notIn: [...anyStaleBoardIds] } }] } : {}
     },
-    include: { home: { include: { members: { where: { role: { in: ["owner", "admin"] } } } } } },
+    select: { id: true, homeId: true, name: true, lastSeen: true, offline: true },
     take: 50
   });
   for (const device of stale) {
@@ -7514,34 +9066,25 @@ async function checkOfflineDevicesInner() {
     if (!wasOnline) continue;
     await prisma.device.update({ where: { id: device.id }, data: { offline: true } });
     await emitDeviceUpdated(device.homeId, device.id);
-    const targetIds = device.home.members.map((m) => m.userId);
-    for (const userId of targetIds) {
-      await createNotification(userId, {
-        category: "device",
-        type: "warning",
-        title: `\u{1F4E1} ${device.name} offline`,
-        body: `${device.name} ne 2+ min se sync nahi kiya. WiFi/device check karo.`
-      });
-    }
+    offlineEvents.push({ homeId: device.homeId, name: device.name, kind: "device" });
     console.log(`[offline] ${device.name} (${device.id}) marked offline`);
   }
   const backOnline = await prisma.device.findMany({
     where: { offline: true, lastSeen: { gte: cutoff } },
-    include: { home: { include: { members: { where: { role: { in: ["owner", "admin"] } } } } } },
+    select: { id: true, homeId: true, name: true },
     take: 50
   });
   for (const device of backOnline) {
     await prisma.device.update({ where: { id: device.id }, data: { offline: false } });
     await emitDeviceUpdated(device.homeId, device.id);
-    for (const userId of device.home.members.map((m) => m.userId)) {
-      await createNotification(userId, {
-        category: "device",
-        type: "info",
-        title: `\u2705 ${device.name} online`,
-        body: `${device.name} wapas connected ho gaya.`
-      });
-    }
+    onlineEvents.push({ homeId: device.homeId, name: device.name, kind: "device" });
     console.log(`[offline] ${device.name} (${device.id}) back online`);
+  }
+  for (const group of groupOfflineEvents(offlineEvents)) {
+    await notifyGroup(group, "offline");
+  }
+  for (const group of groupOfflineEvents(onlineEvents)) {
+    await notifyGroup(group, "online");
   }
 }
 
@@ -7715,7 +9258,7 @@ async function completeInstall(parts, admin) {
   if (existing) {
     throw new AppError("ADMIN_EXISTS", "Username/email pehle se exist karta hai", 409);
   }
-  const password = await bcrypt2.hash(admin.password, 10);
+  const password = await bcrypt3.hash(admin.password, 10);
   const homeName = `${(admin.name || admin.username).trim()}${admin.name ? "" : "'s"} Home`;
   await prisma2.$transaction(async (tx) => {
     const user = await tx.user.create({
@@ -7882,6 +9425,1598 @@ installRouter.post("/", async (req, res) => {
   ok(res, result);
 });
 
+// src/routes/docs.routes.ts
+import express, { Router as Router19 } from "express";
+
+// src/lib/openapi.ts
+function joinPath(prefix, p) {
+  const joined = `${prefix}/${p}`.replace(/\/+/g, "/");
+  return joined.length > 1 ? joined.replace(/\/$/, "") : joined;
+}
+function walkRouter(router, prefix, out, skipNested = false) {
+  const stack = router.stack ?? [];
+  for (const layer of stack) {
+    const l = layer;
+    if (l.route) {
+      const full = joinPath(prefix, l.route.path ?? "");
+      for (const method of Object.keys(l.route.methods ?? {})) {
+        if (method === "_all") continue;
+        out.push({ method: method.toUpperCase(), path: full });
+      }
+    } else if (l.handle?.stack && !skipNested) {
+      walkRouter(l.handle, prefix, out);
+    }
+  }
+}
+var DESCRIPTIONS = {
+  // ----- auth -----
+  "POST /api/auth/signup": "Account banao \u2014 user apne pehle Home ka owner ban jata hai (tokens + home auto-create).",
+  "POST /api/auth/login": "Username ya email + password se login \u2192 access/refresh token pair.",
+  "POST /api/auth/refresh": "Refresh token rotate karke naya token pair do (purana revoke).",
+  "POST /api/auth/logout": "Refresh token revoke (logout).",
+  "POST /api/auth/forgot-password": "Email pe password reset link bhejo (30 min valid). User enumeration se bachne ke liye unknown email pe bhi { sent:true }.",
+  "POST /api/auth/reset-password": "Reset token + naya password \u2192 password change, saare sessions logout.",
+  "GET /api/auth/me": "Current logged-in user ka profile.",
+  "PATCH /api/auth/me": "Profile update (username/email) + password change (currentPassword+newPassword).",
+  "PUT /api/auth/theme": "Theme preference save (light/dark/system).",
+  // ----- device API (ESP32) -----
+  "GET /api/device/read-all": "ESP32: saare devices + status (api_key se). DB source of truth \u2014 board isko poll karta hai.",
+  "POST /api/device/update": "ESP32: device status update (relay state report).",
+  "POST /api/device/heartbeat": "ESP32: heartbeat \u2014 IP, firmware, MAC, serial, model + actual relay states report karo; response me OTA instruction mil sakta hai.",
+  "POST /api/device/ota-progress": "ESP32: OTA download/apply progress report (0-100).",
+  "GET /api/device/commands": "ESP32: pending commands. long=1&hold=20 \u2192 long-poll (max 25s hold).",
+  "POST /api/device/commands/ack": "ESP32: command execute/fail acknowledge (command_id + status).",
+  // ----- homes -----
+  "POST /api/homes": "Naya home banao (creator owner banta hai).",
+  "GET /api/homes": "Mere saare homes (memberships).",
+  "GET /api/homes/my-boards": "Mere ESP boards (claimed serials \u2192 boards).",
+  "GET /api/homes/:homeId": "Home detail (members + rooms + devices counts).",
+  "PATCH /api/homes/:homeId": "Home rename (admin+).",
+  "DELETE /api/homes/:homeId": "Home delete (sirf owner).",
+  "POST /api/homes/:homeId/transfer": "Ownership transfer kisi member ko (sirf owner).",
+  // ----- members -----
+  "GET /api/homes/:homeId/members": "Home ke saare members (viewer+).",
+  "GET /api/homes/:homeId/invitations": "Pending invitations list (admin+).",
+  "POST /api/homes/:homeId/invitations": "Invite bhejo (email + role) \u2192 invite code generate (admin+).",
+  "DELETE /api/homes/:homeId/invitations/:invitationId": "Invitation revoke (admin+).",
+  "PATCH /api/homes/:homeId/members/:userId/role": "Member role change (admin+).",
+  "DELETE /api/homes/:homeId/members/:userId": "Member remove (admin+) \u2014 access turant chala jata hai.",
+  "PATCH /api/homes/:homeId/members/:userId/safety": "Child mode: restricted + daily ON-time limit (admin+).",
+  "PUT /api/homes/:homeId/members/:userId/access": "Restricted member ke device grants replace karo (admin+).",
+  "POST /api/homes/invitations/accept": "Invite code se home join karo (auth required).",
+  // ----- devices -----
+  "GET /api/homes/:homeId/devices": "Home ke devices (viewer+).",
+  "POST /api/homes/:homeId/devices": "Device add karo (admin+).",
+  "POST /api/homes/:homeId/devices/bulk-status": "Multiple devices ek saath on/off (member+).",
+  "PATCH /api/homes/:homeId/devices/:deviceId": "Device rename / room assign (admin+).",
+  "POST /api/homes/:homeId/devices/:deviceId/status": "Device on/off \u2014 command + log + realtime (member+).",
+  "GET /api/homes/:homeId/devices/:deviceId/logs": "Device logs (viewer+).",
+  "DELETE /api/homes/:homeId/devices/:deviceId": "Device delete (admin+).",
+  "POST /api/homes/:homeId/devices/:deviceId/ota": "Is device ke board ko OTA update bhejo (admin+).",
+  "PATCH /api/homes/:homeId/esp/:espId": "ESP board rename (admin+).",
+  "GET /api/homes/:homeId/analytics/usage": "Usage analytics \u2014 toggles/day, on-time per device/member (viewer+).",
+  "GET /api/homes/:homeId/automations/suggestions": "Phase 7 \u2014 usage patterns se automation suggestions (viewer+).",
+  // ----- rooms -----
+  "POST /api/homes/:homeId/rooms": "Room banao (admin+).",
+  "DELETE /api/homes/:homeId/rooms/:roomId": "Room delete \u2014 devices roomless ho jate hain (admin+).",
+  // ----- schedules -----
+  "POST /api/homes/:homeId/schedules": "Timer/schedule banao \u2014 once/daily/weekly/cron (member+).",
+  "GET /api/homes/:homeId/schedules": "Schedules list (viewer+).",
+  "PATCH /api/homes/:homeId/schedules/:scheduleId": "Schedule update \u2014 enable/disable, action, time (member+).",
+  "DELETE /api/homes/:homeId/schedules/:scheduleId": "Schedule delete (member+).",
+  // ----- notifications -----
+  "GET /api/notifications": "Meri notifications (page/pageSize/category/type/unread filters).",
+  "GET /api/notifications/unread-count": "Unread count.",
+  "POST /api/notifications/read-all": "Saari read mark karo.",
+  "POST /api/notifications/:id/read": "Ek notification read.",
+  "DELETE /api/notifications/:id": "Notification delete.",
+  // ----- api keys -----
+  "GET /api/api-keys/": "Meri API keys list.",
+  "POST /api/api-keys/": "API key banao (raw key sirf ek baar \u2014 hash store hota hai).",
+  "DELETE /api/api-keys/:id": "API key revoke.",
+  // ----- assistant -----
+  "POST /api/assistant/chats": "AI assist chat banao (home member).",
+  "GET /api/assistant/chats": "Meri chats list.",
+  "POST /api/assistant/chats/:chatId/messages": "Message bhejo \u2014 rule-based intent parser (EN/HI) reply + proposal deta hai.",
+  "POST /api/assistant/chats/:chatId/confirm": "Proposal confirm \u2192 devices execute.",
+  "GET /api/assistant/chats/:chatId/messages": "Chat history.",
+  // ----- shop -----
+  "GET /api/shop/products": "Active products catalog (public).",
+  "POST /api/shop/orders": "Order place karo \u2014 serial reserve hota hai (COD/UPI/manual).",
+  "GET /api/shop/orders": "Meri orders.",
+  "GET /api/shop/orders/:id/stickers": "Order ke stickers (hotspot naam + QR) \u2014 sirf apne order ke serials, orderIdx/orderTotal ke saath.",
+  "POST /api/shop/orders/:id/cancel": "Pending order cancel \u2014 serial release.",
+  "POST /api/shop/orders/:id/pay": "Payment initiate \u2014 Razorpay order ya demo UPI intent.",
+  "POST /api/shop/orders/:id/pay/verify": "Razorpay checkout callback \u2014 signature verify \u2192 PAID.",
+  "POST /api/shop/orders/:id/pay/demo": "Demo mode: order paid mark (bina real payment).",
+  "GET /api/firmware/current": "Current firmware versions (isCurrent) \u2014 saare models.",
+  // ----- claim / warranty -----
+  "GET /api/claim/homes": "Mere homes jahan serial claim kar sakta hoon (owner/admin).",
+  "POST /api/claim": "Serial code se device activate \u2014 board home se link (owner/admin).",
+  "GET /api/warranty/status": "Serial + warranty status check (?serial=...).",
+  "POST /api/warranty": "Warranty claim file karo.",
+  "GET /api/warranty/mine": "Meri claims + devices.",
+  // ----- public -----
+  "GET /api/public/site-settings": "Public site settings (brand color, contact info) \u2014 login se pehle bhi.",
+  "GET /api/public/verify/bill/:token": "Bill genuineness verify (public, bina login) \u2014 bill QR scan karne pe khulta hai. HMAC-signed token se fake bill kabhi pass nahi hota; serial factory-tested status bhi dikhta hai.",
+  "POST /api/public/assistant": "Public sales assistant chat (bina login) \u2014 product advisor.",
+  "POST /api/public/assistant/admin": "Public assistant \u2014 admin panel preview (auth).",
+  "POST /api/public/contact": "Contact form message bhejo (public).",
+  "GET /api/public/support/my": "Meri support conversation (auth).",
+  "POST /api/public/support": "Support message bhejo (auth).",
+  // ----- support -----
+  "GET /api/support/messages": "Meri support thread (read \u2192 unread mark).",
+  "POST /api/support/messages": "Support ko message/reply + attachment (photo/PDF, max 2MB).",
+  "DELETE /api/support/messages/:id": "Apna message delete (soft, WhatsApp-style).",
+  "DELETE /api/support/messages": "Apna poora thread clear.",
+  "GET /api/support/attachment/:id": "Attachment file serve (?token= ya Bearer) \u2014 owner/admin.",
+  "GET /api/support/settings": "Meri chat settings (mute/pin).",
+  "PUT /api/support/settings/:peerUserId": "Conversation mute/pin toggle.",
+  "GET /api/support/admin/messages": "[ADMIN] User ka support thread.",
+  "POST /api/support/admin/messages": "[ADMIN] User ko message bhejo \u2192 notification + email.",
+  "GET /api/support/admin/unread-count": "[ADMIN] Unread conversations count (badge).",
+  "GET /api/support/admin/conversations": "[ADMIN] Conversations inbox (WhatsApp-style).",
+  "POST /api/support/admin/read-all": "[ADMIN] Saari chats read.",
+  "POST /api/support/admin/thread-read": "[ADMIN] Ek user ki chat read/unread.",
+  "GET /api/support/admin/context": "[ADMIN] User ka context \u2014 orders, homes, devices, boards.",
+  "DELETE /api/support/admin/messages/:id": "[ADMIN] Koi message delete (moderation).",
+  "DELETE /api/support/admin/messages": "[ADMIN] User ka poora thread clear.",
+  // ----- admin -----
+  "GET /api/admin/stats": "[ADMIN] Platform stats \u2014 users/homes/devices/active counts.",
+  "GET /api/admin/settings": "[ADMIN] Platform settings.",
+  "PUT /api/admin/settings": "[ADMIN] Settings update (site name, SMTP, limits...).",
+  "POST /api/admin/settings/test-email": "[ADMIN] SMTP test email bhejo.",
+  "GET /api/admin/users": "[ADMIN] Users list/search \u2014 login count, orders/devices/keys/boards/serials + usage minutes.",
+  "POST /api/admin/users": "[ADMIN] Naya user banao (username/email/password, optional role).",
+  "GET /api/admin/users/:id": "[ADMIN] User detail \u2014 homes, orders, API keys, boards, usage, activity.",
+  "POST /api/admin/users/:id/send-reset-email": "[ADMIN] User ko password reset email bhejo (forgot-password token flow).",
+  "POST /api/admin/broadcast": "[ADMIN] In-app bulk broadcast \u2014 offer/announcement sab users ko (bell + realtime; email optional).",
+  "GET /api/support/admin/users": "[ADMIN] Kisi bhi user ko dhoondo (naya support chat shuru karne ke liye).",
+  "PATCH /api/admin/users/:id/status": "[ADMIN] User suspend/unsuspend.",
+  "PATCH /api/admin/users/:id/role": "[ADMIN] User role change (system_admin promote/demote).",
+  "DELETE /api/admin/users/:id": "[ADMIN] User delete.",
+  "GET /api/admin/homes": "[ADMIN] Saare homes.",
+  "GET /api/admin/homes/:id": "[ADMIN] Home detail.",
+  "PATCH /api/admin/homes/:id/status": "[ADMIN] Home suspend/unsuspend.",
+  "DELETE /api/admin/homes/:id": "[ADMIN] Home delete.",
+  "GET /api/admin/devices": "[ADMIN] Saare devices (saare homes).",
+  "GET /api/admin/search": "[ADMIN] Global search (users/homes/devices/orders).",
+  "GET /api/admin/api-keys": "[ADMIN] Saari API keys.",
+  "POST /api/admin/api-keys": "[ADMIN] Kisi user ke liye API key banao.",
+  "DELETE /api/admin/api-keys/:id": "[ADMIN] API key delete.",
+  "GET /api/admin/find": "[ADMIN] Find \u2014 device/board by serial/MAC.",
+  "GET /api/admin/audit": "[ADMIN] Audit logs.",
+  "GET /api/admin/deploy-info": "[ADMIN] Deploy info \u2014 commit/branch/marker (ops).",
+  "GET /api/admin/diagnostics": "[ADMIN] Diagnostics \u2014 DB, memory, leak state, health.",
+  "GET /api/admin/logs": "[ADMIN] App log lines.",
+  "GET /api/admin/esp": "[ADMIN] Saare ESP boards.",
+  "POST /api/admin/esp/:id/key": "[ADMIN] Board ka API key banao/update.",
+  "PATCH /api/admin/esp/:id": "[ADMIN] Board update (name, model...).",
+  "GET /api/admin/esp/issues": "[ADMIN] Board cleanup \u2014 stale/offline boards + naam-serial mismatch detect (support).",
+  "GET /api/admin/esp/:id/history": "[ADMIN] Board heartbeat history.",
+  "GET /api/admin/esp/:id/probe": "[ADMIN] Board connectivity probe.",
+  "GET /api/admin/firmware": "[ADMIN] Firmware versions.",
+  "POST /api/admin/firmware": "[ADMIN] Firmware .bin upload (multipart 'firmware').",
+  "POST /api/admin/firmware/:id/activate": "[ADMIN] Firmware current mark karo.",
+  "POST /api/admin/devices/:id/status": "[ADMIN] Kisi bhi home ke device ka status set.",
+  "GET /api/admin/devices/:id/support": "[ADMIN] Device support info.",
+  "POST /api/admin/devices/:id/clear-commands": "[ADMIN] Stuck commands clear.",
+  "POST /api/admin/devices/:id/push-ota": "[ADMIN] Device ke board ko OTA push.",
+  "POST /api/admin/devices/push-ota-all": "[ADMIN] Saare boards ko OTA push.",
+  "GET /api/admin/products": "[ADMIN] Products.",
+  "POST /api/admin/products": "[ADMIN] Product banao.",
+  "PATCH /api/admin/products/:id": "[ADMIN] Product update.",
+  "DELETE /api/admin/products/:id": "[ADMIN] Product delete.",
+  "GET /api/admin/orders": "[ADMIN] Saare orders.",
+  "GET /api/admin/orders/:id": "[ADMIN] Order detail.",
+  "PATCH /api/admin/orders/:id/status": "[ADMIN] Order status flow (pending\u2192paid\u2192shipped\u2192delivered).",
+  "GET /api/admin/serials": "[ADMIN] Serial registry.",
+  "GET /api/admin/serials/:code": "[ADMIN] Serial detail.",
+  "POST /api/admin/serials/generate": "[ADMIN] Serials generate (productId, count).",
+  "POST /api/admin/orders/:id/serials/generate": "[ADMIN] Order ke liye serials top-up.",
+  "GET /api/admin/orders/:id/provision": "[ADMIN] Order provisioning (WiFi config + serials).",
+  "POST /api/admin/serials/:code/mark-tested": "[ADMIN] Serial tested mark.",
+  "GET /api/admin/warranty": "[ADMIN] Warranty claims.",
+  "PATCH /api/admin/warranty/:id/status": "[ADMIN] Claim status (approved/rejected/resolved).",
+  "GET /api/admin/contact": "[ADMIN] Contact messages.",
+  "PATCH /api/admin/contact/:id/status": "[ADMIN] Contact message status.",
+  "DELETE /api/admin/contact/:id": "[ADMIN] Contact message delete.",
+  "POST /api/admin/reset": "[ADMIN] Factory reset (DB wipe + reinstall).",
+  // ----- install -----
+  "GET /api/install/status": "Install status probe (installed/db/tables).",
+  "POST /api/install/connect": "DB connection test + create.",
+  "POST /api/install/schema": "Saari tables banao (schema.sql).",
+  "POST /api/install/admin": "Admin account + complete install.",
+  "POST /api/install": "One-shot install: DB + tables + admin.",
+  // ----- system -----
+  "GET /api/health": "Health check \u2014 DB schema diag + build version (ops).",
+  "GET /api/version": "API version (ops)."
+};
+function securityFor(path11, method) {
+  if (method === "GET" && (path11 === "/api/health" || path11 === "/api/version")) return void 0;
+  if (path11.startsWith("/api/device")) return [{ deviceApiKey: [] }];
+  if (path11.startsWith("/api/install") || path11.startsWith("/api/public")) return void 0;
+  if (path11.startsWith("/api/docs")) return void 0;
+  if (path11.startsWith("/api/auth")) {
+    if (method === "GET" || path11.includes("/me") || path11 === "/api/auth/theme") {
+      return [{ bearerAuth: [] }];
+    }
+    return void 0;
+  }
+  if (path11.startsWith("/api/shop/products")) return void 0;
+  return [{ bearerAuth: [] }];
+}
+var BODIES = {
+  "POST /api/auth/signup": "SignupBody",
+  "POST /api/auth/login": "LoginBody",
+  "POST /api/auth/refresh": "RefreshBody",
+  "POST /api/auth/logout": "RefreshBody",
+  "POST /api/auth/forgot-password": "ForgotPasswordBody",
+  "POST /api/auth/reset-password": "ResetPasswordBody",
+  "PATCH /api/auth/me": "UpdateProfileBody",
+  "PUT /api/auth/theme": "ThemeBody",
+  "POST /api/device/update": "DeviceUpdateBody",
+  "POST /api/device/heartbeat": "HeartbeatBody",
+  "POST /api/device/ota-progress": "OtaProgressBody",
+  "POST /api/device/commands/ack": "AckBody",
+  "POST /api/homes": "CreateHomeBody",
+  "PATCH /api/homes/:homeId": "CreateHomeBody",
+  "POST /api/homes/:homeId/transfer": "TransferBody",
+  "POST /api/homes/:homeId/invitations": "InviteBody",
+  "POST /api/homes/invitations/accept": "AcceptInviteBody",
+  "PATCH /api/homes/:homeId/members/:userId/role": "RoleBody",
+  "PATCH /api/homes/:homeId/members/:userId/safety": "SafetyBody",
+  "PUT /api/homes/:homeId/members/:userId/access": "AccessBody",
+  "POST /api/homes/:homeId/devices": "CreateDeviceBody",
+  "POST /api/homes/:homeId/devices/bulk-status": "BulkStatusBody",
+  "PATCH /api/homes/:homeId/devices/:deviceId": "UpdateDeviceBody",
+  "POST /api/homes/:homeId/devices/:deviceId/status": "SetStatusBody",
+  "PATCH /api/homes/:homeId/esp/:espId": "EspNameBody",
+  "POST /api/homes/:homeId/rooms": "CreateRoomBody",
+  "POST /api/homes/:homeId/schedules": "CreateScheduleBody",
+  "PATCH /api/homes/:homeId/schedules/:scheduleId": "UpdateScheduleBody",
+  "POST /api/api-keys/": "CreateApiKeyBody",
+  "POST /api/assistant/chats": "CreateChatBody",
+  "POST /api/assistant/chats/:chatId/messages": "ChatMessageBody",
+  "POST /api/assistant/chats/:chatId/confirm": "ConfirmProposalBody",
+  "POST /api/shop/orders": "CreateOrderBody",
+  "POST /api/shop/orders/:id/pay/verify": "RazorpayVerifyBody",
+  "POST /api/claim": "ClaimBody",
+  "POST /api/warranty": "WarrantyClaimBody",
+  "POST /api/public/contact": "ContactBody",
+  "POST /api/public/support": "SupportSendBody",
+  "POST /api/support/messages": "SupportSendBody",
+  "POST /api/support/admin/messages": "SupportAdminSendBody",
+  "PUT /api/support/settings/:peerUserId": "SupportSettingsBody"
+};
+var SCHEMAS = {
+  // ---- envelope ----
+  ErrorEnvelope: {
+    type: "object",
+    required: ["success", "error"],
+    properties: {
+      success: { type: "boolean", enum: [false] },
+      error: {
+        type: "object",
+        required: ["code", "message"],
+        properties: {
+          code: { type: "string", example: "VALIDATION_ERROR" },
+          message: { type: "string" },
+          details: {}
+        }
+      }
+    }
+  },
+  SuccessEnvelope: {
+    type: "object",
+    required: ["success", "data"],
+    properties: {
+      success: { type: "boolean", enum: [true] },
+      data: {}
+    }
+  },
+  // ---- auth ----
+  SignupBody: {
+    type: "object",
+    required: ["username", "email", "password"],
+    properties: {
+      username: { type: "string", minLength: 3, maxLength: 50 },
+      email: { type: "string", format: "email" },
+      password: { type: "string", minLength: 6, maxLength: 255 },
+      homeName: { type: "string", maxLength: 100 }
+    }
+  },
+  LoginBody: {
+    type: "object",
+    required: ["usernameEmail", "password"],
+    properties: {
+      usernameEmail: { type: "string", example: "admin@robosphere.local" },
+      password: { type: "string" }
+    }
+  },
+  RefreshBody: { type: "object", required: ["refreshToken"], properties: { refreshToken: { type: "string" } } },
+  ForgotPasswordBody: {
+    type: "object",
+    required: ["email"],
+    properties: { email: { type: "string", format: "email" } }
+  },
+  ResetPasswordBody: {
+    type: "object",
+    required: ["token", "newPassword"],
+    properties: {
+      token: { type: "string", description: "Email link se aaya reset token" },
+      newPassword: { type: "string", minLength: 6 }
+    }
+  },
+  UpdateProfileBody: {
+    type: "object",
+    properties: {
+      username: { type: "string", minLength: 3, maxLength: 50 },
+      email: { type: "string", format: "email" },
+      currentPassword: { type: "string", description: "Naya password set karne ke liye zaroori" },
+      newPassword: { type: "string", minLength: 6 }
+    }
+  },
+  ThemeBody: { type: "object", required: ["theme"], properties: { theme: { type: "string", enum: ["light", "dark", "system"] } } },
+  User: {
+    type: "object",
+    properties: {
+      id: { type: "integer" },
+      username: { type: "string" },
+      email: { type: "string" },
+      role: { type: "string", enum: ["user", "system_admin"] },
+      status: { type: "string", enum: ["active", "suspended"] },
+      themePref: { type: "string", nullable: true }
+    }
+  },
+  LoginResponse: {
+    type: "object",
+    properties: {
+      accessToken: { type: "string" },
+      refreshToken: { type: "string" },
+      user: { $ref: "#/components/schemas/User" }
+    }
+  },
+  // ---- homes / members ----
+  CreateHomeBody: { type: "object", required: ["name"], properties: { name: { type: "string", maxLength: 100 } } },
+  TransferBody: { type: "object", required: ["newOwnerId"], properties: { newOwnerId: { type: "integer" } } },
+  InviteBody: {
+    type: "object",
+    required: ["email", "role"],
+    properties: {
+      email: { type: "string", format: "email" },
+      role: { type: "string", enum: ["admin", "member", "viewer"] }
+    }
+  },
+  AcceptInviteBody: { type: "object", required: ["inviteCode"], properties: { inviteCode: { type: "string", minLength: 6, maxLength: 12 } } },
+  RoleBody: { type: "object", required: ["role"], properties: { role: { type: "string", enum: ["admin", "member", "viewer"] } } },
+  SafetyBody: {
+    type: "object",
+    properties: {
+      restricted: { type: "boolean" },
+      dailyLimitMinutes: { type: "integer", minimum: 1, maximum: 1440, nullable: true }
+    }
+  },
+  AccessBody: {
+    type: "object",
+    required: ["deviceIds"],
+    properties: { deviceIds: { type: "array", maxItems: 100, items: { type: "integer" } } }
+  },
+  Home: {
+    type: "object",
+    properties: {
+      id: { type: "integer" },
+      name: { type: "string" },
+      ownerId: { type: "integer" },
+      status: { type: "string", enum: ["active", "suspended"] },
+      maxDevices: { type: "integer" },
+      maxMembers: { type: "integer" },
+      createdAt: { type: "string", format: "date-time" }
+    }
+  },
+  // ---- devices ----
+  CreateDeviceBody: {
+    type: "object",
+    required: ["name", "type"],
+    properties: {
+      name: { type: "string", maxLength: 100 },
+      type: { type: "string", enum: ["bulb", "fan", "ac", "tv", "plug", "custom"] },
+      roomId: { type: "integer" },
+      serialNumber: { type: "string", maxLength: 64 }
+    }
+  },
+  UpdateDeviceBody: {
+    type: "object",
+    properties: {
+      name: { type: "string", maxLength: 100 },
+      roomId: { type: "integer", nullable: true }
+    }
+  },
+  SetStatusBody: { type: "object", required: ["status"], properties: { status: { type: "string", enum: ["on", "off"] } } },
+  BulkStatusBody: {
+    type: "object",
+    required: ["deviceIds", "status"],
+    properties: {
+      deviceIds: { type: "array", minItems: 1, maxItems: 50, items: { type: "integer" } },
+      status: { type: "string", enum: ["on", "off"] }
+    }
+  },
+  EspNameBody: { type: "object", required: ["name"], properties: { name: { type: "string", maxLength: 60 } } },
+  Device: {
+    type: "object",
+    properties: {
+      id: { type: "integer" },
+      homeId: { type: "integer" },
+      roomId: { type: "integer", nullable: true },
+      name: { type: "string" },
+      type: { type: "string", enum: ["bulb", "fan", "ac", "tv", "plug", "dimmer", "custom"] },
+      status: { type: "string", enum: ["on", "off"] },
+      customValue: { type: "string", nullable: true },
+      serialNumber: { type: "string", nullable: true },
+      firmwareVersion: { type: "string", nullable: true },
+      ipAddress: { type: "string", nullable: true },
+      lastSeen: { type: "string", format: "date-time", nullable: true },
+      offline: { type: "boolean" },
+      createdBy: { type: "integer" },
+      createdAt: { type: "string", format: "date-time" },
+      lastUpdated: { type: "string", format: "date-time" }
+    }
+  },
+  // ---- schedules / rooms ----
+  CreateScheduleBody: {
+    type: "object",
+    required: ["deviceId", "action", "type"],
+    properties: {
+      deviceId: { type: "integer" },
+      action: { type: "string", enum: ["on", "off"] },
+      type: { type: "string", enum: ["once", "daily", "weekly", "cron"] },
+      runAt: { type: "string", format: "date-time", nullable: true, description: "once/daily/weekly ke liye base time" },
+      cron: { type: "string", nullable: true, description: "type=cron: 5-field cron (minute hour dom month dow)", example: "0 7 * * *" }
+    }
+  },
+  UpdateScheduleBody: {
+    type: "object",
+    properties: {
+      action: { type: "string", enum: ["on", "off"] },
+      enabled: { type: "boolean" },
+      runAt: { type: "string", format: "date-time", nullable: true },
+      cron: { type: "string", nullable: true }
+    }
+  },
+  CreateRoomBody: { type: "object", required: ["name"], properties: { name: { type: "string", maxLength: 100 } } },
+  // ---- api keys ----
+  CreateApiKeyBody: {
+    type: "object",
+    properties: {
+      label: { type: "string", maxLength: 100 },
+      homeId: { type: "integer", description: "Device key ke liye home select karo" },
+      expiresInDays: { type: "integer", minimum: 1, maximum: 3650 }
+    }
+  },
+  ApiKey: {
+    type: "object",
+    properties: {
+      id: { type: "integer" },
+      userId: { type: "integer" },
+      homeId: { type: "integer", nullable: true },
+      label: { type: "string", nullable: true },
+      keyPrefix: { type: "string", description: "Raw key ka pehla 8 chars \u2014 display ke liye" },
+      createdAt: { type: "string", format: "date-time" },
+      expiresAt: { type: "string", format: "date-time", nullable: true },
+      lastUsedAt: { type: "string", format: "date-time", nullable: true }
+    }
+  },
+  // ---- assistant ----
+  CreateChatBody: {
+    type: "object",
+    required: ["homeId"],
+    properties: { homeId: { type: "integer" }, title: { type: "string", maxLength: 100 } }
+  },
+  ChatMessageBody: { type: "object", required: ["content"], properties: { content: { type: "string", minLength: 1, maxLength: 2e3 } } },
+  ConfirmProposalBody: { type: "object", required: ["messageId"], properties: { messageId: { type: "integer" } } },
+  // ---- shop ----
+  CreateOrderBody: {
+    type: "object",
+    required: ["items", "shipping", "paymentMethod"],
+    properties: {
+      items: {
+        type: "array",
+        minItems: 1,
+        items: {
+          type: "object",
+          required: ["productId", "quantity"],
+          properties: { productId: { type: "integer" }, quantity: { type: "integer", minimum: 1 } }
+        }
+      },
+      shipping: {
+        type: "object",
+        required: ["name", "phone", "address"],
+        properties: {
+          name: { type: "string" },
+          phone: { type: "string" },
+          address: { type: "string" }
+        }
+      },
+      wifi: {
+        type: "object",
+        properties: { ssid: { type: "string" }, password: { type: "string" } },
+        description: "Pre-configured WiFi (order pe de do \u2014 board factory me flash hoke aayega)"
+      },
+      paymentMethod: { type: "string", enum: ["cod", "upi", "manual"] }
+    }
+  },
+  RazorpayVerifyBody: {
+    type: "object",
+    required: ["razorpayOrderId", "razorpayPaymentId", "razorpaySignature"],
+    properties: {
+      razorpayOrderId: { type: "string" },
+      razorpayPaymentId: { type: "string" },
+      razorpaySignature: { type: "string" }
+    }
+  },
+  Product: {
+    type: "object",
+    properties: {
+      id: { type: "integer" },
+      name: { type: "string" },
+      modelCode: { type: "string" },
+      relayCount: { type: "integer" },
+      price: { type: "string", description: "Decimal as string", example: "799.00" },
+      description: { type: "string", nullable: true },
+      features: {},
+      active: { type: "boolean" }
+    }
+  },
+  Order: {
+    type: "object",
+    properties: {
+      id: { type: "integer" },
+      orderNumber: { type: "string" },
+      userId: { type: "integer" },
+      status: { type: "string", enum: ["pending", "paid", "shipped", "delivered", "cancelled"] },
+      paymentMethod: { type: "string", enum: ["cod", "upi", "manual"] },
+      totalAmount: { type: "string" },
+      shippingName: { type: "string" },
+      shippingPhone: { type: "string" },
+      shippingAddress: { type: "string" },
+      wifiSsid: { type: "string", nullable: true },
+      createdAt: { type: "string", format: "date-time" }
+    }
+  },
+  // ---- claim / warranty ----
+  ClaimBody: {
+    type: "object",
+    required: ["serialCode", "homeId"],
+    properties: {
+      serialCode: { type: "string", example: "RS-4CH-ABCDEF", description: "Box sticker pe serial \u2014 ownership proof" },
+      homeId: { type: "integer" }
+    }
+  },
+  WarrantyClaimBody: {
+    type: "object",
+    required: ["serialCode", "reason"],
+    properties: {
+      serialCode: { type: "string" },
+      reason: { type: "string", maxLength: 255 },
+      description: { type: "string" }
+    }
+  },
+  // ---- device API (ESP32) ----
+  DeviceUpdateBody: {
+    type: "object",
+    required: ["device_id", "status"],
+    properties: {
+      api_key: { type: "string", description: "ya ?api_key= query param / Bearer header" },
+      device_id: { type: "integer" },
+      status: { type: "string", enum: ["on", "off"] }
+    }
+  },
+  HeartbeatBody: {
+    type: "object",
+    required: ["device_id"],
+    properties: {
+      api_key: { type: "string" },
+      device_id: { type: "integer" },
+      ip: { type: "string" },
+      fw_version: { type: "string" },
+      mac: { type: "string" },
+      ssid: { type: "string" },
+      serial: { type: "string" },
+      model: { type: "string" },
+      states: { type: "string", description: "Actual relay states (comma-separated 1/0)" }
+    }
+  },
+  OtaProgressBody: {
+    type: "object",
+    required: ["device_id", "progress"],
+    properties: {
+      api_key: { type: "string" },
+      device_id: { type: "integer" },
+      progress: { type: "integer", minimum: 0, maximum: 100 },
+      status: { type: "string", maxLength: 32 }
+    }
+  },
+  AckBody: {
+    type: "object",
+    required: ["command_id", "device_id", "status"],
+    properties: {
+      api_key: { type: "string" },
+      command_id: { type: "integer" },
+      device_id: { type: "integer" },
+      status: { type: "string", enum: ["executed", "failed"] }
+    }
+  },
+  // ---- support ----
+  SupportSendBody: {
+    type: "object",
+    properties: {
+      message: { type: "string", maxLength: 4e3 },
+      attachmentName: { type: "string", maxLength: 255 },
+      attachmentType: { type: "string", description: "image/png|jpeg|gif|webp|heic, application/pdf, text/plain" },
+      attachmentData: { type: "string", description: "base64 (max ~2MB)" }
+    }
+  },
+  SupportAdminSendBody: {
+    type: "object",
+    required: ["userId"],
+    properties: {
+      userId: { type: "integer" },
+      message: { type: "string", maxLength: 4e3 },
+      attachmentName: { type: "string" },
+      attachmentType: { type: "string" },
+      attachmentData: { type: "string" }
+    }
+  },
+  SupportSettingsBody: {
+    type: "object",
+    properties: { muted: { type: "boolean" }, pinned: { type: "boolean" } }
+  },
+  // ---- public ----
+  ContactBody: {
+    type: "object",
+    required: ["name", "message"],
+    properties: {
+      name: { type: "string" },
+      email: { type: "string" },
+      phone: { type: "string" },
+      subject: { type: "string" },
+      message: { type: "string" }
+    }
+  }
+};
+function tagFor(path11) {
+  const seg = path11.replace(/^\/api\//, "").split("/")[0] ?? "system";
+  const map = {
+    auth: "Auth",
+    device: "Device API (ESP32)",
+    homes: "Homes",
+    "api-keys": "API Keys",
+    notifications: "Notifications",
+    assistant: "AI Assistant",
+    shop: "Shop",
+    claim: "Activate (Serial)",
+    warranty: "Warranty",
+    public: "Public",
+    support: "Support",
+    admin: "Admin",
+    install: "Install",
+    firmware: "System",
+    health: "System",
+    version: "System"
+  };
+  return map[seg] ?? "Homes";
+}
+function paramsFor(path11) {
+  const out = [];
+  const re = /:([A-Za-z0-9_]+)/g;
+  let m;
+  while ((m = re.exec(path11)) !== null) {
+    out.push({
+      name: m[1],
+      in: "path",
+      required: true,
+      schema: { type: "integer" },
+      description: `\`${m[1]}\` \u2014 numeric ID`
+    });
+  }
+  return out;
+}
+function buildOpenApiSpec() {
+  const endpoints = [];
+  walkRouter(apiRouter, "/api", endpoints, true);
+  for (const m of apiMounts) {
+    walkRouter(m.router, `/api${m.prefix}`, endpoints);
+  }
+  walkRouter(installRouter, "/api/install", endpoints);
+  endpoints.push({ method: "GET", path: "/api/health" });
+  endpoints.push({ method: "GET", path: "/api/version" });
+  const paths = {};
+  const seen = /* @__PURE__ */ new Set();
+  for (const ep of endpoints) {
+    const key = `${ep.method} ${ep.path}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const desc = DESCRIPTIONS[key];
+    const tag = tagFor(ep.path);
+    const security = securityFor(ep.path, ep.method);
+    const bodyRef = BODIES[key];
+    const op = {
+      tags: [tag],
+      responses: {
+        200: {
+          description: "Success \u2014 standard envelope { success:true, data }",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/SuccessEnvelope" }
+            }
+          }
+        },
+        400: { description: "Validation error \u2014 { success:false, error }", content: { "application/json": { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } } },
+        401: { description: "Unauthorized \u2014 token/api_key missing ya invalid", content: { "application/json": { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } } },
+        429: { description: "Rate limited \u2014 Retry-After header dekho", content: { "application/json": { schema: { $ref: "#/components/schemas/ErrorEnvelope" } } } }
+      }
+    };
+    if (desc) op.summary = desc;
+    const params = paramsFor(ep.path);
+    if (params.length) op.parameters = params;
+    if (security) op.security = security;
+    if (bodyRef) {
+      op.requestBody = {
+        required: true,
+        content: { "application/json": { schema: { $ref: `#/components/schemas/${bodyRef}` } } }
+      };
+    }
+    const p = paths[ep.path] ?? (paths[ep.path] = {});
+    p[ep.method.toLowerCase()] = op;
+  }
+  return {
+    openapi: "3.0.3",
+    info: {
+      title: "SwitchNest / RoboSphere API",
+      description: "Smart-home IoT platform API \u2014 multi-tenant homes + devices + timers + shop.\n\n**Auth:** saare endpoints `Authorization: Bearer <accessToken>` (login se).\n**ESP32/device endpoints** (`/api/device/*`): `?api_key=rs_...` query param ya `Authorization: Bearer rs_...`.\n**Envelope:** har response `{ success, data }` ya `{ success:false, error:{ code, message } }`.\n**Rate limits (per IP, 429 + Retry-After header):** login 10/15min \xB7 signup 5/15min \xB7 forgot-password 5/h \xB7 API-key create 20/h \xB7 support send 10/min \xB7 contact form 5/h \xB7 public assistant 20/min \xB7 claim 20/h \xB7 warranty status 30/min + claim 10/h \xB7 assistant chat message 20/min + confirm 30/min \xB7 ESP32 device API 1200/600 per min.\n\nRaw spec: `GET /api/docs/openapi.json` \xB7 Offline list: `GET /api/docs/plain` \xB7 **ESP32 guide (curl/python/node + Arduino sketch): `GET /api/docs/esp32`**",
+      version: "2.2.0",
+      contact: { name: "SwitchNest Support" }
+    },
+    servers: [{ url: "/", description: "Same host (relative \u2014 local ya production dono pe chalega)" }],
+    tags: [
+      { name: "Device API (ESP32)", description: "ESP32 boards / machine clients \u2014 api_key auth, polling + command queue + OTA" },
+      { name: "Auth", description: "Signup/login/refresh + password reset" },
+      { name: "Homes", description: "Multi-tenant homes \u2014 family members, devices, rooms, schedules" },
+      { name: "Shop", description: "Product catalog, orders, payment, serial activation" },
+      { name: "Admin", description: "Platform administration (system_admin only)" },
+      { name: "Public", description: "Bina login endpoints \u2014 site settings, contact, sales assistant" },
+      { name: "Install", description: "First-run install wizard" }
+    ],
+    paths,
+    components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: "http",
+          scheme: "bearer",
+          bearerFormat: "JWT",
+          description: "Login/signup se mila access token"
+        },
+        deviceApiKey: {
+          type: "apiKey",
+          in: "query",
+          name: "api_key",
+          description: "Device key (rs_...) \u2014 home ke liye bana hua. ESP32 isi se auth karta hai."
+        }
+      },
+      schemas: SCHEMAS
+    }
+  };
+}
+var cached = null;
+function getOpenApiSpec() {
+  if (!cached) cached = buildOpenApiSpec();
+  return cached;
+}
+
+// src/lib/esp32Guide.ts
+var BASE_URL = "https://onlineswitch.bhartitechnical.com";
+function esc(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function codeBlock(label, code) {
+  return `
+    <div style="margin:10px 0">
+      <div style="font-size:12px;font-weight:700;color:#475569;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px">${label}</div>
+      <pre style="background:#0f172a;color:#e2e8f0;border-radius:8px;padding:14px 16px;overflow-x:auto;font-size:13px;line-height:1.55;margin:0"><code>${esc(code)}</code></pre>
+    </div>`;
+}
+var methodColor = { GET: "#22c55e", POST: "#3b82f6", PATCH: "#eab308", PUT: "#eab308", DELETE: "#ef4444" };
+var EN = {
+  htmlLang: "en",
+  title: "SwitchNest \u2014 ESP32 Integration Guide",
+  headerTitle: "\u{1F4E1} SwitchNest \u2014 ESP32 Integration Guide",
+  intro: "ESP32 <b>polling model</b> pe chalta hai \u2014 server khud push nahi karta: har kuch second device <code>read-all</code> / <code>commands</code> poll karta hai, web app me koi toggle kare to <code>commands</code> long-poll response me turant command milti hai, ESP relay toggle karta hai aur <code>ack</code> bhejta hai. DB hi source of truth hai \u2014 heartbeat se relay states 2-way sync hoti hain.",
+  baseUrlNote: "<b>Base URL:</b> <code>" + BASE_URL + '</code> \xB7 <b>Auth:</b> har request me <code>?api_key=rs_...</code> (ya <code>Authorization: Bearer rs_...</code>). API key app me <b>Dashboard \u2192 Device Keys</b> se ban jati hai. Har response envelope: <code>{ "success": true, "data": ... }</code> \xB7 Error pe <code>{ "success": false, "error": { "code", "message" } }</code> + HTTP status. Rate limits: read 1200/min, mutate 600/min per IP \u2014 boards ke liye kaafi generous, kabhi block nahi karega.',
+  paramsLabel: "Params / Body:",
+  responseLabel: "Example response",
+  arduinoHeading: "\u{1F6E0}\uFE0F Complete Arduino sketch (ESP32)",
+  arduinoDesc: "Minimal firmware flow: connect WiFi \u2192 long-poll commands (relay toggle + ack) \u2192 heartbeat (IP + firmware + states, OTA check). ArduinoJson library chahiye (Library Manager se install karo). PlatformIO project: <code>hardware/</code> folder me.",
+  errorsHeading: "\u26A0\uFE0F Common errors",
+  errorsCode: "Code",
+  errorsMeaning: "Matlab",
+  errUnauthorized: "api_key missing / galat \u2014 key copy karke check karo",
+  errKeyNotScoped: "Key kisi home se link nahi \u2014 home ke liye nayi key banao",
+  errDeviceNotFound: "device_id is home me nahi \u2014 read-all se sahi id lo",
+  errRateLimited: "Bahut zyada requests \u2014 Retry-After header dekho",
+  footerUpdated: "Last updated",
+  footerLocalDev: "Local dev",
+  langHref: "/api/docs/esp32/hi",
+  langLabel: "\u0939\u093F\u0902\u0926\u0940"
+};
+var HI = {
+  htmlLang: "hi",
+  title: "SwitchNest \u2014 ESP32 \u0907\u0902\u091F\u0940\u0917\u094D\u0930\u0947\u0936\u0928 \u0917\u093E\u0907\u0921",
+  headerTitle: "\u{1F4E1} SwitchNest \u2014 ESP32 \u0907\u0902\u091F\u0940\u0917\u094D\u0930\u0947\u0936\u0928 \u0917\u093E\u0907\u0921",
+  intro: "ESP32 <b>polling model</b> \u092A\u0930 \u091A\u0932\u0924\u093E \u0939\u0948 \u2014 server \u0916\u0941\u0926 push \u0928\u0939\u0940\u0902 \u0915\u0930\u0924\u093E: \u0939\u0930 \u0915\u0941\u091B \u0938\u0947\u0915\u0902\u0921 device <code>read-all</code> / <code>commands</code> poll \u0915\u0930\u0924\u093E \u0939\u0948, web app \u092E\u0947\u0902 \u0915\u094B\u0908 toggle \u0915\u0930\u0947 \u0924\u094B <code>commands</code> long-poll response \u092E\u0947\u0902 \u0924\u0941\u0930\u0902\u0924 command \u092E\u093F\u0932\u0924\u0940 \u0939\u0948, ESP relay toggle \u0915\u0930\u0924\u093E \u0939\u0948 \u0914\u0930 <code>ack</code> \u092D\u0947\u091C\u0924\u093E \u0939\u0948\u0964 DB \u0939\u0940 source of truth \u0939\u0948 \u2014 heartbeat \u0938\u0947 relay states 2-way sync \u0939\u094B\u0924\u0940 \u0939\u0948\u0902\u0964",
+  baseUrlNote: "<b>Base URL:</b> <code>" + BASE_URL + '</code> \xB7 <b>Auth:</b> \u0939\u0930 request \u092E\u0947\u0902 <code>?api_key=rs_...</code> (\u092F\u093E <code>Authorization: Bearer rs_...</code>)\u0964 API key app \u092E\u0947\u0902 <b>Dashboard \u2192 Device Keys</b> \u0938\u0947 \u092C\u0928 \u091C\u093E\u0924\u0940 \u0939\u0948\u0964 \u0939\u0930 response envelope: <code>{ "success": true, "data": ... }</code> \xB7 Error \u092A\u0930 <code>{ "success": false, "error": { "code", "message" } }</code> + HTTP status\u0964 Rate limits: read 1200/min, mutate 600/min per IP \u2014 boards \u0915\u0947 \u0932\u093F\u090F \u0915\u093E\u092B\u0940 generous, \u0915\u092D\u0940 block \u0928\u0939\u0940\u0902 \u0915\u0930\u0947\u0917\u093E\u0964',
+  paramsLabel: "Params / Body:",
+  responseLabel: "\u0909\u0926\u093E\u0939\u0930\u0923 response",
+  arduinoHeading: "\u{1F6E0}\uFE0F \u092A\u0942\u0930\u093E Arduino sketch (ESP32)",
+  arduinoDesc: "Minimal firmware flow: WiFi connect \u0915\u0930\u0947\u0902 \u2192 long-poll commands (relay toggle + ack) \u2192 heartbeat (IP + firmware + states, OTA check)\u0964 ArduinoJson library \u091A\u093E\u0939\u093F\u090F (Library Manager \u0938\u0947 install \u0915\u0930\u0947\u0902)\u0964 PlatformIO project: <code>hardware/</code> folder \u092E\u0947\u0902\u0964",
+  errorsHeading: "\u26A0\uFE0F Common errors",
+  errorsCode: "Code",
+  errorsMeaning: "\u092E\u0924\u0932\u092C",
+  errUnauthorized: "api_key missing / \u0917\u0932\u0924 \u2014 key copy \u0915\u0930\u0915\u0947 check \u0915\u0930\u0947\u0902",
+  errKeyNotScoped: "Key \u0915\u093F\u0938\u0940 home \u0938\u0947 link \u0928\u0939\u0940\u0902 \u2014 home \u0915\u0947 \u0932\u093F\u090F \u0928\u0908 key \u092C\u0928\u093E\u090F\u0901",
+  errDeviceNotFound: "device_id \u0907\u0938 home \u092E\u0947\u0902 \u0928\u0939\u0940\u0902 \u2014 read-all \u0938\u0947 \u0938\u0939\u0940 id \u0932\u0947\u0902",
+  errRateLimited: "\u092C\u0939\u0941\u0924 \u091C\u093C\u094D\u092F\u093E\u0926\u093E requests \u2014 Retry-After header \u0926\u0947\u0916\u0947\u0902",
+  footerUpdated: "\u0906\u0916\u093F\u0930\u0940 \u0905\u092A\u0921\u0947\u091F",
+  footerLocalDev: "Local dev",
+  langHref: "/api/docs/esp32",
+  langLabel: "English"
+};
+function renderEndpoint(e, lang, s) {
+  const color = methodColor[e.method] ?? "#6b7280";
+  const name = lang === "hi" ? e.nameHi ?? e.name : e.name;
+  const desc = lang === "hi" ? e.descHi ?? e.desc : e.desc;
+  const params = lang === "hi" ? e.paramsHi ?? e.params : e.params;
+  return `
+  <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px 24px;margin:18px 0">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <code style="background:${color}1a;color:${color};font-weight:700;padding:4px 10px;border-radius:6px">${e.method}</code>
+      <code style="font-size:14px;font-weight:600;color:#0f172a">${e.path}</code>
+    </div>
+    <h3 style="margin:12px 0 6px;font-size:16px;color:#0f172a">${name}</h3>
+    <p style="margin:0 0 12px;color:#4b5563;font-size:14px;line-height:1.6">${desc}</p>
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 16px;font-size:13px;color:#334155;margin-bottom:14px"><strong style="color:#0f172a">${s.paramsLabel}</strong> ${params}</div>
+    ${codeBlock("cURL", e.curl)}
+    ${codeBlock("Python (requests)", e.python)}
+    ${codeBlock("Node.js (fetch)", e.node)}
+    ${codeBlock(s.responseLabel, e.response)}
+  </div>`;
+}
+function buildHtml(lang) {
+  const s = lang === "hi" ? HI : EN;
+  const endpoints = [
+    {
+      method: "POST",
+      path: "/api/api-keys/",
+      name: "1. API key banao (pehla step \u2014 sirf ek baar dikhta hai)",
+      desc: "ESP32 ko device API use karne ke liye home-scoped API key chahiye. Ye key web app me bhi ban sakti hai (Dashboard \u2192 Device Keys). rawKey response me SIRF EK BAAR aati hai \u2014 ise save karo. Is endpoint pe JWT auth lagta hai (Bearer token).",
+      params: "Header: Authorization: Bearer &lt;JWT&gt; \xB7 Body: { homeId: number, label: string }",
+      nameHi: "1. API key \u092C\u0928\u093E\u090F\u0901 (\u092A\u0939\u0932\u093E \u0915\u0926\u092E \u2014 \u0938\u093F\u0930\u094D\u092B \u090F\u0915 \u092C\u093E\u0930 \u0926\u093F\u0916\u0924\u093E \u0939\u0948)",
+      descHi: "ESP32 \u0915\u094B device API \u0907\u0938\u094D\u0924\u0947\u092E\u093E\u0932 \u0915\u0930\u0928\u0947 \u0915\u0947 \u0932\u093F\u090F home-scoped API key \u091A\u093E\u0939\u093F\u090F\u0964 \u092F\u0939 key web app \u092E\u0947\u0902 \u092D\u0940 \u092C\u0928 \u0938\u0915\u0924\u0940 \u0939\u0948 (Dashboard \u2192 Device Keys)\u0964 rawKey response \u092E\u0947\u0902 \u0938\u093F\u0930\u094D\u092B \u090F\u0915 \u092C\u093E\u0930 \u0906\u0924\u0940 \u0939\u0948 \u2014 \u0907\u0938\u0947 \u0938\u0947\u0935 \u0915\u0930 \u0932\u0947\u0902\u0964 \u0907\u0938 endpoint \u092A\u0930 JWT auth \u0932\u0917\u0924\u093E \u0939\u0948 (Bearer token)\u0964",
+      paramsHi: "Header: Authorization: Bearer &lt;JWT&gt; \xB7 Body: { homeId: number, label: string }",
+      curl: `curl -X POST ${BASE_URL}/api/api-keys/ \\\\
+  -H "Authorization: Bearer <JWT_TOKEN>" \\\\
+  -H "Content-Type: application/json" \\\\
+  -d '{"homeId": 1, "label": "esp32-kitchen"}'`,
+      python: `import requests
+
+r = requests.post(
+    f"{BASE}/api/api-keys/",
+    headers={"Authorization": f"Bearer {JWT}"},
+    json={"homeId": 1, "label": "esp32-kitchen"},
+)
+key = r.json()["data"]["rawKey"]   # rs_... \u2014 save karo, dobara nahi milegi
+print(key)`,
+      node: `const res = await fetch(BASE + "/api/api-keys/", {
+  method: "POST",
+  headers: { "Content-Type": "application/json", Authorization: \`Bearer \${JWT}\` },
+  body: JSON.stringify({ homeId: 1, label: "esp32-kitchen" }),
+});
+const { data } = await res.json();
+console.log(data.rawKey); // rs_... \u2014 save karo, dobara nahi milegi`,
+      response: `{
+  "success": true,
+  "data": {
+    "id": 12,
+    "label": "esp32-kitchen",
+    "homeId": 1,
+    "rawKey": "rs_7f3a9c21e5b84d6f0a2c9e8d7b6a5f4e3d2c1b0a",
+    "createdAt": "2026-08-18T10:00:00.000Z"
+  }
+}`
+    },
+    {
+      method: "GET",
+      path: "/api/device/read-all?api_key=rs_...",
+      name: "2. Saare devices + status (poll)",
+      desc: "ESP32 (ya koi client) apne home ke saare devices aur unki status padhta hai. Har successful poll pe device lastSeen update hota hai (online marker). Long-poll params optional hain \u2014 `long=1&hold=20` se response 20s tak hold hota hai agar kuch naya na ho (battery/WiFi friendly).",
+      params: "Query: api_key (required) \xB7 long=1 \xB7 hold=1..25 (seconds, default 20)",
+      nameHi: "2. \u0938\u092D\u0940 devices + \u0938\u094D\u091F\u0947\u091F\u0938 (poll)",
+      descHi: "ESP32 (\u092F\u093E \u0915\u094B\u0908 \u092D\u0940 client) \u0905\u092A\u0928\u0947 home \u0915\u0947 \u0938\u092D\u0940 devices \u0914\u0930 \u0909\u0928\u0915\u0940 \u0938\u094D\u091F\u0947\u091F\u0938 \u092A\u0922\u093C\u0924\u093E \u0939\u0948\u0964 \u0939\u0930 \u0938\u092B\u0932 poll \u092A\u0930 device \u0915\u093E lastSeen \u0905\u092A\u0921\u0947\u091F \u0939\u094B\u0924\u093E \u0939\u0948 (online marker)\u0964 Long-poll params optional \u0939\u0948\u0902 \u2014 `long=1&hold=20` \u0938\u0947 response 20 \u0938\u0947\u0915\u0902\u0921 \u0924\u0915 hold \u0930\u0939\u0924\u093E \u0939\u0948 \u0905\u0917\u0930 \u0915\u0941\u091B \u0928\u092F\u093E \u0928 \u0939\u094B (battery/WiFi friendly)\u0964",
+      paramsHi: "Query: api_key (\u091C\u093C\u0930\u0942\u0930\u0940) \xB7 long=1 \xB7 hold=1..25 (\u0938\u0947\u0915\u0902\u0921, default 20)",
+      curl: `curl "${BASE_URL}/api/device/read-all?api_key=rs_7f3a9c21e5b84d6f0a2c9e8d7b6a5f4e3d2c1b0a&long=1&hold=20"`,
+      python: `import requests
+
+API_KEY = "rs_7f3a9c21e5b84d6f0a2c9e8d7b6a5f4e3d2c1b0a"
+r = requests.get(f"{BASE}/api/device/read-all", params={
+    "api_key": API_KEY, "long": "1", "hold": "20",
+}, timeout=30)
+devices = r.json()["data"]["devices"]
+for d in devices:
+    print(d["id"], d["name"], d["status"])   # on / off`,
+      node: `const url = \`\${BASE}/api/device/read-all?api_key=\${API_KEY}&long=1&hold=20\`;
+const res = await fetch(url);
+const { data } = await res.json();
+for (const d of data.devices) console.log(d.id, d.name, d.status);`,
+      response: `{
+  "success": true,
+  "data": {
+    "devices": [
+      {
+        "id": 5,
+        "name": "Living Room Bulb",
+        "type": "bulb",
+        "status": "on",
+        "lastSeen": "2026-08-18T09:59:41.000Z",
+        "offline": false
+      }
+    ]
+  }
+}`
+    },
+    {
+      method: "GET",
+      path: "/api/device/commands?api_key=rs_...&long=1&hold=20",
+      name: "3. Pending commands (long-poll)",
+      desc: "Web app me koi toggle/schedule chale to yahan pending command milti hai. `long=1&hold=20` me server response tab tak hold karta hai jab tak command na aaye (max hold sec) \u2014 ESP32 isi se <2s me relay toggle kar leta hai. Bina long=1 ke instant pending commands milti hain (old firmware).",
+      params: "Query: api_key (required) \xB7 long=1 \xB7 hold=1..25 (seconds, default 20)",
+      nameHi: "3. Pending commands (long-poll)",
+      descHi: "Web app \u092E\u0947\u0902 \u0915\u094B\u0908 toggle/schedule \u091A\u0932\u0947 \u0924\u094B \u092F\u0939\u093E\u0901 pending command \u092E\u093F\u0932\u0924\u0940 \u0939\u0948\u0964 `long=1&hold=20` \u092E\u0947\u0902 server response \u0924\u092C \u0924\u0915 hold \u0915\u0930\u0924\u093E \u0939\u0948 \u091C\u092C \u0924\u0915 command \u0928 \u0906\u090F (max hold sec) \u2014 ESP32 \u0907\u0938\u0940 \u0938\u0947 <2s \u092E\u0947\u0902 relay toggle \u0915\u0930 \u0932\u0947\u0924\u093E \u0939\u0948\u0964 \u092C\u093F\u0928\u093E long=1 \u0915\u0947 instant pending commands \u092E\u093F\u0932\u0924\u0940 \u0939\u0948\u0902 (old firmware)\u0964",
+      paramsHi: "Query: api_key (\u091C\u093C\u0930\u0942\u0930\u0940) \xB7 long=1 \xB7 hold=1..25 (\u0938\u0947\u0915\u0902\u0921, default 20)",
+      curl: `curl "${BASE_URL}/api/device/commands?api_key=rs_7f3a9c21e5b84d6f0a2c9e8d7b6a5f4e3d2c1b0a&long=1&hold=20"`,
+      python: `import requests
+
+r = requests.get(f"{BASE}/api/device/commands", params={
+    "api_key": API_KEY, "long": "1", "hold": "20",
+}, timeout=30)
+commands = r.json()["data"]["commands"]
+for c in commands:
+    # c["command"] = "on"/"off"  \xB7  c["deviceId"]  \xB7  c["id"]
+    print(c["id"], c["deviceId"], c["command"])`,
+      node: `const res = await fetch(
+  \`\${BASE}/api/device/commands?api_key=\${API_KEY}&long=1&hold=20\`
+);
+const { data } = await res.json();
+for (const c of data.commands) console.log(c.id, c.deviceId, c.command);`,
+      response: `{
+  "success": true,
+  "data": {
+    "commands": [
+      {
+        "id": 42,
+        "deviceId": 5,
+        "command": "on",
+        "status": "pending",
+        "createdAt": "2026-08-18T10:02:15.000Z"
+      }
+    ]
+  }
+}`
+    },
+    {
+      method: "POST",
+      path: "/api/device/update",
+      name: "4. Relay state report (physical switch)",
+      desc: "ESP32 ne relay khud toggle kiya (physical switch / local button) to server ko batao \u2014 status DB me update hoti hai + device_logs me entry. Ye command enqueue NAHI karta (state device se AA rahi hai, web se nahi).",
+      params: "Query/body: api_key \xB7 Body: { device_id, status: on|off }",
+      nameHi: "4. Relay state \u0930\u093F\u092A\u094B\u0930\u094D\u091F (physical switch)",
+      descHi: "ESP32 \u0928\u0947 relay \u0916\u0941\u0926 toggle \u0915\u093F\u092F\u093E (physical switch / local button) \u0924\u094B server \u0915\u094B \u092C\u0924\u093E\u090F\u0901 \u2014 \u0938\u094D\u091F\u0947\u091F\u0938 DB \u092E\u0947\u0902 \u0905\u092A\u0921\u0947\u091F \u0939\u094B\u0924\u0940 \u0939\u0948 + device_logs \u092E\u0947\u0902 entry\u0964 \u092F\u0939 command enqueue \u0928\u0939\u0940\u0902 \u0915\u0930\u0924\u093E (state device \u0938\u0947 \u0906 \u0930\u0939\u0940 \u0939\u0948, web \u0938\u0947 \u0928\u0939\u0940\u0902)\u0964",
+      paramsHi: "Query/body: api_key \xB7 Body: { device_id, status: on|off }",
+      curl: `curl -X POST "${BASE_URL}/api/device/update?api_key=rs_7f3a9c21e5b84d6f0a2c9e8d7b6a5f4e3d2c1b0a" \\\\
+  -H "Content-Type: application/json" \\\\
+  -d '{"device_id": 5, "status": "on"}'`,
+      python: `import requests
+
+r = requests.post(f"{BASE}/api/device/update", params={"api_key": API_KEY},
+                  json={"device_id": 5, "status": "on"})
+print(r.json()["data"]["status"])   # updated device`,
+      node: `const res = await fetch(\`\${BASE}/api/device/update?api_key=\${API_KEY}\`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ device_id: 5, status: "on" }),
+});
+console.log(await res.json());`,
+      response: `{
+  "success": true,
+  "data": {
+    "id": 5,
+    "name": "Living Room Bulb",
+    "status": "on",
+    "lastSeen": "2026-08-18T10:03:00.000Z"
+  }
+}`
+    },
+    {
+      method: "POST",
+      path: "/api/device/heartbeat",
+      name: "5. Heartbeat \u2014 IP / firmware / relay states / OTA",
+      desc: "ESP apna IP, firmware version, MAC, SSID, serial aur ACTUAL relay states report karta hai. Server se: (a) ESP board row upsert (MAC se), (b) devices link, (c) relay state 2-way sync, (d) agar admin ne OTA push kiya hai to `ota` object me firmware URL milta hai. States format: JSON array [{ id, status }, ...].",
+      params: "Query/body: api_key \xB7 Body: { device_id, ip?, fw_version?, mac?, ssid?, serial?, model?, states? }",
+      nameHi: "5. Heartbeat \u2014 IP / firmware / relay states / OTA",
+      descHi: "ESP \u0905\u092A\u0928\u093E IP, firmware version, MAC, SSID, serial \u0914\u0930 ACTUAL relay states \u0930\u093F\u092A\u094B\u0930\u094D\u091F \u0915\u0930\u0924\u093E \u0939\u0948\u0964 Server \u0938\u0947: (a) ESP board row upsert (MAC \u0938\u0947), (b) devices link, (c) relay state 2-way sync, (d) \u0905\u0917\u0930 admin \u0928\u0947 OTA push \u0915\u093F\u092F\u093E \u0939\u0948 \u0924\u094B `ota` object \u092E\u0947\u0902 firmware URL \u092E\u093F\u0932\u0924\u093E \u0939\u0948\u0964 States format: JSON array [{ id, status }, ...]\u0964",
+      paramsHi: "Query/body: api_key \xB7 Body: { device_id, ip?, fw_version?, mac?, ssid?, serial?, model?, states? }",
+      curl: `curl -X POST "${BASE_URL}/api/device/heartbeat?api_key=rs_7f3a9c21e5b84d6f0a2c9e8d7b6a5f4e3d2c1b0a" \\\\
+  -H "Content-Type: application/json" \\\\
+  -d '{
+    "device_id": 5,
+    "ip": "192.168.1.36",
+    "fw_version": "2.2.0",
+    "mac": "A4:CF:12:F5:1B:33",
+    "ssid": "MyWiFi",
+    "serial": "RS-4CH-001234",
+    "model": "4CH",
+    "states": "[{\\"id\\":5,\\"status\\":\\"on\\"}]"
+  }'`,
+      python: `import requests, json
+
+r = requests.post(f"{BASE}/api/device/heartbeat", params={"api_key": API_KEY},
+                  json={
+    "device_id": 5,
+    "ip": "192.168.1.36",
+    "fw_version": "2.2.0",
+    "mac": "A4:CF:12:F5:1B:33",
+    "ssid": "MyWiFi",
+    "serial": "RS-4CH-001234",
+    "model": "4CH",
+    "states": json.dumps([{"id": 5, "status": "on"}]),
+})
+d = r.json()["data"]
+print(d["synced"], d["ota"])   # ota != null \u2192 firmware download karo`,
+      node: `const res = await fetch(\`\${BASE}/api/device/heartbeat?api_key=\${API_KEY}\`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    device_id: 5, ip: "192.168.1.36", fw_version: "2.2.0",
+    mac: "A4:CF:12:F5:1B:33", ssid: "MyWiFi",
+    serial: "RS-4CH-001234", model: "4CH",
+    states: JSON.stringify([{ id: 5, status: "on" }]),
+  }),
+});
+const { data } = await res.json();
+if (data.ota) console.log("OTA:", data.ota.version, data.ota.url);`,
+      response: `{
+  "success": true,
+  "data": {
+    "device": { "id": 5, "name": "Living Room Bulb", "status": "on" },
+    "esp": {
+      "id": 3, "macAddress": "a4cf12f51b33",
+      "name": "RS-4CH-001234 \xB7 MyWiFi", "serialCode": "RS-4CH-001234",
+      "firmwareVersion": "2.2.0", "ipAddress": "192.168.1.36"
+    },
+    "synced": 1,
+    "ota": null
+  }
+}`
+    },
+    {
+      method: "POST",
+      path: "/api/device/commands/ack",
+      name: "6. Command ack (executed / failed)",
+      desc: "Command execute karne ke baad server ko confirm karo. `status: executed` = command done; `failed` = ESP galat kar gaya (web app pe failed dikhta hai). Already-processed command pe idempotent no-op \u2014 safe hai dobara bhejna.",
+      params: "Query/body: api_key \xB7 Body: { command_id, device_id, status: executed|failed }",
+      nameHi: "6. Command ack (executed / failed)",
+      descHi: "Command execute \u0915\u0930\u0928\u0947 \u0915\u0947 \u092C\u093E\u0926 server \u0915\u094B confirm \u0915\u0930\u0947\u0902\u0964 `status: executed` = command done; `failed` = ESP \u0917\u0932\u0924 \u0915\u0930 \u0917\u092F\u093E (web app \u092A\u0930 failed \u0926\u093F\u0916\u0924\u093E \u0939\u0948)\u0964 Already-processed command \u092A\u0930 idempotent no-op \u2014 \u0926\u094B\u092C\u093E\u0930\u093E \u092D\u0947\u091C\u0928\u093E \u0938\u0941\u0930\u0915\u094D\u0937\u093F\u0924 \u0939\u0948\u0964",
+      paramsHi: "Query/body: api_key \xB7 Body: { command_id, device_id, status: executed|failed }",
+      curl: `curl -X POST "${BASE_URL}/api/device/commands/ack?api_key=rs_7f3a9c21e5b84d6f0a2c9e8d7b6a5f4e3d2c1b0a" \\\\
+  -H "Content-Type: application/json" \\\\
+  -d '{"command_id": 42, "device_id": 5, "status": "executed"}'`,
+      python: `import requests
+
+r = requests.post(f"{BASE}/api/device/commands/ack", params={"api_key": API_KEY},
+                  json={"command_id": 42, "device_id": 5, "status": "executed"})
+print(r.json()["data"]["status"])   # executed`,
+      node: `const res = await fetch(\`\${BASE}/api/device/commands/ack?api_key=\${API_KEY}\`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ command_id: 42, device_id: 5, status: "executed" }),
+});
+console.log(await res.json());`,
+      response: `{
+  "success": true,
+  "data": {
+    "id": 42,
+    "deviceId": 5,
+    "command": "on",
+    "status": "executed",
+    "executedAt": "2026-08-18T10:02:16.000Z"
+  }
+}`
+    },
+    {
+      method: "POST",
+      path: "/api/device/ota-progress",
+      name: "7. OTA progress report (optional)",
+      desc: "Firmware download/flash ke dauran progress bhejo \u2014 admin panel OTA / ESP tab me live progress dikhta hai (0-100).",
+      params: "Query/body: api_key \xB7 Body: { device_id, progress: 0-100, status?: string }",
+      nameHi: "7. OTA progress \u0930\u093F\u092A\u094B\u0930\u094D\u091F (optional)",
+      descHi: "Firmware download/flash \u0915\u0947 \u0926\u094C\u0930\u093E\u0928 progress \u092D\u0947\u091C\u0947\u0902 \u2014 admin panel OTA / ESP tab \u092E\u0947\u0902 live progress \u0926\u093F\u0916\u0924\u093E \u0939\u0948 (0-100)\u0964",
+      paramsHi: "Query/body: api_key \xB7 Body: { device_id, progress: 0-100, status?: string }",
+      curl: `curl -X POST "${BASE_URL}/api/device/ota-progress?api_key=rs_7f3a9c21e5b84d6f0a2c9e8d7b6a5f4e3d2c1b0a" \\\\
+  -H "Content-Type: application/json" \\\\
+  -d '{"device_id": 5, "progress": 45, "status": "downloading"}'`,
+      python: `import requests
+
+r = requests.post(f"{BASE}/api/device/ota-progress", params={"api_key": API_KEY},
+                  json={"device_id": 5, "progress": 45, "status": "downloading"})
+print(r.json()["data"])   # {"progress": 45, "status": "downloading"}`,
+      node: `const res = await fetch(\`\${BASE}/api/device/ota-progress?api_key=\${API_KEY}\`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ device_id: 5, progress: 45, status: "downloading" }),
+});
+console.log(await res.json());`,
+      response: `{
+  "success": true,
+  "data": { "progress": 45, "status": "downloading" }
+}`
+    }
+  ];
+  const cards = endpoints.map((e) => renderEndpoint(e, lang, s)).join("\n");
+  const arduinoSketch = `#include <WiFi.h>
+#include <HTTPClient.h>
+#include <ArduinoJson.h>
+
+// ---- Settings: App > Device Keys se API key, Dashboard se device id ----
+const char* WIFI_SSID = "MyWiFi";
+const char* WIFI_PASS = "yourpassword";
+const char* API_KEY   = "rs_7f3a9c21e5b84d6f0a2c9e8d7b6a5f4e3d2c1b0a";
+const char* SERVER    = "https://onlineswitch.bhartitechnical.com";
+const int   DEVICE_ID = 5;      // Dashboard me device ka id
+const int   RELAY_PIN = 4;      // relay module ka control pin
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(RELAY_PIN, OUTPUT);
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  while (WiFi.status() != WL_CONNECTED) { delay(500); Serial.print("."); }
+  Serial.println("\\nWiFi connected");
+}
+
+void loop() {
+  if (WiFi.status() == WL_CONNECTED) {
+    pollCommands();   // long-poll: naya command aate hi relay toggle
+    sendHeartbeat();  // IP + firmware + relay state report (har ~10s)
+  }
+  delay(10 * 1000);
+}
+
+// Long-poll commands \u2014 server response ko hold karta hai jab tak
+// command na aaye (max 20s), isliye <2s relay response milta hai.
+void pollCommands() {
+  HTTPClient http;
+  http.begin(String(SERVER) + "/api/device/commands?api_key=" + API_KEY +
+             "&long=1&hold=20");
+  int code = http.GET();
+  if (code == HTTP_CODE_OK) {
+    JsonDocument doc;
+    deserializeJson(doc, http.getString());
+    for (JsonObject cmd : doc["data"]["commands"].as<JsonArray>()) {
+      int id = cmd["id"];
+      int deviceId = cmd["deviceId"];
+      String action = cmd["command"] | "off";
+      if (deviceId == DEVICE_ID) {
+        digitalWrite(RELAY_PIN, action == "on" ? HIGH : LOW);
+        ack(id, deviceId, "executed");   // command done \u2014 server ko batao
+      }
+    }
+  }
+  http.end();
+}
+
+void ack(int commandId, int deviceId, const char* status) {
+  HTTPClient http;
+  http.begin(String(SERVER) + "/api/device/commands/ack?api_key=" + API_KEY);
+  http.addHeader("Content-Type", "application/json");
+  String body = String("{\\"command_id\\":") + commandId +
+                ",\\"device_id\\":" + deviceId +
+                ",\\"status\\":\\"" + status + "\\"}";
+  http.POST(body);
+  http.end();
+}
+
+// Heartbeat: IP + firmware version + actual relay state.
+// Response me OTA instruction bhi aa sakti hai (admin ne push kiya ho to).
+void sendHeartbeat() {
+  HTTPClient http;
+  http.begin(String(SERVER) + "/api/device/heartbeat?api_key=" + API_KEY);
+  http.addHeader("Content-Type", "application/json");
+  String states = String("[{\\"id\\":") + DEVICE_ID +
+                  ",\\"status\\":\\"" + (digitalRead(RELAY_PIN) ? "on" : "off") + "\\"}]";
+  String body = String("{\\"device_id\\":") + DEVICE_ID +
+                ",\\"ip\\":\\"" + WiFi.localIP().toString() +
+                "\\",\\"fw_version\\":\\"2.2.0\\"" +
+                ",\\"mac\\":\\"" + WiFi.macAddress() +
+                "\\",\\"ssid\\":\\"" + WIFI_SSID +
+                "\\",\\"states\\":\\"" + states + "\\"}";
+  int code = http.POST(body);
+  if (code == HTTP_CODE_OK) {
+    JsonDocument doc;
+    deserializeJson(doc, http.getString());
+    const char* otaUrl = doc["data"]["ota"]["url"] | "";
+    if (strlen(otaUrl) > 0) {
+      Serial.print("OTA available: "); Serial.println(otaUrl);
+      // yahan HTTPUpdate.begin(url) se download + flash karo
+    }
+  }
+  http.end();
+}`;
+  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const localBase = BASE_URL.replace("https://onlineswitch.bhartitechnical.com", "http://localhost:4000");
+  return `<!DOCTYPE html>
+<html lang="${s.htmlLang}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${s.title}</title></head>
+<body style="font-family:Arial,Helvetica,sans-serif;margin:0;background:#fafafa">
+  <div style="background:#0f172a;color:#fff;padding:18px 24px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <strong>${s.headerTitle}</strong>
+    <span style="color:#9ca3af;margin-left:auto;font-size:14px">
+      <a href="/api/docs" style="color:#60a5fa">Swagger UI</a> \xB7
+      <a href="/api/docs/plain" style="color:#60a5fa">Endpoint list</a> \xB7
+      <a href="/api/docs/openapi.json" style="color:#60a5fa">openapi.json</a> \xB7
+      <a href="/api/docs/realtime" style="color:#60a5fa">Realtime</a> \xB7
+      <a href="${s.langHref}" style="color:#fbbf24;font-weight:700">${s.langLabel}</a>
+    </span>
+  </div>
+  <div style="max-width:980px;margin:0 auto;padding:28px 24px">
+
+    <h2 style="margin-top:0">${lang === "hi" ? "ESP32 / hardware clients \u0915\u0947 \u0932\u093F\u090F quick guide" : "ESP32 / hardware clients ke liye quick guide"}</h2>
+    <p style="color:#4b5563;font-size:14px;line-height:1.7">
+      ${s.intro}
+    </p>
+
+    <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:14px 18px;font-size:13px;color:#1e40af;line-height:1.7">
+      ${s.baseUrlNote}
+    </div>
+
+    ${cards}
+
+    <h2 style="margin-top:40px">${s.arduinoHeading}</h2>
+    <p style="color:#4b5563;font-size:14px;line-height:1.7">
+      ${s.arduinoDesc}
+    </p>
+    ${codeBlock("Arduino (ESP32 + ArduinoJson)", arduinoSketch)}
+
+    <h2 style="margin-top:40px">${s.errorsHeading}</h2>
+    <table style="width:100%;border-collapse:collapse;font-size:13px;background:#fff;border:1px solid #e5e7eb;border-radius:8px">
+      <tr style="background:#f8fafc;text-align:left"><th style="padding:10px 14px">${s.errorsCode}</th><th style="padding:10px 14px">${s.errorsMeaning}</th></tr>
+      <tr style="border-top:1px solid #f1f5f9"><td style="padding:10px 14px"><code>UNAUTHORIZED</code></td><td style="padding:10px 14px">${s.errUnauthorized}</td></tr>
+      <tr style="border-top:1px solid #f1f5f9"><td style="padding:10px 14px"><code>KEY_NOT_SCOPED</code></td><td style="padding:10px 14px">${s.errKeyNotScoped}</td></tr>
+      <tr style="border-top:1px solid #f1f5f9"><td style="padding:10px 14px"><code>DEVICE_NOT_FOUND</code></td><td style="padding:10px 14px">${s.errDeviceNotFound}</td></tr>
+      <tr style="border-top:1px solid #f1f5f9"><td style="padding:10px 14px"><code>RATE_LIMITED</code></td><td style="padding:10px 14px">${s.errRateLimited}</td></tr>
+    </table>
+
+    <p style="color:#9ca3af;font-size:12px;margin-top:32px">${s.footerUpdated}: ${today} \xB7 ${s.footerLocalDev}: ${localBase} replace karke test karo</p>
+  </div>
+</body></html>`;
+}
+function esp32GuideHtml(lang = "en") {
+  return buildHtml(lang);
+}
+
+// src/lib/realtimeGuide.ts
+function esc2(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function codeBlock2(label, code) {
+  return `
+    <div style="margin:10px 0">
+      <div style="font-size:12px;font-weight:700;color:#475569;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px">${label}</div>
+      <pre style="background:#0f172a;color:#e2e8f0;border-radius:8px;padding:14px 16px;overflow-x:auto;font-size:13px;line-height:1.55;margin:0"><code>${esc2(code)}</code></pre>
+    </div>`;
+}
+function renderEvent(e) {
+  return `
+  <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px 24px;margin:16px 0">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <code style="background:#7c3aed1a;color:#7c3aed;font-weight:700;padding:4px 10px;border-radius:6px">${e.name}</code>
+      <code style="background:#f8fafc;border:1px solid #e2e8f0;color:#334155;padding:4px 10px;border-radius:6px;font-size:12px">room: ${e.room}</code>
+    </div>
+    <p style="margin:12px 0 0;color:#4b5563;font-size:14px;line-height:1.6">${e.desc}</p>
+    ${codeBlock2("Example payload", e.example)}
+  </div>`;
+}
+function buildHtml2() {
+  const events = [
+    {
+      name: "socket:ready",
+      room: "user:{userId}",
+      desc: 'Connection ack \u2014 connect hote hi ek baar aata hai. <code>homes</code> = kitne home rooms me join hua (0 = koi home nahi, sirf user room). Web UI isi se "live" indicator dikhata hai.',
+      example: `{
+  "homes": 2
+}`
+    },
+    {
+      name: "device:updated",
+      room: "home:{homeId}",
+      desc: "Sabse important event \u2014 koi bhi device mutation pe uniform DTO broadcast hota hai: web toggle, ESP heartbeat (relay state sync), physical switch report, offline/online detection. <code>updatedAt</code> stale-event guard ke liye hota hai (purana event ignore karo agar naye se chhota ho).",
+      example: `{
+  "id": 5,
+  "homeId": 1,
+  "name": "Living Room Bulb",
+  "status": "on",
+  "online": true,
+  "offline": false,
+  "lastSeen": "2026-08-18T10:03:00.000Z",
+  "updatedAt": "2026-08-18T10:03:00.120Z"
+}`
+    },
+    {
+      name: "esp:updated",
+      room: "home:{homeId}",
+      desc: "ESP board row change \u2014 rename, heartbeat (IP/firmware/states update) ya offline/online. Payload partial hota hai: hamesha <code>id</code>, baaki change ke hisaab se (e.g. <code>{ id, offline: true }</code> power-cut pe).",
+      example: `{
+  "id": 3,
+  "offline": true
+}`
+    },
+    {
+      name: "command:updated",
+      room: "home:{homeId}",
+      desc: "Command execute/fail ack \u2014 ESP ne relay toggle kar liya (ya fail). Web UI pending badge isi se confirm hota hai. <code>status</code>: <code>executed</code> | <code>failed</code>.",
+      example: `{
+  "id": 42,
+  "status": "executed",
+  "executedAt": "2026-08-18T10:02:16.000Z"
+}`
+    },
+    {
+      name: "notification:new",
+      room: "user:{userId}",
+      desc: "Naya in-app notification (bell/badge) \u2014 order status, warranty, offline alert, automation suggestion etc. Poore notification object ke saath.",
+      example: `{
+  "id": 88,
+  "userId": 12,
+  "category": "device",
+  "type": "warning",
+  "title": "Living Room Bulb offline",
+  "body": "{\\"t\\":\\"Living Room Bulb 2 min se offline\\"}",
+  "read": false,
+  "createdAt": "2026-08-18T10:04:00.000Z"
+}`
+    },
+    {
+      name: "support:new",
+      room: "user:{userId} (ya admin)",
+      desc: "Support chat me naya message \u2014 user ko admin ka reply, admin ko user ka message. <code>senderRole</code>: <code>user</code> | <code>admin</code>.",
+      example: `{
+  "senderRole": "admin",
+  "message": {
+    "id": 51,
+    "conversationId": 7,
+    "senderId": 1,
+    "senderRole": "admin",
+    "content": "Ji, serial key email pe bhej di hai!",
+    "createdAt": "2026-08-18T10:05:00.000Z"
+  }
+}`
+    },
+    {
+      name: "home:access-revoked",
+      room: "user:{userId}",
+      desc: "Home membership revoke/role-change pe socket ko us home room se nikaal diya jata hai + ye event aata hai \u2014 client ko apne UI se home hatana chahiye (warna removed member ko devices dikhte rehte).",
+      example: `{
+  "homeId": 1
+}`
+    }
+  ];
+  const cards = events.map(renderEvent).join("\n");
+  const nodeClient = `import { io } from "socket.io-client";
+
+// Auth: login response ka accessToken (Bearer wala JWT).
+const socket = io("/", {
+  auth: { token: ACCESS_TOKEN },
+});
+
+socket.on("connect", () => console.log("connected", socket.id));
+socket.on("connect_error", (err) => {
+  // "unauthorized" = token missing/expired \u2192 wapas login karo
+  console.error("socket error:", err.message);
+});
+
+socket.on("socket:ready", ({ homes }) =>
+  console.log("live:", homes, "homes"));
+socket.on("device:updated", (d) =>
+  console.log(d.id, d.name, d.status, d.online ? "online" : "offline"));
+socket.on("command:updated", (c) =>
+  console.log("cmd", c.id, c.status));
+socket.on("esp:updated", (e) =>
+  console.log("esp", e.id, e.offline === undefined ? "updated" : e.offline ? "offline" : "online"));
+socket.on("notification:new", (n) =>
+  console.log("\u{1F514}", n.title));
+socket.on("home:access-revoked", ({ homeId }) =>
+  console.log("home access gone:", homeId));`;
+  const browserClient = `<script src="/socket.io/socket.io.js"></script>
+<script>
+  const socket = io({ auth: { token: ACCESS_TOKEN } });
+  socket.on("device:updated", (d) => {
+    const el = document.getElementById("bulb-" + d.id);
+    if (el) el.textContent = d.status + (d.online ? " (live)" : " (offline)");
+  });
+</script>`;
+  const flow = `Web app (Socket.IO push)        Server                ESP32 (HTTP long-poll)
+        \u2502                              \u2502                        \u2502
+  toggle ON \u2500\u2500 POST /status \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u25B6\u2502                        \u2502
+        \u2502                              \u2502 enqueue command        \u2502
+        \u2502                              \u2502\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 commands long-poll \u2500\u2500\u25B6
+        \u2502                              \u2502\u25C0\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 ack (executed) \u2500\u2500\u2500\u2500\u2500\u2500\u2500 relay toggle
+        \u2502                              \u2502                        \u2502
+  \u25C0\u2500\u2500\u2500 command:updated \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2502                        \u2502
+  \u25C0\u2500\u2500\u2500 device:updated \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u25C0\u2518                        \u2502
+        \u2502                              \u2502\u25C0\u2500\u2500 heartbeat (states) \u2500\u2518`;
+  return `<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SwitchNest \u2014 Realtime Events (Socket.IO)</title></head>
+<body style="font-family:Arial,Helvetica,sans-serif;margin:0;background:#fafafa">
+  <div style="background:#0f172a;color:#fff;padding:18px 24px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <strong>\u{1F4E1} SwitchNest \u2014 Realtime Events (Socket.IO)</strong>
+    <span style="color:#9ca3af;margin-left:auto;font-size:14px">
+      <a href="/api/docs" style="color:#60a5fa">Swagger UI</a> \xB7
+      <a href="/api/docs/plain" style="color:#60a5fa">Endpoint list</a> \xB7
+      <a href="/api/docs/esp32" style="color:#60a5fa">ESP32 guide</a> \xB7
+      <a href="/api/docs/esp32/hi" style="color:#fbbf24">\u0939\u093F\u0902\u0926\u0940</a>
+    </span>
+  </div>
+  <div style="max-width:980px;margin:0 auto;padding:28px 24px">
+
+    <h2 style="margin-top:0">Web app ka live-push model \u2014 Socket.IO events</h2>
+    <p style="color:#4b5563;font-size:14px;line-height:1.7">
+      Web app realtime <b>Socket.IO</b> pe chalta hai \u2014 toggle, schedule, OTA, notifications
+      <b>push</b> hote hain (polling nahi). <b>ESP32 boards isse connect NAHI hote</b> \u2014 wo
+      HTTP long-poll use karte hain (dekho: <a href="/api/docs/esp32" style="color:#2563eb">ESP32 guide</a>).
+      Ye page un clients ke liye hai jo live UI banate hain, aur ESP32 command-flow
+      samajhne ke liye.
+    </p>
+
+    <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:14px 18px;font-size:13px;color:#1e40af;line-height:1.7">
+      <b>Connect:</b> same origin + <code>/socket.io</code> (dev me Vite proxy; production me same domain) \xB7
+      <b>Auth:</b> <code>auth: { token: &lt;accessToken&gt; }</code> \u2014 login response ka JWT \xB7
+      <b>Rooms:</b> <code>user:{userId}</code> (personal) + <code>home:{homeId}</code> har membership ke liye
+      (admin = saare homes) \xB7 events sirf un homes ke aate hain jinme aap member ho.
+      Heartbeat/command events <code>device:updated</code> broadcast ke through web UI tak pahunchte hain.
+    </div>
+
+    <h2 style="margin-top:36px">\u{1F504} Command flow \u2014 ESP32 ke saath (ek nazar)</h2>
+    ${codeBlock2("Web toggle \u2192 relay \u2192 ack \u2192 live update", flow)}
+    <p style="color:#4b5563;font-size:13px;line-height:1.7">
+      ESP32 firmware me Socket.IO ki zaroorat <b>nahi</b> \u2014 HTTP long-poll hi command delivery +
+      relay toggle + ack karta hai. Neeche ke events wo push hain jo web UI ko turant update karte hain.
+    </p>
+
+    <h2 style="margin-top:36px">\u{1F4E8} Server \u2192 client events</h2>
+    ${cards}
+
+    <h2 style="margin-top:36px">\u{1F9EA} Clients</h2>
+    ${codeBlock2("Node.js (socket.io-client v4)", nodeClient)}
+    ${codeBlock2("Browser (script tag \u2014 same origin se serve hota hai)", browserClient)}
+
+    <h2 style="margin-top:36px">\u26A0\uFE0F Notes</h2>
+    <table style="width:100%;border-collapse:collapse;font-size:13px;background:#fff;border:1px solid #e5e7eb;border-radius:8px">
+      <tr style="background:#f8fafc;text-align:left"><th style="padding:10px 14px">Situation</th><th style="padding:10px 14px">Kya karein</th></tr>
+      <tr style="border-top:1px solid #f1f5f9"><td style="padding:10px 14px"><code>connect_error: unauthorized</code></td><td style="padding:10px 14px">Token missing/expired \u2014 wapas login karke naya access token do</td></tr>
+      <tr style="border-top:1px solid #f1f5f9"><td style="padding:10px 14px">Pehle connect pe koi home event nahi</td><td style="padding:10px 14px"><code>socket:ready</code> ka <code>homes</code> count dekho \u2014 0 hai to membership check karo</td></tr>
+      <tr style="border-top:1px solid #f1f5f9"><td style="padding:10px 14px">Purana <code>device:updated</code></td><td style="padding:10px 14px">Naye event ka <code>updatedAt</code> chhota ho to ignore karo (stale guard)</td></tr>
+      <tr style="border-top:1px solid #f1f5f9"><td style="padding:10px 14px">Reconnect</td><td style="padding:10px 14px">Client khud reconnect karta hai; <code>socket:ready</code> dobara aata hai \u2014 state re-fetch karo</td></tr>
+    </table>
+
+    <p style="color:#9ca3af;font-size:12px;margin-top:32px">Event names: <code>@robosphere/shared</code> me <code>REALTIME_EVENTS</code> se aate hain (single source of truth)</p>
+  </div>
+</body></html>`;
+}
+function realtimeGuideHtml() {
+  return buildHtml2();
+}
+
+// src/routes/docs.routes.ts
+var docsRouter = Router19();
+docsRouter.use("/assets", express.static(swaggerUiDir));
+var SWAGGER_UI_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SwitchNest API Docs</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="/api/docs/assets/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/api/docs/assets/favicon-16x16.png">
+  <link rel="stylesheet" href="/api/docs/assets/swagger-ui.css">
+  <style>
+    body { margin: 0; background: #fafafa; }
+    .topbar { background: #0f172a; color: #fff; padding: 14px 24px; display: flex; align-items: center; gap: 12px; font-family: Arial, sans-serif; }
+    .topbar a { color: #60a5fa; text-decoration: none; margin-left: auto; font-size: 14px; }
+    .topbar a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <strong>\u{1F4E1} SwitchNest API</strong>
+    <a href="/api/docs/openapi.json" target="_blank">openapi.json</a>
+    <a href="/api/docs/plain" target="_blank">Plain list</a>
+    <a href="/api/docs/esp32" target="_blank">\u{1F6E0} ESP32 guide</a>
+    <a href="/api/docs/esp32/hi" target="_blank" style="color:#fbbf24">\u0939\u093F\u0902\u0926\u0940</a>
+    <a href="/api/docs/realtime" target="_blank">\u26A1 Realtime</a>
+  </div>
+  <div id="swagger-ui"></div>
+  <script src="/api/docs/assets/swagger-ui-bundle.js"></script>
+  <script src="/api/docs/assets/swagger-init.js"></script>
+</body>
+</html>`;
+docsRouter.get("/", (_req, res) => {
+  res.type("html").send(SWAGGER_UI_HTML);
+});
+docsRouter.get("/openapi.json", (_req, res) => {
+  res.json(getOpenApiSpec());
+});
+docsRouter.get("/esp32", (_req, res) => {
+  res.type("html").send(esp32GuideHtml("en"));
+});
+docsRouter.get("/esp32/hi", (_req, res) => {
+  res.type("html").send(esp32GuideHtml("hi"));
+});
+docsRouter.get("/realtime", (_req, res) => {
+  res.type("html").send(realtimeGuideHtml());
+});
+docsRouter.get("/plain", (_req, res) => {
+  const spec = getOpenApiSpec();
+  const paths = spec.paths;
+  const byTag = /* @__PURE__ */ new Map();
+  for (const [path11, ops] of Object.entries(paths)) {
+    for (const [method, op] of Object.entries(ops)) {
+      const tag = op.tags?.[0] ?? "Other";
+      if (!byTag.has(tag)) byTag.set(tag, []);
+      byTag.get(tag).push({ method: method.toUpperCase(), path: path11, summary: op.summary ?? "" });
+    }
+  }
+  const methodColor2 = {
+    GET: "#22c55e",
+    POST: "#3b82f6",
+    PATCH: "#eab308",
+    PUT: "#eab308",
+    DELETE: "#ef4444"
+  };
+  const sections = [...byTag.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(
+    ([tag, eps]) => `
+    <h2 style="margin-top:32px;border-bottom:1px solid #e5e7eb;padding-bottom:8px">${tag} <span style="color:#9ca3af;font-weight:normal">(${eps.length})</span></h2>
+    <table style="width:100%;border-collapse:collapse;font-size:14px">
+      ${eps.map((e) => {
+      const color = methodColor2[e.method] ?? "#6b7280";
+      return `<tr style="border-bottom:1px solid #f3f4f6">
+            <td style="padding:8px 10px;white-space:nowrap"><code style="background:${color}1a;color:${color};font-weight:700;padding:3px 8px;border-radius:6px">${e.method}</code></td>
+            <td style="padding:8px 10px;font-family:monospace;font-size:13px">${e.path}</td>
+            <td style="padding:8px 10px;color:#4b5563">${e.summary || ""}</td>
+          </tr>`;
+    }).join("")}
+    </table>`
+  ).join("");
+  res.type("html").send(`<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>SwitchNest API \u2014 Endpoint List</title></head>
+<body style="font-family:Arial,Helvetica,sans-serif;margin:0;background:#fafafa">
+  <div style="background:#0f172a;color:#fff;padding:16px 24px">
+    <strong>\u{1F4E1} SwitchNest API \u2014 saare endpoints (${Object.keys(paths).length} paths)</strong>
+    <span style="color:#9ca3af;margin-left:16px">Offline list \xB7 Swagger UI: <a href="/api/docs" style="color:#60a5fa">/api/docs</a> \xB7 Raw: <a href="/api/docs/openapi.json" style="color:#60a5fa">openapi.json</a> \xB7 ESP32 guide: <a href="/api/docs/esp32" style="color:#60a5fa">/api/docs/esp32</a> \xB7 Hindi: <a href="/api/docs/esp32/hi" style="color:#fbbf24">/api/docs/esp32/hi</a> \xB7 Realtime: <a href="/api/docs/realtime" style="color:#60a5fa">/api/docs/realtime</a></span>
+  </div>
+  <div style="max-width:1100px;margin:0 auto;padding:24px">
+    <p style="color:#6b7280;font-size:14px">Auth: <code>Authorization: Bearer &lt;token&gt;</code> \xB7 ESP32: <code>?api_key=rs_...</code> \xB7 Envelope: <code>{ success, data }</code></p>
+    ${sections}
+  </div>
+</body></html>`);
+});
+
 // src/app.ts
 init_prisma();
 var API_VERSION = "2.2.0";
@@ -7906,7 +11041,7 @@ async function schemaDiag() {
   }
 }
 function createApp() {
-  const app = express();
+  const app = express2();
   app.use((req, _res, next) => {
     if (req.headers.host) setLastSeenHost(req.headers.host);
     next();
@@ -7918,8 +11053,8 @@ function createApp() {
       credentials: true
     })
   );
-  app.use(express.json({ limit: "4mb" }));
-  app.use(express.urlencoded({ extended: true }));
+  app.use(express2.json({ limit: "4mb" }));
+  app.use(express2.urlencoded({ extended: true }));
   app.use((req, res, next) => {
     const start = Date.now();
     trackRequest();
@@ -7944,6 +11079,7 @@ function createApp() {
     res.json({ success: true, data: { version: API_VERSION, ts: (/* @__PURE__ */ new Date()).toISOString() } });
   });
   app.use("/api/install", installRouter);
+  app.use("/api/docs", docsRouter);
   app.use("/api", (req, res, next) => {
     if (isDbReady()) return next();
     res.status(503).json({
@@ -7955,9 +11091,9 @@ function createApp() {
     });
   });
   app.use("/api", apiRouter);
-  app.use("/firmware", express.static(firmwareDir));
+  app.use("/firmware", express2.static(firmwareDir));
   if (fs9.existsSync(path10.join(webDist, "index.html"))) {
-    app.use(express.static(webDist));
+    app.use(express2.static(webDist));
     app.get(/^\/(?!api|firmware|socket\.io).*/, (_req, res) => {
       res.sendFile(path10.join(webDist, "index.html"));
     });
@@ -8110,6 +11246,156 @@ async function runSafetyCheck() {
   } finally {
     running2 = false;
   }
+}
+
+// src/services/keyExpiry.service.ts
+init_prisma();
+var timer4 = null;
+var WARN_DAYS_BEFORE = 7;
+var FINAL_WARN_HOURS_BEFORE = 24;
+var CHECK_INTERVAL_MS6 = 6 * 60 * 60 * 1e3;
+function keyExpiryAction(key, now) {
+  if (!key.expiresAt) return null;
+  if (key.expiresAt.getTime() <= now.getTime()) {
+    return key.expiryNotifiedAt ? null : "expired";
+  }
+  const finalCutoff = now.getTime() + FINAL_WARN_HOURS_BEFORE * 60 * 60 * 1e3;
+  if (key.expiresAt.getTime() <= finalCutoff) {
+    return key.expiryFinalWarnedAt ? null : "warnSoon";
+  }
+  const warnCutoff = now.getTime() + WARN_DAYS_BEFORE * 24 * 60 * 60 * 1e3;
+  if (key.expiresAt.getTime() <= warnCutoff) {
+    return key.expiryWarnedAt ? null : "warn";
+  }
+  return null;
+}
+var daysLeft = (expiresAt, now) => Math.max(0, Math.ceil((expiresAt.getTime() - now.getTime()) / 864e5));
+function shouldAutoRevoke(key, now) {
+  return key.expiresAt !== null && key.expiresAt.getTime() <= now.getTime() && key.revokedAt === null;
+}
+async function keysCtaUrl() {
+  const s = await getSiteSettings().catch(() => null);
+  const siteUrl = (s?.siteUrl || "").replace(/\/$/, "");
+  if (!siteUrl) return void 0;
+  return `${siteUrl}/device-keys`;
+}
+async function checkKeyExpiryInner() {
+  const now = /* @__PURE__ */ new Date();
+  const warnCutoff = new Date(now.getTime() + WARN_DAYS_BEFORE * 24 * 60 * 60 * 1e3);
+  const cta = await keysCtaUrl();
+  const expiring = await prisma.apiKey.findMany({
+    where: {
+      expiresAt: { not: null, lte: warnCutoff, gt: now }
+    },
+    include: {
+      home: { select: { name: true } },
+      user: { select: { id: true, username: true, email: true } }
+    },
+    orderBy: { expiresAt: "asc" },
+    take: 200
+  });
+  for (const key of expiring) {
+    const action = keyExpiryAction(key, now);
+    if (action === null) continue;
+    const label = key.label ?? "Device key";
+    const homeName = key.home?.name ?? "\u2014";
+    if (action === "warnSoon") {
+      const title2 = `\u23F0 API key "${label}" KAL expire ho jayegi \u2014 aakhri warning`;
+      const body2 = [
+        `Aapki API key "${label}" (${key.keyPrefix}\u2026) kal expire ho jayegi (${key.expiresAt.toLocaleString()}).`,
+        `Home: ${homeName}`,
+        "",
+        "Naya key abhi bana lo \u2014 expire hone ke baad aapke ESP boards server se connect nahi kar payenge."
+      ].join("\n");
+      await createNotificationWithEmail(
+        key.userId,
+        { category: "system", type: "warning", title: title2, body: body2 },
+        { emailSubject: title2, emailBody: body2, ctaUrl: cta, ctaLabel: "Create new key" }
+      );
+      await prisma.apiKey.update({
+        where: { id: key.id },
+        data: { expiryFinalWarnedAt: now }
+      });
+      fileLog(`[keyExpiry] FINAL warned user ${key.userId} about key #${key.id} (${key.keyPrefix}\u2026) expiring ${key.expiresAt.toISOString()}`);
+      continue;
+    }
+    const title = `\u26A0\uFE0F API key "${label}" ${daysLeft(key.expiresAt, now)} din me expire ho rahi hai`;
+    const body = [
+      `Aapki API key "${label}" (${key.keyPrefix}\u2026) ${daysLeft(key.expiresAt, now)} din baad expire ho jayegi.`,
+      `Home: ${homeName}`,
+      "",
+      "Expire hone ke baad aapke ESP boards server se connect nahi kar payenge.",
+      "Naya key banane ke liye Device Keys page kholo aur purana key revoke kar do."
+    ].join("\n");
+    await createNotificationWithEmail(
+      key.userId,
+      { category: "system", type: "warning", title, body },
+      { emailSubject: title, emailBody: body, ctaUrl: cta, ctaLabel: "Manage keys" }
+    );
+    await prisma.apiKey.update({
+      where: { id: key.id },
+      data: { expiryWarnedAt: now }
+    });
+    fileLog(`[keyExpiry] warned user ${key.userId} about key #${key.id} (${key.keyPrefix}\u2026) expiring ${key.expiresAt.toISOString()}`);
+  }
+  const expired = await prisma.apiKey.findMany({
+    where: { expiresAt: { lt: now }, expiryNotifiedAt: null },
+    include: {
+      home: { select: { name: true } },
+      user: { select: { id: true, username: true, email: true } }
+    },
+    orderBy: { expiresAt: "asc" },
+    take: 200
+  });
+  for (const key of expired) {
+    const label = key.label ?? "Device key";
+    const homeName = key.home?.name ?? "\u2014";
+    const title = `\u{1F534} API key "${label}" expire ho gayi \u2014 naya key banao`;
+    const body = [
+      `Aapki API key "${label}" (${key.keyPrefix}\u2026) expire ho chuki hai.`,
+      `Home: ${homeName}`,
+      "",
+      "Is key se connect hone wale ESP boards ab server se baat nahi kar payenge.",
+      "Naya key banao, boards ko naye key se provision karo, aur purana key revoke kar do."
+    ].join("\n");
+    await createNotificationWithEmail(
+      key.userId,
+      { category: "system", type: "error", title, body },
+      { emailSubject: title, emailBody: body, ctaUrl: cta, ctaLabel: "Create new key" }
+    );
+    await prisma.apiKey.update({
+      where: { id: key.id },
+      data: { expiryNotifiedAt: now }
+    });
+    fileLog(`[keyExpiry] notified user ${key.userId} about EXPIRED key #${key.id} (${key.keyPrefix}\u2026)`);
+  }
+  const candidates = await prisma.apiKey.findMany({
+    where: { expiresAt: { lt: now } },
+    select: { id: true, expiresAt: true, revokedAt: true }
+  });
+  const toRevoke = candidates.filter((k) => shouldAutoRevoke(k, now));
+  if (toRevoke.length > 0) {
+    const res = await prisma.apiKey.updateMany({
+      where: { id: { in: toRevoke.map((k) => k.id) }, revokedAt: null },
+      data: { revokedAt: now }
+    });
+    fileLog(`[keyExpiry] auto-revoked ${res.count} expired api key(s): ${toRevoke.map((k) => `#${k.id}`).join(", ")}`);
+  }
+}
+async function checkKeyExpiry() {
+  try {
+    await checkKeyExpiryInner();
+  } catch (err) {
+    console.error("[keyExpiry] tick error:", err instanceof Error ? err.message : err);
+    fileLog(`[keyExpiry] tick ERROR: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+function startKeyExpiryWatcher() {
+  if (timer4) return;
+  timer4 = setInterval(checkKeyExpiry, CHECK_INTERVAL_MS6);
+  void checkKeyExpiry();
+  console.log("[keyExpiry] watcher started (every 6h)");
+  fileLog("[keyExpiry] watcher started (every 6h)");
 }
 
 // src/index.ts
@@ -8332,6 +11618,29 @@ async function runLightMigrations() {
         logger.info("\u2705 Migration: device_usage table created");
       }
     });
+    await migration("password_reset_tokens table", async () => {
+      const prt = await prisma.$queryRaw`
+        SELECT COUNT(*) AS c FROM information_schema.tables
+        WHERE table_schema = DATABASE() AND table_name = 'password_reset_tokens'
+      `;
+      if (Number(prt[0]?.c ?? 0) === 0) {
+        await prisma.$executeRawUnsafe(`
+          CREATE TABLE password_reset_tokens (
+            id INT NOT NULL AUTO_INCREMENT,
+            userId INT NOT NULL,
+            token_hash VARCHAR(64) NOT NULL,
+            expires_at DATETIME(3) NOT NULL,
+            used_at DATETIME(3) NULL,
+            created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+            PRIMARY KEY (id),
+            UNIQUE INDEX password_reset_tokens_token_hash_key (token_hash),
+            INDEX password_reset_tokens_userId_idx (userId),
+            CONSTRAINT password_reset_tokens_userId_fkey FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        `);
+        logger.info("\u2705 Migration: password_reset_tokens table created");
+      }
+    });
   } catch (err) {
     logger.warn("Light migration (esp serial unique) skip/fail", err instanceof Error ? err.message : String(err));
   }
@@ -8487,6 +11796,11 @@ async function initDatabase() {
       startLeakMonitor();
     } catch (err) {
       logger.warn("Scheduler start skipped/failed", err instanceof Error ? err.message : String(err));
+    }
+    try {
+      startKeyExpiryWatcher();
+    } catch (err) {
+      logger.warn("Key expiry watcher start skipped/failed", err instanceof Error ? err.message : String(err));
     }
     try {
       startOfflineWatcher();
