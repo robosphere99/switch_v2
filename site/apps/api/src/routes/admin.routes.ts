@@ -16,6 +16,7 @@ import { createNotification, createNotificationWithEmail } from "../services/not
 import { emitToHome } from "../lib/socket";
 import { generateSerials, updateOrderStatus } from "../services/shop.service";
 import { decryptSecret } from "../lib/crypto";
+import { signBillToken } from "../lib/billVerify";
 import { resolveFirmware } from "../services/firmware.service";
 import { firmwareDir } from "../lib/paths";
 import { logFilePath } from "../lib/logger";
@@ -1929,7 +1930,8 @@ adminRouter.get("/orders/:id", async (req, res) => {
     },
   });
   if (!order) throw new AppError("NOT_FOUND", "Order not found");
-  ok(res, order);
+  // Bill QR ke liye HMAC-signed verify token — public verify page isi se khulta hai.
+  ok(res, { ...order, verifyToken: signBillToken(order.id) });
 });
 
 adminRouter.patch("/orders/:id/status", async (req, res) => {

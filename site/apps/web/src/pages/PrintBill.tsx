@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import QRCode from "qrcode";
 import { getAdminOrder, type Order } from "../api/shop";
 import { useAuthStore } from "../stores/auth";
 
@@ -28,6 +29,23 @@ export function PrintBill() {
   const [order, setOrder] = useState<Order | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [verifyQr, setVerifyQr] = useState<string | null>(null);
+
+  // Bill QR — scan karne pe public verify page khulta hai (genuineness + factory tested).
+  useEffect(() => {
+    if (!order?.verifyToken) {
+      setVerifyQr(null);
+      return;
+    }
+    const url = `${window.location.origin}/verify/bill/${order.verifyToken}`;
+    let alive = true;
+    QRCode.toDataURL(url, { errorCorrectionLevel: "M", margin: 1, width: 130, color: { dark: "#0b0b16", light: "#ffffff" } })
+      .then((u) => alive && setVerifyQr(u))
+      .catch(() => alive && setVerifyQr(null));
+    return () => {
+      alive = false;
+    };
+  }, [order]);
 
   useEffect(() => {
     if (user?.role !== "system_admin") {
@@ -72,6 +90,10 @@ export function PrintBill() {
         .bill-total td { border-top: 2px solid #111; border-bottom: 0; font-weight: 800; font-size: 14px; }
         .bill-foot { margin-top: 18px; padding-top: 10px; border-top: 1px dashed #bbb; font-size: 11px; color: #555; }
         .bill-serial { font-family: Consolas, monospace; font-weight: 700; font-size: 11px; }
+        .bill-verify { display: flex; align-items: center; gap: 14px; margin-top: 14px; border: 1px solid #16a34a; background: #f0fdf4; border-radius: 8px; padding: 10px 14px; }
+        .bill-verify img { width: 84px; height: 84px; }
+        .bill-verify .bvt { font-size: 12px; color: #14532d; }
+        .bill-verify .bvt b { font-size: 13px; }
         .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
         @media print {
           html { color-scheme: light; }
@@ -111,6 +133,7 @@ export function PrintBill() {
                 Status:{" "}
                 <span className={`badge ${STATUS_BADGE[order.status] ?? ""}`}>{order.status}</span>
               </div>
+              <div style={{ color: "#16a34a", fontWeight: 700, fontSize: 11, marginTop: 4 }}>🛡️ Genuine · Factory tested</div>
             </div>
           </div>
 
@@ -183,6 +206,26 @@ export function PrintBill() {
               </tbody>
             </table>
           </div>
+
+          {/* Verify QR — scan karne pe site khul kar bill + genuineness + factory test dikhata hai */}
+          {verifyQr ? (
+            <div className="bill-verify">
+              <img src={verifyQr} alt="Verify bill QR" />
+              <div className="bvt">
+                <b>✅ Scan to verify this bill</b>
+                <br />
+                QR scan karo → SwitchNest site khulega — bill genuine hai, kis order ka hai, saare serial factory tested hain ya nahi — sab verify hoga.
+                <br />
+                <span style={{ fontFamily: "Consolas, monospace", fontSize: 10, opacity: 0.75 }}>
+                  {window.location.origin}/verify/bill/{order.verifyToken}
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className="bill-foot">
+              <b>🛡️ Verify:</b> {window.location.origin}/verify/bill/{order.verifyToken ?? "—"}
+            </div>
+          )}
 
           <div className="bill-foot">
             Serial codes box sticker pe bhi hain — user Activate page pe daal kar device apne home me add karta hai.

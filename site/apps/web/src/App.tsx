@@ -26,6 +26,7 @@ import { Orders } from "./pages/Orders";
 import { Activate } from "./pages/Activate";
 import { PrintSerials } from "./pages/PrintSerials";
 import { PrintBill } from "./pages/PrintBill";
+import { VerifyBill } from "./pages/VerifyBill";
 import { AdminFlasherGuide } from "./components/AdminFlasherGuide";
 import { Warranty } from "./pages/Warranty";
 import { Support } from "./pages/Support";
@@ -89,6 +90,8 @@ export default function App() {
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/shop" element={<Shop />} />
+          {/* Bill QR scan → public genuineness verify (bina login) */}
+          <Route path="/verify/bill/:token" element={<VerifyBill />} />
           <Route
             path="/checkout"
             element={

@@ -41,6 +41,8 @@ export interface Order {
   shippingAddress: string;
   wifiSsid: string | null;
   createdAt: string;
+  /** Bill QR ke liye HMAC-signed verify token (admin order detail me aata hai). */
+  verifyToken?: string;
   items: OrderItem[];
   user?: { id: number; username: string; email: string };
 }
