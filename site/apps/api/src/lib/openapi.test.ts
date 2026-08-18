@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
 import { getOpenApiSpec } from "./openapi";
 
 type Paths = Record<string, Record<string, { security?: unknown; requestBody?: unknown; tags?: string[] }>>;
@@ -42,5 +44,12 @@ describe("OpenAPI spec", () => {
     for (const p of Object.values(paths)) ops += Object.keys(p).length;
     // Saare routers enumerated — auth 9 + device 6 + admin 50+ ...
     expect(ops).toBeGreaterThan(120);
+  });
+
+  it("committed openapi.json snapshot in sync (docs:generate chalao agar fail ho)", () => {
+    const committedPath = path.resolve(process.cwd(), "openapi.json");
+    const committed = JSON.parse(fs.readFileSync(committedPath, "utf8"));
+    // Deep equality — routes/schemas badle to snapshot bhi update karna hoga.
+    expect(committed).toEqual(spec);
   });
 });

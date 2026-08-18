@@ -7,7 +7,7 @@
 > Repo location (this machine): `C:\Users\robos\OneDrive\Documents\SwitchNest`
 >
 <!-- AUTO:STAMP:START -->
-> _Auto-updated: 2026-08-18 03:19 UTC · branch `main` · tree dirty (2 changes) · 196 commits_
+> _Auto-updated: 2026-08-18 05:48 UTC · branch `main` · tree dirty (23 changes) · 204 commits_
 <!-- AUTO:STAMP:END -->
 
 ---
@@ -87,8 +87,11 @@ Followed the roadmap in `ROADMAP.md`:
   ✅ · offline detection → in-app notifications (boards root-cause, summary) ✅ ·
   **usage analytics** ✅ — `GET /api/homes/:homeId/analytics/usage?days=7|30|90`
   (toggles/day 0-filled, per-device on-time from ON→OFF pairing, per-member activity)
-  + Dashboard 📊 Usage modal (div-based bar chart, no new deps). Baaki: email channel,
-  offline batching.
+  + Dashboard 📊 Usage modal (div-based bar chart, no new deps) · **email channel ✅**
+  (order placed/paid/shipped/delivered + serial keys, warranty submit/status,
+  device/board offline+online — SMTP configured ho to, nahi to silent skip) ·
+  **offline batching ✅** (power-cut summary: ek tick me ek home ke 2+ events =
+  ek summary notification+email, single event pe individual). **Phase 6 COMPLETE.**
 - **Ops/infra (DONE along the way):**
   - Install wizard (DB connect → schema → admin account → .env persist)
   - Health Monitor (30s self-check, outage detection, incident history)
@@ -109,6 +112,14 @@ that also serves real ESP32 hardware).
 <!-- AUTO:RECENT_COMMITS:START -->
 Sabse naye 20 commits:
 
+- `c03fdbf` (2026-08-18) feat(devices): offline batching — power-cut summary notification
+- `b21ec50` (2026-08-18) feat(automations): demo suggestions jab usage data na ho + Dashboard section
+- `b1c5f33` (2026-08-18) feat(admin): deploy-status fix, LAN IP + copyable guide fields, navbar ESP32 link
+- `0c25f63` (2026-08-18) feat(admin): AI assistant config via Settings UI (env fallback + encrypted)
+- `8778932` (2026-08-18) feat(shop): bill QR genuineness verify — HMAC token + public verify page
+- `0aae8bd` (2026-08-18) feat(flasher): webserver reach check + Flasher-Latest launcher + factory audit
+- `22c7a43` (2026-08-18) docs: Hindi ESP32 guide, CDN-free Swagger UI, realtime events guide
+- `c5bcd5b` (2026-08-18) docs: localhost-first development strategy (deploy only at milestones)
 - `3cdb320` (2026-08-18) feat: rate limit remaining public endpoints (public, claim, warranty, assistant)
 - `ef85a99` (2026-08-18) feat: rate limiting + password reset + OpenAPI docs + Phase 6/7 (emails, AI, automations)
 - `f420ca8` (2026-08-17) docs: START_GUIDE + site/README — commit 3-layer fallback, sync health check, lost-webhook troubleshooting
@@ -121,14 +132,6 @@ Sabse naye 20 commits:
 - `af72ffc` (2026-08-17) fix: deploy card commit/branch kabhi blank na ho — 3-layer fallback
 - `5bc9329` (2026-08-17) deploy: marker me commit+branch fix — GitHub API se fetch (deployed folder me .git nahi hota)
 - `efded99` (2026-08-17) api: public /api/version endpoint (ops/diagnostics) — API_VERSION const se health sync
-- `3af5c9a` (2026-08-17) docs: deploy setup document — Plesk Git server path = domain root + double-nesting gotcha
-- `833ba0e` (2026-08-17) api: health build marker — e2e test value ko proper version 2.2.0 (cleanup)
-- `a594093` (2026-08-17) docs: context doc auto-refresh (server path fix — deploy verify trigger)
-- `33f43ae` (2026-08-17) tools: server diag script (npm run diag) — Plesk pe deploy layout/lock diagnose ke liye
-- `2efcd5b` (2026-08-17) docs: context doc auto-refresh (deploy marker check trigger)
-- `650912c` (2026-08-17) api: health me build marker (e2e-auto-deploy-v1) — auto-deploy verify ke liye
-- `5e90ae4` (2026-08-17) deploy: trigger — recreate server dist/index.mjs (deleted via Plesk File Manager)
-- `6d94e79` (2026-08-17) docs: context doc auto-refresh (manual sync — CI/CD verify trigger)
 <!-- AUTO:RECENT_COMMITS:END -->
 
 - 503 root-cause work: DB probe retry loop so the app self-heals, `nodeProcessCountPerApplication=1`,
@@ -178,9 +181,9 @@ From `ROADMAP.md` (build order — each phase is a working milestone):
 
 1. ~~**Phase 4 — Realtime:** Socket.IO push → polling fallback~~ **DONE** (v1.1 polish
    baaki: admin live devices, "live" indicator dot).
-2. **Phase 6 — Rooms, Notifications & Analytics:** rooms + bulk on/off ✅, offline →
-   notifications ✅, usage analytics ✅ (Dashboard 📊 Usage). **Baaki:** email
-   notification channel, offline batching (power-cut summary).
+2. ~~**Phase 6 — Rooms, Notifications & Analytics:**~~ **DONE** — rooms + bulk on/off ✅,
+   offline → notifications ✅, usage analytics ✅ (Dashboard 📊 Usage), email channel ✅
+   (order/warranty/offline+recovery), offline batching ✅ (power-cut summary).
 3. **Phase 7 — AI Assist Mode:** natural-language control ("turn off all fans" → confirm →
    execute); suggested automations from usage history; **modular `ai` service** with a
    swappable provider interface (OpenAI / Gemini / local Ollama); chat history in
