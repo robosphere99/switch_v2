@@ -831,10 +831,20 @@ async function login(usernameEmail, password) {
   if (user.status !== "active") {
     throw new AppError("ACCOUNT_SUSPENDED", "Account is suspended", 403);
   }
-  await prisma.user.update({
-    where: { id: user.id },
-    data: { lastLoginAt: /* @__PURE__ */ new Date(), loginCount: { increment: 1 } }
-  });
+  try {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: /* @__PURE__ */ new Date(), loginCount: { increment: 1 } }
+    });
+  } catch {
+    try {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { lastLoginAt: /* @__PURE__ */ new Date() }
+      });
+    } catch {
+    }
+  }
   return issueTokens(user);
 }
 async function issueTokens(user) {

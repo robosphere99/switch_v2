@@ -168,7 +168,23 @@ export async function login(usernameEmail: string, password: string): Promise<Lo
     throw new AppError("ACCOUNT_SUSPENDED", "Account is suspended", 403);
   }
 
-  await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
+  // Best-effort: loginCount/lastLoginAt columns may not exist yet on older DBs.
+  try {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date(), loginCount: { increment: 1 } },
+    });
+  } catch {
+    // Column missing or other DB issue — login still succeeds.
+    try {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { lastLoginAt: new Date() },
+      });
+    } catch {
+      // lastLoginAt also missing — just skip stats update.
+    }
+  }
   return issueTokens(user);
 }
 
