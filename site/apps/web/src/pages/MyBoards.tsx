@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { listMyBoards, renameEsp, setDeviceStatus, type MyBoard } from "../api/devices";
+import { listMyBoards, renameEsp, setDeviceLed, setDeviceStatus, type MyBoard } from "../api/devices";
 import { Switch } from "../components/Switch";
+import { historyEvent } from "../lib/boardHistory";
 
 const TYPE_ICONS: Record<string, string> = {
   bulb: "💡",
@@ -11,6 +12,12 @@ const TYPE_ICONS: Record<string, string> = {
   plug: "🔌",
   custom: "⚙️",
 };
+
+function fullDate(ts: string | null): string {
+  if (!ts) return "—";
+  const d = new Date(ts);
+  return d.toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
 
 function isBoardOnline(b: MyBoard): boolean {
   if (b.offline) return false;
@@ -33,9 +40,39 @@ function errMsg(e: unknown): string {
   );
 }
 
+/** Copyable field — click to copy, shows ✓ feedback. */
+function CopyField({ value, hint }: { value: string; hint?: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="flex items-center gap-1.5">
+      <code className="select-all rounded bg-night-900 px-2 py-0.5 font-mono text-[11px] text-brand">
+        {value}{hint ? ` (${hint})` : ""}
+      </code>
+      <button
+        onClick={async () => {
+          try {
+            await navigator.clipboard.writeText(value);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          } catch {
+            /* clipboard unavailable */
+          }
+        }}
+        className="rounded border border-gray-200 px-1.5 py-0.5 text-[10px] text-gray-400 hover:border-brand hover:text-brand"
+      >
+        {copied ? "✓" : "📋"}
+      </button>
+    </div>
+  );
+}
+
 export function MyBoards() {
   const queryClient = useQueryClient();
   const [error, setError] = useState("");
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [copiedMac, setCopiedMac] = useState<number | null>(null);
+  const [draftName, setDraftName] = useState<string>("");
+  const [renamingId, setRenamingId] = useState<number | null>(null);
 
   const boards = useQuery({
     queryKey: ["my-boards"],
@@ -53,6 +90,13 @@ export function MyBoards() {
       deviceId: number;
       status: "on" | "off";
     }) => setDeviceStatus(homeId, deviceId, status),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["my-boards"] }),
+    onError: (e) => setError(errMsg(e)),
+  });
+
+  const led = useMutation({
+    mutationFn: ({ homeId, deviceId, enabled }: { homeId: number; deviceId: number; enabled: boolean }) =>
+      setDeviceLed(homeId, deviceId, enabled),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["my-boards"] }),
     onError: (e) => setError(errMsg(e)),
   });
@@ -167,15 +211,31 @@ export function MyBoards() {
                         )}
                       </div>
                     </div>
-                    <span
-                      className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
-                        online
-                          ? "bg-emerald-500/20 text-emerald-400"
-                          : "bg-red-500/20 text-red-400"
-                      }`}
-                    >
-                      {online ? "● online" : "○ offline"}
-                    </span>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <span
+                        className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
+                          online
+                            ? "bg-emerald-500/20 text-emerald-400"
+                            : "bg-red-500/20 text-red-400"
+                        }`}
+                      >
+                        {online ? "● online" : "○ offline"}
+                      </span>
+                      <button
+                        onClick={() => {
+                          setExpandedId(expandedId === b.id ? null : b.id);
+                          if (expandedId !== b.id) setRenamingId(null);
+                        }}
+                        title={expandedId === b.id ? "Detail band karo" : "Detail dekho"}
+                        className={`rounded-lg border px-2 py-1 text-xs transition ${
+                          expandedId === b.id
+                            ? "border-brand bg-brand/15 text-brand"
+                            : "border-gray-200 text-gray-500 hover:border-brand hover:text-brand"
+                        }`}
+                      >
+                        {expandedId === b.id ? "▴" : "▾"} Detail
+                      </button>
+                    </div>
                   </div>
 
                   <div className="flex flex-wrap gap-1.5 text-[11px]">
@@ -204,10 +264,213 @@ export function MyBoards() {
                     </span>
                   </div>
 
+                  {expandedId === b.id && (
+                    <div className="flex flex-col gap-4 rounded-lg border border-gray-200/60 bg-night-900/70 p-4">
+                      {/* Board ki info grid — firmware / IP / MAC / timestamps */}
+                      <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                            MAC Address
+                          </p>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono text-xs text-brand">{b.macAddress}</span>
+                            <button
+                              onClick={async () => {
+                                try {
+                                  await navigator.clipboard.writeText(b.macAddress);
+                                  setCopiedMac(b.id);
+                                  setTimeout(() => setCopiedMac(null), 1500);
+                                } catch {
+                                  /* clipboard unavailable */
+                                }
+                              }}
+                              title="MAC copy karo"
+                              className="rounded border border-gray-200 px-1 py-0.5 text-[10px] text-gray-400 hover:border-brand hover:text-brand"
+                            >
+                              {copiedMac === b.id ? "✓" : "📋"}
+                            </button>
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                            IP Address
+                          </p>
+                          <p className="font-mono text-xs">{b.ipAddress ?? "—"}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                            WiFi (SSID)
+                          </p>
+                          <p className="text-xs">📶 {b.ssid ?? "—"}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                            Model
+                          </p>
+                          <p className="text-xs">🎛 {b.modelCode ?? "—"}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                            Firmware
+                          </p>
+                          <p className="text-xs">📦 FW v{b.firmwareVersion ?? "—"}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                            Last Seen
+                          </p>
+                          <p className="text-xs" title={fullDate(b.lastSeen)}>
+                            {lastSeenText(b.lastSeen)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                            Registered
+                          </p>
+                          <p className="text-xs">{fullDate(b.createdAt ?? null)}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                            Serial
+                          </p>
+                          <p className="font-mono text-xs">{b.serialCode ?? "—"}</p>
+                        </div>
+                      </div>
+
+                      {/* 🔑 Connection Info — API Key + Hotspot + Webserver */}
+                      <div className="rounded-lg border border-brand/20 bg-brand/5 p-3">
+                        <p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-brand">
+                          🔗 Connection Info
+                        </p>
+                        <div className="space-y-2 text-xs">
+                          {/* API Key */}
+                          {g.apiKey && (
+                            <div className="flex items-center gap-2">
+                              <span className="w-24 shrink-0 text-gray-500">🔑 API Key</span>
+                              <CopyField
+                                value={g.apiKey.keyPrefix}
+                                label="Copied!"
+                                hint="prefix"
+                              />
+                              {g.apiKey.expiresAt && (
+                                <span className="shrink-0 text-[10px] text-gray-500">
+                                  ⏳ {new Date(g.apiKey.expiresAt).toLocaleDateString("en-IN")}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          {/* Hotspot */}
+                          {b.hotspotName && (
+                            <>
+                              <div className="flex items-center gap-2">
+                                <span className="w-24 shrink-0 text-gray-500">📶 Hotspot</span>
+                                <CopyField value={b.hotspotName} label="Copied!" />
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="w-24 shrink-0 text-gray-500">🔒 Password</span>
+                                <CopyField value={b.hotspotPassword ?? ""} label="Copied!" />
+                              </div>
+                            </>
+                          )}
+                          {/* Webserver Login */}
+                          <div className="flex items-center gap-2">
+                            <span className="w-24 shrink-0 text-gray-500">🌐 Webserver</span>
+                            <span className="text-gray-400">192.168.4.1 · admin / admin</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Inline rename — detail panel ke andar hi */}
+                      {canRename && (
+                        <div className="border-t border-gray-200/50 pt-3">
+                          <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                            Rename Board
+                          </p>
+                          {renamingId === b.id ? (
+                            <form
+                              className="flex gap-2"
+                              onSubmit={(e) => {
+                                e.preventDefault();
+                                if (draftName.trim()) {
+                                  rename.mutate({ homeId: g.homeId, espId: b.id, name: draftName.trim() });
+                                  setRenamingId(null);
+                                  setDraftName("");
+                                }
+                              }}
+                            >
+                              <input
+                                autoFocus
+                                value={draftName}
+                                onChange={(e) => setDraftName(e.target.value)}
+                                placeholder="Board ka naya naam…"
+                                className="flex-1 rounded-lg border border-gray-200 bg-night-800 px-3 py-1.5 text-sm outline-none focus:border-brand"
+                              />
+                              <button
+                                type="submit"
+                                className="rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-white transition hover:opacity-90"
+                              >
+                                Save
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setRenamingId(null)}
+                                className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-400 hover:text-gray-200"
+                              >
+                                Cancel
+                              </button>
+                            </form>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setRenamingId(b.id);
+                                setDraftName(boardName);
+                              }}
+                              className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-400 transition hover:border-brand hover:text-brand"
+                            >
+                              ✏️ Naam badlo
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Activity timeline — rename / OTA / key events */}
+                      <div className="border-t border-gray-200/50 pt-3">
+                        <p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                          Activity History
+                        </p>
+                        {b.history.length === 0 ? (
+                          <p className="text-xs text-gray-500">Abhi koi activity nahi — rename, OTA ya key events yahan dikhenge.</p>
+                        ) : (
+                          <ul className="max-h-48 space-y-2 overflow-y-auto pr-1">
+                            {b.history.map((ev) => {
+                              const h = historyEvent(ev);
+                              return (
+                                <li key={ev.id} className="flex items-start gap-2 text-xs">
+                                  <span className="mt-0.5 shrink-0">{h.icon}</span>
+                                  <div className="min-w-0">
+                                    <p className="text-gray-200">
+                                      {h.label}
+                                      {h.detail && <span className="text-gray-500"> — {h.detail}</span>}
+                                    </p>
+                                    <p className="text-[10px] text-gray-500">
+                                      {ev.actor ? `${ev.actor} · ` : ""}
+                                      {lastSeenText(ev.createdAt)}
+                                    </p>
+                                  </div>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   {b.devices.length > 0 ? (
                     <div className="flex flex-col gap-2">
                       {b.devices.map((d) => {
                         const on = d.status === "on";
+                        const ledOn = d.ledEnabled !== false;
                         return (
                           <div
                             key={d.id}
@@ -222,18 +485,33 @@ export function MyBoards() {
                                 </span>
                               )}
                             </span>
-                            <Switch
-                              checked={on}
-                              onChange={() =>
-                                toggle.mutate({
-                                  homeId: g.homeId,
-                                  deviceId: d.id,
-                                  status: on ? "off" : "on",
-                                })
-                              }
-                              disabled={toggle.isPending}
-                              label={`${d.name} ${on ? "band karo" : "chalu karo"}`}
-                            />
+                            <div className="flex items-center gap-2">
+                              {/* Status LED on/off — seedha device card me hi */}
+                              <button
+                                onClick={() => led.mutate({ homeId: g.homeId, deviceId: d.id, enabled: !ledOn })}
+                                disabled={!online || led.isPending}
+                                title="Status LED on/off (restart pe bhi yaad rahega)"
+                                className={`rounded border px-2 py-1.5 text-[10px] font-bold transition disabled:opacity-40 ${
+                                  ledOn
+                                    ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
+                                    : "border-gray-300/40 bg-night-900 text-gray-400 hover:border-brand hover:text-brand"
+                                }`}
+                              >
+                                💡 LED {ledOn ? "ON" : "OFF"}
+                              </button>
+                              <Switch
+                                checked={on}
+                                onChange={() =>
+                                  toggle.mutate({
+                                    homeId: g.homeId,
+                                    deviceId: d.id,
+                                    status: on ? "off" : "on",
+                                  })
+                                }
+                                disabled={toggle.isPending}
+                                label={`${d.name} ${on ? "band karo" : "chalu karo"}`}
+                              />
+                            </div>
                           </div>
                         );
                       })}
