@@ -104,13 +104,13 @@ if "%NODE_MODULES_OK%"=="1" (
 
   echo [deploy] node_modules mila — npm skip, prisma client refresh
 
-  call npx --no-install prisma generate 2>nul
+  call npx --no-install prisma generate --schema=prisma\schema.prisma 2>nul
 
   if errorlevel 1 (
 
-    echo [deploy] WARN: npx --no-install prisma generate fail — plain npx retry
+    echo [deploy] WARN: prisma generate fail — try node_modules direct
 
-    call npx prisma generate 2>nul
+    call node node_modules\prisma\build\index.js generate --schema=prisma\schema.prisma 2>nul
 
   )
 
@@ -124,9 +124,9 @@ if "%NODE_MODULES_OK%"=="1" (
 
   if errorlevel 1 echo [deploy] WARN: npm install fail — existing node_modules chalega
 
-  call npx --no-install prisma generate 2>nul
+  call npx --no-install prisma generate --schema=prisma\schema.prisma 2>nul
 
-  if errorlevel 1 call npx prisma generate 2>nul
+  if errorlevel 1 call node node_modules\prisma\build\index.js generate --schema=prisma\schema.prisma 2>nul
 
   if errorlevel 1 echo [deploy] WARN: prisma generate fail — self-heal handle karega
 
