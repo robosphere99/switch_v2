@@ -102,15 +102,17 @@ REM    nahi — deploy ko hamesha success maano.
 
 if "%NODE_MODULES_OK%"=="1" (
 
-  echo [deploy] node_modules mila — npm skip, prisma client refresh
+  echo [deploy] node_modules mila - npm skip, prisma client refresh
   REM prisma generate — best-effort, errorlevel check unreliable on Windows CMD
-  call npx --no-install prisma generate --schema=prisma\schema.prisma 2>nul || echo [deploy] WARN: prisma generate had warnings (ignored)
+  call npx --no-install prisma generate --schema=prisma\schema.prisma >nul 2>nul
+  echo [deploy] prisma generate done
 
 ) else (
 
-  echo [deploy] node_modules nahi mila — install (Plesk-safe: --ignore-scripts)
-  call npm install --ignore-scripts --no-audit --no-fund 2>nul || echo [deploy] WARN: npm install had warnings (ignored)
-  call npx --no-install prisma generate --schema=prisma\schema.prisma 2>nul || echo [deploy] WARN: prisma generate had warnings (ignored)
+  echo [deploy] node_modules nahi mila - install
+  call npm install --ignore-scripts --no-audit --no-fund >nul 2>nul
+  call npx --no-install prisma generate --schema=prisma\schema.prisma >nul 2>nul
+  echo [deploy] prisma generate done
 
 )
 
@@ -119,7 +121,7 @@ REM    Har deploy pe naye code ka bundle banana zaruri hai;
 REM    purana dist crash karta hai naye API routes ke saath.
 
 if "%NODE_MODULES_OK%"=="1" (
-  echo [deploy] building dist/index.mjs (esbuild)...
+  echo [deploy] building dist/index.mjs
   REM Try node_modules/.bin first, then npx fallback
   if exist "..\..\node_modules\.bin\esbuild.cmd" (
     call "..\..\node_modules\.bin\esbuild.cmd" src/index.ts --bundle --platform=node --format=esm --external:@prisma/client --external:bcryptjs --external:cors --external:dotenv --external:express --external:helmet --external:jsonwebtoken --external:multer --external:mysql2 --external:socket.io --external:zod --outfile=dist\index.mjs 2>nul
@@ -129,9 +131,9 @@ if "%NODE_MODULES_OK%"=="1" (
     call npx esbuild src/index.ts --bundle --platform=node --format=esm --external:@prisma/client --external:bcryptjs --external:cors --external:dotenv --external:express --external:helmet --external:jsonwebtoken --external:multer --external:mysql2 --external:socket.io --external:zod --outfile=dist\index.mjs 2>nul
   )
   if errorlevel 1 (
-    echo [deploy] WARN: esbuild fail — purana dist chalega (crash ho sakta hai)
+    echo [deploy] WARN: esbuild fail - dist chalega
   ) else (
-    echo [deploy] dist/index.mjs rebuilt OK
+    echo [deploy] dist rebuilt OK
   )
 )
 
