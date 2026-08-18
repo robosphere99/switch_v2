@@ -64,7 +64,60 @@ shopRouter.get("/orders", requireAuth, async (req, res) => {
     include: { items: true },
     orderBy: { createdAt: "desc" },
   });
-  ok(res, orders);
+
+  // Har order pe allClaimed flag — saare serials already activate ho chuke hain?
+  // UI isse "Activate Now" button chhupata hai (delivered order pe bhi).
+  const serialCodes = [...new Set(orders.flatMap((o) => o.items.map((i) => i.serialCode).filter(Boolean) as string[]))];
+  const claimedSet = new Set<string>();
+  if (serialCodes.length > 0) {
+    const rows = await prisma.serialRegistry.findMany({
+      where: { serialCode: { in: serialCodes } },
+      select: { serialCode: true, status: true },
+    });
+    for (const r of rows) {
+      if (r.status === "claimed") claimedSet.add(r.serialCode);
+    }
+  }
+  ok(
+    res,
+    orders.map((o) => {
+      const codes = (o.items.map((i) => i.serialCode).filter(Boolean) as string[]);
+      return {
+        ...o,
+        allClaimed: codes.length > 0 && codes.every((c) => claimedSet.has(c)),
+      };
+    }),
+  );
+});
+
+/** Order ke stickers (hotspot naam + QR) — sirf order ka apna user dekh sakta hai.
+ * Har serial ke saath order ke andar device number (orderIdx) + total (orderTotal)
+ * aata hai — `username_XXXXXX_2` jaisa hotspot naam banane ke liye.
+ */
+shopRouter.get("/orders/:id/stickers", requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const order = await prisma.order.findUnique({
+    where: { id },
+    select: { id: true, orderNumber: true, userId: true, status: true },
+  });
+  if (!order || order.userId !== req.user!.sub) {
+    throw new AppError("NOT_FOUND", "Order not found", 404);
+  }
+  const serials = await prisma.serialRegistry.findMany({
+    where: { orderId: id },
+    include: {
+      product: { select: { id: true, name: true, modelCode: true } },
+      user: { select: { id: true, username: true, email: true } },
+      order: { select: { id: true, orderNumber: true, status: true } },
+    },
+    orderBy: { id: "asc" },
+  });
+  const enriched = serials.map((s, i) => ({
+    ...s,
+    orderIdx: i + 1,
+    orderTotal: serials.length,
+  }));
+  ok(res, { orderId: id, orderNumber: order.orderNumber, status: order.status, serials: enriched });
 });
 
 shopRouter.post("/orders/:id/cancel", requireAuth, async (req, res) => {

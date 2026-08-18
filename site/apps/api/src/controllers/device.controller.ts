@@ -42,6 +42,46 @@ export async function bulkSetStatus(req: Request, res: Response) {
   ok(res, updated);
 }
 
+export async function restart(req: Request, res: Response) {
+  const device = await deviceService.sendDeviceCommand({
+    homeId: Number(req.params.homeId),
+    deviceId: Number(req.params.deviceId),
+    actorId: req.user!.sub,
+    command: "reboot",
+    logType: "remote_restart",
+    logMessage: "Remote restart requested",
+  });
+  ok(res, device);
+}
+
+export async function setWifi(req: Request, res: Response) {
+  const ssid = String(req.body.ssid).trim();
+  const pass = String(req.body.password ?? "");
+  const device = await deviceService.sendDeviceCommand({
+    homeId: Number(req.params.homeId),
+    deviceId: Number(req.params.deviceId),
+    actorId: req.user!.sub,
+    command: `setwifi:${ssid}|${pass}`,
+    logType: "remote_wifi",
+    logMessage: `Remote WiFi set: ${ssid}`,
+  });
+  ok(res, device);
+}
+
+export async function setLed(req: Request, res: Response) {
+  const enabled = req.body.enabled === true;
+  const device = await deviceService.sendDeviceCommand({
+    homeId: Number(req.params.homeId),
+    deviceId: Number(req.params.deviceId),
+    actorId: req.user!.sub,
+    command: `led:${enabled ? "on" : "off"}`,
+    logType: "remote_led",
+    logMessage: `Status LED ${enabled ? "enabled" : "disabled"}`,
+    ledEnabled: enabled,
+  });
+  ok(res, device);
+}
+
 export async function update(req: Request, res: Response) {
   const device = await deviceService.updateDevice(
     Number(req.params.homeId),

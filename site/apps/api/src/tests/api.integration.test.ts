@@ -453,4 +453,222 @@ describe.skipIf(!reachable)("api integration (real MySQL)", () => {
     expect(afterCancel!.status).toBe("available");
     expect(afterCancel!.orderId).toBeNull();
   });
+
+  it("shop: order stickers sirf apne order ke — hotspot info + ownership check", async () => {
+    const product = await prisma.product.create({
+      data: { name: "2CH WiFi Relay", modelCode: "2CH", relayCount: 2, price: "499.00" },
+    });
+    const serial = await prisma.serialRegistry.create({
+      data: { serialCode: "RS-2CH-STICKER1", productId: product.id },
+    });
+
+    const owner = await signup("stkowner", "stkowner@test.local");
+    const other = await signup("stkother", "stkother@test.local");
+
+    const order = await api("/api/shop/orders", {
+      method: "POST",
+      token: owner.accessToken,
+      body: {
+        items: [{ productId: product.id, quantity: 1 }],
+        shipping: { name: "Owner", phone: "9876543210", address: "Addr" },
+        paymentMethod: "cod",
+      },
+    });
+    expect(order.status).toBe(201);
+    const orderId = order.body!.data.id;
+
+    // Owner ko apne order ke stickers milte hain — hotspot info + product
+    const mine = await api(`/api/shop/orders/${orderId}/stickers`, { token: owner.accessToken });
+    expect(mine.status).toBe(200);
+    expect(mine.body!.data.orderNumber).toBe(order.body!.data.orderNumber);
+    expect(mine.body!.data.serials).toHaveLength(1);
+    const s = mine.body!.data.serials[0];
+    expect(s.serialCode).toBe("RS-2CH-STICKER1");
+    expect(s.orderIdx).toBe(1);
+    expect(s.orderTotal).toBe(1);
+    expect(s.product.name).toBe("2CH WiFi Relay");
+
+    // Kisi aur ka order — 404 (ownership leak nahi)
+    const theirs = await api(`/api/shop/orders/${orderId}/stickers`, { token: other.accessToken });
+    expect(theirs.status).toBe(404);
+
+    // Bina login — 401
+    const anon = await api(`/api/shop/orders/${orderId}/stickers`);
+    expect(anon.status).toBe(401);
+  });
+
+  // ---------- admin user management ----------
+
+  describe("admin user management", () => {
+    let adminToken: string;
+
+    beforeAll(async () => {
+      // Test app env.ts se site/.env load karta hai — wahi secret use karo.
+      const jwt = await import("jsonwebtoken");
+      const admin = await prisma.user.create({
+        data: { username: "admintest", email: "admintest@test.local", password: "hash", role: "system_admin" },
+      });
+      adminToken = jwt.default.sign(
+        {
+          sub: admin.id,
+          username: admin.username,
+          email: admin.email,
+          role: "system_admin",
+          ver: 0,
+          jti: "admin-test",
+        },
+        envFile.JWT_ACCESS_SECRET ?? "dev-access-secret",
+        { expiresIn: "15m" },
+      );
+    });
+
+    it("non-admin ko 403", async () => {
+      const u = await signup("plainuser", "plainuser@test.local");
+      const r = await api("/api/admin/users", { token: u.accessToken });
+      expect(r.status).toBe(403);
+    });
+
+    it("admin naya user bana sakta hai", async () => {
+      const r = await api("/api/admin/users", {
+        method: "POST",
+        token: adminToken,
+        body: { username: "createdu", email: "createdu@test.local", password: "secret123" },
+      });
+      expect(r.status).toBe(201);
+      expect(r.body!.data.username).toBe("createdu");
+
+      const dup = await api("/api/admin/users", {
+        method: "POST",
+        token: adminToken,
+        body: { username: "createdu", email: "other@test.local", password: "secret123" },
+      });
+      expect(dup.status).toBe(409);
+    });
+
+    it("users list me stats aate hain (loginCount/orders/boards/usage)", async () => {
+      const r = await api("/api/admin/users?q=createdu", { token: adminToken });
+      expect(r.status).toBe(200);
+      const u = (r.body!.data as Array<Record<string, unknown>>).find((x) => x.username === "createdu");
+      expect(u).toBeTruthy();
+      expect(u!.loginCount).toBe(0);
+      expect(typeof (u!._count as { orders: number }).orders).toBe("number");
+      expect(typeof (u as { boards: number }).boards).toBe("number");
+      expect(typeof (u as { usageMinutes: number }).usageMinutes).toBe("number");
+    });
+
+    it("user detail — homes/orders/keys/boards/usage", async () => {
+      const u = await prisma.user.findUnique({ where: { email: "createdu@test.local" } });
+      const r = await api(`/api/admin/users/${u!.id}`, { token: adminToken });
+      expect(r.status).toBe(200);
+      const d = r.body!.data as {
+        memberships: unknown[];
+        orders: unknown[];
+        apiKeys: unknown[];
+        boards: number;
+        usageMinutes: number;
+      };
+      expect(d.memberships).toBeDefined();
+      expect(d.orders).toBeDefined();
+      expect(d.apiKeys).toBeDefined();
+      expect(typeof d.boards).toBe("number");
+      expect(typeof d.usageMinutes).toBe("number");
+    });
+
+    it("admin password reset email bhej sakta hai", async () => {
+      const u = await prisma.user.findUnique({ where: { email: "createdu@test.local" } });
+      const r = await api(`/api/admin/users/${u!.id}/send-reset-email`, { method: "POST", token: adminToken });
+      expect(r.status).toBe(200);
+      expect((r.body!.data as { sent: boolean }).sent).toBe(true);
+      // Token create hua — user reset kar sakta hai
+      const tokens = await prisma.passwordResetToken.findMany({ where: { userId: u!.id, usedAt: null } });
+      expect(tokens.length).toBeGreaterThan(0);
+    });
+
+    it("support users search — naya chat shuru karne ke liye koi bhi user mile", async () => {
+      const u = await signup("searchable1", "searchable1@test.local");
+      const r = await api("/api/support/admin/users?q=searchable", { token: adminToken });
+      expect(r.status).toBe(200);
+      const found = (r.body!.data as Array<{ username: string; messageCount: number }>).find(
+        (x) => x.username === "searchable1",
+      );
+      expect(found).toBeTruthy();
+      expect(found!.messageCount).toBe(0); // koi baat nahi hui — phir bhi mila
+      // Non-admin ko 403
+      const deny = await api("/api/support/admin/users?q=searchable", { token: u.accessToken });
+      expect(deny.status).toBe(403);
+    });
+
+    it("broadcast — sab active users ko in-app notification", async () => {
+      const before = await prisma.notification.count({
+        where: { category: "system", title: "🎉 Test Offer" },
+      });
+      const r = await api("/api/admin/broadcast", {
+        method: "POST",
+        token: adminToken,
+        body: { title: "🎉 Test Offer", body: "Sab boards pe naya update", sendEmail: false },
+      });
+      expect(r.status).toBe(200);
+      const d = r.body!.data as { sent: number; emailed: number };
+      expect(d.sent).toBeGreaterThanOrEqual(1);
+      expect(d.emailed).toBe(0);
+      const after = await prisma.notification.count({
+        where: { category: "system", title: "🎉 Test Offer" },
+      });
+      // Har active user ko mila (signup users = targets)
+      const activeUsers = await prisma.user.count({ where: { role: "user", status: "active" } });
+      expect(after - before).toBe(activeUsers);
+      // Sabko alag-alag notification — distinct userIds bhi count match kare
+      const distinct = await prisma.notification.groupBy({
+        by: ["userId"],
+        where: { category: "system", title: "🎉 Test Offer" },
+      });
+      expect(distinct.length).toBe(activeUsers);
+    });
+
+    it("esp/issues — stale/offline boards + naam-serial mismatch detect", async () => {
+      const u = await signup("espissu1", "espissu1@test.local");
+      const home = await prisma.home.findFirstOrThrow({ where: { ownerId: u.user.id } });
+      // Mismatch: naam auto-pattern (`serial · ssid`) jaisa dikhta hai par galat serial hai
+      const mac = `aa:bb:cc:dd:${Math.floor(Math.random() * 65535).toString(16).padStart(4, "0")}`;
+      const esp = await prisma.espDevice.create({
+        data: {
+          homeId: home.id,
+          macAddress: mac,
+          name: "RS-4CH-OLDSSID · SwitchNest-OLD", // purana naam — galat
+          serialCode: "RS-4CH-TESTISSUE",
+          ssid: "SwitchNest-NEW",
+          modelCode: "4CH",
+          offline: true,
+          lastSeen: new Date(Date.now() - 5 * 86_400_000), // 5 din pehle
+        },
+      });
+      const r = await api("/api/admin/esp/issues", { token: adminToken });
+      expect(r.status).toBe(200);
+      const d = r.body!.data as {
+        issues: Array<{ id: number; nameMismatch: boolean; expectedName: string | null; stale: boolean }>;
+        mismatchCount: number;
+        staleCount: number;
+      };
+      const mine = d.issues.find((i) => i.id === esp.id);
+      expect(mine).toBeTruthy();
+      expect(mine!.nameMismatch).toBe(true); // galat naam flag hua
+      expect(mine!.expectedName).toBe("RS-4CH-TESTISSUE · SwitchNest-NEW");
+      expect(d.mismatchCount).toBeGreaterThanOrEqual(1);
+      // Non-admin ko 403
+      const deny = await api("/api/admin/esp/issues", { token: u.accessToken });
+      expect(deny.status).toBe(403);
+      // Fix: rename endpoint se naam sahi karo → ab flag nahi hona chahiye
+      const fix = await api(`/api/admin/esp/${esp.id}`, {
+        method: "PATCH",
+        token: adminToken,
+        body: { name: "RS-4CH-TESTISSUE · SwitchNest-NEW" },
+      });
+      expect(fix.status).toBe(200);
+      const r2 = await api("/api/admin/esp/issues", { token: adminToken });
+      const d2 = r2.body!.data as { issues: Array<{ id: number; nameMismatch: boolean }> };
+      const mine2 = d2.issues.find((i) => i.id === esp.id);
+      expect(mine2).toBeTruthy();
+      expect(mine2!.nameMismatch).toBe(false); // fix ke baad sahi
+    });
+  });
 });

@@ -7,6 +7,7 @@ import { initSocket } from "./lib/socket";
 import { startScheduler } from "./services/scheduler.service";
 import { startFamilySafety } from "./services/familySafety.service";
 import { startOfflineWatcher } from "./services/offline.service";
+import { startKeyExpiryWatcher } from "./services/keyExpiry.service";
 import { startHealthMonitor } from "./lib/healthMonitor";
 import { startLeakMonitor } from "./lib/leakMonitor";
 import { setDbReady } from "./lib/dbState";
@@ -500,6 +501,11 @@ async function initDatabase(): Promise<void> {
       startLeakMonitor();
     } catch (err) {
       logger.warn("Scheduler start skipped/failed", err instanceof Error ? err.message : String(err));
+    }
+    try {
+      startKeyExpiryWatcher();
+    } catch (err) {
+      logger.warn("Key expiry watcher start skipped/failed", err instanceof Error ? err.message : String(err));
     }
     try {
       startOfflineWatcher();

@@ -35,6 +35,7 @@ function generateKey(): { raw: string; prefix: string } {
 apiKeyRouter.get("/", requireAuth, async (req, res) => {
   const keys = await prisma.apiKey.findMany({
     where: { userId: req.user!.sub },
+    include: { home: { select: { id: true, name: true } } },
     orderBy: { createdAt: "desc" },
   });
   ok(res, keys);

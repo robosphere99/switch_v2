@@ -24,6 +24,11 @@ const createSchema = z.object({
 });
 
 const statusSchema = z.object({ status: z.enum(["on", "off"]) });
+const wifiSchema = z.object({
+  ssid: z.string().min(1).max(64),
+  password: z.string().max(64).optional().or(z.literal("")),
+});
+const ledSchema = z.object({ enabled: z.boolean() });
 const bulkStatusSchema = z.object({
   deviceIds: z.array(z.number().int().positive()).min(1).max(50),
   status: z.enum(["on", "off"]),
@@ -86,6 +91,36 @@ deviceRouter.delete(
   validateParams(deviceParams),
   requireHomeMember("admin"),
   deviceController.remove,
+);
+
+/** Remote restart — ESP ko reboot command (online board, 1-2s me restart). */
+deviceRouter.post(
+  "/:homeId/devices/:deviceId/restart",
+  requireAuth,
+  validateParams(deviceParams),
+  requireHomeMember("member"),
+  deviceController.restart,
+);
+
+/** Remote WiFi set — ESP ka WiFi badlo (setwifi + restart). Galat WiFi pe board
+ *  offline ho jayega — phir physical reset (dual-mode AP 192.168.4.1 se fix). */
+deviceRouter.post(
+  "/:homeId/devices/:deviceId/wifi",
+  requireAuth,
+  validateParams(deviceParams),
+  requireHomeMember("member"),
+  validateBody(wifiSchema),
+  deviceController.setWifi,
+);
+
+/** Status LED on/off — site se, firmware NVS me persist (restart pe yaad rahe). */
+deviceRouter.post(
+  "/:homeId/devices/:deviceId/led",
+  requireAuth,
+  validateParams(deviceParams),
+  requireHomeMember("member"),
+  validateBody(ledSchema),
+  deviceController.setLed,
 );
 
 /** User apne home ke ESP board ka naam rename karo (unique naam rule). */

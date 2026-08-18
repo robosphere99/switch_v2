@@ -149,6 +149,14 @@ export async function heartbeat(
   }
   const macTail = macKey.replace(/:/g, "").slice(-6).toUpperCase();
   if (macKey) {
+    // Purana row check — serial badla (factory/remote setserial) to naam bhi
+    // refresh karna hoga, warna stale naam (purane serial/SSID wala) card pe
+    // dikhta rehta hai. User-renamed boards sirf serial change pe overwrite
+    // hote hain — baaki heartbeats par naam chuhta nahi.
+    const existing = await prisma.espDevice.findFirst({
+      where: { macAddress: macKey },
+      select: { id: true, serialCode: true },
+    });
     esp = await prisma.espDevice.upsert({
       where: { macAddress: macKey },
       create: {
@@ -178,6 +186,9 @@ export async function heartbeat(
         firmwareVersion: fw ?? undefined,
         lastSeen: new Date(),
         offline: false,
+        ...(attachSerial && existing?.serialCode && attachSerial !== existing.serialCode
+          ? { name: `${attachSerial} · ${ssid ?? "SwitchNest"}` }
+          : {}),
       },
     });
     emitToHome(homeId, "esp:updated", esp);
