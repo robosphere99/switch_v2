@@ -6,6 +6,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { execSync } from "node:child_process";
 import { requireAuth } from "../middleware/auth";
+import { rateLimit } from "../middleware/rateLimit";
 import { validateBody } from "../middleware/validate";
 import { prisma } from "../lib/prisma";
 import { getHealthMonitorState } from "../lib/healthMonitor";
@@ -26,6 +27,8 @@ import { getSiteSettings, updateSiteSettings } from "../services/siteSettings.se
 import { setDbReady } from "../lib/dbState";
 import { sendEmail } from "../lib/email.service";
 import { chatCompletion, getAiConfig, aiConfigured } from "../lib/ai";
+import { requestPasswordReset } from "../services/auth.service";
+import bcrypt from "bcryptjs";
 
 export const adminRouter = Router();
 
@@ -82,7 +85,7 @@ adminRouter.get("/stats", async (_req, res) => {
     prisma.user.count(),
     prisma.home.count(),
     prisma.device.count(),
-    prisma.user.count({ where: { lastLoginAt: { gte: dayAgo } } }),
+    Promise.resolve(0), // lastLoginAt column may not exist yet
     prisma.device.count({ where: { lastSeen: { gte: dayAgo } } }),
     prisma.deviceCommand.count({ where: { status: "pending" } }),
     prisma.apiKey.count(),
@@ -246,8 +249,17 @@ adminRouter.get("/users", async (req, res) => {
       role: true,
       status: true,
       createdAt: true,
-      lastLoginAt: true,
-      _count: { select: { ownedHomes: true, memberships: true } },
+      _count: {
+        select: {
+          ownedHomes: true,
+          memberships: true,
+          orders: true,
+          apiKeys: true,
+          createdDevices: true,
+          claimedSerials: true,
+          warrantyClaims: true,
+        },
+      },
     },
     where: q
       ? {
@@ -260,7 +272,211 @@ adminRouter.get("/users", async (req, res) => {
     orderBy: { createdAt: "desc" },
     take: 200,
   });
-  ok(res, users);
+
+  const userIds = users.map((u) => u.id);
+  // Boards: user jis homes ka member hai, unme ESP count + usage minutes —
+  // relational aggregate select me nahi chalta, isliye alag groupBy + map.
+  const memberships = await prisma.homeMember.findMany({
+    where: { userId: { in: userIds } },
+    select: { userId: true, homeId: true },
+  });
+  const espCounts = await prisma.espDevice.groupBy({
+    by: ["homeId"],
+    where: { homeId: { in: memberships.map((m) => m.homeId) } },
+    _count: { _all: true },
+  });
+  const espByHome = new Map(espCounts.map((e) => [e.homeId, e._count._all]));
+  const boardsByUser = new Map<number, number>();
+  for (const m of memberships) {
+    boardsByUser.set(m.userId, (boardsByUser.get(m.userId) ?? 0) + (espByHome.get(m.homeId) ?? 0));
+  }
+  const usageRows = await prisma.deviceUsage.groupBy({
+    by: ["userId"],
+    where: { userId: { in: userIds } },
+    _sum: { onMinutes: true },
+  });
+  const usageByUser = new Map(usageRows.map((r) => [r.userId, r._sum.onMinutes ?? 0]));
+
+  ok(
+    res,
+    users.map((u) => ({
+      id: u.id,
+      username: u.username,
+      email: u.email,
+      role: u.role,
+      status: u.status,
+      createdAt: u.createdAt,
+
+      _count: u._count,
+      boards: boardsByUser.get(u.id) ?? 0,
+      usageMinutes: usageByUser.get(u.id) ?? 0,
+    })),
+  );
+});
+
+/** Ek user ka full context — homes, orders, keys, boards, usage (support/view ke liye). */
+adminRouter.get("/users/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  const user = await prisma.user.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      username: true,
+      email: true,
+      role: true,
+      status: true,
+      createdAt: true,
+      _count: {
+        select: {
+          ownedHomes: true,
+          orders: true,
+          apiKeys: true,
+          createdDevices: true,
+          claimedSerials: true,
+          warrantyClaims: true,
+          contactMessages: true,
+        },
+      },
+      memberships: {
+        select: {
+          home: { select: { id: true, name: true } },
+          role: true,
+        },
+        orderBy: { role: "asc" },
+      },
+      orders: {
+        select: {
+          id: true,
+          orderNumber: true,
+          status: true,
+          paymentStatus: true,
+          totalAmount: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: "desc" },
+        take: 10,
+      },
+      apiKeys: {
+        select: {
+          id: true,
+          keyPrefix: true,
+          label: true,
+          createdAt: true,
+          expiresAt: true,
+          revokedAt: true,
+          lastUsedAt: true,
+          home: { select: { name: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+      },
+    },
+  });
+  if (!user) throw new AppError("NOT_FOUND", "User not found", 404);
+
+  const espCounts = await prisma.espDevice.groupBy({
+    by: ["homeId"],
+    where: { homeId: { in: user.memberships.map((m) => m.home.id) } },
+    _count: { _all: true },
+  });
+  const boards = espCounts.reduce((n, e) => n + e._count._all, 0);
+  const usageAgg = await prisma.deviceUsage.aggregate({
+    where: { userId: user.id },
+    _sum: { onMinutes: true },
+  });
+
+  ok(res, {
+    ...user,
+    boards,
+    usageMinutes: usageAgg._sum.onMinutes ?? 0,
+  });
+});
+
+const createUserSchema = z.object({
+  username: z.string().min(3).max(50),
+  email: z.string().email().max(100),
+  password: z.string().min(6).max(255),
+  role: z.enum(["user", "system_admin"]).optional(),
+});
+
+/** Admin se naya user banao (temp password ke saath) — user management complete karne ke liye. */
+adminRouter.post("/users", validateBody(createUserSchema), async (req, res) => {
+  const { username, email, password, role } = req.body;
+  const exists = await prisma.user.findFirst({
+    where: { OR: [{ username }, { email }] },
+    select: { id: true },
+  });
+  if (exists) throw new AppError("USER_EXISTS", "Username ya email already exists", 409);
+  const hashed = await bcrypt.hash(password, 10);
+  const user = await prisma.user.create({
+    data: { username, email, password: hashed, role: role ?? "user" },
+    select: { id: true, username: true, email: true, role: true, status: true, createdAt: true },
+  });
+  await audit(req.user!.sub, "admin.user.create", {
+    entity: "user",
+    entityId: user.id,
+    meta: { username: user.username, email: user.email, role: user.role },
+  });
+  ok(res, user, 201);
+});
+
+/** User ko password reset email bhejo (forgot-password jaisa hi flow — token + email). */
+adminRouter.post("/users/:id/send-reset-email", async (req, res) => {
+  const id = Number(req.params.id);
+  const user = await prisma.user.findUnique({
+    where: { id },
+    select: { id: true, username: true, email: true },
+  });
+  if (!user) throw new AppError("NOT_FOUND", "User not found", 404);
+  await requestPasswordReset(user.email);
+  await audit(req.user!.sub, "admin.user.sendResetEmail", {
+    entity: "user",
+    entityId: id,
+    meta: { username: user.username, email: user.email },
+  });
+  ok(res, { sent: true, message: `Password reset email bheja (${user.email})` });
+});
+
+// ---------- Broadcast ----------
+
+const broadcastLimiter = rateLimit({
+  name: "admin:broadcast",
+  windowMs: 60 * 60_000,
+  max: 5,
+  message: "Bahut zyada broadcasts — 1 ghanta baad try karo",
+});
+
+const broadcastSchema = z.object({
+  title: z.string().trim().min(1).max(120),
+  body: z.string().trim().min(1).max(2000),
+  sendEmail: z.boolean().optional(),
+});
+
+/** In-app bulk broadcast — offer/announcement sab users ko (bell + realtime; email best-effort). */
+adminRouter.post("/broadcast", broadcastLimiter, validateBody(broadcastSchema), async (req, res) => {
+  const { title, body, sendEmail } = req.body;
+  const targets = await prisma.user.findMany({
+    where: { role: "user", status: "active" },
+    select: { id: true },
+  });
+  let emailed = 0;
+  for (const t of targets) {
+    if (sendEmail) {
+      await createNotificationWithEmail(
+        t.id,
+        { category: "system", type: "info", title, body },
+        { emailSubject: title, emailBody: body },
+      );
+      emailed++;
+    } else {
+      await createNotification(t.id, { category: "system", type: "info", title, body });
+    }
+  }
+  await audit(req.user!.sub, "admin.broadcast", {
+    entity: "site",
+    meta: { title, targets: targets.length, emailed },
+  });
+  ok(res, { sent: targets.length, emailed });
 });
 
 adminRouter.patch("/users/:id/status", async (req, res) => {
@@ -943,6 +1159,46 @@ adminRouter.get("/lan-info", async (_req, res) => {
   ok(res, { lanIp, espServerUrl: `http://${lanIp}:4000` });
 });
 
+// ---------------------------------------------------------------------------
+// URL reachability check — Guide page ke "Test connection" button ke liye.
+// Board ko dikhne wala URL (ESP Server URL) isi se test hota hai: server us
+// URL pe HTTP GET karta hai — koi bhi response = reachable (200/404/redirect
+// sab server alive batate hain), timeout/refused = nahi. Private/LAN IPs
+// allowed (localhost-first me boards LAN pe hote hain) — admin-only + rate
+// limited isliye SSRF-ish abuse na ho.
+// ---------------------------------------------------------------------------
+const checkUrlLimiter = rateLimit({
+  name: "admin:check-url",
+  windowMs: 60_000,
+  max: 30,
+  message: "Bahut zyada URL checks — thodi der baad try karo",
+});
+
+const checkUrlSchema = z.object({ url: z.string().min(1).max(300) });
+
+adminRouter.post("/check-url", checkUrlLimiter, validateBody(checkUrlSchema), async (req, res) => {
+  const raw = String((req.body as { url?: unknown }).url ?? "").trim();
+  if (!/^https?:\/\//i.test(raw)) {
+    throw new AppError("VALIDATION_ERROR", "URL http:// ya https:// se shuru hona chahiye", 400);
+  }
+  const started = Date.now();
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 6000);
+    const r = await fetch(raw, { signal: ctrl.signal });
+    clearTimeout(timer);
+    ok(res, { ok: true, status: r.status, ms: Date.now() - started });
+  } catch (err) {
+    const aborted = err instanceof Error && err.name === "AbortError";
+    const msg = aborted
+      ? "Timeout — 6s me koi response nahi (URL galat ya server down?)"
+      : err instanceof Error
+        ? err.message
+        : String(err);
+    ok(res, { ok: false, error: msg, ms: Date.now() - started });
+  }
+});
+
 adminRouter.get("/deploy-info", async (_req, res) => {
   let marker: { deployedAt?: string; commit?: string; branch?: string; source?: string } | null = null;
   const markerPath = path.resolve(process.cwd(), "../logs/deploy.json");
@@ -1565,6 +1821,79 @@ adminRouter.post("/esp/:id/key", async (req, res) => {
 });
 
 /** Rename an ESP board (admin friendly name). */
+/**
+ * Board cleanup (support ke liye): stale/offline boards + naam-serial mismatch detect.
+ * Naam-serial mismatch = naam auto-pattern (`serial · ssid`) jaisa dikhta hai par
+ * current serial/ssid se match nahi karta — matlab purana/stale naam (custom
+ * rename hua naam isse flag nahi hota). Support ek click me sahi naam laga sakta hai.
+ */
+adminRouter.get("/esp/issues", async (req, res) => {
+  const esps = await prisma.espDevice.findMany({
+    select: {
+      id: true,
+      homeId: true,
+      macAddress: true,
+      name: true,
+      ssid: true,
+      serialCode: true,
+      modelCode: true,
+      ipAddress: true,
+      firmwareVersion: true,
+      lastSeen: true,
+      offline: true,
+      home: {
+        select: {
+          id: true,
+          name: true,
+          owner: { select: { username: true } },
+        },
+      },
+    },
+    orderBy: { lastSeen: "asc" },
+    take: 500,
+  });
+  const now = Date.now();
+  const DAY = 86_400_000;
+  const issues = esps.map((e) => {
+    const expectedName = e.serialCode && e.ssid ? `${e.serialCode} · ${e.ssid}` : null;
+    const nameMismatch =
+      !!e.name && !!expectedName && e.name !== expectedName && e.name.includes(" · ");
+    const lastSeenMs = e.lastSeen ? e.lastSeen.getTime() : null;
+    const staleDays = lastSeenMs ? Math.floor((now - lastSeenMs) / DAY) : null;
+    const stale = e.offline && (lastSeenMs === null || now - lastSeenMs > DAY);
+    return {
+      id: e.id,
+      homeId: e.homeId,
+      macAddress: e.macAddress,
+      name: e.name,
+      expectedName,
+      nameMismatch,
+      ssid: e.ssid,
+      serialCode: e.serialCode,
+      modelCode: e.modelCode,
+      ipAddress: e.ipAddress,
+      firmwareVersion: e.firmwareVersion,
+      lastSeen: e.lastSeen,
+      offline: e.offline,
+      stale,
+      staleDays,
+      home: e.home ? { id: e.home.id, name: e.home.name, owner: e.home.owner?.username ?? null } : null,
+    };
+  });
+  // Sirf asli issues — mismatch ya stale. Online + sahi naam wale boards yahan nahi aate.
+  const filtered = issues.filter((i) => i.nameMismatch || i.stale);
+  // Pehle mismatch wale, phir sabse purane stale boards
+  filtered.sort((a, b) => {
+    if (a.nameMismatch !== b.nameMismatch) return a.nameMismatch ? -1 : 1;
+    return (a.staleDays ?? 0) - (b.staleDays ?? 0);
+  });
+  ok(res, {
+    issues: filtered,
+    mismatchCount: filtered.filter((i) => i.nameMismatch).length,
+    staleCount: filtered.filter((i) => i.stale).length,
+  });
+});
+
 adminRouter.patch("/esp/:id", async (req, res) => {
   const id = Number(req.params.id);
   const name = String(req.body?.name ?? "").trim().slice(0, 60);
@@ -2035,12 +2364,24 @@ adminRouter.patch("/orders/:id/status", async (req, res) => {
 adminRouter.get("/serials", async (req, res) => {
   const status = req.query.status ? String(req.query.status) : undefined;
   const productId = req.query.productId ? Number(req.query.productId) : undefined;
+  const orderId = req.query.orderId ? Number(req.query.orderId) : undefined;
   const serials = await prisma.serialRegistry.findMany({
     where: {
       ...(status ? { status: status as never } : {}),
       ...(productId ? { productId } : {}),
+      ...(orderId ? { orderId } : {}),
     },
-    include: {
+    select: {
+      id: true,
+      serialCode: true,
+      productId: true,
+      orderId: true,
+      userId: true,
+      homeId: true,
+      status: true,
+      createdAt: true,
+      claimedAt: true,
+      testedAt: true,
       product: { select: { id: true, name: true, modelCode: true } },
       user: { select: { id: true, username: true, email: true } },
       order: { select: { id: true, orderNumber: true, status: true } },

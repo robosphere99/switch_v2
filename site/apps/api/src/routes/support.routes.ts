@@ -111,6 +111,48 @@ async function isMuted(viewerId: number, peerUserId: number): Promise<boolean> {
 
 // ---------- Admin side ----------
 
+/**
+ * Admin: kisi bhi user ko dhoondo — naya chat shuru karne ke liye (user ne
+ * pehle support me message nahi kiya ho to bhi). Username/email se search,
+ * saath me thread info (kitne messages hain, aakhri kab).
+ */
+supportRouter.get("/admin/users", requireAuth, async (req, res) => {
+  if (req.user!.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
+  const q = String(req.query.q ?? "").trim().toLowerCase();
+  if (q.length < 2) return ok(res, { users: [] });
+  const users = await prisma.user.findMany({
+    where: {
+      OR: [{ username: { contains: q } }, { email: { contains: q } }],
+    },
+    select: {
+      id: true,
+      username: true,
+      email: true,
+      role: true,
+      status: true,
+      createdAt: true,
+
+    },
+    orderBy: { createdAt: "desc" },
+    take: 25,
+  });
+  const info = await supportModel().groupBy({
+    by: ["userId"],
+    where: { userId: { in: users.map((u) => u.id) }, deletedAt: null },
+    _count: { _all: true },
+    _max: { createdAt: true },
+  });
+  const infoMap = new Map(info.map((m) => [m.userId, { count: m._count._all, lastAt: m._max.createdAt }]));
+  ok(
+    res,
+    users.map((u) => ({
+      ...u,
+      messageCount: infoMap.get(u.id)?.count ?? 0,
+      lastMessageAt: infoMap.get(u.id)?.lastAt ?? null,
+    })),
+  );
+});
+
 /** Admin: kisi user ka poora support thread. */
 supportRouter.get("/admin/messages", requireAuth, async (req, res) => {
   const userId = Number(req.query.userId);
@@ -430,7 +472,7 @@ supportRouter.get("/admin/context", requireAuth, async (req, res) => {
       role: true,
       status: true,
       createdAt: true,
-      lastLoginAt: true,
+
     },
   });
   if (!user) throw new AppError("NOT_FOUND", "User not found", 404);

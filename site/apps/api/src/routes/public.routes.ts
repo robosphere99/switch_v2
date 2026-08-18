@@ -399,8 +399,8 @@ async function adminLiveStats(): Promise<AdminLiveStats> {
     apiKeys,
   ] = await Promise.all([
     prisma.user.count(),
-    prisma.user.count({ where: { lastLoginAt: { gte: dayAgo } } }),
-    prisma.user.count({ where: { lastLoginAt: { gte: fiveMinAgo } } }),
+    Promise.resolve(0), // lastLoginAt column not yet on production DB
+    Promise.resolve(0), // lastLoginAt column not yet on production DB
     prisma.home.count(),
     prisma.device.count(),
     prisma.device.count({ where: { lastSeen: { gte: dayAgo } } }),
