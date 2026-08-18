@@ -25,6 +25,10 @@ constexpr char HARDWARE_VERSION[] = "1.0";
 constexpr char DEFAULT_AP_SSID[]     = "SwitchNest-IoT";
 constexpr char DEFAULT_AP_PASSWORD[] = "12345678";
 
+// Default webserver admin credentials (NVS empty hone pe yeh use hote hain)
+constexpr char DEFAULT_ADMIN_USER[]     = "admin";
+constexpr char DEFAULT_ADMIN_PASSWORD[] = "admin";
+
 //==================================================
 // HTTP Server
 //==================================================
@@ -54,6 +58,10 @@ constexpr char PREF_ADMIN_PASSWORD[] = "admin_pass";
 
 constexpr char PREF_SERVER_URL[]     = "server_url";
 constexpr char PREF_API_KEY[]        = "api_key";
+
+// Server ne 401 diya (key invalid/expired/revoked) — provisioning mode flag.
+// Persist hota hai taaki reboot ke baad bhi user ko pata rahe ki naya key dalna hai.
+constexpr char PREF_KEY_INVALID[]    = "key_invalid";
 
 constexpr char PREF_OTA_URL[]        = "ota_url";
 
