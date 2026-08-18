@@ -42,6 +42,32 @@ export async function setDeviceStatus(
   return data;
 }
 
+/** Remote restart — ESP reboot (online board, 1-2s me). */
+export async function restartDevice(homeId: number, deviceId: number): Promise<ApiResponse<Device>> {
+  const { data } = await api.post<ApiResponse<Device>>(`/homes/${homeId}/devices/${deviceId}/restart`);
+  return data;
+}
+
+/** Remote WiFi set — ESP ka WiFi badlo (setwifi + restart). */
+export async function setDeviceWifi(
+  homeId: number,
+  deviceId: number,
+  ssid: string,
+  password: string,
+): Promise<ApiResponse<Device>> {
+  const { data } = await api.post<ApiResponse<Device>>(`/homes/${homeId}/devices/${deviceId}/wifi`, {
+    ssid,
+    password,
+  });
+  return data;
+}
+
+/** Status LED on/off — site se, firmware NVS persist (restart pe yaad rahe). */
+export async function setDeviceLed(homeId: number, deviceId: number, enabled: boolean): Promise<ApiResponse<Device>> {
+  const { data } = await api.post<ApiResponse<Device>>(`/homes/${homeId}/devices/${deviceId}/led`, { enabled });
+  return data;
+}
+
 export async function bulkSetDeviceStatus(
   homeId: number,
   deviceIds: number[],
@@ -138,6 +164,21 @@ export interface MyBoardDevice {
   status: "on" | "off";
   offline: boolean;
   lastSeen: string | null;
+  /** Status LED site se on/off (board pe NVS persist — restart pe yaad rahe). */
+  ledEnabled: boolean;
+}
+
+export interface BoardHistoryEvent {
+  id: number;
+  action: string;
+  createdAt: string;
+  actor: string | null;
+  meta: {
+    from?: string | null;
+    to?: string | null;
+    version?: string | null;
+    serialCode?: string | null;
+  } | null;
 }
 
 export interface MyBoard {
@@ -152,6 +193,10 @@ export interface MyBoard {
   firmwareVersion: string | null;
   offline: boolean;
   lastSeen: string | null;
+  createdAt: string | null;
+  hotspotName: string | null;
+  hotspotPassword: string | null;
+  history: BoardHistoryEvent[];
   devices: MyBoardDevice[];
 }
 
@@ -159,6 +204,7 @@ export interface MyBoardsGroup {
   homeId: number;
   homeName: string;
   role: string;
+  apiKey: { keyPrefix: string; expiresAt: string | null } | null;
   boards: MyBoard[];
 }
 

@@ -133,6 +133,61 @@ export async function setDeviceStatus(input: {
  * Har device pe wahi checks (home scoping + restricted member) — ek
  * transaction me sab command + log. Web UI room/home bulk actions ke liye.
  */
+/**
+ * Remote device command — site se ESP ko bhejo (restart / WiFi / LED).
+ * Home scoping + restricted-member check (setStatus jaisa), command queue me
+ * entry + log. LED on/off pe Device.ledEnabled bhi update hota hai (server
+ * mirror — firmware khud NVS me persist karta hai).
+ */
+export async function sendDeviceCommand(input: {
+  homeId: number;
+  actorId: number;
+  deviceId: number;
+  command: string; // "reboot" | "setwifi:<ssid>|<pass>" | "led:on" | "led:off"
+  logType: string;
+  logMessage: string;
+  ledEnabled?: boolean; // led command pe set karna ho to
+}) {
+  const device = await prisma.device.findFirst({
+    where: { id: input.deviceId, homeId: input.homeId },
+  });
+  if (!device) {
+    throw new AppError("DEVICE_NOT_FOUND", "Device nahi mila is home me", 404);
+  }
+
+  // Restricted member (child mode) — same gate as setStatus
+  const membership = prisma.deviceAccess
+    ? await prisma.homeMember.findUnique({
+        where: { homeId_userId: { homeId: input.homeId, userId: input.actorId } },
+        select: { restricted: true },
+      })
+    : null;
+  if (membership?.restricted && prisma.deviceAccess) {
+    const granted = await prisma.deviceAccess.findUnique({
+      where: { deviceId_userId: { deviceId: device.id, userId: input.actorId } },
+    });
+    if (!granted) {
+      throw new AppError("FORBIDDEN", "Is device ka access nahi hai (child mode)", 403);
+    }
+  }
+
+  await prisma.$transaction([
+    ...(input.ledEnabled !== undefined
+      ? [prisma.device.update({ where: { id: device.id }, data: { ledEnabled: input.ledEnabled } })]
+      : []),
+    prisma.deviceCommand.create({
+      data: { deviceId: device.id, actorId: input.actorId, command: input.command },
+    }),
+    prisma.deviceLog.create({
+      data: { deviceId: device.id, actorId: input.actorId, logType: input.logType, logMessage: input.logMessage },
+    }),
+  ]);
+
+  const updated = await prisma.device.findUnique({ where: { id: device.id } });
+  if (updated) await emitDeviceUpdated(input.homeId, updated.id);
+  return updated;
+}
+
 export async function bulkSetStatus(input: {
   homeId: number;
   actorId: number;
@@ -302,6 +357,18 @@ export async function listMyBoards(userId: number) {
   });
 
   const homeIds = homes.map((h) => h.id);
+
+  // Har home ka pehla (active) API key — board detail panel me dikhega.
+  const homeApiKeys = await prisma.apiKey.findMany({
+    where: { homeId: { in: homeIds }, revokedAt: null },
+    select: { homeId: true, keyPrefix: true, expiresAt: true },
+    orderBy: [{ homeId: "asc" }, { createdAt: "desc" }],
+  });
+  const apiKeyByHome = new Map<number, { keyPrefix: string; expiresAt: Date | null }>();
+  for (const k of homeApiKeys) {
+    if (k.homeId && !apiKeyByHome.has(k.homeId)) apiKeyByHome.set(k.homeId, k);
+  }
+
   const boards = await prisma.espDevice.findMany({
     where: { homeId: { in: homeIds } },
     include: {
@@ -313,6 +380,7 @@ export async function listMyBoards(userId: number) {
           status: true,
           offline: true,
           lastSeen: true,
+          ledEnabled: true,
         },
         orderBy: { id: "asc" },
       },
@@ -320,8 +388,47 @@ export async function listMyBoards(userId: number) {
     orderBy: { id: "asc" },
   });
 
-  const byHome = new Map<number, typeof boards>();
-  for (const b of boards) {
+  // Har board ki activity timeline (rename/OTA/key events) — detail panel ke liye.
+  // Ek hi query me sab boards ka history (N+1 se bachne ke liye).
+  const espIds = boards.map((b) => b.id);
+  const deviceIds = boards.flatMap((b) => b.devices.map((d) => d.id));
+  const logs = await prisma.auditLog.findMany({
+    where: {
+      OR: [
+        { entity: "esp", entityId: { in: espIds } },
+        ...(deviceIds.length > 0 ? [{ entity: "device", entityId: { in: deviceIds } }] : []),
+      ],
+    },
+    include: { actor: { select: { username: true } } },
+    orderBy: { createdAt: "desc" },
+    take: 500,
+  });
+  const deviceToEsp = new Map<number, number>();
+  for (const b of boards) for (const d of b.devices) deviceToEsp.set(d.id, b.id);
+  const historyByEsp = new Map<number, Array<Record<string, unknown>>>();
+  for (const log of logs) {
+    if (log.entityId === null || log.entityId === undefined) continue;
+    const espId = log.entity === "esp" ? log.entityId : deviceToEsp.get(log.entityId);
+    if (!espId) continue;
+    const arr = historyByEsp.get(espId) ?? [];
+    if (arr.length >= 12) continue; // har board ke liye last 12 events kaafi hain
+    arr.push({
+      id: log.id,
+      action: log.action,
+      createdAt: log.createdAt,
+      actor: log.actor?.username ?? null,
+      meta: log.meta as Record<string, unknown> | null,
+    });
+    historyByEsp.set(espId, arr);
+  }
+
+  const withHistory = boards.map((b) => ({
+    ...b,
+    history: historyByEsp.get(b.id) ?? [],
+  }));
+
+  const byHome = new Map<number, typeof withHistory>();
+  for (const b of withHistory) {
     const arr = byHome.get(b.homeId) ?? [];
     arr.push(b);
     byHome.set(b.homeId, arr);
@@ -331,7 +438,13 @@ export async function listMyBoards(userId: number) {
     homeId: h.id,
     homeName: h.name,
     role: h.members[0]?.role ?? "member",
-    boards: byHome.get(h.id) ?? [],
+    apiKey: apiKeyByHome.get(h.id) ?? null,
+    boards: (byHome.get(h.id) ?? []).map((b) => ({
+      ...b,
+      // Hotspot password = serial code (firmware me serial = AP password)
+      hotspotName: b.serialCode ? `SwitchNest-${b.serialCode}` : null,
+      hotspotPassword: b.serialCode ?? null,
+    })),
   }));
 }
 
