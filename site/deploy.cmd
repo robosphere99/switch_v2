@@ -132,7 +132,21 @@ if "%NODE_MODULES_OK%"=="1" (
 
 )
 
-REM 3) Deploy marker — admin panel me 'last code update' info ke liye.
+REM 3) Production build — dist/index.mjs rebuild (Plesk startup file).
+REM    Har deploy pe naye code ka bundle banana zaruri hai;
+REM    purana dist crash karta hai naye API routes ke saath.
+
+if "%NODE_MODULES_OK%"=="1" (
+  echo [deploy] building dist/index.mjs (esbuild)...
+  call npx --no-install esbuild src/index.ts --bundle --platform=node --format=esm --external:@prisma/client --external:bcryptjs --external:cors --external:dotenv --external:express --external:helmet --external:jsonwebtoken --external:multer --external:mysql2 --external:socket.io --external:zod --outfile=dist\index.mjs 2>nul
+  if errorlevel 1 (
+    echo [deploy] WARN: esbuild fail — purana dist chalega (crash ho sakta hai)
+  ) else (
+    echo [deploy] dist/index.mjs rebuilt OK
+  )
+)
+
+REM 4) Deploy marker — admin panel me 'last code update' info ke liye.
 
 REM    deploy.json: timestamp + commit + branch (best-effort).
 
