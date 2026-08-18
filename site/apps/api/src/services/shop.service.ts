@@ -205,8 +205,6 @@ export async function updateOrderStatus(orderId: number, status: string) {
       data: {
         status: status as "pending" | "paid" | "shipped" | "delivered" | "cancelled",
         paymentStatus: status === "paid" ? "paid" : order.paymentStatus,
-        ...(status === "shipped" ? { shippedAt: new Date() } : {}),
-        ...(status === "delivered" ? { deliveredAt: new Date() } : {}),
       },
       include: { items: true, user: { select: { id: true, username: true, email: true } } },
     });
