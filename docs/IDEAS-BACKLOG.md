@@ -15,8 +15,8 @@
 ## Phase 6 — Rooms, Notifications & Analytics
 
 - **Device usage analytics** — `device_logs` se: on-time per device, toggles per day/member, daily trend charts. User dashboard + admin both. ✅ core DONE (📊 Usage modal) — ideas neeche.
-- **Email notifications** — abhi in-app; baad me email (order status, offline alerts) — notification service me email channel add.
-- **Offline notification batching** — ek saath kai devices offline ho (power cut) to har device ki alag notification na bhejo — ek "N devices offline" summary.
+- ~~**Email notifications**~~ ✅ DONE — order status + serial keys, warranty submit/status, device/board offline+online (notification service me email channel).
+- ~~**Offline notification batching**~~ ✅ DONE — power cut pe ek "N devices offline" summary notification+email (single event pe individual).
 - **Per-room analytics** — 📊 Usage modal me room filter: "Main Room vs Other" toggles/on-time breakdown (abhi overall hai).
 - **Peak usage hours** — hourly heatmap: kaunse ghante me sabse zyada activity (lights 8-10 PM pattern dikhe).
 - **Analytics CSV export** — toggles/day + per-device table ko ek click me CSV download (family ko bhejne ke liye).
@@ -34,7 +34,7 @@
 
 ## Factory / ESP (hardware)
 
-- **Webserver reach check** — provision ke baad board ka webserver (192.168.4.1 / LAN IP) HTTP-ping karke confirm karo ki web UI khul raha hai.
+- ~~**Webserver reach check**~~ ✅ DONE — provision+reboot ke baad flasher boot logs se AP/LAN IP parse karke webserver HTTP-ping karta hai; result GUI me "Provisioned ✓ · Web OK" (tools/flasher/flasher_gui.py).
 - **ESP poll interval** — 10s → 2-3s karne se web toggle <1s (battery/bandwidth thoda zyada) — firmware change, plan baad.
 - **Bill print QR** — bill me bhi QR (payment/order) future.
 

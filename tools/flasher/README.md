@@ -6,7 +6,7 @@ Manufacturing tool for flashing + provisioning ESP32 relay boards before shippin
 
 ```
 Order → serial + WiFi + API key (server se) → Flash firmware → Provision board
-→ Relay self-test → Mark tested → Next board
+→ Relay self-test → Web server reach check → Mark tested → Next board
 ```
 
 | Step | Kya hota hai |
@@ -16,6 +16,7 @@ Order → serial + WiFi + API key (server se) → Flash firmware → Provision b
 | **Flash** | `/firmware/firmware.bin` download → `esptool` se ESP32 pe write (0x10000) |
 | **Provision** | Serial commands se board pe save: `setwifi`, `setserver <url> <api_key>`, `setserial`, `setmodel` → `finish` (reboot) |
 | **Self-test** | `testrelay` — har relay channel on/off cycle → `RELAY n OK/FAIL` |
+| **Web check** | Reboot ke baad boot logs se AP/LAN IP → HTTP-ping webserver (192.168.4.1 hamesha AP mode me ON). ✅ reachable / ❌ warn (PC board ke hotspot/same LAN pe hona chahiye) |
 | **Mark Tested** | Serial ko server pe factory-tested mark (audit log ke saath) |
 | **Batch** | Order ke saare items ek queue me — "Next Board" se agla |
 
@@ -35,7 +36,8 @@ python flasher_gui.py
    - Order # daal kar **Fetch Order** — serial, WiFi, model, API key auto-fill.
    - Ya **manual**: serial **Generate** karo, model choose karo, WiFi/API key bharo.
 3. **COM port** select karo (⟳ = refresh).
-4. **1 · Flash Firmware** → **2 · Provision + Test** (relay test bhi isi me) → **3 · Mark Tested** → **Next Board**.
+4. **1 · Flash Firmware** → **2 · Provision + Test** (relay self-test + **web server reach check** dono isi me) → **3 · Mark Tested** → **Next Board**.
+   - Provision ke baad board reboot hota hai → flasher boot logs padhta hai (`AP IP : 192.168.4.1` / `IP : 192.168.x.x`) aur webserver ko HTTP-ping karta hai. Result log me: `✅ Web server reachable — http://192.168.4.1/ (AP) → 200`. PC ko board ke hotspot ya same LAN pe hona chahiye — nahi to ❌ warning aati hai (provision fail nahi hota, manual monitor se check karo).
 
 ## Firmware commands (board pe, serial @115200)
 

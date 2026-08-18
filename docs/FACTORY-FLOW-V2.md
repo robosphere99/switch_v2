@@ -1,9 +1,43 @@
 # Factory & Order Flow v2 — Improvement Spec
 
-> Status: **Phase 1 complete · Phase 2 items 3-5 done** (courier live-integration future) — user's vision, implement phase by phase
+> Status: **Phase 1 complete · Phase 2 items 3-5 done · Web server auto-reach check VERIFIED on real board (18 Aug)** (courier live-integration future) — user's vision, implement phase by phase
 > Related: `tools/flasher/flasher_gui.py`, `site/apps/api/src/routes/admin.routes.ts`, `site/apps/api/src/routes/public.routes.ts`, ESP firmware (`hardware/Robosphere-Dev`), `docs/DEMO-WALKTHROUGH.md`
 
 User ka order-to-delivery flow ka full vision — kya improve karna hai, kya implement ho chuka hai, kya pending hai.
+
+---
+
+## ✅ Real-board audit — RS-4CH-TJC8BD (18 Aug 2026)
+
+> Test bench: **RS-4CH-TJC8BD** (4CH) · flasher = **repo wala** (`Flasher-Latest.bat` — Desktop/Downloads, hamesha latest `.py` chalata hai) · Localhost mode.
+> 18 Aug webserver check: board **COM8** (CP210x) · boot logs live serial se · PC `192.168.1.35` + board `192.168.1.36` same LAN · `_read_boot_ips` regex + `_http_status` logic replicate karke HTTP ping → 200.
+> **Important:** Downloads ke `RoboSphere-Flasher*.exe` (15 Aug ke builds) PURANE hain — serial monitor / Mode selector / web check unme nahi. Hamesha `Flasher-Latest.bat` kholo.
+
+### ✅ Verified working on real board
+
+| # | Check | Result |
+|---|---|---|
+| 1 | Flash firmware (esptool @460800 → 115200 retry) | ✅ |
+| 2 | Provision serial commands: `setwifi` / `setserver` / `setserial` / `setmodel` | ✅ |
+| 3 | **Hotspot verify** quality gate — AP `SwitchNest-RS-4CH-TJC8BD` + password = serial key | ✅ PASS (mismatch → Provision FAIL) |
+| 4 | Relay self-test (har channel `RELAY n OK`) | ✅ |
+| 5 | Mark Tested → user notification ("Factory test pass — pack hone chala") | ✅ (RS-2CH-3M6FNV live verify; same flow) |
+| 6 | Serial monitor — boot logs me `AP IP : 192.168.4.1` / `IP : 192.168.x.x` | ✅ (board LAN IP 192.168.1.36 — live serial read) |
+| 7 | Web server manual check — board IP browser me → UI khulta hai | ✅ (user verify) |
+| 8 | **Web server auto-reach check** (flasher `_check_webserver` logic) | ✅ **PASS 18 Aug** — boot logs se `192.168.1.36` (LAN) + `192.168.4.1` (AP) parsed → HTTP ping `http://192.168.1.36/ → 200` (PC `192.168.1.35` same network). AP `192.168.4.1` unreachable = expected (PC LAN pe, hotspot pe nahi). Page serve: "Login - Robosphere IoT" |
+
+### ⏳ Implemented — real-board verification pending
+
+| Item | Kya baaki |
+|---|---|
+| Flasher `Flasher-Latest.bat` launcher | Desktop/Downloads — repo version hamesha. Real factory flow me confirm pending |
+| Firmware factory-reset → serial preserve | Compile verified; board pe `factoryreset` + reboot test pending (serial wapas + hotspot `SwitchNest-<serial>` restore) |
+
+### ❌ Remains (future)
+
+| Item | Status |
+|---|---|
+| **Courier live tracking** (Shiprocket) | No service account abhi — My Orders me placeholder box + `docs/COURIER-TRACKING-PLAN.md` ready. Service milte hi implement (AWB/webhook/30-min polling) |
 
 ---
 

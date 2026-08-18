@@ -9,8 +9,9 @@ Flash ESP32 relay boards and provision them for a specific order:
   3. Flash the published firmware (.bin from /firmware/firmware.bin)
   4. Provision via serial: WiFi + server URL + API key + serial code + model
   5. Relay self-test (each channel cycles on/off, reports OK/FAIL)
-  6. Mark serial as factory-tested on the server
-  7. Next board (batch mode)
+  6. Web server reach check (reboot ke baad AP/LAN IP pe HTTP-ping)
+  7. Mark serial as factory-tested on the server
+  8. Next board (batch mode)
 
 Requirements:  pip install requests pyserial esptool
 
@@ -27,6 +28,8 @@ import sys
 import threading
 import time
 import tkinter as tk
+import urllib.error
+import urllib.request
 import webbrowser
 from tkinter import messagebox, scrolledtext, ttk
 
@@ -44,6 +47,11 @@ except ImportError:
 MODELS = ["2CH", "4CH", "5CH", "6CH", "8CH", "4CH-IR", "FAN-DIM", "DIM-3S", "DIM-4S"]
 BAUD = 115200
 FLASH_ADDR = "0x10000"  # ESP32 app partition (standard PlatformIO layout)
+
+# Boot log me firmware inhe print karta hai (WiFiManager.cpp):
+#   AP IP : 192.168.4.1   (dual-mode AP — WiFi connect hone ke baad bhi ON)
+#   IP : 192.168.1.36     (LAN IP, jab board WiFi se connect hota hai)
+BOOT_IP_RE = re.compile(r"(?:AP IP|IP)\s*:\s*(\d{1,3}(?:\.\d{1,3}){3})")
 
 # Server mode presets — (label, API URL, web URL). Localhost testing se live
 # site pe switch karte waqt URL bhoolna band — ek click me dono set.
@@ -87,16 +95,32 @@ def find_com_ports():
 
 def detect_lan_ip():
     """Machine ka LAN IP — ESP server URL default ke liye (boards isi IP pe
-    heartbeat bhejte hain). No actual traffic — sirf route lookup."""
+    heartbeat bhejte hain). No actual traffic — sirf route lookup.
+
+    Multiple gateway candidates try karte hain (router ka IP pehle se pata
+    nahi hota — 192.168.1.x / 192.168.0.x / 10.x / 172.16.x sab ho sakte hain),
+    phir hostname resolution, phir hardcoded fallback."""
+    import socket
+    candidates = ["192.168.1.1", "192.168.0.1", "10.0.0.1", "172.16.0.1", "8.8.8.8"]
+    for target in candidates:
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.settimeout(1)
+            s.connect((target, 80))
+            ip = s.getsockname()[0]
+            s.close()
+            if ip and not ip.startswith("127."):
+                return ip
+        except Exception:
+            continue
+    # Fallback — hostname resolution se pehla non-loopback IPv4
     try:
-        import socket
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.connect(("192.168.1.1", 80))
-        ip = sock.getsockname()[0]
-        sock.close()
-        return ip
+        for ip in socket.gethostbyname_ex(socket.gethostname())[2]:
+            if ip and not ip.startswith("127."):
+                return ip
     except Exception:
-        return "192.168.1.100"
+        pass
+    return "192.168.1.100"
 
 
 class FlasherApp:
@@ -229,9 +253,20 @@ class FlasherApp:
             .grid(row=1, column=2, padx=(8, 4), pady=(6, 0))
         ttk.Label(row, text="ESP Server URL (board ko dikhe)")\
             .grid(row=1, column=3, sticky="w", pady=(6, 0))
+        self.lan_ip = detect_lan_ip()
         self.e_esp_server = ttk.Entry(row, width=30)
-        self.e_esp_server.insert(0, f"http://{detect_lan_ip()}:4000")
+        self.e_esp_server.insert(0, f"http://{self.lan_ip}:4000")
         self.e_esp_server.grid(row=1, column=4, padx=4, pady=(6, 0))
+        ttk.Button(row, text="⟳", width=3, command=self.refresh_lan_ip)\
+            .grid(row=1, column=5, padx=(4, 0), pady=(6, 0))
+        # Detected LAN IP — Localhost mode me boards isi IP pe heartbeat bhejte
+        # hain; WiFi change / IP renew pe ⟳ se dobara detect karo.
+        self.l_esp_hint = ttk.Label(
+            row,
+            text=f"Detected LAN IP: {self.lan_ip} — boards isi pe connect honge",
+            foreground="#9ca3af",
+        )
+        self.l_esp_hint.grid(row=2, column=3, columnspan=3, sticky="w", pady=(2, 0))
 
         # Row 2 — order + device (wide fields — lamba order number ab pura dikhta hai)
         row = ttk.LabelFrame(f, text=" 2 · Order / Device ", padding=10)
@@ -394,8 +429,24 @@ class FlasherApp:
             esp = api_url  # live pe board seedha site se heartbeat karega
         self.e_esp_server.delete(0, "end")
         self.e_esp_server.insert(0, esp)
+        self.l_esp_hint.config(
+            text=f"Detected LAN IP: {self.lan_ip} — boards isi pe connect honge",
+        )
         self._log(f"Mode: {label} — API {api_url} · ESP server {esp}", "info")
         self._log(f"Guide: {web_url}/admin/flasher-guide (📖 Guide se kholega)", "info")
+
+    def refresh_lan_ip(self):
+        """LAN IP dobara detect karo (WiFi change / IP renew hone pe) — ESP
+        server field + hint update, sirf Localhost mode me (live pe field
+        manual hai)."""
+        self.lan_ip = detect_lan_ip()
+        self.l_esp_hint.config(
+            text=f"Detected LAN IP: {self.lan_ip} — boards isi pe connect honge",
+        )
+        if self.cb_mode.get() == "Localhost":
+            self.e_esp_server.delete(0, "end")
+            self.e_esp_server.insert(0, f"http://{self.lan_ip}:4000")
+        self._log(f"LAN IP detect: {self.lan_ip}", "info")
 
     def open_guide(self):
         """Admin ke Flasher Guide page ko browser me kholo — kya bharna hai
@@ -871,6 +922,99 @@ class FlasherApp:
         self._log(f"Hotspot verify OK — AP '{got_name}' sticker se match ✓ (password = serial)", "ok")
         return True
 
+    # ---- webserver reach check (quality gate) ----
+
+    def _read_boot_ips(self, timeout=15):
+        """finish (reboot) ke baad serial se boot logs padho — AP IP / LAN IP
+        lines parse karke set return karo. Board ko reboot hone me ~2-3s lagta
+        hai, isliye serial reopen + read window (max `timeout` sec)."""
+        ips = set()
+        try:
+            port = self._com()
+            ser = serial.Serial(port, BAUD, timeout=0.3)
+            ser.reset_input_buffer()
+        except Exception as e:
+            self._log(f"Webserver check: serial reopen fail ({e}) — sirf 192.168.4.1 try hoga", "warn")
+            return ips
+        ap_seen_at = None
+        try:
+            deadline = time.time() + timeout
+            buf = ""
+            while time.time() < deadline:
+                try:
+                    chunk = ser.read(256).decode(errors="replace")
+                except Exception:
+                    break
+                if not chunk:
+                    continue
+                buf += chunk
+                for m in self.BOOT_IP_RE.finditer(buf):
+                    ips.add(m.group(1))
+                if "192.168.4.1" in ips:
+                    if ap_seen_at is None:
+                        ap_seen_at = time.time()
+                    # AP IP aa gaya — LAN IP ke liye thoda aur wait, phir aage
+                    if len(ips) > 1 or time.time() - ap_seen_at > 5:
+                        break
+        finally:
+            try:
+                ser.close()
+            except Exception:
+                pass
+        return ips
+
+    def _http_status(self, ip, timeout=2.5):
+        """HTTP GET — webserver UP hai to status code (4xx/5xx bhi = server
+        response de raha hai), unreachable/unresponsive to None."""
+        try:
+            with urllib.request.urlopen(f"http://{ip}/", timeout=timeout) as r:
+                return r.status
+        except urllib.error.HTTPError as e:
+            return e.code
+        except Exception:
+            return None
+
+    def _check_webserver(self):
+        """Provision+reboot ke baad board ka webserver HTTP-ping (quality check).
+        AP (192.168.4.1) dual-mode me HAMESHA ON hota hai — par PC ko board ke
+        hotspot ya same LAN pe hona chahiye. LAN IP boot logs se parse karke
+        bhi try hota hai. Result GUI log me dikhta hai (provision fail nahi —
+        network topology ke karan false-negative ho sakta hai)."""
+        self._log("Webserver check — board reboot ho raha hai, boot logs se IP dhoondh rahe hain…", "info")
+        boot_ips = self._read_boot_ips(15)
+        lan_ips = sorted(ip for ip in boot_ips if ip != "192.168.4.1")
+        if lan_ips:
+            self._log(f"Boot logs: AP 192.168.4.1 · LAN {', '.join(lan_ips)}", "info")
+        elif "192.168.4.1" in boot_ips:
+            self._log("Boot logs: sirf AP 192.168.4.1 mila (board WiFi se connect nahi hua / slow hai)", "info")
+        else:
+            self._log("Boot logs me IP line nahi mili — serial window miss hui, sirf 192.168.4.1 try karenge", "warn")
+
+        results = []  # (label, http status)
+        # AP pe retries — board ko boot hone + webserver start hone me time lagta hai
+        for attempt in range(6):
+            code = self._http_status("192.168.4.1", timeout=2)
+            if code is not None:
+                results.append(("http://192.168.4.1/ (AP)", code))
+                break
+            if attempt < 5:
+                time.sleep(2)
+        for ip in lan_ips:
+            code = self._http_status(ip, timeout=2.5)
+            if code is not None:
+                results.append((f"http://{ip}/ (LAN)", code))
+
+        if results:
+            detail = " · ".join(f"{label} → {code}" for label, code in results)
+            self._log(f"✅ Web server reachable — {detail}", "ok")
+            return True
+        self._log(
+            "❌ Web server unreachable — PC board ke hotspot (192.168.4.1) ya same LAN "
+            "pe connected hona chahiye. Serial Monitor kholo + RESET dabao, boot logs me "
+            "AP IP / IP browser me daal ke manually check karo.", "warn"
+        )
+        return False
+
     def do_provision(self):
         if self.busy:
             return
@@ -959,8 +1103,12 @@ class FlasherApp:
                 self._log("Config complete — finishing (reboot)…", "info")
                 self._send_cmd("finish", expect=("Restarting",), timeout=5)
                 self._close_ser()
+                # Quality check: reboot ke baad webserver AP/LAN IP pe HTTP-ping
+                web_ok = self._check_webserver()
                 self._log(f"Provisioning OK → {serial_code} ({model}) | WiFi: {ssid} | server: {esp_url}", "ok")
-                self.root.after(0, lambda: self.l_prog.config(text="Provisioned ✓", foreground="#7ee787"))
+                self.root.after(0, lambda: self.l_prog.config(
+                    text="Provisioned ✓ · Web OK" if web_ok else "Provisioned ✓ · Web ⚠",
+                    foreground="#7ee787" if web_ok else "#fbbf24"))
             except Exception as e:
                 self._log(f"Provision FAIL: {e}", "err")
                 self._close_ser()
