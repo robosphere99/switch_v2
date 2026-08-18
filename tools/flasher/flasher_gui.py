@@ -124,6 +124,8 @@ def detect_lan_ip():
 
 
 class FlasherApp:
+    BOOT_IP_RE = re.compile(r"(?:AP IP|IP)\s*:\s*(\d{1,3}(?:\.\d{1,3}){3})")
+
     def __init__(self, root: tk.Tk):
         self.root = root
         root.title(f"RoboSphere Factory Flasher v{APP_VERSION}")
