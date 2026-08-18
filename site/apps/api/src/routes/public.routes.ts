@@ -6,6 +6,7 @@ import { rateLimit } from "../middleware/rateLimit";
 import { getRequestStats } from "../lib/requestTracker";
 import { audit } from "../services/audit.service";
 import { getPublicSiteSettings } from "../services/siteSettings.service";
+import { verifyBillToken } from "../lib/billVerify";
 
 export const publicRouter = Router();
 
@@ -52,6 +53,64 @@ const mySupportLimiter = rateLimit({
 // chahiye taaki theme + support details har jagah consistent rahe.
 publicRouter.get("/site-settings", siteSettingsLimiter, async (_req, res) => {
   ok(res, await getPublicSiteSettings());
+});
+
+// ---------------------------------------------------------------------------
+// Bill genuineness verify — bill QR scan karne pe khulta hai (public, bina
+// login). HMAC-signed token se sirf asli bill verify hota hai; fake bill ka
+// QR kabhi pass nahi hoga. Serial factory-tested status bhi yahin dikhta hai.
+// ---------------------------------------------------------------------------
+const verifyBillLimiter = rateLimit({
+  name: "public:verify-bill",
+  windowMs: 60_000,
+  max: 120,
+  message: "Bahut zyada verify requests — thodi der baad try karo",
+});
+
+publicRouter.get("/verify/bill/:token", verifyBillLimiter, async (req, res) => {
+  const payload = verifyBillToken(typeof req.params.token === "string" ? req.params.token : "");
+  if (!payload) {
+    return ok(res, { verified: false, reason: "invalid_token" });
+  }
+  const order = await prisma.order.findUnique({
+    where: { id: payload.orderId },
+    include: {
+      items: { orderBy: { id: "asc" } },
+      user: { select: { username: true } },
+      serials: {
+        include: { product: { select: { name: true, modelCode: true } } },
+        orderBy: { id: "asc" },
+      },
+    },
+  });
+  if (!order) return ok(res, { verified: false, reason: "not_found" });
+
+  const items = order.items.map((i) => ({
+    productName: i.productName,
+    quantity: i.quantity,
+    price: i.price.toString(),
+    serialCode: i.serialCode,
+  }));
+  const serials = order.serials.map((s) => ({
+    serialCode: s.serialCode,
+    modelCode: s.product.modelCode,
+    status: s.status,
+    tested: Boolean(s.testedAt),
+    testedAt: s.testedAt,
+    claimedAt: s.claimedAt,
+    warrantyStatus: s.warrantyStatus,
+  }));
+  ok(res, {
+    verified: true,
+    orderNumber: order.orderNumber,
+    createdAt: order.createdAt,
+    status: order.status,
+    paymentStatus: order.paymentStatus,
+    totalAmount: order.totalAmount.toString(),
+    buyer: { name: order.shippingName, username: order.user?.username ?? null },
+    items,
+    serials,
+  });
 });
 
 // ---------------------------------------------------------------------------
