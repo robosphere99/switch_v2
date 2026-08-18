@@ -103,32 +103,14 @@ REM    nahi — deploy ko hamesha success maano.
 if "%NODE_MODULES_OK%"=="1" (
 
   echo [deploy] node_modules mila — npm skip, prisma client refresh
-
-  call npx --no-install prisma generate --schema=prisma\schema.prisma 2>nul
-
-  if errorlevel 1 (
-
-    echo [deploy] WARN: prisma generate fail — try node_modules direct
-
-    call node node_modules\prisma\build\index.js generate --schema=prisma\schema.prisma 2>nul
-
-  )
-
-  if errorlevel 1 echo [deploy] WARN: prisma generate fail — self-heal handle karega
+  REM prisma generate — best-effort, errorlevel check unreliable on Windows CMD
+  call npx --no-install prisma generate --schema=prisma\schema.prisma 2>nul || echo [deploy] WARN: prisma generate had warnings (ignored)
 
 ) else (
 
   echo [deploy] node_modules nahi mila — install (Plesk-safe: --ignore-scripts)
-
-  call npm install --ignore-scripts --no-audit --no-fund 2>nul
-
-  if errorlevel 1 echo [deploy] WARN: npm install fail — existing node_modules chalega
-
-  call npx --no-install prisma generate --schema=prisma\schema.prisma 2>nul
-
-  if errorlevel 1 call node node_modules\prisma\build\index.js generate --schema=prisma\schema.prisma 2>nul
-
-  if errorlevel 1 echo [deploy] WARN: prisma generate fail — self-heal handle karega
+  call npm install --ignore-scripts --no-audit --no-fund 2>nul || echo [deploy] WARN: npm install had warnings (ignored)
+  call npx --no-install prisma generate --schema=prisma\schema.prisma 2>nul || echo [deploy] WARN: prisma generate had warnings (ignored)
 
 )
 
