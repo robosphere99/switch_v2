@@ -7,7 +7,7 @@
 > Repo location (this machine): `C:\Users\robos\OneDrive\Documents\SwitchNest`
 >
 <!-- AUTO:STAMP:START -->
-> _Auto-updated: 2026-08-17 14:41 UTC · branch `main` · tree dirty (1 changes) · 194 commits_
+> _Auto-updated: 2026-08-18 03:19 UTC · branch `main` · tree dirty (2 changes) · 196 commits_
 <!-- AUTO:STAMP:END -->
 
 ---
@@ -109,6 +109,8 @@ that also serves real ESP32 hardware).
 <!-- AUTO:RECENT_COMMITS:START -->
 Sabse naye 20 commits:
 
+- `3cdb320` (2026-08-18) feat: rate limit remaining public endpoints (public, claim, warranty, assistant)
+- `ef85a99` (2026-08-18) feat: rate limiting + password reset + OpenAPI docs + Phase 6/7 (emails, AI, automations)
 - `f420ca8` (2026-08-17) docs: START_GUIDE + site/README — commit 3-layer fallback, sync health check, lost-webhook troubleshooting
 - `301ede0` (2026-08-17) fix: marker source tracking — build-fallback (parent commit) se jhuta lagging alarm na ho
 - `a72f361` (2026-08-17) fix: GitHub API token support (GITHUB_TOKEN) — shared-host rate limit se bachao
@@ -127,8 +129,6 @@ Sabse naye 20 commits:
 - `650912c` (2026-08-17) api: health me build marker (e2e-auto-deploy-v1) — auto-deploy verify ke liye
 - `5e90ae4` (2026-08-17) deploy: trigger — recreate server dist/index.mjs (deleted via Plesk File Manager)
 - `6d94e79` (2026-08-17) docs: context doc auto-refresh (manual sync — CI/CD verify trigger)
-- `a4b65e3` (2026-08-17) test: CI/CD end-to-end verify — homepage title v2.1 → v2.2 (web dist rebuild)
-- `03142c4` (2026-08-17) docs: context doc auto-refresh (flasher guide commits sync)
 <!-- AUTO:RECENT_COMMITS:END -->
 
 - 503 root-cause work: DB probe retry loop so the app self-heals, `nodeProcessCountPerApplication=1`,
@@ -241,6 +241,10 @@ From `ROADMAP.md` (build order — each phase is a working milestone):
   commit dist → push.
 - **Deploy flow:** work on `dev` (CI only, no deploy) → merge to `main` → webhook →
   Plesk auto-deploy. Plesk deploys `main` only.
+- **STRATEGY (owner decision, 2026-08-18):** LOCALHOST-FIRST development — saare
+  features pehle local (API :4000 + web :5173 + XAMPP MySQL) pe develop/verify hote
+  hain, production domain pe deploy SIRF kisi solid milestone pe hota hai. Production
+  DB pe koi schema change abhi apply mat karo bina pooche.
 - **Heartbeat log format** (current): `[hb] alive ts=<ISO> uptime=<s> pid=<n> rss=<MB> heap=<MB>`
   — leak monitor and the memory chart depend on the `ts=` field.
 - **Logs** live in `site/apps/logs/` (`app.log`, `health-check.jsonl`, `leak-incidents.jsonl`) —
