@@ -48,6 +48,11 @@ const envSchema = z.object({
   ADMIN_PASSWORD: z.string().default("admin123"),
   // Install ko lock karne ke liye (installed flag ke saath match karta hai)
   INSTALL_TOKEN: z.string().optional().default(""),
+  // AI assistant (Phase 7) — OpenAI-compatible API (OpenAI / Gemini / Ollama)
+  AI_PROVIDER: z.string().default(""), // openai | gemini | ollama | "" (off → rule-based)
+  AI_API_KEY: z.string().default(""),
+  AI_BASE_URL: z.string().default(""), // empty → provider default
+  AI_MODEL: z.string().default(""),
 });
 
 const parsed = envSchema.safeParse(process.env);

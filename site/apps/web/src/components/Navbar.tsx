@@ -2,6 +2,7 @@ import { Link, useNavigate } from "react-router-dom";
 import {
   BadgeCheck,
   Bell,
+  BookOpen,
   Bot,
   Home,
   KeyRound,
@@ -105,6 +106,16 @@ export function Navbar() {
                 {label}
               </Link>
             ))}
+            <a
+              href="/api/docs"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 text-gray-600 transition hover:text-brand"
+              title="API docs — Swagger UI"
+            >
+              <BookOpen className="h-4 w-4" />
+              API Docs
+            </a>
             <NotificationBell />
             <Link
               to="/profile"
@@ -151,6 +162,16 @@ export function Navbar() {
               <ShoppingCart className="h-4 w-4" />
               Shop
             </Link>
+            <a
+              href="/api/docs"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 text-gray-600 transition hover:text-brand"
+              title="API docs — Swagger UI"
+            >
+              <BookOpen className="h-4 w-4" />
+              API Docs
+            </a>
             <button
               onClick={() => toggleTheme(setDark)}
               className="rounded-lg border border-gray-300 p-1.5 text-gray-600 transition hover:border-brand hover:text-brand"
@@ -197,6 +218,16 @@ export function Navbar() {
                     {label}
                   </Link>
                 ))}
+                <a
+                  href="/api/docs"
+                  target="_blank"
+                  rel="noreferrer"
+                  className={mobileLinkCls}
+                  onClick={() => setMobileOpen(false)}
+                >
+                  <BookOpen className="h-4 w-4 text-brand" />
+                  API Docs
+                </a>
                 <Link to="/profile" className={mobileLinkCls} onClick={() => setMobileOpen(false)}>
                   <User className="h-4 w-4 text-brand" />
                   Hi, {user.username}
@@ -238,6 +269,16 @@ export function Navbar() {
                   <ShoppingCart className="h-4 w-4 text-brand" />
                   Shop
                 </Link>
+                <a
+                  href="/api/docs"
+                  target="_blank"
+                  rel="noreferrer"
+                  className={mobileLinkCls}
+                  onClick={() => setMobileOpen(false)}
+                >
+                  <BookOpen className="h-4 w-4 text-brand" />
+                  API Docs
+                </a>
                 <Link to="/login" className={mobileLinkCls} onClick={() => setMobileOpen(false)}>
                   <User className="h-4 w-4 text-brand" />
                   Login

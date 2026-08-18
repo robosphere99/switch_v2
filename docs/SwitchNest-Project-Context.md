@@ -7,7 +7,7 @@
 > Repo location (this machine): `C:\Users\robos\OneDrive\Documents\SwitchNest`
 >
 <!-- AUTO:STAMP:START -->
-> _Auto-updated: 2026-08-17 14:35 UTC · branch `main` · tree dirty (1 changes) · 192 commits_
+> _Auto-updated: 2026-08-17 14:41 UTC · branch `main` · tree dirty (1 changes) · 194 commits_
 <!-- AUTO:STAMP:END -->
 
 ---
@@ -109,6 +109,8 @@ that also serves real ESP32 hardware).
 <!-- AUTO:RECENT_COMMITS:START -->
 Sabse naye 20 commits:
 
+- `f420ca8` (2026-08-17) docs: START_GUIDE + site/README — commit 3-layer fallback, sync health check, lost-webhook troubleshooting
+- `301ede0` (2026-08-17) fix: marker source tracking — build-fallback (parent commit) se jhuta lagging alarm na ho
 - `a72f361` (2026-08-17) fix: GitHub API token support (GITHUB_TOKEN) — shared-host rate limit se bachao
 - `ef5b4c1` (2026-08-17) feat: deployed commit build-time embedded — sync check reliable, marker wipe-proof
 - `4133974` (2026-08-17) deploy: webhook re-trigger (84599c5 ka delivery lost — sync health check test)
@@ -127,8 +129,6 @@ Sabse naye 20 commits:
 - `6d94e79` (2026-08-17) docs: context doc auto-refresh (manual sync — CI/CD verify trigger)
 - `a4b65e3` (2026-08-17) test: CI/CD end-to-end verify — homepage title v2.1 → v2.2 (web dist rebuild)
 - `03142c4` (2026-08-17) docs: context doc auto-refresh (flasher guide commits sync)
-- `44d8f26` (2026-08-17) flasher: fix layout — Mode + Guide ko row 1 pe (ESP Server URL ke bagal)
-- `f4e9e70` (2026-08-17) flasher: Mode selector (Live site / Localhost) + Admin Flasher Guide page
 <!-- AUTO:RECENT_COMMITS:END -->
 
 - 503 root-cause work: DB probe retry loop so the app self-heals, `nodeProcessCountPerApplication=1`,

@@ -258,6 +258,30 @@ async function runLightMigrations(): Promise<void> {
         logger.info("✅ Migration: device_usage table created");
       }
     });
+    // 7) password_reset_tokens — forgot-password flow (hashed token, 1-use, 30min expiry).
+    await migration("password_reset_tokens table", async () => {
+      const prt = await prisma.$queryRaw<{ c: bigint }[]>`
+        SELECT COUNT(*) AS c FROM information_schema.tables
+        WHERE table_schema = DATABASE() AND table_name = 'password_reset_tokens'
+      `;
+      if (Number(prt[0]?.c ?? 0) === 0) {
+        await prisma.$executeRawUnsafe(`
+          CREATE TABLE password_reset_tokens (
+            id INT NOT NULL AUTO_INCREMENT,
+            userId INT NOT NULL,
+            token_hash VARCHAR(64) NOT NULL,
+            expires_at DATETIME(3) NOT NULL,
+            used_at DATETIME(3) NULL,
+            created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+            PRIMARY KEY (id),
+            UNIQUE INDEX password_reset_tokens_token_hash_key (token_hash),
+            INDEX password_reset_tokens_userId_idx (userId),
+            CONSTRAINT password_reset_tokens_userId_fkey FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        `);
+        logger.info("✅ Migration: password_reset_tokens table created");
+      }
+    });
   } catch (err) {
     logger.warn("Light migration (esp serial unique) skip/fail", err instanceof Error ? err.message : String(err));
   }

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import jwt from "jsonwebtoken";
 import { requireAuth } from "../middleware/auth";
+import { rateLimit } from "../middleware/rateLimit";
 import { validateBody } from "../middleware/validate";
 import { prisma } from "../lib/prisma";
 import { AppError, ok } from "../lib/response";
@@ -13,6 +14,20 @@ import { env } from "../config/env";
 import type { AccessTokenPayload } from "@robosphere/shared";
 
 export const supportRouter = Router();
+
+// Support chat spam / flood se bachao — message send per IP.
+const userSendLimiter = rateLimit({
+  name: "support:user-send",
+  windowMs: 60_000,
+  max: 10,
+  message: "Bahut fast messages bhej rahe ho — thodi der ruk kar bhejo",
+});
+const adminSendLimiter = rateLimit({
+  name: "support:admin-send",
+  windowMs: 60_000,
+  max: 30,
+  message: "Bahut fast messages bhej rahe ho — thodi der ruk kar bhejo",
+});
 
 /** Attachment validation — photo/invoice/screenshot, max ~2MB. */
 const MAX_ATTACHMENT_BYTES = 2 * 1024 * 1024;
@@ -130,7 +145,7 @@ const adminSendSchema = z
   });
 
 /** Admin: user ko support message bhejo → user ko notification + realtime. */
-supportRouter.post("/admin/messages", requireAuth, validateBody(adminSendSchema), async (req, res) => {
+supportRouter.post("/admin/messages", requireAuth, adminSendLimiter, validateBody(adminSendSchema), async (req, res) => {
   if (req.user!.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
   const { userId, message } = req.body;
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, username: true, email: true } });
@@ -211,7 +226,7 @@ const userSendSchema = z
     refineAttachment(d, ctx);
   });
 
-supportRouter.post("/messages", requireAuth, validateBody(userSendSchema), async (req, res) => {
+supportRouter.post("/messages", requireAuth, userSendLimiter, validateBody(userSendSchema), async (req, res) => {
   const userId = req.user!.sub;
   const created = await supportModel().create({
     data: {

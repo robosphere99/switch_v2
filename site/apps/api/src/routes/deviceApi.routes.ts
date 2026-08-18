@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { requireApiKey } from "../middleware/apiKey";
+import { rateLimit } from "../middleware/rateLimit";
 import { validateBody, validateQuery } from "../middleware/validate";
 import { ok } from "../lib/response";
 import * as deviceApi from "../services/deviceApi.service";
@@ -11,6 +12,22 @@ import * as deviceApi from "../services/deviceApi.service";
  * integration stays simple.
  */
 export const deviceApiRouter = Router();
+
+// ESP32 polling endpoints — leak hua api_key se flood na ho. Limits kaafi
+// generous: boards har 5-10s poll karte hain (max ~12/min), 1200/min per
+// IP ek bade ghar ke saare boards ko bhi cover karta hai.
+const readLimiter = rateLimit({
+  name: "device:read",
+  windowMs: 60_000,
+  max: 1200,
+  message: "Too many device API requests",
+});
+const mutateLimiter = rateLimit({
+  name: "device:mutate",
+  windowMs: 60_000,
+  max: 600,
+  message: "Too many device API requests",
+});
 
 const keyQuery = z.object({
   api_key: z.string().min(1),
@@ -50,6 +67,7 @@ const heartbeatSchema = z.object({
 
 deviceApiRouter.get(
   "/read-all",
+  readLimiter,
   validateQuery(keyQuery),
   requireApiKey,
   async (req, res) => ok(res, { devices: await deviceApi.readAll(req.apiKey!) }),
@@ -57,6 +75,7 @@ deviceApiRouter.get(
 
 deviceApiRouter.post(
   "/update",
+  mutateLimiter,
   requireApiKey,
   validateBody(updateSchema),
   async (req, res) =>
@@ -65,6 +84,7 @@ deviceApiRouter.post(
 
 deviceApiRouter.post(
   "/heartbeat",
+  mutateLimiter,
   requireApiKey,
   validateBody(heartbeatSchema),
   async (req, res) => {
@@ -98,6 +118,7 @@ const otaProgressSchema = z.object({
 
 deviceApiRouter.post(
   "/ota-progress",
+  mutateLimiter,
   requireApiKey,
   validateBody(otaProgressSchema),
   async (req, res) =>
@@ -134,6 +155,7 @@ deviceApiRouter.get(
 
 deviceApiRouter.post(
   "/commands/ack",
+  mutateLimiter,
   requireApiKey,
   validateBody(ackSchema),
   async (req, res) =>

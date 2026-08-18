@@ -49,12 +49,18 @@ export function parseCron(expr: string): CronFields {
   if (parts.length !== 5) {
     throw new AppError("BAD_REQUEST", "Cron must have 5 fields: minute hour day-of-month month day-of-week");
   }
+  const dow = parseField(parts[4], 0, 6);
+  // Standard cron: 7 == 0 (Sunday) — explicit 7 ko Sunday me normalize.
+  if (dow.has(7)) {
+    dow.delete(7);
+    dow.add(0);
+  }
   return {
     minutes: parseField(parts[0], 0, 59),
     hours: parseField(parts[1], 0, 23),
     dom: parseField(parts[2], 1, 31),
     months: parseField(parts[3], 1, 12),
-    dow: parseField(parts[4], 0, 7),
+    dow,
   };
 }
 
