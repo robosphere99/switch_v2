@@ -4,6 +4,7 @@ import {
   Bell,
   BookOpen,
   Bot,
+  Cpu,
   Home,
   KeyRound,
   LayoutDashboard,
@@ -116,6 +117,16 @@ export function Navbar() {
               <BookOpen className="h-4 w-4" />
               API Docs
             </a>
+            <a
+              href="/api/docs/esp32"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 text-gray-600 transition hover:text-brand"
+              title="ESP32 integration guide — curl/python/node + Arduino sketch"
+            >
+              <Cpu className="h-4 w-4" />
+              ESP32 Guide
+            </a>
             <NotificationBell />
             <Link
               to="/profile"
@@ -227,6 +238,16 @@ export function Navbar() {
                 >
                   <BookOpen className="h-4 w-4 text-brand" />
                   API Docs
+                </a>
+                <a
+                  href="/api/docs/esp32"
+                  target="_blank"
+                  rel="noreferrer"
+                  className={mobileLinkCls}
+                  onClick={() => setMobileOpen(false)}
+                >
+                  <Cpu className="h-4 w-4 text-brand" />
+                  ESP32 Guide
                 </a>
                 <Link to="/profile" className={mobileLinkCls} onClick={() => setMobileOpen(false)}>
                   <User className="h-4 w-4 text-brand" />

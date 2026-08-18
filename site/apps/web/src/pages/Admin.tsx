@@ -566,6 +566,15 @@ export function Admin() {
                   <span className="font-mono font-semibold">{deployInfo.data.data.sync.deployedCommit?.slice(0, 7)}</span> pe hai. Webhook delivery check karo — GitHub → Settings → Webhooks → Recent Deliveries → Redeliver.
                 </div>
               )}
+              {deployInfo.data?.success && deployInfo.data.data.sync?.status === "local" && (
+                <div className="mt-3 rounded-lg border border-gray-500/40 bg-night-900 px-3 py-2 text-xs text-gray-400">
+                  🖥️ <b>Local dev mode</b> — running code{" "}
+                  <span className="font-mono font-semibold">{deployInfo.data.data.sync.deployedCommit?.slice(0, 7)}</span>{" "}
+                  (git checkout) · GitHub main{" "}
+                  <span className="font-mono font-semibold">{deployInfo.data.data.sync.latestCommit?.slice(0, 7)}</span>{" "}
+                  pe hai. Production deploy milestone pe hoga — abhi koi action nahi chahiye.
+                </div>
+              )}
               {deployInfo.data?.success && deployInfo.data.data.sync?.status === "pending" && (
                 <div className="mt-3 rounded-lg border border-blue-500/40 bg-blue-500/10 px-3 py-2 text-xs text-blue-400">
                   ⏳ <b>Deploying…</b> latest commit{" "}
@@ -577,7 +586,7 @@ export function Admin() {
                   <div>
                     <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Commit</p>
                     <p className="mt-0.5 font-mono text-xs font-semibold text-night-950">
-                      {(deployInfo.data.data.build?.commit || deployInfo.data.data.git?.commit || deployInfo.data.data.marker?.commit || deployInfo.data.data.latest?.commit || "—").slice(0, 12)}
+                      {(deployInfo.data.data.sync?.deployedCommit || deployInfo.data.data.git?.commit || deployInfo.data.data.latest?.commit || "—").slice(0, 12)}
                       {deployInfo.data.data.git?.commit && deployInfo.data.data.marker?.commit && deployInfo.data.data.git.commit !== deployInfo.data.data.marker.commit
                         ? " ⚠️ mismatch"
                         : deployInfo.data.data.sync?.status === "lagging" && deployInfo.data.data.marker?.commit && deployInfo.data.data.latest?.commit && deployInfo.data.data.marker.commit !== deployInfo.data.data.latest.commit
@@ -1522,6 +1531,15 @@ export function Admin() {
                     <span className="font-mono font-semibold">{deployInfo.data.data.sync.deployedCommit?.slice(0, 7)}</span> pe hai. Webhook delivery check karo — GitHub → Settings → Webhooks → Recent Deliveries → Redeliver.
                   </div>
                 )}
+                {deployInfo.data?.success && deployInfo.data.data.sync?.status === "local" && (
+                  <div className="mt-2 rounded-lg border border-gray-500/40 bg-night-900 px-3 py-2 text-xs text-gray-400">
+                    🖥️ <b>Local dev mode</b> — running code{" "}
+                    <span className="font-mono font-semibold">{deployInfo.data.data.sync.deployedCommit?.slice(0, 7)}</span>{" "}
+                    (git checkout) · GitHub main{" "}
+                    <span className="font-mono font-semibold">{deployInfo.data.data.sync.latestCommit?.slice(0, 7)}</span>{" "}
+                    pe hai. Production deploy milestone pe hoga — abhi koi action nahi chahiye.
+                  </div>
+                )}
                 {deployInfo.data?.success && deployInfo.data.data.sync?.status === "pending" && (
                   <div className="mt-2 rounded-lg border border-blue-500/40 bg-blue-500/10 px-3 py-2 text-xs text-blue-400">
                     ⏳ <b>Deploying…</b> latest commit{" "}
@@ -1541,7 +1559,7 @@ export function Admin() {
                     <div>
                       <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Commit</p>
                       <p className="mt-0.5 font-mono text-xs font-semibold text-night-950">
-                        {(deployInfo.data.data.build?.commit || deployInfo.data.data.git?.commit || deployInfo.data.data.marker?.commit || deployInfo.data.data.latest?.commit || "—").slice(0, 12)}
+                        {(deployInfo.data.data.sync?.deployedCommit || deployInfo.data.data.git?.commit || deployInfo.data.data.latest?.commit || "—").slice(0, 12)}
                         {deployInfo.data.data.git?.commit && deployInfo.data.data.marker?.commit && deployInfo.data.data.git.commit !== deployInfo.data.data.marker.commit
                           ? " ⚠️ mismatch"
                           : deployInfo.data.data.sync?.status === "lagging" && deployInfo.data.data.marker?.commit && deployInfo.data.data.latest?.commit && deployInfo.data.data.marker.commit !== deployInfo.data.data.latest.commit

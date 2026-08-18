@@ -17,6 +17,7 @@ import { emitToHome } from "../lib/socket";
 import { generateSerials, updateOrderStatus } from "../services/shop.service";
 import { decryptSecret } from "../lib/crypto";
 import { signBillToken } from "../lib/billVerify";
+import { detectLanIp } from "../lib/lanIp";
 import { resolveFirmware } from "../services/firmware.service";
 import { firmwareDir } from "../lib/paths";
 import { logFilePath } from "../lib/logger";
@@ -920,6 +921,28 @@ async function fetchLatestMain() {
   return latestCache.value;
 }
 
+/** Kya `ancestor` local git history me hai (head ka ancestor)? True = head aage/equal. */
+function isAncestorOf(ancestor: string, head: string): boolean {
+  try {
+    execSync(`git merge-base --is-ancestor ${ancestor} ${head}`, {
+      stdio: "ignore",
+      windowsHide: true,
+      timeout: 5000,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+adminRouter.get("/lan-info", async (_req, res) => {
+  // Flasher Guide page (web) ke liye — localhost mode me ESP server URL me
+  // `<LAN-IP>` placeholder ki jagah asli IP dikhna chahiye. Server khud apna
+  // LAN IP detect karta hai (wahi IP jo boards heartbeat pe use karenge).
+  const lanIp = await detectLanIp();
+  ok(res, { lanIp, espServerUrl: `http://${lanIp}:4000` });
+});
+
 adminRouter.get("/deploy-info", async (_req, res) => {
   let marker: { deployedAt?: string; commit?: string; branch?: string; source?: string } | null = null;
   const markerPath = path.resolve(process.cwd(), "../logs/deploy.json");
@@ -961,19 +984,47 @@ adminRouter.get("/deploy-info", async (_req, res) => {
   // Note: build-commit.json hamesha PARENT commit embed karta hai (build commit
   // se pehle hota hai) — isliye marker (deploy-time SHA) ko priority, build sirf
   // last resort jab marker wipe ho jaye.
-  const deployedCommit = marker?.commit || build?.commit || git?.commit || null;
-  const deployedAt = marker?.deployedAt || build?.builtAt || null;
+  // Deployed commit ka source: production me marker (deploy.json, deploy-time)
+  // exact SHA deta hai. Dev machine pe marker nahi hota — running code git HEAD
+  // hai (tsx src/ se), aur dist/build-commit.json purane build se stale rehta
+  // hai — isliye git ko build se PEHLE rakho (stale build se jhuta "deploy
+  // lagging" alarm aata tha localhost-first me).
+  const deployedSource: "marker" | "git" | "build" | null = marker?.commit
+    ? "marker"
+    : git?.commit
+      ? "git"
+      : build?.commit
+        ? "build"
+        : null;
+  const deployedCommit = marker?.commit || git?.commit || build?.commit || null;
+  const deployedAt =
+    deployedSource === "marker"
+      ? marker?.deployedAt || null
+      : deployedSource === "build"
+        ? build?.builtAt || null
+        : null;
   const latestCommit = latest?.commit || null;
   const latestTs = latest?.ts || null;
   // Marker source "build" = GitHub down tha deploy pe, commit parent hai —
   // usse sync compare KARNA galat ho sakta hai (jhuta lagging). Trusted
   // sirf github/git source (ya purane markers bina source ke).
   const markerTrusted = marker?.commit ? marker?.source !== "build" : true;
-  let syncStatus: "synced" | "pending" | "lagging" | "unknown" = "unknown";
+  let syncStatus: "synced" | "pending" | "lagging" | "local" | "unknown" = "unknown";
   let syncAgeMin: number | null = null;
   if (markerTrusted && deployedCommit && latestCommit && latestTs) {
     syncAgeMin = Math.round((Date.now() - new Date(latestTs).getTime()) / 60_000);
-    syncStatus = deployedCommit === latestCommit ? "synced" : syncAgeMin > 5 ? "lagging" : "pending";
+    if (deployedCommit === latestCommit) syncStatus = "synced";
+    else if (syncAgeMin > 5) {
+      // Lagging alarm SIRF production deploy ke liye meaningful hai (marker se
+      // deployed). Dev/local pe deployed = git HEAD — GitHub main se AAGE hona
+      // (unpushed commits) localhost-first me normal hai, alarm nahi. Direction
+      // check: deployed main se aage hai to calm "local", peeche hai to "lagging".
+      const aheadOfMain =
+        deployedSource === "git" && git?.commit && latestCommit
+          ? isAncestorOf(latestCommit, git.commit)
+          : false;
+      syncStatus = aheadOfMain ? "local" : "lagging";
+    } else syncStatus = "pending";
   }
   ok(res, {
     marker,
@@ -984,6 +1035,7 @@ adminRouter.get("/deploy-info", async (_req, res) => {
     sync: {
       status: syncStatus,
       deployedCommit,
+      deployedSource,
       latestCommit,
       ageMin: syncAgeMin,
       since: latest?.ts || null,
