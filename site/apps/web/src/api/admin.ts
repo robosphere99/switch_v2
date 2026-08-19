@@ -196,6 +196,21 @@ export async function deleteUser(id: number): Promise<ApiResponse<{ deleted: boo
   return data;
 }
 
+export async function createUser(payload: { username: string; email: string; password: string; role?: string }): Promise<ApiResponse<AdminUser>> {
+  const { data } = await api.post<ApiResponse<AdminUser>>("/admin/users", payload);
+  return data;
+}
+
+export async function resetUserPassword(id: number, password: string): Promise<ApiResponse<{ reset: boolean; message: string }>> {
+  const { data } = await api.post<ApiResponse<{ reset: boolean; message: string }>>(`/admin/users/${id}/reset-password`, { password });
+  return data;
+}
+
+export async function sendResetEmail(id: number): Promise<ApiResponse<{ sent: boolean; message: string }>> {
+  const { data } = await api.post<ApiResponse<{ sent: boolean; message: string }>>(`/admin/users/${id}/send-reset-email`);
+  return data;
+}
+
 export async function listAllHomes(q?: string): Promise<ApiResponse<AdminHome[]>> {
   const { data } = await api.get<ApiResponse<AdminHome[]>>("/admin/homes", { params: { q } });
   return data;
