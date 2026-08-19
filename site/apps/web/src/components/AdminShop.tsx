@@ -249,6 +249,9 @@ function SerialsSection() {
   const [filterStatus, setFilterStatus] = useState<string | "">("");
   // Selection
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  // Pagination
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
 
   async function handleGenerate(e: React.FormEvent) {
     e.preventDefault();
@@ -300,8 +303,13 @@ function SerialsSection() {
     return true;
   });
 
-  const availableFiltered = filteredSerials.filter((s) => s.status === "available");
-  const allAvailableSelected = availableFiltered.length > 0 && availableFiltered.every((s) => selected.has(s.id));
+  // Pagination
+  const totalPages = Math.max(1, Math.ceil(filteredSerials.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const pageSerials = filteredSerials.slice((safePage - 1) * pageSize, safePage * pageSize);
+
+  const availableOnPage = pageSerials.filter((s) => s.status === "available");
+  const allAvailableSelected = availableOnPage.length > 0 && availableOnPage.every((s) => selected.has(s.id));
 
   function toggleSelect(id: number) {
     setSelected((prev) => {
@@ -314,17 +322,17 @@ function SerialsSection() {
 
   function toggleSelectAll() {
     if (allAvailableSelected) {
-      // Deselect all available
+      // Deselect all available on current page
       setSelected((prev) => {
         const next = new Set(prev);
-        for (const s of availableFiltered) next.delete(s.id);
+        for (const s of availableOnPage) next.delete(s.id);
         return next;
       });
     } else {
-      // Select all available
+      // Select all available on current page
       setSelected((prev) => {
         const next = new Set(prev);
-        for (const s of availableFiltered) next.add(s.id);
+        for (const s of availableOnPage) next.add(s.id);
         return next;
       });
     }
@@ -384,7 +392,7 @@ function SerialsSection() {
           <label className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-gray-500">Filter Product</label>
           <select
             value={filterProduct}
-            onChange={(e) => { setFilterProduct(e.target.value === "" ? "" : Number(e.target.value)); setSelected(new Set()); }}
+            onChange={(e) => { setFilterProduct(e.target.value === "" ? "" : Number(e.target.value)); setSelected(new Set()); setPage(1); }}
             className="rounded border border-night-600 bg-night-900 px-3 py-1.5 text-sm"
           >
             <option value="">All products</option>
@@ -397,7 +405,7 @@ function SerialsSection() {
           <label className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-gray-500">Filter Status</label>
           <select
             value={filterStatus}
-            onChange={(e) => { setFilterStatus(e.target.value); setSelected(new Set()); }}
+            onChange={(e) => { setFilterStatus(e.target.value); setSelected(new Set()); setPage(1); }}
             className="rounded border border-night-600 bg-night-900 px-3 py-1.5 text-sm"
           >
             <option value="">All statuses</option>
@@ -440,7 +448,7 @@ function SerialsSection() {
             </tr>
           </thead>
           <tbody>
-            {filteredSerials.map((s: SerialRow) => (
+            {pageSerials.map((s: SerialRow) => (
               <tr key={s.id} className="border-t border-night-700">
                 <td className="px-3 py-2">
                   {s.status === "available" && (
@@ -483,11 +491,67 @@ function SerialsSection() {
           </tbody>
         </table>
       </div>
+      {/* Pagination */}
       {filteredSerials.length > 0 && (
-        <p className="mt-2 text-[11px] text-gray-500">
-          Showing {filteredSerials.length} of {allSerials.length} serials
-          {selected.size > 0 && ` · ${selected.size} selected`}
-        </p>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-[11px] text-gray-500">
+            <span>Showing {(safePage - 1) * pageSize + 1}–{Math.min(safePage * pageSize, filteredSerials.length)} of {filteredSerials.length}</span>
+            {selected.size > 0 && <span>· {selected.size} selected</span>}
+            <select
+              value={pageSize}
+              onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); setSelected(new Set()); }}
+              className="rounded border border-night-600 bg-night-900 px-1.5 py-0.5 text-[11px]"
+            >
+              <option value={25}>25 / page</option>
+              <option value={50}>50 / page</option>
+              <option value={100}>100 / page</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={safePage <= 1}
+              className="rounded border border-gray-200 px-2.5 py-1 text-xs font-semibold text-gray-500 hover:bg-night-700 disabled:opacity-40"
+            >
+              ← Prev
+            </button>
+            {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+              let pageNum: number;
+              if (totalPages <= 7) {
+                pageNum = i + 1;
+              } else if (safePage <= 4) {
+                pageNum = i + 1;
+              } else if (safePage >= totalPages - 3) {
+                pageNum = totalPages - 6 + i;
+              } else {
+                pageNum = safePage - 3 + i;
+              }
+              return (
+                <button
+                  key={pageNum}
+                  onClick={() => setPage(pageNum)}
+                  className={`rounded px-2.5 py-1 text-xs font-semibold ${
+                    pageNum === safePage
+                      ? "border border-brand bg-brand/20 text-brand"
+                      : "border border-gray-200 text-gray-500 hover:bg-night-700"
+                  }`}
+                >
+                  {pageNum}
+                </button>
+              );
+            })}
+            {totalPages > 7 && (
+              <span className="px-1 text-xs text-gray-600">…</span>
+            )}
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={safePage >= totalPages}
+              className="rounded border border-gray-200 px-2.5 py-1 text-xs font-semibold text-gray-500 hover:bg-night-700 disabled:opacity-40"
+            >
+              Next →
+            </button>
+          </div>
+        </div>
       )}
       {serialDetail && (
         <SerialDetailsModal code={serialDetail} onClose={() => setSerialDetail(null)} />
