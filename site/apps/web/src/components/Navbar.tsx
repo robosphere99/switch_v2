@@ -31,18 +31,18 @@ import { SupportUnreadBadge } from "./SupportUnreadBadge";
 import { Logo } from "./Logo";
 import { BottomTabBar } from "./BottomTabBar";
 
-const NAV_LINKS: Array<{ to: string; label: string; icon: typeof Home }> = [
+const NAV_LINKS: Array<{ to: string; label: string; icon: typeof Home; title?: string }> = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/orders", label: "My Orders", icon: Package },
+  { to: "/orders", label: "Orders", icon: Package, title: "My Orders" },
   { to: "/activate", label: "Activate", icon: KeyRound },
   { to: "/warranty", label: "Warranty", icon: ShieldCheck },
   { to: "/support", label: "Support", icon: Wrench },
   { to: "/members", label: "Family", icon: Users },
-  { to: "/keys", label: "Device Keys", icon: BadgeCheck },
+  { to: "/keys", label: "Keys", icon: BadgeCheck, title: "Device Keys" },
   { to: "/assistant", label: "AI", icon: Bot },
   { to: "/homes", label: "Homes", icon: Home },
   { to: "/boards", label: "Boards", icon: RadioTower },
-  { to: "/notifications", label: "Center", icon: Bell },
+  { to: "/notifications", label: "Alerts", icon: Bell },
 ];
 
 /**
@@ -51,7 +51,7 @@ const NAV_LINKS: Array<{ to: string; label: string; icon: typeof Home }> = [
  * aur vahi "Support" tab asli support inbox hai. /support customer page
  * admin ke liye bekaar hai — isliye links khaali.
  */
-const ADMIN_LINKS: Array<{ to: string; label: string; icon: typeof Home }> = [];
+const ADMIN_LINKS: Array<{ to: string; label: string; icon: typeof Home; title?: string }> = [];
 
 function toggleTheme(setDark: (d: boolean) => void) {
   changeTheme(resolvedDark() ? "light" : "dark");
@@ -96,47 +96,46 @@ export function Navbar() {
         </Link>
 
         {user ? (
-          <nav className="hidden items-center gap-x-5 gap-y-2 text-sm md:flex">
-            {(isSystemAdmin(user.role) ? ADMIN_LINKS : NAV_LINKS).map(({ to, label, icon: Icon }) => (
+          <nav className="hidden min-w-0 items-center gap-x-3 gap-y-2 overflow-x-auto text-[13px] scrollbar-none md:flex [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+            {(isSystemAdmin(user.role) ? ADMIN_LINKS : NAV_LINKS).map(({ to, label, icon: Icon, title }) => (
               <Link
                 key={to}
                 to={to}
-                className="inline-flex items-center gap-1.5 text-gray-600 transition hover:text-brand"
+                className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-gray-600 transition hover:text-brand"
+                title={title ?? label}
               >
-                <Icon className="h-4 w-4" />
+                <Icon className="h-4 w-4 shrink-0" />
                 {label}
               </Link>
-            ))}
-            <a
-              href="/api/docs"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 text-gray-600 transition hover:text-brand"
-              title="API docs — Swagger UI"
-            >
-              <BookOpen className="h-4 w-4" />
-              API Docs
-            </a>
-            <a
-              href="/api/docs/esp32"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 text-gray-600 transition hover:text-brand"
-              title="ESP32 integration guide — curl/python/node + Arduino sketch"
-            >
-              <Cpu className="h-4 w-4" />
-              ESP32 Guide
-            </a>
-            <NotificationBell />
-            <Link
-              to="/profile"
-              className="inline-flex items-center gap-1.5 text-gray-600 transition hover:text-brand"
-            >
-              <User className="h-4 w-4" />
-              <span>
-                Hi, <span className="font-semibold text-night-950">{user.username}</span>
-              </span>
-            </Link>
+            ))}              <a
+                href="/api/docs"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-gray-600 transition hover:text-brand"
+                title="API docs — Swagger UI"
+              >
+                <BookOpen className="h-4 w-4 shrink-0" />
+                Docs
+              </a>
+              <a
+                href="/api/docs/esp32"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-gray-600 transition hover:text-brand"
+                title="ESP32 integration guide — curl/python/node + Arduino sketch"
+              >
+                <Cpu className="h-4 w-4 shrink-0" />
+                ESP32
+              </a>              <span className="shrink-0"><NotificationBell /></span>
+              <Link
+                to="/profile"
+                className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-gray-600 transition hover:text-brand"
+              >
+                <User className="h-4 w-4 shrink-0" />
+                <span>
+                  Hi, <span className="font-semibold text-night-950">{user.username}</span>
+                </span>
+              </Link>
             {user.role === "system_admin" && (
               <span className="relative">
                 <Link
@@ -158,7 +157,7 @@ export function Navbar() {
             </button>
             <button
               onClick={handleLogout}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-600 transition hover:border-red-300 hover:bg-red-50 hover:text-red-600"
+              className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-600 transition hover:border-red-300 hover:bg-red-50 hover:text-red-600"
             >
               <LogOut className="h-4 w-4" />
               Logout
