@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import type { Device, DeviceType } from "@robosphere/shared";
 import { isNewerVersion } from "../api/devices";
 import { Switch } from "./Switch";
@@ -63,50 +65,97 @@ export function DeviceCard({
 }) {
   const on = device.status === "on";
   const online = isOnline(device);
+  const [expanded, setExpanded] = useState(false);
 
-  return (
+  /* ── Mobile compact row (default on small screens) ──────── */
+  const compactRow = (
     <div
-      className={`flex flex-col gap-3 rounded-xl border p-4 sm:p-5 transition ${
+      className={`flex items-center gap-3 rounded-xl border px-3 py-3 transition sm:hidden ${
         on
           ? "border-brand bg-brand/10 shadow-lg shadow-brand/20"
           : "border-gray-200 bg-night-800"
       } ${!online ? "opacity-80" : ""}`}
     >
-      <div className="flex items-start justify-between">
-        <span className="text-3xl">{ICONS[device.type]}</span>
-        <div className="flex flex-col items-end gap-1">
+      {/* Icon */}
+      <span className="shrink-0 text-2xl">{ICONS[device.type]}</span>
+
+      {/* Name + status */}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <h3 className="truncate text-sm font-semibold">{device.name}</h3>
           <span
-            className={`flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-              online
-                ? "bg-emerald-500/20 text-emerald-400"
-                : "bg-red-500/20 text-red-400"
+            className={`h-2 w-2 shrink-0 rounded-full ${
+              online ? "bg-emerald-400" : "bg-red-400"
             }`}
-          >
-            <span
-              className={`h-1.5 w-1.5 rounded-full ${
-                online ? "bg-emerald-400" : "bg-red-400"
-              }`}
-            />
-            {online ? "online" : "offline"}
-          </span>
-          {roomName && <span className="text-[10px] text-gray-500">📍 {roomName}</span>}
+          />
         </div>
+        <p
+          className={`mt-0.5 text-[11px] ${
+            online ? "text-emerald-400/80" : "text-red-400/90"
+          }`}
+        >
+          {online ? "Connected" : formatLastSeen(device.lastSeen)}
+        </p>
       </div>
 
-      <div>
-        <h3 className="font-semibold">{device.name}</h3>
+      {/* Toggle */}
+      <div className="shrink-0">
         {!online ? (
-          <p className="mt-0.5 text-[11px] text-red-400/90">{formatLastSeen(device.lastSeen)}</p>
+          <span className="text-[10px] font-semibold text-red-400/80">
+            Offline
+          </span>
         ) : (
-          <p className="mt-0.5 text-[11px] text-emerald-400/80">Connected just now</p>
+          <Switch
+            checked={on}
+            onChange={() => onToggle(device)}
+            disabled={disabled}
+            pending={pending}
+            label={`${device.name} ${on ? "band karo" : "chalu karo"}`}
+          />
         )}
-        {/* Board update/rename — sirf affordances, raw serial/model/FW info nahi
-            (consumer card clean rakho; technical detail Boards page pe hai). */}
-        {device.esp && (canManage || isNewerVersion(latestVersion, device.esp.firmwareVersion)) && (
-          <p className="mt-1 flex items-center gap-1.5 text-[11px] text-gray-500">
-            <span>🛰️ {device.esp.name ?? "ESP Board"}</span>
-            {isNewerVersion(latestVersion, device.esp.firmwareVersion) && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 font-bold text-amber-600">
+      </div>
+
+      {/* Expand arrow */}
+      {canManage && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setExpanded((v) => !v);
+          }}
+          className="shrink-0 rounded-lg p-1.5 text-gray-500 transition hover:bg-gray-100 hover:text-brand dark:hover:bg-night-700"
+          aria-label={expanded ? "Collapse details" : "Expand details"}
+        >
+          {expanded ? (
+            <ChevronUp className="h-4 w-4" />
+          ) : (
+            <ChevronDown className="h-4 w-4" />
+          )}
+        </button>
+      )}
+    </div>
+  );
+
+  /* ── Mobile expanded details (slides open below compact row) ── */
+  const expandedDetails = (
+    <div className="space-y-2 border-t border-gray-200 bg-gray-50/50 px-3 py-3 sm:hidden dark:border-night-600 dark:bg-night-700/50">
+      {/* Room name */}
+      {roomName && (
+        <p className="text-[11px] text-gray-500">📍 {roomName}</p>
+      )}
+
+      {/* Board info */}
+      {device.esp &&
+        (canManage ||
+          isNewerVersion(latestVersion, device.esp.firmwareVersion)) && (
+          <p className="flex min-w-0 items-center gap-1.5 text-[11px] text-gray-500">
+            <span className="truncate">
+              🛰️ {device.esp.name ?? "ESP Board"}
+            </span>
+            {isNewerVersion(
+              latestVersion,
+              device.esp.firmwareVersion,
+            ) && (
+              <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 font-bold text-amber-600">
                 ⬆ v{latestVersion}
                 {canManage && onOta && (
                   <button
@@ -130,10 +179,114 @@ export function DeviceCard({
             )}
           </p>
         )}
+
+      {/* Action buttons */}
+      {canManage && (
+        <div className="flex gap-2 text-xs">
+          <button
+            onClick={() => onEdit(device)}
+            className="flex flex-1 items-center justify-center gap-1 rounded bg-gray-200/60 py-2 text-gray-600 hover:bg-gray-200 dark:bg-night-600 dark:text-gray-300 dark:hover:bg-night-500"
+          >
+            Edit
+          </button>
+          <button
+            onClick={() => onLogs(device)}
+            className="flex flex-1 items-center justify-center gap-1 rounded bg-gray-200/60 py-2 text-gray-600 hover:bg-gray-200 dark:bg-night-600 dark:text-gray-300 dark:hover:bg-night-500"
+          >
+            Activity
+          </button>
+          <button
+            onClick={() => onDelete(device)}
+            className="flex flex-1 items-center justify-center gap-1 rounded bg-red-900/40 py-2 text-red-400 hover:bg-red-900/60"
+          >
+            Delete
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
+  /* ── Desktop full card (unchanged) ──────────────────────── */
+  const fullCard = (
+    <div
+      className={`hidden flex-col gap-3 overflow-hidden rounded-xl border p-4 sm:flex sm:p-5 transition ${
+        on
+          ? "border-brand bg-brand/10 shadow-lg shadow-brand/20"
+          : "border-gray-200 bg-night-800"
+      } ${!online ? "opacity-80" : ""}`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <span className="shrink-0 text-3xl">{ICONS[device.type]}</span>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <span
+            className={`flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+              online
+                ? "bg-emerald-500/20 text-emerald-400"
+                : "bg-red-500/20 text-red-400"
+            }`}
+          >
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${
+                online ? "bg-emerald-400" : "bg-red-400"
+              }`}
+            />
+            {online ? "online" : "offline"}
+          </span>
+          {roomName && (
+            <span className="max-w-[120px] truncate text-[10px] text-gray-500">
+              📍 {roomName}
+            </span>
+          )}
+        </div>
       </div>
 
-      <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-night-900/60 px-4 py-3 dark:border-night-600">
-        <div className="flex items-center gap-2">
+      <div>
+        <h3 className="font-semibold">{device.name}</h3>
+        {!online ? (
+          <p className="mt-0.5 text-[11px] text-red-400/90">
+            {formatLastSeen(device.lastSeen)}
+          </p>
+        ) : (
+          <p className="mt-0.5 text-[11px] text-emerald-400/80">
+            Connected just now
+          </p>
+        )}
+        {device.esp &&
+          (canManage ||
+            isNewerVersion(latestVersion, device.esp.firmwareVersion)) && (
+            <p className="mt-1 flex min-w-0 items-center gap-1.5 text-[11px] text-gray-500">
+              <span className="truncate">
+                🛰️ {device.esp.name ?? "ESP Board"}
+              </span>
+              {isNewerVersion(latestVersion, device.esp.firmwareVersion) && (
+                <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 font-bold text-amber-600">
+                  ⬆ v{latestVersion}
+                  {canManage && onOta && (
+                    <button
+                      onClick={() => onOta(device)}
+                      className="ml-0.5 rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-bold text-amber-600 hover:bg-amber-500/30"
+                      title="Board ka firmware update karo (OTA)"
+                    >
+                      Update
+                    </button>
+                  )}
+                </span>
+              )}
+              {canManage && onRenameBoard && (
+                <button
+                  onClick={() => onRenameBoard(device.esp!)}
+                  className="rounded px-1 text-gray-500 transition hover:bg-night-700 hover:text-brand"
+                  title="Board ka naam badlo"
+                >
+                  ✏️
+                </button>
+              )}
+            </p>
+          )}
+      </div>
+
+      <div className="flex items-center justify-between gap-2 rounded-lg border border-gray-200 bg-night-900/60 px-4 py-3 dark:border-night-600">
+        <div className="flex shrink-0 items-center gap-2">
           <span
             className={`h-2 w-2 rounded-full transition-colors ${
               pending
@@ -163,27 +316,39 @@ export function DeviceCard({
       </div>
 
       {canManage && (
-        <div className="flex gap-2 text-xs">
+        <div className="flex min-w-0 gap-2 overflow-hidden text-xs">
           <button
             onClick={() => onEdit(device)}
-            className="flex-1 rounded bg-gray-100/60 py-2.5 text-gray-600 hover:bg-gray-200"
+            className="flex min-w-0 flex-1 items-center justify-center gap-1 truncate rounded bg-gray-100/60 py-2.5 text-gray-600 hover:bg-gray-200"
           >
-            ✏️ Edit
+            <span className="hidden sm:inline">✏️</span> Edit
           </button>
           <button
             onClick={() => onLogs(device)}
-            className="flex-1 rounded bg-gray-100/60 py-2.5 text-gray-600 hover:bg-gray-200"
+            className="flex min-w-0 flex-1 items-center justify-center gap-1 truncate rounded bg-gray-100/60 py-2.5 text-gray-600 hover:bg-gray-200"
           >
-            📜 Activity
+            <span className="hidden sm:inline">📜</span> Activity
           </button>
           <button
             onClick={() => onDelete(device)}
-            className="flex-1 rounded bg-red-900/40 py-2.5 text-red-400 hover:bg-red-900/60"
+            className="flex min-w-0 flex-1 items-center justify-center gap-1 truncate rounded bg-red-900/40 py-2.5 text-red-400 hover:bg-red-900/60"
           >
-            🗑️ Delete
+            <span className="hidden sm:inline">🗑️</span> Delete
           </button>
         </div>
       )}
+    </div>
+  );
+
+  /* ── Render: compact on mobile, full on desktop ────────── */
+  return (
+    <div>
+      {/* Mobile: compact row */}
+      {compactRow}
+      {/* Mobile: expanded details (conditional) */}
+      {expanded && expandedDetails}
+      {/* Desktop: full card */}
+      {fullCard}
     </div>
   );
 }
