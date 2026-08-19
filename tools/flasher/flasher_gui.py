@@ -1082,6 +1082,10 @@ class FlasherApp:
                 r = self._send_cmd(f"setserver {esp_url} {apikey}")
                 self._check_ok(r, "setserver")
 
+                # Wait for board to settle after setserver (WiFi reconnect can take time)
+                self._log("Waiting for board to settle...", "info")
+                time.sleep(3)
+
                 # Hotspot naming: UserName_OrderID-last-letters (+ _N agar order
                 # me multiple devices) — sticker ke naam se match. Password = serial key.
                 username = (self.provision_data or {}).get("user", {}).get("username", "")
@@ -1094,8 +1098,17 @@ class FlasherApp:
                 if not hotspot and serial_code:
                     hotspot = f"SwitchNest-{serial_code}"
                 if hotspot:
-                    r = self._send_cmd(f"setapname {hotspot}")
-                    self._check_ok(r, "setapname")
+                    # Retry setapname up to 3 times (board AP init can be slow)
+                    for attempt in range(3):
+                        r = self._send_cmd(f"setapname {hotspot}", timeout=15)
+                        if "[OK]" in r:
+                            self._check_ok(r, "setapname")
+                            break
+                        if attempt < 2:
+                            self._log(f"setapname retry {attempt+2}/3...", "warn")
+                            time.sleep(2)
+                    else:
+                        self._check_ok(r, "setapname")  # raise on final failure
                     self._log(f"Hotspot: {hotspot} (password = serial key)", "info")
                 r = self._send_cmd(f"setappass {serial_code}")
                 self._check_ok(r, "setappass")
