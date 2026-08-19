@@ -83,7 +83,7 @@ export function ChatWidget() {
           setOpen((o) => !o);
           setUnread(false);
         }}
-        className="fixed bottom-20 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-brand text-2xl shadow-lg shadow-brand/40 transition hover:scale-110 md:bottom-5"
+        className="fixed bottom-24 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-brand text-2xl shadow-lg shadow-brand/40 transition hover:scale-110 md:bottom-5"
         aria-label="SwitchNest assistant"
         title="SwitchNest AI assistant"
       >
@@ -95,7 +95,7 @@ export function ChatWidget() {
 
       {/* Chat panel */}
       {open && (
-        <div className="fixed bottom-36 right-5 z-50 flex h-[480px] w-[360px] max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden rounded-2xl border border-brand/30 bg-night-800 shadow-2xl shadow-black/50 md:bottom-24">
+        <div className="fixed bottom-40 right-5 z-50 flex h-[min(480px,calc(100vh-180px))] w-[360px] max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden rounded-2xl border border-brand/30 bg-night-800 shadow-2xl shadow-black/50 md:bottom-24 md:h-[480px]">
           {/* Header */}
           <div className="flex items-center gap-3 border-b border-brand/20 bg-night-900/60 px-4 py-3">
             <span className="flex h-9 w-9 items-center justify-center rounded-full bg-brand text-lg">
