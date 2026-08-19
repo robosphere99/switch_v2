@@ -5434,6 +5434,25 @@ adminRouter.post("/users/:id/send-reset-email", async (req, res) => {
   });
   ok(res, { sent: true, message: `Password reset email bheja (${user.email})` });
 });
+var resetPasswordSchema2 = z12.object({
+  password: z12.string().min(6).max(255)
+});
+adminRouter.post("/users/:id/reset-password", validateBody(resetPasswordSchema2), async (req, res) => {
+  const id = Number(req.params.id);
+  const user = await prisma.user.findUnique({
+    where: { id },
+    select: { id: true, username: true, email: true }
+  });
+  if (!user) throw new AppError("NOT_FOUND", "User not found", 404);
+  const hashed = await bcrypt2.hash(req.body.password, 10);
+  await prisma.user.update({ where: { id }, data: { password: hashed } });
+  await audit(req.user.sub, "admin.user.resetPassword", {
+    entity: "user",
+    entityId: id,
+    meta: { username: user.username, email: user.email }
+  });
+  ok(res, { reset: true, message: `Password reset ho gaya (${user.username})` });
+});
 var broadcastLimiter = rateLimit({
   name: "admin:broadcast",
   windowMs: 60 * 6e4,
@@ -7032,6 +7051,47 @@ adminRouter.post("/serials/generate", async (req, res) => {
     meta: { count, codes: codes.slice(0, 5) }
   });
   ok(res, { generated: codes.length, codes }, 201);
+});
+adminRouter.delete("/serials/:code", async (req, res) => {
+  const code = String(req.params.code ?? "").trim().toUpperCase();
+  const serial = await prisma.serialRegistry.findUnique({ where: { serialCode: code } });
+  if (!serial) throw new AppError("NOT_FOUND", "Serial not found");
+  if (serial.status !== "available") {
+    throw new AppError("BAD_REQUEST", "Sirf available serials delete ho sakte hain");
+  }
+  await prisma.serialRegistry.delete({ where: { id: serial.id } });
+  await audit(req.user.sub, "admin.serial.delete", {
+    entity: "serial",
+    entityId: serial.id,
+    meta: { serialCode: code }
+  });
+  ok(res, { deleted: true });
+});
+adminRouter.delete("/serials", async (req, res) => {
+  const codes = req.body?.codes;
+  if (!Array.isArray(codes) || codes.length === 0) {
+    throw new AppError("BAD_REQUEST", "codes array required");
+  }
+  if (codes.length > 500) {
+    throw new AppError("BAD_REQUEST", "Ek baar me max 500 serials delete kar sakte ho");
+  }
+  const upperCodes = codes.map((c) => String(c).trim().toUpperCase());
+  const serials = await prisma.serialRegistry.findMany({
+    where: { serialCode: { in: upperCodes } }
+  });
+  const available = serials.filter((s) => s.status === "available");
+  const skipped = upperCodes.length - available.length;
+  if (available.length === 0) {
+    throw new AppError("BAD_REQUEST", "Koi available serial nahi mila delete karne ke liye");
+  }
+  await prisma.serialRegistry.deleteMany({
+    where: { id: { in: available.map((s) => s.id) } }
+  });
+  await audit(req.user.sub, "admin.serial.bulk_delete", {
+    entity: "serial",
+    meta: { count: available.length, skipped, codes: upperCodes.slice(0, 10) }
+  });
+  ok(res, { deleted: available.length, skipped });
 });
 adminRouter.post("/orders/:id/serials/generate", async (req, res) => {
   const id = Number(req.params.id);
