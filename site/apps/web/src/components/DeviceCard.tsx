@@ -122,7 +122,7 @@ export function DeviceCard({
             e.stopPropagation();
             setExpanded((v) => !v);
           }}
-          className="shrink-0 rounded-lg p-1.5 text-gray-500 transition hover:bg-gray-100 hover:text-brand dark:hover:bg-night-700"
+          className="shrink-0 rounded-lg border border-gray-300/20 p-1.5 text-gray-400 transition hover:border-brand/40 hover:bg-brand/10 hover:text-brand dark:border-night-500 dark:text-gray-400 dark:hover:text-brand"
           aria-label={expanded ? "Collapse details" : "Expand details"}
         >
           {expanded ? (
