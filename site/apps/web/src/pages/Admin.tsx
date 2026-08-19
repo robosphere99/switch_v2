@@ -37,6 +37,9 @@ import {
   clearDeviceCommands,
   getEspHistory,
   findAnything,
+  createUser,
+  resetUserPassword,
+  sendResetEmail,
 } from "../api/admin";import MemoryTrendChart from "../components/MemoryTrendChart";
 
 import { Modal } from "../components/Modal";
@@ -121,6 +124,14 @@ export function Admin() {
   const [findQ, setFindQ] = useState("");
   const [findIdx, setFindIdx] = useState(0);
   const [chatUser, setChatUser] = useState<{ id: number; username: string } | null>(null);
+  // New user form
+  const [showNewUserForm, setShowNewUserForm] = useState(false);
+  const [newUserForm, setNewUserForm] = useState({ username: "", email: "", password: "", role: "user" as string });
+  const [newUserMsg, setNewUserMsg] = useState<string | null>(null);
+  // Reset password modal
+  const [resetPwUser, setResetPwUser] = useState<{ id: number; username: string } | null>(null);
+  const [resetPw, setResetPw] = useState("");
+  const [resetPwMsg, setResetPwMsg] = useState<string | null>(null);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   // Support inbox — notification deep-link se khulta hai (/admin?tab=support&user=<id>)
@@ -250,6 +261,36 @@ export function Admin() {
   const delUser = useMutation({
     mutationFn: deleteUser,
     onSuccess: invalidate,
+  });
+  const createUserM = useMutation({
+    mutationFn: createUser,
+    onSuccess: (r) => {
+      invalidate();
+      if (r.success) {
+        setNewUserMsg(`✅ User "${r.data.username}" ban gaya`);
+        setShowNewUserForm(false);
+        setNewUserForm({ username: "", email: "", password: "", role: "user" });
+      }
+    },
+    onError: () => setNewUserMsg("❌ User create fail — username/email already exists"),
+  });
+  const resetPasswordM = useMutation({
+    mutationFn: ({ id, password }: { id: number; password: string }) => resetUserPassword(id, password),
+    onSuccess: (r) => {
+      invalidate();
+      if (r.success) {
+        setResetPwMsg(r.data.message);
+        setTimeout(() => { setResetPwUser(null); setResetPw(""); setResetPwMsg(null); }, 1500);
+      }
+    },
+    onError: () => setResetPwMsg("❌ Password reset fail"),
+  });
+  const sendResetEmailM = useMutation({
+    mutationFn: sendResetEmail,
+    onSuccess: (r) => {
+      if (r.success) alert(r.data.message);
+    },
+    onError: () => alert("❌ Reset email bhejne me fail"),
   });
   const setHomeStatusM = useMutation({
     mutationFn: ({ id, status }: { id: number; status: "active" | "suspended" }) => setHomeStatus(id, status),
@@ -743,18 +784,78 @@ export function Admin() {
 
       {tab === "users" && (
         <div className="rounded-xl border border-gray-200 bg-night-800 p-4 sm:p-5">
-          {/* Header + search */}
+          {/* Header + search + New User button */}
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="font-semibold">
               Users <span className="text-sm font-normal text-gray-500">({users.data?.success ? users.data.data.length : "…"})</span>
             </h2>
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="🔍 Search users..."
-              className="w-full rounded-lg border border-brand/20 bg-night-900 px-3 py-2 text-sm outline-none focus:border-brand sm:w-64"
-            />
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => { setShowNewUserForm((v) => !v); setNewUserMsg(null); }}
+                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+              >
+                {showNewUserForm ? "✕ Cancel" : "+ New User"}
+              </button>
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="🔍 Search users..."
+                className="w-full rounded-lg border border-brand/20 bg-night-900 px-3 py-2 text-sm outline-none focus:border-brand sm:w-64"
+              />
+            </div>
           </div>
+
+          {/* New User Form */}
+          {showNewUserForm && (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                setNewUserMsg(null);
+                createUserM.mutate(newUserForm);
+              }}
+              className="mb-6 grid gap-3 rounded-xl border border-emerald-500/30 bg-night-900 p-5 sm:grid-cols-2"
+            >
+              <input
+                required
+                placeholder="Username *"
+                value={newUserForm.username}
+                onChange={(e) => setNewUserForm((f) => ({ ...f, username: e.target.value }))}
+                className="rounded border border-night-600 bg-night-800 px-3 py-2 text-sm"
+              />
+              <input
+                required
+                type="email"
+                placeholder="Email *"
+                value={newUserForm.email}
+                onChange={(e) => setNewUserForm((f) => ({ ...f, email: e.target.value }))}
+                className="rounded border border-night-600 bg-night-800 px-3 py-2 text-sm"
+              />
+              <input
+                required
+                type="password"
+                placeholder="Password * (min 6 chars)"
+                minLength={6}
+                value={newUserForm.password}
+                onChange={(e) => setNewUserForm((f) => ({ ...f, password: e.target.value }))}
+                className="rounded border border-night-600 bg-night-800 px-3 py-2 text-sm"
+              />
+              <select
+                value={newUserForm.role}
+                onChange={(e) => setNewUserForm((f) => ({ ...f, role: e.target.value }))}
+                className="rounded border border-night-600 bg-night-800 px-3 py-2 text-sm"
+              >
+                <option value="user">User</option>
+                <option value="system_admin">System Admin</option>
+              </select>
+              <button
+                type="submit"
+                className="rounded-lg bg-emerald-600 px-4 py-2 font-semibold text-white hover:bg-emerald-700 sm:col-span-2"
+              >
+                Create User
+              </button>
+              {newUserMsg && <p className="sm:col-span-2 text-xs text-gray-400">{newUserMsg}</p>}
+            </form>
+          )}
 
           {/* User cards */}
           <div className="space-y-3">
@@ -784,7 +885,8 @@ export function Admin() {
                       <p className="mt-0.5 truncate text-xs text-gray-500">{u.email}</p>
                     </div>
                   </div>
-n                  {/* ── Stats row ── */}
+
+                  {/* ── Stats row ── */}
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-gray-200/50 px-4 py-2 text-[11px] text-gray-500 dark:border-night-600">
                     <span>🏠 {u._count.ownedHomes} homes</span>
                     <span>👥 {u._count.memberships} memberships</span>
@@ -793,7 +895,8 @@ export function Admin() {
                       <span>🕐 last login {new Date(u.lastLoginAt).toLocaleDateString()}</span>
                     )}
                   </div>
-n                  {/* ── Action buttons ── */}
+
+                  {/* ── Action buttons ── */}
                   <div className="flex flex-wrap items-center gap-2 border-t border-gray-200/50 px-4 py-2.5 dark:border-night-600">
                     <button
                       onClick={() => selectSupportUser(u.id)}
@@ -820,6 +923,20 @@ export function Admin() {
                       {u.status === "active" ? "🚫 Suspend" : "✅ Activate"}
                     </button>
                     <button
+                      onClick={() => { setResetPwUser({ id: u.id, username: u.username }); setResetPw(""); setResetPwMsg(null); }}
+                      className="inline-flex items-center gap-1 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-500 transition hover:bg-amber-500/20"
+                      title="Set new password directly (bypass email)"
+                    >
+                      🔑 Reset Password
+                    </button>
+                    <button
+                      onClick={() => sendResetEmailM.mutate(u.id)}
+                      className="inline-flex items-center gap-1 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-xs font-semibold text-blue-400 transition hover:bg-blue-500/20"
+                      title="Send password reset email to user"
+                    >
+                      📧 Send Reset Email
+                    </button>
+                    <button
                       onClick={() => {
                         if (confirm(`Delete user \"${u.username}\"? All their data will be removed.`)) delUser.mutate(u.id);
                       }}
@@ -834,6 +951,50 @@ export function Admin() {
               <p className="py-8 text-center text-sm text-gray-500">No users match the search. 😕</p>
             )}
           </div>
+
+          {/* Reset Password Modal */}
+          {resetPwUser && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setResetPwUser(null)}>
+              <div
+                className="w-full max-w-md rounded-2xl border border-amber-500/30 bg-night-800 p-6 shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h3 className="mb-4 text-lg font-bold">🔑 Reset Password — {resetPwUser.username}</h3>
+                <input
+                  type="password"
+                  placeholder="Naya password (min 6 chars)"
+                  minLength={6}
+                  value={resetPw}
+                  onChange={(e) => { setResetPw(e.target.value); setResetPwMsg(null); }}
+                  className="mb-4 w-full rounded border border-night-600 bg-night-900 px-3 py-2 text-sm"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && resetPw.length >= 6) {
+                      resetPasswordM.mutate({ id: resetPwUser.id, password: resetPw });
+                    }
+                  }}
+                />
+                {resetPwMsg && (
+                  <p className="mb-3 text-xs text-emerald-400">{resetPwMsg}</p>
+                )}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => resetPasswordM.mutate({ id: resetPwUser.id, password: resetPw })}
+                    disabled={resetPw.length < 6}
+                    className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+                  >
+                    Set Password
+                  </button>
+                  <button
+                    onClick={() => setResetPwUser(null)}
+                    className="rounded-lg bg-night-700 px-4 py-2 text-sm font-semibold text-gray-300 hover:bg-night-600"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

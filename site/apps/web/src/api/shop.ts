@@ -189,6 +189,15 @@ export async function getSerialDetail(serialCode: string): Promise<SerialDetail>
   return data.data;
 }
 
+export async function deleteSerial(serialCode: string): Promise<void> {
+  await api.delete(`/admin/serials/${encodeURIComponent(serialCode)}`);
+}
+
+export async function deleteSerials(codes: string[]): Promise<{ deleted: number; skipped: number }> {
+  const { data } = await api.delete("/admin/serials", { data: { codes } });
+  return data.data;
+}
+
 // ---------- Payment ----------
 
 export interface PayIntent {

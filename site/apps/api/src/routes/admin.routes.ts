@@ -437,6 +437,27 @@ adminRouter.post("/users/:id/send-reset-email", async (req, res) => {
   ok(res, { sent: true, message: `Password reset email bheja (${user.email})` });
 });
 
+/** Admin directly user ka password reset karo (bina email ke). */
+const resetPasswordSchema = z.object({
+  password: z.string().min(6).max(255),
+});
+adminRouter.post("/users/:id/reset-password", validateBody(resetPasswordSchema), async (req, res) => {
+  const id = Number(req.params.id);
+  const user = await prisma.user.findUnique({
+    where: { id },
+    select: { id: true, username: true, email: true },
+  });
+  if (!user) throw new AppError("NOT_FOUND", "User not found", 404);
+  const hashed = await bcrypt.hash(req.body.password, 10);
+  await prisma.user.update({ where: { id }, data: { password: hashed } });
+  await audit(req.user!.sub, "admin.user.resetPassword", {
+    entity: "user",
+    entityId: id,
+    meta: { username: user.username, email: user.email },
+  });
+  ok(res, { reset: true, message: `Password reset ho gaya (${user.username})` });
+});
+
 // ---------- Broadcast ----------
 
 const broadcastLimiter = rateLimit({
@@ -2448,6 +2469,51 @@ adminRouter.post("/serials/generate", async (req, res) => {
     meta: { count, codes: codes.slice(0, 5) },
   });
   ok(res, { generated: codes.length, codes }, 201);
+});
+
+/** Delete serial — sirf available (unclaimed) serials delete kar sakte ho. */
+adminRouter.delete("/serials/:code", async (req, res) => {
+  const code = String(req.params.code ?? "").trim().toUpperCase();
+  const serial = await prisma.serialRegistry.findUnique({ where: { serialCode: code } });
+  if (!serial) throw new AppError("NOT_FOUND", "Serial not found");
+  if (serial.status !== "available") {
+    throw new AppError("BAD_REQUEST", "Sirf available serials delete ho sakte hain");
+  }
+  await prisma.serialRegistry.delete({ where: { id: serial.id } });
+  await audit(req.user!.sub, "admin.serial.delete", {
+    entity: "serial",
+    entityId: serial.id,
+    meta: { serialCode: code },
+  });
+  ok(res, { deleted: true });
+});
+
+/** Bulk delete serials — sirf available (unclaimed) serials delete ho sakte hain. */
+adminRouter.delete("/serials", async (req, res) => {
+  const codes = req.body?.codes;
+  if (!Array.isArray(codes) || codes.length === 0) {
+    throw new AppError("BAD_REQUEST", "codes array required");
+  }
+  if (codes.length > 500) {
+    throw new AppError("BAD_REQUEST", "Ek baar me max 500 serials delete kar sakte ho");
+  }
+  const upperCodes = codes.map((c: string) => String(c).trim().toUpperCase());
+  const serials = await prisma.serialRegistry.findMany({
+    where: { serialCode: { in: upperCodes } },
+  });
+  const available = serials.filter((s) => s.status === "available");
+  const skipped = upperCodes.length - available.length;
+  if (available.length === 0) {
+    throw new AppError("BAD_REQUEST", "Koi available serial nahi mila delete karne ke liye");
+  }
+  await prisma.serialRegistry.deleteMany({
+    where: { id: { in: available.map((s) => s.id) } },
+  });
+  await audit(req.user!.sub, "admin.serial.bulk_delete", {
+    entity: "serial",
+    meta: { count: available.length, skipped, codes: upperCodes.slice(0, 10) },
+  });
+  ok(res, { deleted: available.length, skipped });
 });
 
 // ---------- Manufacturing: Order Provision + Serial Test ----------

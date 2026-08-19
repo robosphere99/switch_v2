@@ -5,6 +5,8 @@ import { deleteContact, getAdminContact, updateContactStatus } from "../api/publ
 import {
   createAdminProduct,
   deleteAdminProduct,
+  deleteSerial,
+  deleteSerials,
   generateSerials,
   getAdminOrders,
   getAdminProducts,
@@ -238,17 +240,22 @@ function SerialsSection() {
     queryFn: () => getSerials(),
     refetchInterval: 10_000,
   });
-  const [productId, setProductId] = useState<number | "">("");
+  const [genProductId, setGenProductId] = useState<number | "">("");
   const [count, setCount] = useState(10);
   const [genMsg, setGenMsg] = useState<string | null>(null);
   const [serialDetail, setSerialDetail] = useState<string | null>(null);
+  // Filters
+  const [filterProduct, setFilterProduct] = useState<number | "">("");
+  const [filterStatus, setFilterStatus] = useState<string | "">("");
+  // Selection
+  const [selected, setSelected] = useState<Set<number>>(new Set());
 
   async function handleGenerate(e: React.FormEvent) {
     e.preventDefault();
-    if (!productId) return;
+    if (!genProductId) return;
     setGenMsg(null);
     try {
-      const res = await generateSerials(Number(productId), count);
+      const res = await generateSerials(Number(genProductId), count);
       setGenMsg(`✅ ${res.generated} serials generate hue: ${res.codes.slice(0, 3).join(", ")}…`);
       queryClient.invalidateQueries({ queryKey: ["admin-serials"] });
     } catch {
@@ -256,9 +263,74 @@ function SerialsSection() {
     }
   }
 
+  async function handleDelete(code: string) {
+    if (!window.confirm(`Serial "${code}" delete karna hai? Ye action undo nahi hoga.`)) return;
+    try {
+      await deleteSerial(code);
+      queryClient.invalidateQueries({ queryKey: ["admin-serials"] });
+    } catch {
+      setGenMsg("❌ Delete fail — sirf available serials delete ho sakte hain");
+    }
+  }
+
+  async function handleBulkDelete() {
+    const codesToDelete = filteredSerials
+      .filter((s) => s.status === "available" && selected.has(s.id))
+      .map((s) => s.serialCode);
+    if (codesToDelete.length === 0) return;
+    if (!window.confirm(`${codesToDelete.length} serial${codesToDelete.length === 1 ? "" : "s"} delete karna hai? Ye action undo nahi hoga.`)) return;
+    try {
+      const res = await deleteSerials(codesToDelete);
+      setSelected(new Set());
+      setGenMsg(`✅ ${res.deleted} delete hue${res.skipped > 0 ? `, ${res.skipped} skipped (claimed/reserved)` : ""}`);
+      queryClient.invalidateQueries({ queryKey: ["admin-serials"] });
+    } catch {
+      setGenMsg("❌ Bulk delete fail");
+    }
+  }
+
   if (isLoading) return <p className="text-gray-500">Loading serials…</p>;
 
-  const counts = (serials ?? []).reduce<Record<string, number>>((acc, s) => {
+  const allSerials = serials ?? [];
+
+  // Filtered list
+  const filteredSerials = allSerials.filter((s) => {
+    if (filterProduct !== "" && s.productId !== filterProduct) return false;
+    if (filterStatus !== "" && s.status !== filterStatus) return false;
+    return true;
+  });
+
+  const availableFiltered = filteredSerials.filter((s) => s.status === "available");
+  const allAvailableSelected = availableFiltered.length > 0 && availableFiltered.every((s) => selected.has(s.id));
+
+  function toggleSelect(id: number) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    if (allAvailableSelected) {
+      // Deselect all available
+      setSelected((prev) => {
+        const next = new Set(prev);
+        for (const s of availableFiltered) next.delete(s.id);
+        return next;
+      });
+    } else {
+      // Select all available
+      setSelected((prev) => {
+        const next = new Set(prev);
+        for (const s of availableFiltered) next.add(s.id);
+        return next;
+      });
+    }
+  }
+
+  const counts = allSerials.reduce<Record<string, number>>((acc, s) => {
     acc[s.status] = (acc[s.status] ?? 0) + 1;
     return acc;
   }, {});
@@ -289,7 +361,7 @@ function SerialsSection() {
       <form onSubmit={handleGenerate} className="mb-6 flex flex-wrap items-end gap-3 rounded-xl border border-brand/20 bg-night-800 p-5">
         <div>
           <label className="mb-1 block text-xs text-gray-500">Product</label>
-          <select value={productId} onChange={(e) => setProductId(Number(e.target.value))} className="rounded border border-night-600 bg-night-900 px-3 py-2 text-sm">
+          <select value={genProductId} onChange={(e) => setGenProductId(Number(e.target.value))} className="rounded border border-night-600 bg-night-900 px-3 py-2 text-sm">
             <option value="">Choose product…</option>
             {products?.map((p) => (
               <option key={p.id} value={p.id}>{p.modelCode} — {p.name}</option>
@@ -306,20 +378,80 @@ function SerialsSection() {
         {genMsg && <span className="text-xs text-gray-500">{genMsg}</span>}
       </form>
 
+      {/* Filters + Bulk Delete */}
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <div>
+          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-gray-500">Filter Product</label>
+          <select
+            value={filterProduct}
+            onChange={(e) => { setFilterProduct(e.target.value === "" ? "" : Number(e.target.value)); setSelected(new Set()); }}
+            className="rounded border border-night-600 bg-night-900 px-3 py-1.5 text-sm"
+          >
+            <option value="">All products</option>
+            {products?.map((p) => (
+              <option key={p.id} value={p.id}>{p.modelCode} — {p.name}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-gray-500">Filter Status</label>
+          <select
+            value={filterStatus}
+            onChange={(e) => { setFilterStatus(e.target.value); setSelected(new Set()); }}
+            className="rounded border border-night-600 bg-night-900 px-3 py-1.5 text-sm"
+          >
+            <option value="">All statuses</option>
+            {Object.keys(counts).map((k) => (
+              <option key={k} value={k}>{k} ({counts[k]})</option>
+            ))}
+          </select>
+        </div>
+        {selected.size > 0 && (
+          <div className="ml-auto">
+            <button
+              onClick={handleBulkDelete}
+              className="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-1.5 text-sm font-semibold text-red-400 transition hover:bg-red-500/20"
+            >
+              🗑️ Delete {selected.size} selected
+            </button>
+          </div>
+        )}
+      </div>
+
       <div className="overflow-x-auto rounded-xl border border-brand/20">
         <table className="w-full text-left text-sm">
           <thead className="bg-night-800 text-xs uppercase text-gray-500">
             <tr>
+              <th className="px-3 py-2 w-8">
+                <input
+                  type="checkbox"
+                  checked={allAvailableSelected}
+                  onChange={toggleSelectAll}
+                  className="h-3.5 w-3.5 cursor-pointer accent-red-500"
+                  title="Select all available serials"
+                />
+              </th>
               <th className="px-3 py-2">Serial</th>
               <th className="px-3 py-2">Product</th>
               <th className="px-3 py-2">Status</th>
               <th className="px-3 py-2">Order</th>
               <th className="px-3 py-2">User</th>
+              <th className="px-3 py-2"></th>
             </tr>
           </thead>
           <tbody>
-            {serials?.map((s: SerialRow) => (
+            {filteredSerials.map((s: SerialRow) => (
               <tr key={s.id} className="border-t border-night-700">
+                <td className="px-3 py-2">
+                  {s.status === "available" && (
+                    <input
+                      type="checkbox"
+                      checked={selected.has(s.id)}
+                      onChange={() => toggleSelect(s.id)}
+                      className="h-3.5 w-3.5 cursor-pointer accent-red-500"
+                    />
+                  )}
+                </td>
                 <td className="px-3 py-2 font-mono text-xs text-brand">
                   <CopyText text={s.serialCode} title="Right-click/hold = copy · click = details" onClick={() => setSerialDetail(s.serialCode)}>{s.serialCode}</CopyText>
                 </td>
@@ -329,14 +461,34 @@ function SerialsSection() {
                 <td className="px-3 py-2 text-xs text-gray-500">
                   {s.user ? `${s.user.username}${s.user.email ? ` (${s.user.email})` : ""}` : s.userId ? `User #${s.userId}` : "—"}
                 </td>
+                <td className="px-3 py-2">
+                  {s.status === "available" && (
+                    <button
+                      onClick={() => handleDelete(s.serialCode)}
+                      className="rounded bg-red-900/40 px-2 py-1 text-[11px] font-semibold text-red-500 hover:bg-red-900/60"
+                      title="Delete serial"
+                    >
+                      🗑️
+                    </button>
+                  )}
+                </td>
               </tr>
             ))}
-            {serials?.length === 0 && (
-              <tr><td colSpan={5} className="px-3 py-6 text-center text-gray-500">Koi serial nahi — upar generate karo.</td></tr>
+            {filteredSerials.length === 0 && allSerials.length > 0 && (
+              <tr><td colSpan={7} className="px-3 py-6 text-center text-gray-500">Filter se kuch nahi mila — filter badal ke dekho.</td></tr>
+            )}
+            {allSerials.length === 0 && (
+              <tr><td colSpan={7} className="px-3 py-6 text-center text-gray-500">Koi serial nahi — upar generate karo.</td></tr>
             )}
           </tbody>
         </table>
       </div>
+      {filteredSerials.length > 0 && (
+        <p className="mt-2 text-[11px] text-gray-500">
+          Showing {filteredSerials.length} of {allSerials.length} serials
+          {selected.size > 0 && ` · ${selected.size} selected`}
+        </p>
+      )}
       {serialDetail && (
         <SerialDetailsModal code={serialDetail} onClose={() => setSerialDetail(null)} />
       )}
