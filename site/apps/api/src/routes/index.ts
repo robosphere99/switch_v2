@@ -15,6 +15,9 @@ import { claimRouter } from "./claim.routes";
 import { warrantyRouter } from "./warranty.routes";
 import { publicRouter } from "./public.routes";
 import { supportRouter } from "./support.routes";
+import { oauthRouter } from "./oauth.routes";
+import { googleRouter } from "./google.routes";
+import { alexaRouter } from "./alexa.routes";
 import { requireAuth } from "../middleware/auth";
 import { prisma } from "../lib/prisma";
 import { ok } from "../lib/response";
@@ -37,7 +40,9 @@ apiRouter.use("/shop", shopRouter);
 apiRouter.use("/claim", claimRouter);
 apiRouter.use("/warranty", warrantyRouter);
 apiRouter.use("/public", publicRouter);
-
+apiRouter.use("/oauth", oauthRouter);
+apiRouter.use("/integration/google", googleRouter);
+apiRouter.use("/integration/alexa", alexaRouter);
 /**
  * Mount table — OpenAPI docs (src/lib/openapi.ts) isi se paths enumerate
  * karta hai. Naya router mount karo to yahan ek line add karo — docs khud
@@ -61,6 +66,9 @@ export const apiMounts: Array<{ router: ReturnType<typeof Router>; prefix: strin
   { router: claimRouter, prefix: "/claim" },
   { router: warrantyRouter, prefix: "/warranty" },
   { router: publicRouter, prefix: "/public" },
+  { router: oauthRouter, prefix: "/oauth" },
+  { router: googleRouter, prefix: "/integration/google" },
+  { router: alexaRouter, prefix: "/integration/alexa" },
 ];
 
 apiRouter.get("/firmware/current", requireAuth, async (_req, res) => {

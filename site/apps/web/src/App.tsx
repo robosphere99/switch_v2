@@ -16,6 +16,8 @@ import { ResetPassword } from "./pages/ResetPassword";
 import { Members } from "./pages/Members";
 import { Profile } from "./pages/Profile";
 import { Signup } from "./pages/Signup";
+import { VoiceAssistants } from "./pages/VoiceAssistants";
+import { OAuthConsent } from "./pages/OAuthConsent";
 // Admin heavy page hai (stats + diagnostics + charts) — lazy-load taaki
 // normal dashboard bundle me na aaye (perceived performance).
 const Admin = lazy(() => import("./pages/Admin").then((m) => ({ default: m.Admin })));
@@ -193,6 +195,22 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <Profile />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/voice-assistants"
+            element={
+              <ProtectedRoute>
+                <VoiceAssistants />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/oauth/consent"
+            element={
+              <ProtectedRoute>
+                <OAuthConsent />
               </ProtectedRoute>
             }
           />

@@ -238,6 +238,13 @@ robosphere-v2/                     ← NEW folder + NEW GitHub repo
 - React Native / Expo app reusing the same API + shared types
 - Push notifications for schedules/offline alerts
 
+### Phase 9 — Voice Assistant Integrations (Google Home & Alexa) 🎙️
+- OAuth 2.0 Authorization-Code flow for secure external account linking (no exposed JWTs)
+- Google Cloud-to-cloud Smart Home implementation (SYNC, QUERY, EXECUTE, Report State)
+- Alexa Smart Home skill implementation (Discovery, TurnOn/TurnOff, State Reporting)
+- Dedicated connection tracking (`integration_connections` table) mapped to existing SwitchNest users & homes
+- **Done when:** A user can link their SwitchNest account to Google Home / Alexa and control a "Test Light" via voice commands securely.
+
 ---
 
 ## 7. Migration Strategy (old → new)
@@ -291,7 +298,8 @@ robosphere-v2/                     ← NEW folder + NEW GitHub repo
 - [x] **Phase 4 — Realtime DONE** 🔌 — Socket.IO (auth, rooms, `socket:ready` ack), uniform `device:updated` DTO (shared types), web `useRealtime` hook (invalidate/access-revoked/reconnect), polling relaxed (15s/20s), live <2s updates verified
 - [x] **Phase 6 — Analytics + Email + Batching DONE** — Rooms ✅ · offline → notifications ✅ · usage analytics ✅ (API + Dashboard) · **email channel ✅** (order placed/paid/shipped/delivered + serial keys, warranty submit/status, device/board offline+online — SMTP configured ho to, nahi to silent skip) · **offline batching ✅** (power-cut summary: ek tick me ek home ke 2+ events = ek summary notification+email, single event pe individual) — **Phase 6 COMPLETE**
 - [x] **Phase 7 — AI Assist DONE (hybrid)** — rule-based intent parser (EN/HI) ✅ (pehle se) · **real LLM adapter ✅** (OpenAI-compatible: OpenAI/Gemini/Ollama — `AI_PROVIDER/AI_API_KEY/AI_BASE_URL/AI_MODEL` env se; conversational replies LLM se, device control hamesha confirm-gated) · **automation suggestions ✅** (usage patterns → daily schedule suggestions, API `GET /api/homes/:homeId/automations/suggestions` + Assistant page pe ek-click create) · suggested automations from usage history ✅
-- [ ] Phase 8 (mobile app)
+- [x] **Phase 8 — Mobile App DONE** 📱 — Expo React Native project initialized, NativeWind layout, Axios+Zustand Auth stores, and Push Notification handlers hooked up.
+- [x] **Phase 9 — Voice Assistant Integrations DONE** 🎙️ — Custom OAuth 2.0 flow, Google Smart Home fullfilment, Alexa Skill setup, and Frontend Settings UI built.
 
 > **Current state:** `site/` runs locally — API on :4000, web on :5173 (XAMPP MySQL, db `switch_v2`). ESP32 (COM8, `192.168.1.36`) v2 firmware pe live connected — web toggle → command queue → physical relay loop verified.
 

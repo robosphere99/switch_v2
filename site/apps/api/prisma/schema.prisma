@@ -139,6 +139,9 @@ model User {
   contactMessages ContactMessage[]
   supportMessages SupportMessage[]
   chatSettings    SupportChatSettings[]
+  oauthCodes      OAuthAuthCode[]
+  oauthTokens     OAuthToken[]
+  integrations    IntegrationConnection[]
 
   @@map("users")
 }
@@ -192,6 +195,9 @@ model Home {
   claimedSerials SerialRegistry[]
   deviceAccess   DeviceAccess[]
   usage          DeviceUsage[]
+  oauthCodes     OAuthAuthCode[]
+  oauthTokens    OAuthToken[]
+  integrations   IntegrationConnection[]
 
   @@index([ownerId])
   @@map("homes")
@@ -418,7 +424,8 @@ model ApiKey {
   keyHash    String    @unique @db.VarChar(64) @map("key_hash")
   keyPrefix  String    @db.VarChar(8) @map("key_prefix")
   createdAt  DateTime  @default(now()) @map("created_at")
-  expiresAt  DateTime? @map("expires_at")  lastUsedAt DateTime? @map("last_used_at")
+  expiresAt  DateTime? @map("expires_at")
+  lastUsedAt DateTime? @map("last_used_at")
   revokedAt            DateTime? @map("revoked_at")
 
   user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -674,4 +681,73 @@ model AppMeta {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("app_meta")
+}
+
+// ---------- Integrations / Voice Assistants ----------
+
+model OAuthClient {
+  id           String   @id @default(uuid())
+  clientId     String   @unique @db.VarChar(100) @map("client_id")
+  clientSecret String   @db.VarChar(255) @map("client_secret")
+  name         String   @db.VarChar(100)
+  redirectUris String   @db.Text @map("redirect_uris")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("oauth_clients")
+}
+
+model OAuthAuthCode {
+  id           String   @id @default(uuid())
+  code         String   @unique @db.VarChar(100)
+  clientId     String   @map("client_id") @db.VarChar(100)
+  userId       Int      @map("user_id")
+  homeId       Int      @map("home_id")
+  redirectUri  String   @db.Text @map("redirect_uri")
+  expiresAt    DateTime @map("expires_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  home Home @relation(fields: [homeId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([homeId])
+  @@map("oauth_auth_codes")
+}
+
+model OAuthToken {
+  id           String   @id @default(uuid())
+  accessToken  String   @unique @db.VarChar(255) @map("access_token")
+  refreshToken String?  @unique @db.VarChar(255) @map("refresh_token")
+  clientId     String   @map("client_id") @db.VarChar(100)
+  userId       Int      @map("user_id")
+  homeId       Int      @map("home_id")
+  expiresAt    DateTime @map("expires_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+  lastUsedAt   DateTime? @map("last_used_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  home Home @relation(fields: [homeId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([homeId])
+  @@map("oauth_tokens")
+}
+
+model IntegrationConnection {
+  id              Int      @id @default(autoincrement())
+  userId          Int      @map("user_id")
+  homeId          Int      @map("home_id")
+  provider        String   @db.VarChar(50) // "google" | "alexa"
+  providerSubject String?  @db.VarChar(255) @map("provider_subject")
+  status          String   @default("active") @db.VarChar(20) // "active" | "revoked"
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  lastUsedAt      DateTime? @map("last_used_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  home Home @relation(fields: [homeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, provider]) // One provider connection per user
+  @@index([homeId])
+  @@map("integration_connections")
 }

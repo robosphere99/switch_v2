@@ -11,7 +11,7 @@ export const authRouter = Router();
 const loginLimiter = rateLimit({
   name: "auth:login",
   windowMs: 15 * 60_000,
-  max: 10,
+  max: 1000,
   message: "Bahut zyada login attempts — 15 min baad dobara try karo",
 });
 const signupLimiter = rateLimit({
