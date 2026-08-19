@@ -26,3 +26,21 @@ export const toggleDevice = async (homeId: number, deviceId: number, status: 'on
         throw extractApiError(e);
     }
 };
+
+export const getSchedules = async (homeId: number) => {
+    try {
+        const res = await api.get(`/homes/${homeId}/schedules`);
+        return res.data;
+    } catch (e) {
+        throw extractApiError(e);
+    }
+};
+
+export const deleteSchedule = async (homeId: number, scheduleId: number) => {
+    try {
+        const res = await api.delete(`/homes/${homeId}/schedules/${scheduleId}`);
+        return res.data;
+    } catch (e) {
+        throw extractApiError(e);
+    }
+};

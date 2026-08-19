@@ -11,6 +11,7 @@ import { Notifications } from "./pages/Notifications";
 import { MyBoards } from "./pages/MyBoards";
 import { Landing } from "./pages/Landing";
 import { Login } from "./pages/Login";
+import { Automations } from "./pages/Automations";
 import { ForgotPassword } from "./pages/ForgotPassword";
 import { ResetPassword } from "./pages/ResetPassword";
 import { Members } from "./pages/Members";
@@ -139,6 +140,14 @@ export default function App() {
             element={
               <ProtectedRoute customerOnly>
                 <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/automations"
+            element={
+              <ProtectedRoute customerOnly>
+                <Automations />
               </ProtectedRoute>
             }
           />
