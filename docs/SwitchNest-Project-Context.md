@@ -7,7 +7,7 @@
 > Repo location (this machine): `C:\Users\robos\OneDrive\Documents\SwitchNest`
 >
 <!-- AUTO:STAMP:START -->
-> _Auto-updated: 2026-08-18 05:48 UTC · branch `main` · tree dirty (23 changes) · 204 commits_
+> _Auto-updated: 2026-08-19 21:08 UTC · branch `main` · tree clean · 242 commits_
 <!-- AUTO:STAMP:END -->
 
 ---
@@ -112,26 +112,26 @@ that also serves real ESP32 hardware).
 <!-- AUTO:RECENT_COMMITS:START -->
 Sabse naye 20 commits:
 
-- `c03fdbf` (2026-08-18) feat(devices): offline batching — power-cut summary notification
-- `b21ec50` (2026-08-18) feat(automations): demo suggestions jab usage data na ho + Dashboard section
-- `b1c5f33` (2026-08-18) feat(admin): deploy-status fix, LAN IP + copyable guide fields, navbar ESP32 link
-- `0c25f63` (2026-08-18) feat(admin): AI assistant config via Settings UI (env fallback + encrypted)
-- `8778932` (2026-08-18) feat(shop): bill QR genuineness verify — HMAC token + public verify page
-- `0aae8bd` (2026-08-18) feat(flasher): webserver reach check + Flasher-Latest launcher + factory audit
-- `22c7a43` (2026-08-18) docs: Hindi ESP32 guide, CDN-free Swagger UI, realtime events guide
-- `c5bcd5b` (2026-08-18) docs: localhost-first development strategy (deploy only at milestones)
-- `3cdb320` (2026-08-18) feat: rate limit remaining public endpoints (public, claim, warranty, assistant)
-- `ef85a99` (2026-08-18) feat: rate limiting + password reset + OpenAPI docs + Phase 6/7 (emails, AI, automations)
-- `f420ca8` (2026-08-17) docs: START_GUIDE + site/README — commit 3-layer fallback, sync health check, lost-webhook troubleshooting
-- `301ede0` (2026-08-17) fix: marker source tracking — build-fallback (parent commit) se jhuta lagging alarm na ho
-- `a72f361` (2026-08-17) fix: GitHub API token support (GITHUB_TOKEN) — shared-host rate limit se bachao
-- `ef5b4c1` (2026-08-17) feat: deployed commit build-time embedded — sync check reliable, marker wipe-proof
-- `4133974` (2026-08-17) deploy: webhook re-trigger (84599c5 ka delivery lost — sync health check test)
-- `84599c5` (2026-08-17) feat: deploy sync health check — push live site pe nahi pahuncha to panel alert
-- `1376c9a` (2026-08-17) deploy: webhook re-trigger (af72ffc ka deploy nahi chala tha)
-- `af72ffc` (2026-08-17) fix: deploy card commit/branch kabhi blank na ho — 3-layer fallback
-- `5bc9329` (2026-08-17) deploy: marker me commit+branch fix — GitHub API se fetch (deployed folder me .git nahi hota)
-- `efded99` (2026-08-17) api: public /api/version endpoint (ops/diagnostics) — API_VERSION const se health sync
+- `d51c3cf` (2026-08-20) feat(mobile): Complete Phase 8 Mobile SDK 54 MVP
+- `eef9f3d` (2026-08-20) fix(api): rebuild dist bundle to include serial delete routes
+- `92562d5` (2026-08-19) chore: rebuild production assets with latest admin features
+- `1528aa8` (2026-08-19) feat: pagination for serials table — prev/next + page size selector
+- `7c9ddc5` (2026-08-19) feat: admin panel — serials delete + bulk delete + filters + user management
+- `356993e` (2026-08-19) chore: rebuild production assets after UI fixes
+- `dd05991` (2026-08-19) fix: dashboard mobile layout, device card expand arrow, admin users tab
+- `6a4b760` (2026-08-19) fix: grouped navbar + compact device cards + always-visible logout
+- `cf1fe81` (2026-08-19) fix: desktop navbar overflow — compact labels, scrollable nav, no cutoff
+- `d81a309` (2026-08-19) fix: mobile UI — navbar dropdown, ChatWidget, touch targets, dark mode
+- `4e077c9` (2026-08-19) feat: real-time notification bell — auto-update + audio feedback + browser push
+- `bc9f958` (2026-08-19) fix: add api_keys.revoked_at auto-migration on boot + defensive try-catch in user api-keys routes
+- `c44e522` (2026-08-19) fix: add settle delay after setserver + retry setapname (3 attempts, 15s timeout) to prevent Connection Timeout
+- `c6cf4b3` (2026-08-19) fix: use console.error instead of fileLog in api-keys catch to fix ReferenceError
+- `b8a5d48` (2026-08-19) fix: remove esbuild from deploy.cmd - dist pre-built and committed, no server rebuild needed
+- `6e26b50` (2026-08-19) fix: wrap api-keys endpoint with try-catch fallback to prevent 500
+- `0cb8625` (2026-08-19) fix: rewrite deploy.cmd with for-loop output suppression to eliminate error 255
+- `4fd82ec` (2026-08-19) fix(deploy): suppress CMD error 255 by redirecting prisma output to nul
+- `031aea4` (2026-08-19) fix: remove missing DB columns from Prisma schema + code (loginCount, ledEnabled, shippedAt, deliveredAt, expiryWarnedAt)
+- `4d80aef` (2026-08-19) fix(deploy): simplify prisma generate in deploy.cmd
 <!-- AUTO:RECENT_COMMITS:END -->
 
 - 503 root-cause work: DB probe retry loop so the app self-heals, `nodeProcessCountPerApplication=1`,

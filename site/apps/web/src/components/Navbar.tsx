@@ -4,6 +4,7 @@ import {
   Bell,
   BookOpen,
   Bot,
+  Clock,
   Home,
   KeyRound,
   LayoutDashboard,
@@ -75,7 +76,8 @@ const NAV_GROUPS: NavGroup[] = [
     title: "Intelligence",
     items: [
       { to: "/assistant", label: "AI", icon: Bot },
-      { to: "/voice-assistants", label: "Voice Apps", icon: Mic }
+      { to: "/voice-assistants", label: "Voice Apps", icon: Mic },
+      { to: "/automations", label: "Automations", icon: Clock }
     ],
   },
   {

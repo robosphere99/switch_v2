@@ -28,6 +28,7 @@ export async function listDevices(homeId: number, viewerId?: number) {
     where,
     include: {
       esp: { select: { id: true, name: true, serialCode: true, modelCode: true, firmwareVersion: true, offline: true, lastSeen: true } },
+      room: { select: { id: true, name: true } },
     },
     orderBy: { createdAt: "desc" },
   });
@@ -88,9 +89,9 @@ export async function setDeviceStatus(input: {
   // Defensive: stale prisma client ho to check skip (log karo, 500 nahi)
   const membership = prisma.deviceAccess
     ? await prisma.homeMember.findUnique({
-        where: { homeId_userId: { homeId: input.homeId, userId: input.actorId } },
-        select: { restricted: true },
-      })
+      where: { homeId_userId: { homeId: input.homeId, userId: input.actorId } },
+      select: { restricted: true },
+    })
     : null;
   if (membership?.restricted && prisma.deviceAccess) {
     const granted = await prisma.deviceAccess.findUnique({
@@ -156,9 +157,9 @@ export async function sendDeviceCommand(input: {
   // Restricted member (child mode) — same gate as setStatus
   const membership = prisma.deviceAccess
     ? await prisma.homeMember.findUnique({
-        where: { homeId_userId: { homeId: input.homeId, userId: input.actorId } },
-        select: { restricted: true },
-      })
+      where: { homeId_userId: { homeId: input.homeId, userId: input.actorId } },
+      select: { restricted: true },
+    })
     : null;
   if (membership?.restricted && prisma.deviceAccess) {
     const granted = await prisma.deviceAccess.findUnique({
@@ -200,9 +201,9 @@ export async function bulkSetStatus(input: {
   // Restricted member (child mode) — sirf granted devices control kar sakta hai.
   const membership = prisma.deviceAccess
     ? await prisma.homeMember.findUnique({
-        where: { homeId_userId: { homeId: input.homeId, userId: input.actorId } },
-        select: { restricted: true },
-      })
+      where: { homeId_userId: { homeId: input.homeId, userId: input.actorId } },
+      select: { restricted: true },
+    })
     : null;
   if (membership?.restricted && prisma.deviceAccess) {
     const granted = await prisma.deviceAccess.findMany({
