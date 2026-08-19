@@ -742,71 +742,96 @@ export function Admin() {
       )}
 
       {tab === "users" && (
-        <div className="rounded-xl border border-gray-200 bg-night-800 p-5">
-          <h2 className="mb-4 font-semibold">
-            Users <span className="text-sm font-normal text-gray-500">({users.data?.success ? users.data.data.length : "…"})</span>
-          </h2>
-          <div className="space-y-2">
+        <div className="rounded-xl border border-gray-200 bg-night-800 p-4 sm:p-5">
+          {/* Header + search */}
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="font-semibold">
+              Users <span className="text-sm font-normal text-gray-500">({users.data?.success ? users.data.data.length : "…"})</span>
+            </h2>
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="🔍 Search users..."
+              className="w-full rounded-lg border border-brand/20 bg-night-900 px-3 py-2 text-sm outline-none focus:border-brand sm:w-64"
+            />
+          </div>
+
+          {/* User cards */}
+          <div className="space-y-3">
             {users.data?.success &&
               users.data.data.map((u) => (
-                <div key={u.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 bg-night-900 px-4 py-2.5 text-sm">
-                  <div>
-                    <span className="font-semibold">{u.username}</span>
-                    <span className="ml-2 text-xs text-gray-500">{u.email}</span>
-                    <span className="ml-2 text-xs text-gray-600">
-                      {u._count.ownedHomes} homes · {u._count.memberships} memberships
-                    </span>
-                    <span className={`ml-2 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${
-                      u.role === "system_admin" ? "border-purple-500/40 text-purple-400" : "border-gray-300 text-gray-500"
-                    }`}>
-                      {u.role}
-                    </span>
-                    <span className={`ml-2 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${
-                      u.status === "active" ? "border-emerald-500/40 text-emerald-400" : "border-red-500/40 text-red-400"
-                    }`}>
-                      {u.status}
-                    </span>
+                <div key={u.id} className="overflow-hidden rounded-xl border border-gray-200 bg-night-900">
+                  {/* ── Top row: avatar + identity + badges ── */}
+                  <div className="flex items-start gap-3 px-4 py-3">
+                    {/* Avatar circle */}
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand/10 text-sm font-bold text-brand">
+                      {u.username.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-semibold text-white">{u.username}</span>
+                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${
+                          u.role === "system_admin" ? "border-purple-500/40 text-purple-400" : "border-gray-300 text-gray-500"
+                        }`}>
+                          {u.role}
+                        </span>
+                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${
+                          u.status === "active" ? "border-emerald-500/40 text-emerald-400" : "border-red-500/40 text-red-400"
+                        }`}>
+                          {u.status}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 truncate text-xs text-gray-500">{u.email}</p>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3">
+n                  {/* ── Stats row ── */}
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-gray-200/50 px-4 py-2 text-[11px] text-gray-500 dark:border-night-600">
+                    <span>🏠 {u._count.ownedHomes} homes</span>
+                    <span>👥 {u._count.memberships} memberships</span>
+                    <span>📅 joined {new Date(u.createdAt).toLocaleDateString()}</span>
+                    {u.lastLoginAt && (
+                      <span>🕐 last login {new Date(u.lastLoginAt).toLocaleDateString()}</span>
+                    )}
+                  </div>
+n                  {/* ── Action buttons ── */}
+                  <div className="flex flex-wrap items-center gap-2 border-t border-gray-200/50 px-4 py-2.5 dark:border-night-600">
                     <button
                       onClick={() => selectSupportUser(u.id)}
-                      className="rounded-lg border border-brand/40 bg-brand/10 px-2.5 py-1 text-xs font-semibold text-brand transition hover:bg-brand/20"
-                      title={`${u.username} se seedha support chat kholo (feedback / contact support)`}
+                      className="inline-flex items-center gap-1 rounded-lg border border-brand/40 bg-brand/10 px-3 py-1.5 text-xs font-semibold text-brand transition hover:bg-brand/20"
+                      title={`${u.username} se seedha support chat kholo`}
                     >
                       💬 Message
                     </button>
-                    <span className="text-[11px] text-gray-500">
-                      joined {new Date(u.createdAt).toLocaleDateString()}
-                      {u.lastLoginAt ? ` · last ${new Date(u.lastLoginAt).toLocaleDateString()}` : ""}
-                    </span>
                     <button
                       onClick={() => role.mutate({ id: u.id, r: u.role === "system_admin" ? "user" : "system_admin" })}
-                      className="text-xs font-semibold text-purple-400 hover:text-purple-300"
+                      className="inline-flex items-center gap-1 rounded-lg border border-purple-500/30 bg-purple-500/10 px-3 py-1.5 text-xs font-semibold text-purple-400 transition hover:bg-purple-500/20"
                       title="Toggle admin role"
                     >
-                      {u.role === "system_admin" ? "Demote" : "Make admin"}
+                      {u.role === "system_admin" ? "⬇ Demote" : "⬆ Make admin"}
                     </button>
                     <button
                       onClick={() => setStatus.mutate({ id: u.id, status: u.status === "active" ? "suspended" : "active" })}
-                      className={`text-xs font-semibold ${
-                        u.status === "active" ? "text-amber-600 hover:text-amber-600" : "text-emerald-400 hover:text-emerald-300"
+                      className={`inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
+                        u.status === "active"
+                          ? "border-amber-500/30 bg-amber-500/10 text-amber-500 hover:bg-amber-500/20"
+                          : "border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
                       }`}
                     >
-                      {u.status === "active" ? "Suspend" : "Activate"}
+                      {u.status === "active" ? "🚫 Suspend" : "✅ Activate"}
                     </button>
                     <button
                       onClick={() => {
-                        if (confirm(`Delete user "${u.username}"? All their data will be removed.`)) delUser.mutate(u.id);
+                        if (confirm(`Delete user \"${u.username}\"? All their data will be removed.`)) delUser.mutate(u.id);
                       }}
-                      className="text-xs font-semibold text-red-400 hover:text-red-600"
+                      className="ml-auto inline-flex items-center gap-1 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-400 transition hover:bg-red-500/20"
                     >
-                      🗑️
+                      🗑️ Delete
                     </button>
                   </div>
                 </div>
               ))}
             {users.data?.success && users.data.data.length === 0 && (
-              <p className="text-sm text-gray-500">No users match the search.</p>
+              <p className="py-8 text-center text-sm text-gray-500">No users match the search. 😕</p>
             )}
           </div>
         </div>

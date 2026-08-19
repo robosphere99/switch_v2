@@ -475,7 +475,7 @@ export function Dashboard() {
                   <div className="space-y-8">
                     {sections.map((s) => (
                       <div key={s.roomId ?? "none"}>
-                        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                           <h3 className="flex items-center gap-2 font-semibold text-night-950">
                             {s.roomId !== null ? `📍 ${s.title}` : "📦 Other devices"}
                             <span className="text-xs font-normal text-gray-500">({s.list.length})</span>
