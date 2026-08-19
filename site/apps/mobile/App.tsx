@@ -1,51 +1,68 @@
-import React, { useState } from 'react';
-import { StyleSheet, View, Text, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { login } from './src/api/auth';
+import React, { useState, useRef } from 'react';
+import { StyleSheet, View, Text, TextInput, TouchableOpacity, ActivityIndicator, Animated } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
+import * as LocalAuthentication from 'expo-local-authentication';
 import { DashboardScreen } from './src/components/DashboardScreen';
 import { AutomationsScreen } from './src/components/AutomationsScreen';
+import { LoginScreen } from './src/components/LoginScreen';
 import { Clock, Home as HomeIcon, Settings } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
+import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 
-export default function App() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+function MainApp() {
+  const { theme } = useTheme();
   const [user, setUser] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<'HOME' | 'AUTOMATIONS' | 'SETTINGS'>('HOME');
   const [isRestoring, setIsRestoring] = useState(true);
+  const [biometricFailed, setBiometricFailed] = useState(false);
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+
+  const triggerBiometrics = async (storedUser: any) => {
+    const authRes = await LocalAuthentication.authenticateAsync({
+      promptMessage: 'Unlock SwitchNest Security',
+      fallbackLabel: 'Use Device PIN',
+      cancelLabel: 'Cancel',
+      disableDeviceFallback: false,
+    });
+
+    if (authRes.success) {
+      setUser(JSON.parse(storedUser));
+      setBiometricFailed(false);
+    } else {
+      setBiometricFailed(true);
+    }
+  };
 
   React.useEffect(() => {
     const restoreAuth = async () => {
       try {
         const storedUser = await SecureStore.getItemAsync('user');
-        if (storedUser) setUser(JSON.parse(storedUser));
+        const loginTimestamp = await SecureStore.getItemAsync('loginTimestamp') || String(Date.now());
+        const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+
+        if (storedUser) {
+          if (Date.now() - parseInt(loginTimestamp) > SEVEN_DAYS_MS) {
+            // Expired Session - Force Relogin
+            await SecureStore.deleteItemAsync('user');
+            await SecureStore.deleteItemAsync('loginTimestamp');
+            setUser(null);
+          } else {
+            const hasHardware = await LocalAuthentication.hasHardwareAsync();
+            const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+
+            if (hasHardware && isEnrolled) {
+              await triggerBiometrics(storedUser);
+            } else {
+              // Hardware missing/not-enrolled, let them in without friction
+              setUser(JSON.parse(storedUser));
+            }
+          }
+        }
       } catch (e) { }
       setIsRestoring(false);
     };
     restoreAuth();
   }, []);
-
-  const handleLogin = async () => {
-    setError('');
-    setLoading(true);
-    try {
-      // Local network backend ping mapping strictly to Zod Schema
-      const res = await login({ usernameEmail: email, password });
-      if (res.success && res.data) {
-        if (res.data.accessToken) {
-          await SecureStore.setItemAsync('accessToken', res.data.accessToken);
-        }
-        await SecureStore.setItemAsync('user', JSON.stringify(res.data.user));
-        setUser(res.data.user);
-      }
-    } catch (e: any) {
-      setError(e.message || 'Login failed. Make sure backend is running.');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   // Custom Micro-Router Fallback
   const renderTab = () => {
@@ -74,29 +91,38 @@ export default function App() {
 
   if (user) {
     const setNav = (tab: 'HOME' | 'AUTOMATIONS' | 'SETTINGS') => {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
+      if (activeTab === tab) return;
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => { });
+
+      fadeAnim.setValue(0.1); // Drop opacity
       setActiveTab(tab);
+
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 350,
+        useNativeDriver: true,
+      }).start();
     };
 
     return (
-      <View style={{ flex: 1, backgroundColor: '#0f172a' }}>
-        <View style={{ flex: 1 }}>{renderTab()}</View>
+      <View style={{ flex: 1, backgroundColor: theme.background }}>
+        <Animated.View style={{ flex: 1, opacity: fadeAnim }}>{renderTab()}</Animated.View>
 
         {/* Premium Bottom Navbar */}
-        <View style={styles.bottomNav}>
+        <View style={[styles.bottomNav, { backgroundColor: theme.tabBar, borderColor: theme.border }]}>
           <TouchableOpacity style={styles.navItem} onPress={() => setNav('HOME')}>
-            <HomeIcon color={activeTab === 'HOME' ? '#3b82f6' : '#64748b'} size={24} />
-            <Text style={[styles.navText, activeTab === 'HOME' && styles.navTextActive]}>Home</Text>
+            <HomeIcon color={activeTab === 'HOME' ? theme.primary : theme.textSecondary} size={24} />
+            <Text style={[styles.navText, { color: activeTab === 'HOME' ? theme.primary : theme.textSecondary }]}>Home</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.navItem} onPress={() => setNav('AUTOMATIONS')}>
-            <Clock color={activeTab === 'AUTOMATIONS' ? '#3b82f6' : '#64748b'} size={24} />
-            <Text style={[styles.navText, activeTab === 'AUTOMATIONS' && styles.navTextActive]}>Automations</Text>
+            <Clock color={activeTab === 'AUTOMATIONS' ? theme.primary : theme.textSecondary} size={24} />
+            <Text style={[styles.navText, { color: activeTab === 'AUTOMATIONS' ? theme.primary : theme.textSecondary }]}>Routines</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.navItem} onPress={() => setNav('SETTINGS')}>
-            <Settings color={activeTab === 'SETTINGS' ? '#3b82f6' : '#64748b'} size={24} />
-            <Text style={[styles.navText, activeTab === 'SETTINGS' && styles.navTextActive]}>Settings</Text>
+            <Settings color={activeTab === 'SETTINGS' ? theme.primary : theme.textSecondary} size={24} />
+            <Text style={[styles.navText, { color: activeTab === 'SETTINGS' ? theme.primary : theme.textSecondary }]}>Settings</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -105,50 +131,33 @@ export default function App() {
 
   if (isRestoring) {
     return (
-      <View style={[styles.container, { flex: 1 }]}>
-        <ActivityIndicator size="large" color="#3b82f6" />
+      <View style={[styles.container, { flex: 1, backgroundColor: theme.background }]}>
+        <ActivityIndicator size="large" color={theme.primary} />
       </View>
     );
   }
 
-  // Pure Opening Screen
+  // Pure Opening Screen (If biometric failed, allow retry)
+  return <LoginScreen
+    onLoginSuccess={setUser}
+    onBiometricRetry={biometricFailed ? async () => {
+      const storedUser = await SecureStore.getItemAsync('user');
+      if (storedUser) triggerBiometrics(storedUser);
+    } : undefined}
+  />;
+}
+
+export default function App() {
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>RoboSphere</Text>
-      <Text style={styles.subtitle}>Sign in to control your smart home</Text>
-
-      {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
-      <TextInput
-        style={styles.input}
-        placeholder="Enter your email"
-        placeholderTextColor="#9ca3af"
-        autoCapitalize="none"
-        keyboardType="email-address"
-        value={email}
-        onChangeText={setEmail}
-      />
-
-      <TextInput
-        style={styles.input}
-        placeholder="Enter your password"
-        placeholderTextColor="#9ca3af"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-      />
-
-      <TouchableOpacity style={styles.button} onPress={handleLogin} disabled={loading}>
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Sign In</Text>}
-      </TouchableOpacity>
-    </View>
+    <ThemeProvider>
+      <MainApp />
+    </ThemeProvider>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0f172a',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
@@ -156,7 +165,6 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 40,
     fontWeight: 'bold',
-    color: '#3b82f6',
     marginBottom: 8,
   },
   subtitle: {
@@ -214,13 +222,10 @@ const styles = StyleSheet.create({
   bottomNav: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    backgroundColor: '#1e293b',
     paddingBottom: 32, // SafeArea padding for bottom
     paddingTop: 16,
     borderTopWidth: 1,
-    borderColor: '#334155'
   },
   navItem: { alignItems: 'center', flex: 1 },
-  navText: { color: '#64748b', fontSize: 13, marginTop: 6, fontWeight: '700' },
-  navTextActive: { color: '#3b82f6' }
+  navText: { fontSize: 13, marginTop: 6, fontWeight: '700' },
 });

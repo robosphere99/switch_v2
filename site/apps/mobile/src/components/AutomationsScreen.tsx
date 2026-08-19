@@ -2,9 +2,11 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert, StyleSheet } from 'react-native';
 import { Clock, Trash2, Power } from 'lucide-react-native';
 import { getHomes, getSchedules, deleteSchedule } from '../api/hardware';
+import { useTheme } from '../theme/ThemeContext';
 import * as Haptics from 'expo-haptics';
 
 export function AutomationsScreen() {
+    const { theme } = useTheme();
     const [loading, setLoading] = useState(true);
     const [schedules, setSchedules] = useState<any[]>([]);
     const [homeId, setHomeId] = useState<number | null>(null);
@@ -60,57 +62,57 @@ export function AutomationsScreen() {
     };
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, { backgroundColor: theme.background }]}>
             <View style={styles.header}>
-                <View style={styles.headerIconContainer}>
+                <View style={[styles.headerIconContainer, { backgroundColor: theme.primary }]}>
                     <Clock color="#ffffff" size={24} />
                 </View>
-                <Text style={styles.pageTitle}>Routines & Timers</Text>
+                <Text style={[styles.pageTitle, { color: theme.text }]}>Routines & Timers</Text>
             </View>
 
             <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false}>
                 {loading ? (
                     <View style={styles.centerBox}>
-                        <ActivityIndicator size="large" color="#3b82f6" />
+                        <ActivityIndicator size="large" color={theme.primary} />
                     </View>
                 ) : schedules.length > 0 ? (
                     schedules.map((sched) => (
-                        <View key={sched.id} style={styles.card}>
+                        <View key={sched.id} style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
                             <View style={styles.cardInfo}>
-                                <Text style={styles.deviceTarget}>
+                                <Text style={[styles.deviceTarget, { color: theme.text }]}>
                                     {sched.device?.name || `Device #${sched.deviceId}`}
                                 </Text>
 
                                 <View style={styles.badgeRow}>
-                                    <View style={[styles.badge, sched.action === 'on' ? styles.badgeON : styles.badgeOFF]}>
-                                        <Power color={sched.action === 'on' ? '#ffffff' : '#9ca3af'} size={12} style={{ marginRight: 4 }} />
-                                        <Text style={[styles.badgeText, sched.action === 'on' ? styles.badgeTextON : styles.badgeTextOFF]}>
+                                    <View style={[styles.badge, { backgroundColor: sched.action === 'on' ? theme.primary : theme.border }]}>
+                                        <Power color={sched.action === 'on' ? '#ffffff' : theme.textSecondary} size={12} style={{ marginRight: 4 }} />
+                                        <Text style={[styles.badgeText, { color: sched.action === 'on' ? '#ffffff' : theme.textSecondary }]}>
                                             TURN {sched.action.toUpperCase()}
                                         </Text>
                                     </View>
-                                    <View style={styles.badgeNeutral}>
-                                        <Text style={styles.badgeTextNeutral}>
+                                    <View style={[styles.badgeNeutral, { backgroundColor: theme.border }]}>
+                                        <Text style={[styles.badgeTextNeutral, { color: theme.textSecondary }]}>
                                             {sched.type === 'once' ? 'ONE-TIME' : sched.type.toUpperCase()}
                                         </Text>
                                     </View>
                                 </View>
 
-                                <Text style={styles.scheduleTime}>
+                                <Text style={[styles.scheduleTime, { color: theme.textSecondary }]}>
                                     {sched.type === 'once' && sched.runAt ? `Scheduled for ${getRelativeTimeString(sched.runAt)}` : ''}
                                     {sched.type === 'cron' ? `Cron Trigger: ${sched.cron}` : ''}
                                 </Text>
                             </View>
 
-                            <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDelete(sched.id)}>
-                                <Trash2 color="#f87171" size={20} />
+                            <TouchableOpacity style={[styles.deleteBtn, { backgroundColor: theme.danger + '20' }]} onPress={() => handleDelete(sched.id)}>
+                                <Trash2 color={theme.danger} size={20} />
                             </TouchableOpacity>
                         </View>
                     ))
                 ) : (
-                    <View style={styles.emptyBox}>
-                        <Clock color="#475569" size={48} style={{ marginBottom: 16 }} />
-                        <Text style={styles.emptyText}>No Active Automations</Text>
-                        <Text style={styles.emptySub}>Set up timers and recurring routines from the Command Center Web Dashboard.</Text>
+                    <View style={[styles.emptyBox, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                        <Clock color={theme.textSecondary} size={48} style={{ marginBottom: 16 }} />
+                        <Text style={[styles.emptyText, { color: theme.text }]}>No Active Automations</Text>
+                        <Text style={[styles.emptySub, { color: theme.textSecondary }]}>Set up timers and recurring routines from the Command Center Web Dashboard.</Text>
                     </View>
                 )}
                 <View style={{ height: 120 }} />

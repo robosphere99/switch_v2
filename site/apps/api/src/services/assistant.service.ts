@@ -21,7 +21,7 @@ const ON_PATTERNS = [
   /\b(turn\s+)?on\b/,
   /\bstart\b/,
   /\bchalu\b/,
-  /\bjalo\b/,
+  /\bjalao\b/,
   /\bopen\b/,
   /\bkholo\b/,
 ];
@@ -29,7 +29,7 @@ const OFF_PATTERNS = [
   /\b(turn\s+)?off\b/,
   /\bstop\b/,
   /\bband\b/,
-  /\bbujha\b/,
+  /\bbujhao\b/,
   /\bclose\b/,
   /\bband karo\b/,
 ];
@@ -71,7 +71,7 @@ function matchedTypes(text: string): string[] {
  * Parse a natural-language command against the home's devices.
  * Returns matched devices + the requested action (on/off), or null if unclear.
  */
-export function parseIntent(text: string, devices: { id: number; name: string; type: string }[]): {
+export function parseIntent(text: string, rawDevices: { id: number; name: string; type: string; room?: { name: string } | null }[]): {
   action: DeviceStatus | null;
   actions: ParsedAction[];
   matchedBy: string;
@@ -81,10 +81,23 @@ export function parseIntent(text: string, devices: { id: number; name: string; t
   const all = isAllRequest(text);
   const types = matchedTypes(text);
 
+  // Extract Mentioned Room (Zero-Cost Context Engine)
+  const roomNames = new Set(rawDevices.map((d) => d.room?.name).filter(Boolean) as string[]);
+  let targetRoom: string | null = null;
+  for (const r of roomNames) {
+    if (lower.includes(r.toLowerCase())) {
+      targetRoom = r;
+      break;
+    }
+  }
+
+  // Filter device scope to target room if one is mentioned
+  const devices = targetRoom ? rawDevices.filter(d => d.room?.name === targetRoom) : rawDevices;
+
   let matches: { id: number; name: string; type: string }[] = [];
 
   if (all && types.length === 0) {
-    // "all devices" / "sab kuch" → everything
+    // "all devices" / "sab kuch" → everything (in scope)
     matches = devices;
   } else {
     // 1. exact device names mentioned in the text
@@ -105,9 +118,7 @@ export function parseIntent(text: string, devices: { id: number; name: string; t
     actions: action
       ? matches.map((d) => ({ deviceId: d.id, deviceName: d.name, action }))
       : [],
-    // Asli match kaise hua: type keyword ("saare lights" → type, sirf lights,
-    // "all" nahi) > all > exact name > kuch nahi.
-    matchedBy: types.length > 0 ? `type:${types.join(",")}` : all ? "all" : matches.length > 0 ? "name" : "none",
+    matchedBy: (targetRoom ? `room:${targetRoom},` : "") + (types.length > 0 ? `type:${types.join(",")}` : all ? "all" : matches.length > 0 ? "name" : "none"),
   };
 }
 
@@ -116,8 +127,15 @@ export function parseIntent(text: string, devices: { id: number; name: string; t
 // ---------------------------------------------------------------------------
 
 export async function createChat(userId: number, homeId: number, title?: string) {
+  const existing = await prisma.assistantChat.findFirst({
+    where: { userId, homeId }
+  });
+  if (existing) return existing;
+
+  const home = await prisma.home.findUnique({ where: { id: homeId } });
+
   return prisma.assistantChat.create({
-    data: { userId, homeId, title: title?.trim() || "AI Assist" },
+    data: { userId, homeId, title: title?.trim() || (home ? `${home.name} AI` : "AI Assist") },
   });
 }
 
@@ -207,6 +225,7 @@ interface DeviceBrief {
   offline: boolean;
   ipAddress: string | null;
   firmwareVersion: string | null;
+  room?: { id: number; name: string } | null;
   _count?: { commands: number };
 }
 
@@ -409,6 +428,7 @@ export async function sendMessage(userId: number, chatId: number, content: strin
       offline: true,
       ipAddress: true,
       firmwareVersion: true,
+      room: { select: { id: true, name: true } },
       _count: { select: { commands: { where: { status: "pending" } } } },
     },
   });
