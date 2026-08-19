@@ -729,15 +729,20 @@ adminRouter.get("/search", async (req, res) => {
 // ---------- API keys ----------
 
 adminRouter.get("/api-keys", async (_req, res) => {
-  const keys = await prisma.apiKey.findMany({
-    include: {
-      user: { select: { id: true, username: true, email: true } },
-      home: { select: { id: true, name: true } },
-    },
-    orderBy: { createdAt: "desc" },
-    take: 200,
-  });
-  ok(res, keys);
+  try {
+    const keys = await prisma.apiKey.findMany({
+      include: {
+        user: { select: { id: true, username: true, email: true } },
+        home: { select: { id: true, name: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 200,
+    });
+    ok(res, keys);
+  } catch (err: any) {
+    fileLog(`[admin] api-keys query failed: ${err?.message ?? err}`);
+    ok(res, []);
+  }
 });
 
 /** Flasher ke liye: user ke liye naya API key banao (userId/homeId pe bind).
