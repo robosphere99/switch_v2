@@ -283,6 +283,19 @@ async function runLightMigrations(): Promise<void> {
         logger.info("✅ Migration: password_reset_tokens table created");
       }
     });
+    // 7) api_keys.revoked_at — key revocation tracking.
+    await migration("api_keys.revoked_at", async () => {
+      const ra = await prisma.$queryRaw<{ c: bigint }[]>`
+        SELECT COUNT(*) AS c FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'api_keys' AND column_name = 'revoked_at'
+      `;
+      if (Number(ra[0]?.c ?? 0) === 0) {
+        await prisma.$executeRawUnsafe(
+          "ALTER TABLE `api_keys` ADD COLUMN `revoked_at` DATETIME(3) NULL",
+        );
+        logger.info("✅ Migration: api_keys.revoked_at added");
+      }
+    });
   } catch (err) {
     logger.warn("Light migration (esp serial unique) skip/fail", err instanceof Error ? err.message : String(err));
   }
