@@ -13,6 +13,7 @@ import {
   RadioTower,
   ShieldCheck,
   ShoppingCart,
+  Mic,
   User,
   Users,
   Wrench,
@@ -72,7 +73,10 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     title: "Intelligence",
-    items: [{ to: "/assistant", label: "AI", icon: Bot }],
+    items: [
+      { to: "/assistant", label: "AI", icon: Bot },
+      { to: "/voice-assistants", label: "Voice Apps", icon: Mic }
+    ],
   },
   {
     title: "Support & Help",
@@ -113,67 +117,102 @@ export function Navbar() {
 
   return (
     <>
-    <header className="sticky top-0 z-20 border-b border-gray-200 bg-white/95 backdrop-blur">
-      <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3">
-        {/* Admin login pe logo → Admin Overview (stats); warna home page */}
-        <Link
-          to={user?.role === "system_admin" ? "/admin" : "/"}
-          className="shrink-0"
-          onClick={() => setMobileOpen(false)}
-        >
-          <Logo />
-        </Link>
+      <header className="sticky top-0 z-20 border-b border-gray-200 bg-white/95 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3">
+          {/* Admin login pe logo → Admin Overview (stats); warna home page */}
+          <Link
+            to={user?.role === "system_admin" ? "/admin" : "/"}
+            className="shrink-0"
+            onClick={() => setMobileOpen(false)}
+          >
+            <Logo />
+          </Link>
 
-        {/* ── Desktop nav ─────────────────────────────────── */}
-        {user ? (
-          <div className="hidden items-center gap-2 text-[13px] md:flex">
-            {/* Left: scrollable nav links */}
-            <nav className="flex min-w-0 shrink items-center gap-x-2 overflow-x-auto scrollbar-none [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-              {activeGroups.map((group, gi) => (
-                <span key={group.title} className="contents">
-                  {gi > 0 && (
-                    <span className="mx-1 h-4 w-px shrink-0 bg-gray-300 dark:bg-night-600" />
-                  )}
-                  {group.items.map(({ to, label, icon: Icon, title }) => (
+          {/* ── Desktop nav ─────────────────────────────────── */}
+          {user ? (
+            <div className="hidden items-center gap-2 text-[13px] md:flex">
+              {/* Left: scrollable nav links */}
+              <nav className="flex min-w-0 shrink items-center gap-x-2 overflow-x-auto scrollbar-none [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                {activeGroups.map((group, gi) => (
+                  <span key={group.title} className="contents">
+                    {gi > 0 && (
+                      <span className="mx-1 h-4 w-px shrink-0 bg-gray-300 dark:bg-night-600" />
+                    )}
+                    {group.items.map(({ to, label, icon: Icon, title }) => (
+                      <Link
+                        key={to}
+                        to={to}
+                        className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-gray-600 transition hover:text-brand"
+                        title={title ?? label}
+                      >
+                        <Icon className="h-4 w-4 shrink-0" />
+                        {label}
+                      </Link>
+                    ))}
+                  </span>
+                ))}
+              </nav>
+
+              {/* Right: always-visible actions (never scrolls away) */}
+              <div className="flex shrink-0 items-center gap-2 pl-1">
+                <span className="h-4 w-px bg-gray-300 dark:bg-night-600" />
+                <span className="shrink-0"><NotificationBell /></span>
+                <Link
+                  to="/profile"
+                  className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-gray-600 transition hover:text-brand"
+                >
+                  <User className="h-4 w-4 shrink-0" />
+                  <span>
+                    Hi, <span className="font-semibold text-night-950">{user.username}</span>
+                  </span>
+                </Link>
+                {user.role === "system_admin" && (
+                  <span className="relative">
                     <Link
-                      key={to}
-                      to={to}
-                      className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-gray-600 transition hover:text-brand"
-                      title={title ?? label}
+                      to="/admin"
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-brand/10 px-2.5 py-1 font-semibold text-brand transition hover:bg-brand/20"
                     >
-                      <Icon className="h-4 w-4 shrink-0" />
-                      {label}
+                      <Settings className="h-4 w-4" />
+                      Admin
                     </Link>
-                  ))}
-                </span>
-              ))}
-            </nav>
-
-            {/* Right: always-visible actions (never scrolls away) */}
-            <div className="flex shrink-0 items-center gap-2 pl-1">
-              <span className="h-4 w-px bg-gray-300 dark:bg-night-600" />
-              <span className="shrink-0"><NotificationBell /></span>
+                    <SupportUnreadBadge />
+                  </span>
+                )}
+                <button
+                  onClick={() => toggleTheme(setDark)}
+                  className="rounded-lg border border-gray-300 p-1.5 text-gray-600 transition hover:border-brand hover:text-brand"
+                  title={dark ? "Light mode" : "Dark mode"}
+                >
+                  {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                </button>
+                <button
+                  onClick={handleLogout}
+                  className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-600 transition hover:border-red-300 hover:bg-red-50 hover:text-red-600"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Logout
+                </button>
+              </div>
+            </div>
+          ) : (
+            <nav className="hidden items-center gap-3 text-sm md:flex">
               <Link
-                to="/profile"
-                className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-gray-600 transition hover:text-brand"
+                to="/shop"
+                className="inline-flex items-center gap-1.5 text-gray-600 transition hover:text-brand"
               >
-                <User className="h-4 w-4 shrink-0" />
-                <span>
-                  Hi, <span className="font-semibold text-night-950">{user.username}</span>
-                </span>
+                <ShoppingCart className="h-4 w-4" />
+                Shop
               </Link>
-              {user.role === "system_admin" && (
-                <span className="relative">
-                  <Link
-                    to="/admin"
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-brand/10 px-2.5 py-1 font-semibold text-brand transition hover:bg-brand/20"
-                  >
-                    <Settings className="h-4 w-4" />
-                    Admin
-                  </Link>
-                  <SupportUnreadBadge />
-                </span>
-              )}
+              <a
+                href="/api/docs"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-gray-600 transition hover:text-brand"
+                title="API docs — Swagger UI"
+              >
+                <BookOpen className="h-4 w-4" />
+                API Docs
+              </a>
               <button
                 onClick={() => toggleTheme(setDark)}
                 className="rounded-lg border border-gray-300 p-1.5 text-gray-600 transition hover:border-brand hover:text-brand"
@@ -181,204 +220,169 @@ export function Navbar() {
               >
                 {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
               </button>
-              <button
-                onClick={handleLogout}
-                className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-600 transition hover:border-red-300 hover:bg-red-50 hover:text-red-600"
+              <Link
+                to="/login"
+                className="rounded-lg border border-gray-300 px-4 py-1.5 font-semibold text-gray-700 transition hover:border-brand hover:text-brand"
               >
-                <LogOut className="h-4 w-4" />
-                Logout
-              </button>
-            </div>
-          </div>
-        ) : (
-          <nav className="hidden items-center gap-3 text-sm md:flex">
-            <Link
-              to="/shop"
-              className="inline-flex items-center gap-1.5 text-gray-600 transition hover:text-brand"
-            >
-              <ShoppingCart className="h-4 w-4" />
-              Shop
-            </Link>
-            <a
-              href="/api/docs"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 text-gray-600 transition hover:text-brand"
-              title="API docs — Swagger UI"
-            >
-              <BookOpen className="h-4 w-4" />
-              API Docs
-            </a>
-            <button
-              onClick={() => toggleTheme(setDark)}
-              className="rounded-lg border border-gray-300 p-1.5 text-gray-600 transition hover:border-brand hover:text-brand"
-              title={dark ? "Light mode" : "Dark mode"}
-            >
-              {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            </button>
-            <Link
-              to="/login"
-              className="rounded-lg border border-gray-300 px-4 py-1.5 font-semibold text-gray-700 transition hover:border-brand hover:text-brand"
-            >
-              Login
-            </Link>
-            <Link
-              to="/signup"
-              className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-1.5 font-semibold text-white shadow-md shadow-brand/30 transition hover:brightness-110"
-            >
-              <Zap className="h-4 w-4" />
-              Sign Up
-            </Link>
-          </nav>
-        )}
-
-        {/* Mobile hamburger */}
-        <button
-          onClick={() => setMobileOpen((o) => !o)}
-          className="rounded-lg border border-gray-300 p-2.5 text-gray-600 transition hover:border-brand hover:text-brand dark:border-night-600 dark:text-gray-400 md:hidden"
-          title={mobileOpen ? "Close menu" : "Menu"}
-          aria-label="Menu"
-        >
-          {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-        </button>
-      </div>
-
-      {/* ── Mobile sidebar ───────────────────────────────── */}
-      {/* z-50 so BottomTabBar (z-40) kabhi overlap nahi kare;
-          max-h + overflow-y-auto taaki chhote screen pe links scroll ho, buttons gayab na ho */}
-      {mobileOpen && (
-        <div className="fixed inset-x-0 top-[57px] z-50 flex max-h-[calc(100vh-57px-56px)] flex-col border-t border-gray-200 bg-white dark:border-night-600 dark:bg-night-800 md:hidden">
-          {user ? (
-            <>
-              {/* ── Scrollable menu area ── */}
-              <div className="min-h-0 flex-1 overflow-y-auto">
-                <div className="mx-auto max-w-7xl px-4 py-3 pb-2">
-                  {/* ── User info card ── */}
-                  <div className="mb-3 flex items-center gap-3 rounded-xl bg-gray-50 px-3 py-3 dark:bg-night-700">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand/10 text-brand">
-                      <User className="h-5 w-5" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-night-950 dark:text-white">
-                        {user.username}
-                      </p>
-                      {user.role && (
-                        <span className="inline-block rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-medium text-brand">
-                          {user.role === "system_admin" ? "Admin" : user.role}
-                        </span>
-                      )}
-                    </div>
-                    <Link
-                      to="/profile"
-                      className="shrink-0 rounded-lg border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-600 transition hover:border-brand hover:text-brand dark:border-night-500 dark:text-gray-400"
-                      onClick={() => setMobileOpen(false)}
-                    >
-                      Profile
-                    </Link>
-                  </div>
-
-                  {/* ── Grouped menu items ── */}
-                  {activeGroups.map((group) => (
-                    <div key={group.title} className="mb-1">
-                      <p className="mb-0.5 px-3 pt-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-                        {group.title}
-                      </p>
-                      {group.items.map(({ to, label, icon: Icon }) => (
-                        <Link
-                          key={to}
-                          to={to}
-                          className={mobileLinkCls}
-                          onClick={() => setMobileOpen(false)}
-                        >
-                          <Icon className="h-4 w-4 text-brand" />
-                          {label}
-                        </Link>
-                      ))}
-                    </div>
-                  ))}
-
-                  {/* ── Admin link (system_admin only) ── */}
-                  {user.role === "system_admin" && (
-                    <div className="mb-1">
-                      <p className="mb-0.5 px-3 pt-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-                        System
-                      </p>
-                      <span className="relative block">
-                        <Link
-                          to="/admin"
-                          className="flex w-full items-center gap-2.5 rounded-lg bg-brand/10 px-3 py-2.5 text-sm font-semibold text-brand transition hover:bg-brand/20"
-                          onClick={() => setMobileOpen(false)}
-                        >
-                          <Settings className="h-4 w-4" />
-                          Admin Panel
-                        </Link>
-                        <SupportUnreadBadge />
-                      </span>
-                    </div>
-                  )}
-
-                </div>
-              </div>
-
-              {/* ── Sticky bottom bar: ALWAYS visible ── */}
-              <div className="shrink-0 border-t border-gray-200 bg-white px-4 py-3 dark:border-night-600 dark:bg-night-800">
-                <div className="flex items-center gap-2">
-                  <span className="shrink-0">
-                    <NotificationBell />
-                  </span>
-                  <button
-                    onClick={() => toggleTheme(setDark)}
-                    className="shrink-0 rounded-lg border border-gray-300 p-2.5 text-gray-600 transition hover:border-brand hover:text-brand dark:border-night-600 dark:text-gray-400"
-                    title={dark ? "Light mode" : "Dark mode"}
-                  >
-                    {dark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-                  </button>
-                  <button
-                    onClick={handleLogout}
-                    className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-600 transition hover:bg-red-100 dark:border-red-400/30 dark:bg-red-500/10 dark:text-red-400 dark:hover:bg-red-500/20"
-                  >
-                    <LogOut className="h-4 w-4" />
-                    Logout
-                  </button>
-                </div>
-              </div>
-            </>
-          ) : (
-            <div className="mx-auto max-w-7xl px-4 py-3 pb-4">
-              <Link to="/shop" className={mobileLinkCls} onClick={() => setMobileOpen(false)}>
-                <ShoppingCart className="h-4 w-4 text-brand" />
-                Shop
-              </Link>
-              <a
-                href="/api/docs"
-                target="_blank"
-                rel="noreferrer"
-                className={mobileLinkCls}
-                onClick={() => setMobileOpen(false)}
-              >
-                <BookOpen className="h-4 w-4 text-brand" />
-                API Docs
-              </a>
-              <Link to="/login" className={mobileLinkCls} onClick={() => setMobileOpen(false)}>
-                <User className="h-4 w-4 text-brand" />
                 Login
               </Link>
               <Link
                 to="/signup"
-                className="mt-1 flex w-full items-center justify-center gap-2 rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-110"
-                onClick={() => setMobileOpen(false)}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-1.5 font-semibold text-white shadow-md shadow-brand/30 transition hover:brightness-110"
               >
                 <Zap className="h-4 w-4" />
                 Sign Up
               </Link>
-            </div>
+            </nav>
           )}
-        </div>
-      )}
-    </header>
 
-    {/* Mobile bottom tab bar — header se bahar (fixed positioning sahi rahe) */}
-    <BottomTabBar />
+          {/* Mobile hamburger */}
+          <button
+            onClick={() => setMobileOpen((o) => !o)}
+            className="rounded-lg border border-gray-300 p-2.5 text-gray-600 transition hover:border-brand hover:text-brand dark:border-night-600 dark:text-gray-400 md:hidden"
+            title={mobileOpen ? "Close menu" : "Menu"}
+            aria-label="Menu"
+          >
+            {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
+        </div>
+
+        {/* ── Mobile sidebar ───────────────────────────────── */}
+        {/* z-50 so BottomTabBar (z-40) kabhi overlap nahi kare;
+          max-h + overflow-y-auto taaki chhote screen pe links scroll ho, buttons gayab na ho */}
+        {mobileOpen && (
+          <div className="fixed inset-x-0 top-[57px] z-50 flex max-h-[calc(100vh-57px-56px)] flex-col border-t border-gray-200 bg-white dark:border-night-600 dark:bg-night-800 md:hidden">
+            {user ? (
+              <>
+                {/* ── Scrollable menu area ── */}
+                <div className="min-h-0 flex-1 overflow-y-auto">
+                  <div className="mx-auto max-w-7xl px-4 py-3 pb-2">
+                    {/* ── User info card ── */}
+                    <div className="mb-3 flex items-center gap-3 rounded-xl bg-gray-50 px-3 py-3 dark:bg-night-700">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand/10 text-brand">
+                        <User className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-night-950 dark:text-white">
+                          {user.username}
+                        </p>
+                        {user.role && (
+                          <span className="inline-block rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-medium text-brand">
+                            {user.role === "system_admin" ? "Admin" : user.role}
+                          </span>
+                        )}
+                      </div>
+                      <Link
+                        to="/profile"
+                        className="shrink-0 rounded-lg border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-600 transition hover:border-brand hover:text-brand dark:border-night-500 dark:text-gray-400"
+                        onClick={() => setMobileOpen(false)}
+                      >
+                        Profile
+                      </Link>
+                    </div>
+
+                    {/* ── Grouped menu items ── */}
+                    {activeGroups.map((group) => (
+                      <div key={group.title} className="mb-1">
+                        <p className="mb-0.5 px-3 pt-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                          {group.title}
+                        </p>
+                        {group.items.map(({ to, label, icon: Icon }) => (
+                          <Link
+                            key={to}
+                            to={to}
+                            className={mobileLinkCls}
+                            onClick={() => setMobileOpen(false)}
+                          >
+                            <Icon className="h-4 w-4 text-brand" />
+                            {label}
+                          </Link>
+                        ))}
+                      </div>
+                    ))}
+
+                    {/* ── Admin link (system_admin only) ── */}
+                    {user.role === "system_admin" && (
+                      <div className="mb-1">
+                        <p className="mb-0.5 px-3 pt-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                          System
+                        </p>
+                        <span className="relative block">
+                          <Link
+                            to="/admin"
+                            className="flex w-full items-center gap-2.5 rounded-lg bg-brand/10 px-3 py-2.5 text-sm font-semibold text-brand transition hover:bg-brand/20"
+                            onClick={() => setMobileOpen(false)}
+                          >
+                            <Settings className="h-4 w-4" />
+                            Admin Panel
+                          </Link>
+                          <SupportUnreadBadge />
+                        </span>
+                      </div>
+                    )}
+
+                  </div>
+                </div>
+
+                {/* ── Sticky bottom bar: ALWAYS visible ── */}
+                <div className="shrink-0 border-t border-gray-200 bg-white px-4 py-3 dark:border-night-600 dark:bg-night-800">
+                  <div className="flex items-center gap-2">
+                    <span className="shrink-0">
+                      <NotificationBell />
+                    </span>
+                    <button
+                      onClick={() => toggleTheme(setDark)}
+                      className="shrink-0 rounded-lg border border-gray-300 p-2.5 text-gray-600 transition hover:border-brand hover:text-brand dark:border-night-600 dark:text-gray-400"
+                      title={dark ? "Light mode" : "Dark mode"}
+                    >
+                      {dark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+                    </button>
+                    <button
+                      onClick={handleLogout}
+                      className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-600 transition hover:bg-red-100 dark:border-red-400/30 dark:bg-red-500/10 dark:text-red-400 dark:hover:bg-red-500/20"
+                    >
+                      <LogOut className="h-4 w-4" />
+                      Logout
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="mx-auto max-w-7xl px-4 py-3 pb-4">
+                <Link to="/shop" className={mobileLinkCls} onClick={() => setMobileOpen(false)}>
+                  <ShoppingCart className="h-4 w-4 text-brand" />
+                  Shop
+                </Link>
+                <a
+                  href="/api/docs"
+                  target="_blank"
+                  rel="noreferrer"
+                  className={mobileLinkCls}
+                  onClick={() => setMobileOpen(false)}
+                >
+                  <BookOpen className="h-4 w-4 text-brand" />
+                  API Docs
+                </a>
+                <Link to="/login" className={mobileLinkCls} onClick={() => setMobileOpen(false)}>
+                  <User className="h-4 w-4 text-brand" />
+                  Login
+                </Link>
+                <Link
+                  to="/signup"
+                  className="mt-1 flex w-full items-center justify-center gap-2 rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-110"
+                  onClick={() => setMobileOpen(false)}
+                >
+                  <Zap className="h-4 w-4" />
+                  Sign Up
+                </Link>
+              </div>
+            )}
+          </div>
+        )}
+      </header>
+
+      {/* Mobile bottom tab bar — header se bahar (fixed positioning sahi rahe) */}
+      <BottomTabBar />
     </>
   );
 }
