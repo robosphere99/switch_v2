@@ -216,7 +216,7 @@ var logFilePath = (() => {
   }
   return null;
 })();
-function fileLog(line) {
+function fileLog2(line) {
   if (!logFilePath) return;
   try {
     fs.appendFileSync(logFilePath, line.endsWith("\n") ? line : line + "\n");
@@ -229,11 +229,11 @@ function log(level, msg, meta) {
   const line = `[${(/* @__PURE__ */ new Date()).toISOString()}] [${level.toUpperCase()}] ${msg}`;
   if (meta !== void 0) {
     const suffix = typeof meta === "string" ? meta : JSON.stringify(meta);
-    fileLog(`${line} ${suffix}`);
+    fileLog2(`${line} ${suffix}`);
     if (level === "error") console.error(line, suffix);
     else console.log(line, suffix);
   } else {
-    fileLog(line);
+    fileLog2(line);
     if (level === "error") console.error(line);
     else console.log(line);
   }
@@ -5692,15 +5692,20 @@ adminRouter.get("/search", async (req, res) => {
   ok(res, { q, users, homes, devices, esps, orders, serials });
 });
 adminRouter.get("/api-keys", async (_req, res) => {
-  const keys = await prisma.apiKey.findMany({
-    include: {
-      user: { select: { id: true, username: true, email: true } },
-      home: { select: { id: true, name: true } }
-    },
-    orderBy: { createdAt: "desc" },
-    take: 200
-  });
-  ok(res, keys);
+  try {
+    const keys = await prisma.apiKey.findMany({
+      include: {
+        user: { select: { id: true, username: true, email: true } },
+        home: { select: { id: true, name: true } }
+      },
+      orderBy: { createdAt: "desc" },
+      take: 200
+    });
+    ok(res, keys);
+  } catch (err) {
+    fileLog(`[admin] api-keys query failed: ${err?.message ?? err}`);
+    ok(res, []);
+  }
 });
 adminRouter.post("/api-keys", async (req, res) => {
   const userId = Number(req.body?.userId);
@@ -8837,12 +8842,12 @@ function startScheduler() {
   timer = setInterval(runDueSchedules, CHECK_INTERVAL_MS3);
   void runDueSchedules();
   console.log("[scheduler] started (every 10s)");
-  fileLog("[scheduler] started (every 10s)");
+  fileLog2("[scheduler] started (every 10s)");
 }
 async function runDueSchedules() {
   if (running) return;
   running = true;
-  fileLog(`[scheduler] tick ${(/* @__PURE__ */ new Date()).toISOString()} start`);
+  fileLog2(`[scheduler] tick ${(/* @__PURE__ */ new Date()).toISOString()} start`);
   try {
     const now = /* @__PURE__ */ new Date();
     const due = await prisma.schedule.findMany({
@@ -8859,10 +8864,10 @@ async function runDueSchedules() {
     }
   } catch (err) {
     console.error("[scheduler] tick error:", err);
-    fileLog(`[scheduler] tick ERROR: ${err instanceof Error ? err.message : String(err)}`);
+    fileLog2(`[scheduler] tick ERROR: ${err instanceof Error ? err.message : String(err)}`);
   } finally {
     running = false;
-    fileLog(`[scheduler] tick ${(/* @__PURE__ */ new Date()).toISOString()} done`);
+    fileLog2(`[scheduler] tick ${(/* @__PURE__ */ new Date()).toISOString()} done`);
   }
 }
 async function fireSchedule(scheduleId) {
@@ -9009,17 +9014,17 @@ function startOfflineWatcher() {
   timer2 = setInterval(checkOfflineDevices, CHECK_INTERVAL_MS4);
   void checkOfflineDevices();
   console.log("[offline] watcher started (every 60s)");
-  fileLog("[offline] watcher started (every 60s)");
+  fileLog2("[offline] watcher started (every 60s)");
 }
 async function checkOfflineDevices() {
-  fileLog(`[offline] tick ${(/* @__PURE__ */ new Date()).toISOString()} start`);
+  fileLog2(`[offline] tick ${(/* @__PURE__ */ new Date()).toISOString()} start`);
   try {
     await checkOfflineDevicesInner();
   } catch (err) {
     console.error("[offline] tick error:", err instanceof Error ? err.message : err);
-    fileLog(`[offline] tick ERROR: ${err instanceof Error ? err.message : String(err)}`);
+    fileLog2(`[offline] tick ERROR: ${err instanceof Error ? err.message : String(err)}`);
   } finally {
-    fileLog(`[offline] tick ${(/* @__PURE__ */ new Date()).toISOString()} done`);
+    fileLog2(`[offline] tick ${(/* @__PURE__ */ new Date()).toISOString()} done`);
   }
 }
 async function checkOfflineDevicesInner() {
@@ -11058,13 +11063,13 @@ function createApp() {
   app.use((req, res, next) => {
     const start = Date.now();
     trackRequest();
-    fileLog(`[req] ${(/* @__PURE__ */ new Date()).toISOString()} START ${req.method} ${req.originalUrl}`);
+    fileLog2(`[req] ${(/* @__PURE__ */ new Date()).toISOString()} START ${req.method} ${req.originalUrl}`);
     res.on("finish", () => {
-      fileLog(`[req] ${(/* @__PURE__ */ new Date()).toISOString()} END ${req.method} ${req.originalUrl} -> ${res.statusCode} (${Date.now() - start}ms)`);
+      fileLog2(`[req] ${(/* @__PURE__ */ new Date()).toISOString()} END ${req.method} ${req.originalUrl} -> ${res.statusCode} (${Date.now() - start}ms)`);
     });
     res.on("close", () => {
       if (!res.writableEnded) {
-        fileLog(`[req] ${(/* @__PURE__ */ new Date()).toISOString()} ABORT ${req.method} ${req.originalUrl} (${Date.now() - start}ms) - connection closed before response`);
+        fileLog2(`[req] ${(/* @__PURE__ */ new Date()).toISOString()} ABORT ${req.method} ${req.originalUrl} (${Date.now() - start}ms) - connection closed before response`);
       }
     });
     next();
@@ -11119,7 +11124,7 @@ var running2 = false;
 function startFamilySafety() {
   if (timer3) return;
   timer3 = setInterval(() => void runSafetyCheck(), CHECK_INTERVAL_MS5);
-  fileLog("[family-safety] monitor started (60s)");
+  fileLog2("[family-safety] monitor started (60s)");
 }
 async function usageMinutesToday(deviceId, userId) {
   const start = /* @__PURE__ */ new Date();
@@ -11176,7 +11181,7 @@ async function autoOffDevice(deviceId, homeId) {
 async function runSafetyCheck() {
   if (running2) return;
   if (!prisma.deviceAccess || !prisma.deviceUsage) {
-    fileLog("[family-safety] prisma models missing (stale client?) \u2014 run npx prisma generate, monitor skip");
+    fileLog2("[family-safety] prisma models missing (stale client?) \u2014 run npx prisma generate, monitor skip");
     return;
   }
   running2 = true;
@@ -11238,11 +11243,11 @@ async function runSafetyCheck() {
           title: `\u23F3 "${device.name}" ka time khatam`,
           body: `Aaj ka ${limit} min limit poora ho gaya \u2014 device band kar diya gaya.`
         });
-        fileLog(`[family-safety] auto-off ${device.name} for user ${m.userId} (${usage}min >= ${limit}min)`);
+        fileLog2(`[family-safety] auto-off ${device.name} for user ${m.userId} (${usage}min >= ${limit}min)`);
       }
     }
   } catch (err) {
-    fileLog(`[family-safety] ERROR: ${err instanceof Error ? err.message : String(err)}`);
+    fileLog2(`[family-safety] ERROR: ${err instanceof Error ? err.message : String(err)}`);
   } finally {
     running2 = false;
   }
@@ -11304,7 +11309,7 @@ async function checkKeyExpiryInner() {
         { category: "system", type: "warning", title: title2, body: body2 },
         { emailSubject: title2, emailBody: body2, ctaUrl: cta, ctaLabel: "Create new key" }
       );
-      fileLog(`[keyExpiry] FINAL warned user ${key.userId} about key #${key.id} (${key.keyPrefix}\u2026) expiring ${key.expiresAt.toISOString()}`);
+      fileLog2(`[keyExpiry] FINAL warned user ${key.userId} about key #${key.id} (${key.keyPrefix}\u2026) expiring ${key.expiresAt.toISOString()}`);
       continue;
     }
     const title = `\u26A0\uFE0F API key "${label}" ${daysLeft(key.expiresAt, now)} din me expire ho rahi hai`;
@@ -11320,7 +11325,7 @@ async function checkKeyExpiryInner() {
       { category: "system", type: "warning", title, body },
       { emailSubject: title, emailBody: body, ctaUrl: cta, ctaLabel: "Manage keys" }
     );
-    fileLog(`[keyExpiry] warned user ${key.userId} about key #${key.id} (${key.keyPrefix}\u2026) expiring ${key.expiresAt.toISOString()}`);
+    fileLog2(`[keyExpiry] warned user ${key.userId} about key #${key.id} (${key.keyPrefix}\u2026) expiring ${key.expiresAt.toISOString()}`);
   }
   const expired = await prisma.apiKey.findMany({
     where: { expiresAt: { lt: now } },
@@ -11351,7 +11356,7 @@ async function checkKeyExpiryInner() {
       where: { id: key.id },
       data: {}
     });
-    fileLog(`[keyExpiry] notified user ${key.userId} about EXPIRED key #${key.id} (${key.keyPrefix}\u2026)`);
+    fileLog2(`[keyExpiry] notified user ${key.userId} about EXPIRED key #${key.id} (${key.keyPrefix}\u2026)`);
   }
   const candidates = await prisma.apiKey.findMany({
     where: { expiresAt: { lt: now } },
@@ -11363,7 +11368,7 @@ async function checkKeyExpiryInner() {
       where: { id: { in: toRevoke.map((k) => k.id) }, revokedAt: null },
       data: { revokedAt: now }
     });
-    fileLog(`[keyExpiry] auto-revoked ${res.count} expired api key(s): ${toRevoke.map((k) => `#${k.id}`).join(", ")}`);
+    fileLog2(`[keyExpiry] auto-revoked ${res.count} expired api key(s): ${toRevoke.map((k) => `#${k.id}`).join(", ")}`);
   }
 }
 async function checkKeyExpiry() {
@@ -11371,7 +11376,7 @@ async function checkKeyExpiry() {
     await checkKeyExpiryInner();
   } catch (err) {
     console.error("[keyExpiry] tick error:", err instanceof Error ? err.message : err);
-    fileLog(`[keyExpiry] tick ERROR: ${err instanceof Error ? err.message : String(err)}`);
+    fileLog2(`[keyExpiry] tick ERROR: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 function startKeyExpiryWatcher() {
@@ -11379,7 +11384,7 @@ function startKeyExpiryWatcher() {
   timer4 = setInterval(checkKeyExpiry, CHECK_INTERVAL_MS6);
   void checkKeyExpiry();
   console.log("[keyExpiry] watcher started (every 6h)");
-  fileLog("[keyExpiry] watcher started (every 6h)");
+  fileLog2("[keyExpiry] watcher started (every 6h)");
 }
 
 // src/index.ts
@@ -11644,30 +11649,30 @@ async function dbHasSchema() {
 process.on("unhandledRejection", (reason) => {
   const line = `[crashguard] unhandledRejection: ${reason instanceof Error ? reason.stack : String(reason)}`;
   process.stderr.write(line + "\n");
-  fileLog(line);
+  fileLog2(line);
 });
 process.on("uncaughtException", (err) => {
   const line = `[crashguard] uncaughtException: ${err instanceof Error ? err.stack : String(err)}`;
   process.stderr.write(line + "\n");
-  fileLog(line);
+  fileLog2(line);
 });
 setInterval(() => {
-  fileLog(
+  fileLog2(
     `[hb] alive ts=${(/* @__PURE__ */ new Date()).toISOString()} uptime=${Math.round(process.uptime())}s pid=${process.pid} rss=${Math.round(
       process.memoryUsage().rss / 1048576
     )}MB heap=${Math.round(process.memoryUsage().heapUsed / 1048576)}MB`
   );
 }, 1e4);
 process.on("beforeExit", (code) => {
-  fileLog(`[hb] beforeExit code=${code} uptime=${Math.round(process.uptime())}s`);
+  fileLog2(`[hb] beforeExit code=${code} uptime=${Math.round(process.uptime())}s`);
 });
 process.on("exit", (code) => {
-  fileLog(`[hb] exit code=${code} uptime=${Math.round(process.uptime())}s`);
+  fileLog2(`[hb] exit code=${code} uptime=${Math.round(process.uptime())}s`);
 });
 var boot = (...args) => {
   const line = `[boot] ${args.join(" ")}`;
   process.stderr.write(line + "\n");
-  fileLog(line);
+  fileLog2(line);
 };
 async function main() {
   boot("node", process.version, "| cwd =", process.cwd());
@@ -11705,7 +11710,7 @@ async function main() {
   server.on("error", (err) => {
     const line = `[server] listen error: ${err instanceof Error ? err.stack || err.message : String(err)}`;
     process.stderr.write(line + "\n");
-    fileLog(line);
+    fileLog2(line);
   });
   boot("main() setup complete \u2014 background DB init starting");
   void initDatabase();
@@ -11714,10 +11719,10 @@ var HEAL_LAST_KEY = "prisma_selfheal_last";
 async function selfHealPrismaClient() {
   const p = prisma;
   if (p.deviceAccess && p.deviceUsage && p.supportChatSettings) return;
-  fileLog("[boot] prisma client stale (deviceAccess/deviceUsage/supportChatSettings missing) \u2014 self-heal try");
+  fileLog2("[boot] prisma client stale (deviceAccess/deviceUsage/supportChatSettings missing) \u2014 self-heal try");
   const last = await prisma.appMeta.findUnique({ where: { key: HEAL_LAST_KEY } }).catch(() => null);
   if (last && Date.now() - new Date(last.value).getTime() < 10 * 60 * 1e3) {
-    fileLog("[boot] self-heal 10 min pehle try hua \u2014 skip (degraded mode, koi loop nahi)");
+    fileLog2("[boot] self-heal 10 min pehle try hua \u2014 skip (degraded mode, koi loop nahi)");
     return;
   }
   let ok2 = false;
@@ -11735,11 +11740,11 @@ async function selfHealPrismaClient() {
       ok2 = true;
       break;
     } catch (err) {
-      fileLog(`[boot] prisma generate try fail: ${err instanceof Error ? err.message : String(err)}`);
+      fileLog2(`[boot] prisma generate try fail: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
   if (!ok2) {
-    fileLog("[boot] prisma generate FAILED \u2014 degraded mode (restrictions off, site chalega)");
+    fileLog2("[boot] prisma generate FAILED \u2014 degraded mode (restrictions off, site chalega)");
     return;
   }
   await prisma.appMeta.upsert({
@@ -11749,7 +11754,7 @@ async function selfHealPrismaClient() {
   }).catch(() => void 0);
   const healUptime = Math.round(process.uptime());
   const healDelayMs = healUptime < 120 ? (120 - healUptime) * 1e3 : 5e3;
-  fileLog(`[boot] prisma generate OK \u2014 ${Math.round(healDelayMs / 1e3)}s baad safe reboot (fresh client load)`);
+  fileLog2(`[boot] prisma generate OK \u2014 ${Math.round(healDelayMs / 1e3)}s baad safe reboot (fresh client load)`);
   setTimeout(() => process.exit(0), healDelayMs);
 }
 async function initDatabase() {
@@ -11817,6 +11822,6 @@ async function initDatabase() {
 main().catch((err) => {
   const line = `[fatal] main() failed: ${err instanceof Error ? err.stack || err.message : String(err)}`;
   process.stderr.write(line + "\n");
-  fileLog(line);
+  fileLog2(line);
   logger.error("Failed to start API", err instanceof Error ? err.stack : err);
 });
