@@ -2,6 +2,8 @@
 
 REM ============================================================
 REM RoboSphere v2 - Plesk post-deploy script
+REM dist/index.mjs is pre-built and committed. This script only
+REM refreshes the Prisma client and touches markers.
 REM ============================================================
 
 cd /d "%~dp0apps\api"
@@ -22,21 +24,21 @@ set NODE_MODULES_OK=0
 if exist "node_modules\.prisma\client\index.js" if exist "node_modules\express" set NODE_MODULES_OK=1
 if not "%NODE_MODULES_OK%"=="1" if exist "..\node_modules\.prisma\client\index.js" if exist "..\node_modules\express" set NODE_MODULES_OK=1
 
-REM 3) Prisma generate (best-effort)
+REM 3) Prisma generate via node script (avoids CMD npx redirect issue)
 if "%NODE_MODULES_OK%"=="1" (
-  echo [deploy] node_modules found - prisma refresh
-  call npx --no-install prisma generate --schema=prisma\schema.prisma >nul 2>nul
+  echo [deploy] prisma refresh
+  call node -e "try{require('child_process').execSync('npx --no-install prisma generate --schema=prisma/schema.prisma',{stdio:'ignore',timeout:30000})}catch(e){}" 2>nul
   echo [deploy] prisma done
 ) else (
   echo [deploy] node_modules missing - install
-  call npm install --ignore-scripts --no-audit --no-fund >nul 2>nul
-  call npx --no-install prisma generate --schema=prisma\schema.prisma >nul 2>nul
+  call npm install --ignore-scripts --no-audit --no-fund 2>nul
+  call node -e "try{require('child_process').execSync('npx --no-install prisma generate --schema=prisma/schema.prisma',{stdio:'ignore',timeout:30000})}catch(e){}" 2>nul
   echo [deploy] install + prisma done
 )
 
-REM 4) Dist is pre-built and committed - NO esbuild on server
+REM 4) Dist check
 if exist "dist\index.mjs" (
-  echo [deploy] dist/index.mjs present
+  echo [deploy] dist present
 ) else (
   echo [deploy] WARN: dist missing
 )
