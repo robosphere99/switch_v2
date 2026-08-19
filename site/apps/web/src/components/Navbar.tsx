@@ -77,7 +77,7 @@ export function Navbar() {
   }
 
   const mobileLinkCls =
-    "flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm text-gray-700 transition hover:bg-gray-100 hover:text-brand";
+    "flex w-full items-center gap-2.5 rounded-lg px-3 py-3 text-sm text-gray-700 transition hover:bg-gray-100 hover:text-brand dark:text-gray-300 dark:hover:bg-night-700 dark:hover:text-brand";
 
   // BottomTabBar header ke BAHAR hona chahiye: header pe backdrop-blur (backdrop-filter)
   // hai, jo fixed-positioning ke liye containing-block banata hai — andar rakha to
@@ -209,7 +209,7 @@ export function Navbar() {
         {/* Mobile hamburger */}
         <button
           onClick={() => setMobileOpen((o) => !o)}
-          className="rounded-lg border border-gray-300 p-2 text-gray-600 transition hover:border-brand hover:text-brand md:hidden"
+          className="rounded-lg border border-gray-300 p-2.5 text-gray-600 transition hover:border-brand hover:text-brand dark:border-night-600 dark:text-gray-400 md:hidden"
           title={mobileOpen ? "Close menu" : "Menu"}
           aria-label="Menu"
         >
@@ -217,10 +217,11 @@ export function Navbar() {
         </button>
       </div>
 
-      {/* Mobile dropdown */}
+      {/* Mobile dropdown — z-50 so BottomTabBar (z-40) kabhi overlap nahi kare;
+          max-h + overflow-y-auto taaki chhote screen pe links scroll ho, buttons gayab na ho */}
       {mobileOpen && (
-        <div className="border-t border-gray-200 bg-white md:hidden">
-          <div className="mx-auto max-w-7xl space-y-1 px-4 py-3">
+        <div className="fixed inset-x-0 top-[57px] z-50 max-h-[calc(100vh-57px-56px)] overflow-y-auto border-t border-gray-200 bg-white dark:border-night-600 dark:bg-night-800 md:hidden">
+          <div className="mx-auto max-w-7xl space-y-1 px-4 py-3 pb-4">
             {user ? (
               <>
                 {(isSystemAdmin(user.role) ? ADMIN_LINKS : NAV_LINKS).map(({ to, label, icon: Icon }) => (
@@ -266,18 +267,18 @@ export function Navbar() {
                     <SupportUnreadBadge />
                   </span>
                 )}
-                <div className="flex items-center justify-between gap-2 pt-1">
+                <div className="flex flex-wrap items-center gap-2 pt-2">
                   <NotificationBell />
                   <button
                     onClick={() => toggleTheme(setDark)}
-                    className="rounded-lg border border-gray-300 p-2 text-gray-600 transition hover:border-brand hover:text-brand"
+                    className="rounded-lg border border-gray-300 p-2.5 text-gray-600 transition hover:border-brand hover:text-brand dark:border-night-600 dark:text-gray-400"
                     title={dark ? "Light mode" : "Dark mode"}
                   >
-                    {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                    {dark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
                   </button>
                   <button
                     onClick={handleLogout}
-                    className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-600 transition hover:border-red-300 hover:bg-red-50 hover:text-red-600"
+                    className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-600 transition hover:border-red-300 hover:bg-red-50 hover:text-red-600 dark:border-night-600 dark:text-gray-400 dark:hover:border-red-400/40 dark:hover:bg-red-500/10 dark:hover:text-red-400"
                   >
                     <LogOut className="h-4 w-4" />
                     Logout
