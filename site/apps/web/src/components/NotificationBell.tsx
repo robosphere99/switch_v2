@@ -5,11 +5,15 @@ import { Link, useNavigate } from "react-router-dom";
 import { listNotifications, markRead, markAllRead, unreadCount, type Notification } from "../api/notifications";
 import { useAuthStore } from "../stores/auth";
 import { buildSupportDraft, parseNotificationBody } from "../lib/notificationBody";
+import { getSocket } from "../lib/socket";
+import { notifyFeedback } from "../lib/notificationFeedback";
+import { showBrowserNotification, ensurePermission } from "../lib/browserNotification";
 
 export function NotificationBell() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
+  const accessToken = useAuthStore((s) => s.accessToken);
   const isAdmin = user?.role === "system_admin";
   const [open, setOpen] = useState(false);
   const bellRef = useRef<HTMLButtonElement>(null);
@@ -27,6 +31,9 @@ export function NotificationBell() {
       setPos({ top: r.bottom + 8, left });
     }
     setOpen((o) => !o);
+    // Bell click = user gesture — browser push permission yahan maango.
+    // First click pe permission prompt aata hai; granted/denied pe dobara nahi.
+    void ensurePermission();
   };
 
   // Window resize pe dropdown band (position stale na ho)
@@ -75,6 +82,36 @@ export function NotificationBell() {
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["notifications"] });
   };
+
+  // 🔔 Real-time: naya notification aaye to turant unread count + list refresh.
+  // useRealtime hook global level pe invalidate karta hai, par yahan direct
+  // listener se bell guaranteed update hota hai (even if global chain misses).
+  useEffect(() => {
+    if (!accessToken) return;
+    const socket = getSocket();
+    const onNew = (payload: { title?: string; body?: string; category?: string }) => {
+      // 🔔 Audio + haptic feedback — user ko pata chale bina dekhe
+      notifyFeedback();
+      // 🖥️ Native browser push notification — OS-level alert (background me bhi dikhta hai)
+      const displayBody = (() => {
+        if (!payload.body) return undefined;
+        try {
+          const parsed = JSON.parse(payload.body) as { t?: string };
+          return typeof parsed.t === "string" ? parsed.t : payload.body;
+        } catch {
+          return payload.body;
+        }
+      })();
+      showBrowserNotification(payload.title ?? "🔔 New notification", displayBody, payload.category);
+      // unread count + list dono invalidate — badge + dropdown dono fresh
+      queryClient.invalidateQueries({ queryKey: ["notifications", "unread"] });
+      if (open) {
+        queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      }
+    };
+    socket.on("notification:new", onNew);
+    return () => { socket.off("notification:new", onNew); };
+  }, [accessToken, queryClient, open]);
 
   const readOne = useMutation({
     mutationFn: (id: number) => markRead(id),
