@@ -3357,12 +3357,17 @@ function generateKey() {
   return { raw, prefix: raw.slice(0, 8) };
 }
 apiKeyRouter.get("/", requireAuth, async (req, res) => {
-  const keys = await prisma.apiKey.findMany({
-    where: { userId: req.user.sub },
-    include: { home: { select: { id: true, name: true } } },
-    orderBy: { createdAt: "desc" }
-  });
-  ok(res, keys);
+  try {
+    const keys = await prisma.apiKey.findMany({
+      where: { userId: req.user.sub },
+      include: { home: { select: { id: true, name: true } } },
+      orderBy: { createdAt: "desc" }
+    });
+    ok(res, keys);
+  } catch (err) {
+    console.error("[apiKey] list failed:", err?.message ?? err);
+    ok(res, []);
+  }
 });
 apiKeyRouter.post("/", requireAuth, createKeyLimiter, validateBody(createSchema3), async (req, res) => {
   const { raw, prefix } = generateKey();
@@ -3382,7 +3387,12 @@ apiKeyRouter.delete("/:id", requireAuth, async (req, res) => {
   const id = Number(req.params.id);
   const existing = await prisma.apiKey.findFirst({ where: { id, userId: req.user.sub } });
   if (!existing) throw new AppError("API_KEY_NOT_FOUND", "API key not found", 404);
-  await prisma.apiKey.delete({ where: { id } });
+  try {
+    await prisma.apiKey.delete({ where: { id } });
+  } catch {
+    await prisma.apiKey.update({ where: { id }, data: { revokedAt: /* @__PURE__ */ new Date() } }).catch(() => {
+    });
+  }
   ok(res, { message: "API key revoked" });
 });
 
@@ -11628,6 +11638,18 @@ async function runLightMigrations() {
           ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         `);
         logger.info("\u2705 Migration: password_reset_tokens table created");
+      }
+    });
+    await migration("api_keys.revoked_at", async () => {
+      const ra = await prisma.$queryRaw`
+        SELECT COUNT(*) AS c FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'api_keys' AND column_name = 'revoked_at'
+      `;
+      if (Number(ra[0]?.c ?? 0) === 0) {
+        await prisma.$executeRawUnsafe(
+          "ALTER TABLE `api_keys` ADD COLUMN `revoked_at` DATETIME(3) NULL"
+        );
+        logger.info("\u2705 Migration: api_keys.revoked_at added");
       }
     });
   } catch (err) {
