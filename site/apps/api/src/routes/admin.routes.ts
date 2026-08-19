@@ -740,7 +740,7 @@ adminRouter.get("/api-keys", async (_req, res) => {
     });
     ok(res, keys);
   } catch (err: any) {
-    fileLog(`[admin] api-keys query failed: ${err?.message ?? err}`);
+    console.error(`[admin] api-keys query failed:`, err?.message ?? err);
     ok(res, []);
   }
 });
