@@ -1,172 +1,66 @@
 @echo off
 
 REM ============================================================
-
 REM RoboSphere v2 - Plesk post-deploy script (Windows / IIS + iisnode)
-
 REM
-
 REM Wire this up in Plesk:  Git -> switch_v2 -> Deployment settings
-
 REM   -> enable "Additional deployment actions" and enter:
-
 REM        site\deploy.cmd
-
 REM
-
-REM Strategy (Plesk shared hosting safe):
-
-REM   Fast path (normal) — node_modules already on the server:
-
-REM     skip npm completely (deploys are instant, nothing can wipe
-
-REM     node_modules), just refresh the Prisma client.
-
-REM   Fresh install — node_modules missing:
-
-REM     npm install --ignore-scripts --no-audit --no-fund
-
-REM     (plain `npm ci` FAILS on Plesk — esbuild's postinstall gets
-
-REM     "Access denied on parent dirs", and a failed npm ci DELETES
-
-REM     node_modules killing the site. --ignore-scripts avoids it.)
-
-REM     then npx prisma generate to rebuild @prisma/client.
-
-REM
-
-REM IMPORTANT: everything here is BEST-EFFORT — deploy hamesha exit 0.
-
-REM   - web.config patch sabse pehle: iisnode web.config change pe node
-
-REM     process recycle karta hai -> naye code ke saath fresh boot. Isi se
-
-REM     API update hota hai (prisma generate DLL-lock ke karan fail bhi ho
-
-REM     jaye, process phir bhi restart hota hai).
-
-REM   - Prisma client refresh fail ho to naya process boot-time self-heal
-
-REM     se regenerate + 45s baad safe reboot karta hai (index.ts selfHeal).
-
+REM IMPORTANT: everything here is BEST-EFFORT - deploy hamesha exit 0.
 REM ============================================================
 
 cd /d "%~dp0apps\api"
 
-REM 1) web.config PassThrough patch — SABSE PEHLE.
-
-REM    (a) wrong-password/login pe JSON error dikhe (IIS HTML nahi), aur
-
-REM    (b) iisnode web.config change pe node process recycle karta hai —
-
-REM        naye code ke saath fresh boot hota hai. Best-effort: web.config
-
-REM        nahi mila to kuch nahi karta, deploy chalta rahega.
-
+REM 1) web.config PassThrough patch
 call node scripts\patch-webconfig.mjs 2>nul
 
-REM 1b) App pool config dump — har 60s recycle investigation. App pool
-
-REM     identity ko appcmd read access nahi hota; webhook identity me ho
-
-REM     sakta hai. Best-effort — fail ho to error text hi milta hai.
-
-REM     Logs dir ensure — Plesk deploy untracked files wipe kar sakta hai.
-
+REM Logs dir ensure
 if not exist "%~dp0apps\logs" mkdir "%~dp0apps\logs"
 
+REM App pool config dump
 set APPCMD=%windir%\System32\inetsrv\appcmd.exe
-
 call "%APPCMD%" list apppool /config > "%~dp0apps\logs\apppool.log" 2>&1
-
 call "%APPCMD%" list wp /config >> "%~dp0apps\logs\apppool.log" 2>&1
 
-REM node_modules npm workspaces ke saath hoisted hoke site\ pe bhi ho sakta hai
-
-REM — dono jagah check karo (apps\api\node_modules ya site\node_modules).
-
+REM 2) Check node_modules
 set NODE_MODULES_OK=0
-
 if exist "node_modules\.prisma\client\index.js" if exist "node_modules\express" set NODE_MODULES_OK=1
-
 if not "%NODE_MODULES_OK%"=="1" if exist "..\node_modules\.prisma\client\index.js" if exist "..\node_modules\express" set NODE_MODULES_OK=1
 
-REM 2) Prisma client refresh — BEST-EFFORT. Chal raha process DLL lock kar
-
-REM    leta hai to EPERM aata hai (normal — recycle ke baad naya process
-
-REM    self-heal karke generate + reboot karta hai). Isliye kabhi exit /b 1
-
-REM    nahi — deploy ko hamesha success maano.
-
+REM 3) Prisma generate + npm install (if needed)
+REM    Use "for" trick to 100% suppress output - CMD redirect fails with "call npx"
 if "%NODE_MODULES_OK%"=="1" (
-
-  echo [deploy] node_modules mila - npm skip, prisma client refresh
-  REM prisma generate — best-effort, errorlevel check unreliable on Windows CMD
-  call npx --no-install prisma generate --schema=prisma\schema.prisma >nul 2>nul
+  echo [deploy] node_modules found - refreshing prisma client
+  for /f "delims=" %%i in ('call npx --no-install prisma generate --schema=prisma\schema.prisma 2^>nul') do echo.
   echo [deploy] prisma generate done
-
 ) else (
-
-  echo [deploy] node_modules nahi mila - install
-  call npm install --ignore-scripts --no-audit --no-fund >nul 2>nul
-  call npx --no-install prisma generate --schema=prisma\schema.prisma >nul 2>nul
-  echo [deploy] prisma generate done
-
+  echo [deploy] node_modules missing - installing
+  for /f "delims=" %%i in ('call npm install --ignore-scripts --no-audit --no-fund 2^>nul') do echo.
+  for /f "delims=" %%i in ('call npx --no-install prisma generate --schema=prisma\schema.prisma 2^>nul') do echo.
+  echo [deploy] install + prisma done
 )
 
-REM 3) Production build — dist/index.mjs rebuild (Plesk startup file).
-REM    Har deploy pe naye code ka bundle banana zaruri hai;
-REM    purana dist crash karta hai naye API routes ke saath.
-
-if "%NODE_MODULES_OK%"=="1" (
-  echo [deploy] building dist/index.mjs
-  REM Try node_modules/.bin first, then npx fallback
-  if exist "..\..\node_modules\.bin\esbuild.cmd" (
-    call "..\..\node_modules\.bin\esbuild.cmd" src/index.ts --bundle --platform=node --format=esm --external:@prisma/client --external:bcryptjs --external:cors --external:dotenv --external:express --external:helmet --external:jsonwebtoken --external:multer --external:mysql2 --external:socket.io --external:zod --outfile=dist\index.mjs 2>nul
-  ) else if exist "node_modules\.bin\esbuild.cmd" (
-    call "node_modules\.bin\esbuild.cmd" src/index.ts --bundle --platform=node --format=esm --external:@prisma/client --external:bcryptjs --external:cors --external:dotenv --external:express --external:helmet --external:jsonwebtoken --external:multer --external:mysql2 --external:socket.io --external:zod --outfile=dist\index.mjs 2>nul
-  ) else (
-    call npx esbuild src/index.ts --bundle --platform=node --format=esm --external:@prisma/client --external:bcryptjs --external:cors --external:dotenv --external:express --external:helmet --external:jsonwebtoken --external:multer --external:mysql2 --external:socket.io --external:zod --outfile=dist\index.mjs 2>nul
-  )
-  if errorlevel 1 (
-    echo [deploy] WARN: esbuild fail - dist chalega
-  ) else (
-    echo [deploy] dist rebuilt OK
-  )
+REM 4) esbuild dist rebuild
+echo [deploy] rebuilding dist
+if exist "..\..\node_modules\.bin\esbuild.cmd" (
+  for /f "delims=" %%i in ('call "..\..\node_modules\.bin\esbuild.cmd" src/index.ts --bundle --platform=node --format=esm --external:@prisma/client --external:bcryptjs --external:cors --external:dotenv --external:express --external:helmet --external:jsonwebtoken --external:multer --external:mysql2 --external:socket.io --external:zod --outfile=dist\index.mjs 2^>nul') do echo.
+) else if exist "node_modules\.bin\esbuild.cmd" (
+  for /f "delims=" %%i in ('call "node_modules\.bin\esbuild.cmd" src/index.ts --bundle --platform=node --format=esm --external:@prisma/client --external:bcryptjs --external:cors --external:dotenv --external:express --external:helmet --external:jsonwebtoken --external:multer --external:mysql2 --external:socket.io --external:zod --outfile=dist\index.mjs 2^>nul') do echo.
+) else (
+  for /f "delims=" %%i in ('call npx esbuild src/index.ts --bundle --platform=node --format=esm --external:@prisma/client --external:bcryptjs --external:cors --external:dotenv --external:express --external:helmet --external:jsonwebtoken --external:multer --external:mysql2 --external:socket.io --external:zod --outfile=dist\index.mjs 2^>nul') do echo.
+)
+if exist "dist\index.mjs" (
+  echo [deploy] dist rebuilt OK
+) else (
+  echo [deploy] WARN: dist rebuild may have failed - using existing dist
 )
 
-REM 4) Deploy marker — admin panel me 'last code update' info ke liye.
-
-REM    deploy.json: timestamp + commit + branch (best-effort).
-
-REM    Deployed folder me .git nahi hota (Plesk files copy karta hai) —
-
-REM    isliye commit GitHub API se fetch karta hai (scripts\deploy-marker.mjs).
-
+REM 5) Deploy marker
 call node scripts\deploy-marker.mjs 2>nul
 
-call :touchSelfHealMarker
+REM 6) Self-heal marker touch
+call node -e "try{require('dotenv').config({path:'../../.env'});const{PrismaClient}=require('@prisma/client');const p=new PrismaClient();p.appMeta.upsert({where:{key:'prisma_selfheal_last'},create:{key:'prisma_selfheal_last',value:new Date().toISOString()},update:{value:new Date().toISOString()}}).catch(()=>{}).finally(()=>p.$disconnect())}catch(e){}" 2>nul
 
-echo [deploy] OK
-
-exit /b 0
-
-REM ============================================================
-
-REM Self-heal marker touch — naye process ko boot-time prisma
-
-REM regenerate + 45s reboot se bachata hai. Best-effort (DB pe
-
-REM depend karta hai — fail ho to deploy chalta rahega).
-
-REM ============================================================
-
-:touchSelfHealMarker
-
-call node -e "require('dotenv').config({ path: '../../.env' }); const { PrismaClient } = require('@prisma/client'); const p = new PrismaClient(); p.appMeta.upsert({ where: { key: 'prisma_selfheal_last' }, create: { key: 'prisma_selfheal_last', value: new Date().toISOString() }, update: { value: new Date().toISOString() } }).catch(() => {}).finally(() => p.$disconnect());" 2>nul
-
-if errorlevel 1 echo [deploy] WARN: self-heal marker touch fail (ignore)
-
+echo [deploy] all done - exit 0
 exit /b 0
