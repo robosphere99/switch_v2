@@ -12,6 +12,7 @@ Notifications.setNotificationHandler({
         shouldShowBanner: true,
         shouldPlaySound: true,
         shouldSetBadge: true,
+        shouldShowList: true,
     }),
 });
 
@@ -74,8 +75,11 @@ export function usePushNotifications() {
                 // Fallback for bare expo go workflows
                 try {
                     token = (await Notifications.getExpoPushTokenAsync()).data;
-                } catch (ex) {
-                    console.log('Push token generation failure:', ex);
+                } catch (ex: any) {
+                    const errStr = String(ex);
+                    if (!errStr.includes("MISSING_INSTANCEID") && !errStr.includes("Play Services")) {
+                        console.log('Push token generation failure:', ex);
+                    }
                 }
             }
         } else {

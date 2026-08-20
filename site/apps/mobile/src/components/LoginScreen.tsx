@@ -54,6 +54,9 @@ export function LoginScreen({ onLoginSuccess, onBiometricRetry }: Props) {
                     if (loginRes.data.accessToken) {
                         await SecureStore.setItemAsync('accessToken', loginRes.data.accessToken);
                     }
+                    if (loginRes.data.refreshToken) {
+                        await SecureStore.setItemAsync('refreshToken', loginRes.data.refreshToken);
+                    }
                     await SecureStore.setItemAsync('user', JSON.stringify(loginRes.data.user));
                     await SecureStore.setItemAsync('loginTimestamp', String(Date.now()));
                     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
@@ -64,6 +67,9 @@ export function LoginScreen({ onLoginSuccess, onBiometricRetry }: Props) {
                 if (res.success && res.data) {
                     if (res.data.accessToken) {
                         await SecureStore.setItemAsync('accessToken', res.data.accessToken);
+                    }
+                    if (res.data.refreshToken) {
+                        await SecureStore.setItemAsync('refreshToken', res.data.refreshToken);
                     }
                     await SecureStore.setItemAsync('user', JSON.stringify(res.data.user));
                     await SecureStore.setItemAsync('loginTimestamp', String(Date.now()));

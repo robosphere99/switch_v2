@@ -35,6 +35,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     logout: async () => {
         try {
             await SecureStore.deleteItemAsync('accessToken');
+            await SecureStore.deleteItemAsync('refreshToken');
             await SecureStore.deleteItemAsync('user');
             set({ user: null, accessToken: null });
         } catch (e) {
