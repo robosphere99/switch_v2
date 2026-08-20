@@ -18,9 +18,10 @@ import {
   User,
   Users,
   Wrench,
-  Settings,
+  Settings as SettingsIcon,
   X,
   Zap,
+  Activity,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Moon, Sun } from "lucide-react";
@@ -70,6 +71,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: "/homes", label: "Homes", icon: Home },
       { to: "/boards", label: "Boards", icon: RadioTower },
       { to: "/members", label: "Family", icon: Users },
+      { to: "/settings", label: "Settings", icon: SettingsIcon },
     ],
   },
   {
@@ -174,7 +176,7 @@ export function Navbar() {
                       to="/admin"
                       className="inline-flex items-center gap-1.5 rounded-lg bg-brand/10 px-2.5 py-1 font-semibold text-brand transition hover:bg-brand/20"
                     >
-                      <Settings className="h-4 w-4" />
+                      <SettingsIcon className="h-4 w-4" />
                       Admin
                     </Link>
                     <SupportUnreadBadge />
@@ -315,7 +317,7 @@ export function Navbar() {
                             className="flex w-full items-center gap-2.5 rounded-lg bg-brand/10 px-3 py-2.5 text-sm font-semibold text-brand transition hover:bg-brand/20"
                             onClick={() => setMobileOpen(false)}
                           >
-                            <Settings className="h-4 w-4" />
+                            <SettingsIcon className="h-4 w-4" />
                             Admin Panel
                           </Link>
                           <SupportUnreadBadge />

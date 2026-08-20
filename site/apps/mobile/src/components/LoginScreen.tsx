@@ -92,10 +92,10 @@ export function LoginScreen({ onLoginSuccess, onBiometricRetry }: Props) {
                         <Text style={[styles.label, { color: theme.textSecondary }]}>EMAIL OR USERNAME</Text>
                         <TextInput
                             style={[styles.input, { backgroundColor: theme.card, borderColor: theme.border, color: theme.text }]}
-                            placeholder="Enter your email"
+                            placeholder="Enter email or username"
                             placeholderTextColor={theme.textSecondary + '80'}
                             autoCapitalize="none"
-                            keyboardType="email-address"
+                            keyboardType="default"
                             value={email}
                             onChangeText={(txt) => { setError(''); setEmail(txt); }}
                         />

@@ -44,3 +44,25 @@ export const deleteSchedule = async (homeId: number, scheduleId: number) => {
         throw extractApiError(e);
     }
 };
+
+export const getHomeMembers = async (homeId: number) => {
+    try {
+        const res = await api.get(`/homes/${homeId}/members`);
+        return res.data;
+    } catch (e) {
+        throw extractApiError(e);
+    }
+};
+
+export const getHomeActivity = async (homeId: number, limit: number = 50, deviceId?: number | null, userId?: number | null, timeRange?: string) => {
+    try {
+        let url = `/homes/${homeId}/activity?limit=${limit}`;
+        if (deviceId) url += `&deviceId=${deviceId}`;
+        if (userId) url += `&userId=${userId}`;
+        if (timeRange) url += `&timeRange=${timeRange}`;
+        const res = await api.get(url);
+        return { success: true, data: res.data };
+    } catch (e: any) {
+        return { success: false, error: extractApiError(e) };
+    }
+};
