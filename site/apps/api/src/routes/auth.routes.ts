@@ -59,6 +59,10 @@ const logoutSchema = z.object({
   refreshToken: z.string().min(1),
 });
 
+const pushTokenSchema = z.object({
+  token: z.string().min(1),
+});
+
 const themeSchema = z.object({
   theme: z.enum(["light", "dark", "system"]),
 });
@@ -90,3 +94,13 @@ authRouter.post("/reset-password", resetLimiter, validateBody(resetPasswordSchem
 authRouter.get("/me", requireAuth, authController.me);
 authRouter.patch("/me", requireAuth, validateBody(profileSchema), authController.updateProfile);
 authRouter.put("/theme", requireAuth, validateBody(themeSchema), authController.updateTheme);
+
+authRouter.post("/push-token", requireAuth, validateBody(pushTokenSchema), async (req, res) => {
+  // Save the hardware push identifier onto the user's secure profile
+  const { prisma } = await import("../lib/prisma");
+  await prisma.user.update({
+    where: { id: req.user!.sub },
+    data: { expoPushToken: req.body.token }
+  });
+  res.json({ success: true, message: "Push token securely stored" });
+});

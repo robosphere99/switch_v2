@@ -7,7 +7,7 @@
 > Repo location (this machine): `C:\Users\robos\OneDrive\Documents\SwitchNest`
 >
 <!-- AUTO:STAMP:START -->
-> _Auto-updated: 2026-08-19 21:08 UTC · branch `main` · tree clean · 242 commits_
+> _Auto-updated: 2026-08-19 23:40 UTC · branch `main` · tree clean · 244 commits_
 <!-- AUTO:STAMP:END -->
 
 ---
@@ -112,6 +112,8 @@ that also serves real ESP32 hardware).
 <!-- AUTO:RECENT_COMMITS:START -->
 Sabse naye 20 commits:
 
+- `ec3403c` (2026-08-20) feat(ai): Enforce persistent Context-Per-Home AI threads across Web and Mobile
+- `e0e34aa` (2026-08-20) chore: complete phases 1-11, finalize automations and admin OTA updates
 - `d51c3cf` (2026-08-20) feat(mobile): Complete Phase 8 Mobile SDK 54 MVP
 - `eef9f3d` (2026-08-20) fix(api): rebuild dist bundle to include serial delete routes
 - `92562d5` (2026-08-19) chore: rebuild production assets with latest admin features
@@ -130,8 +132,6 @@ Sabse naye 20 commits:
 - `6e26b50` (2026-08-19) fix: wrap api-keys endpoint with try-catch fallback to prevent 500
 - `0cb8625` (2026-08-19) fix: rewrite deploy.cmd with for-loop output suppression to eliminate error 255
 - `4fd82ec` (2026-08-19) fix(deploy): suppress CMD error 255 by redirecting prisma output to nul
-- `031aea4` (2026-08-19) fix: remove missing DB columns from Prisma schema + code (loginCount, ledEnabled, shippedAt, deliveredAt, expiryWarnedAt)
-- `4d80aef` (2026-08-19) fix(deploy): simplify prisma generate in deploy.cmd
 <!-- AUTO:RECENT_COMMITS:END -->
 
 - 503 root-cause work: DB probe retry loop so the app self-heals, `nodeProcessCountPerApplication=1`,
