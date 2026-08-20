@@ -61,6 +61,9 @@ const logoutSchema = z.object({
 
 const pushTokenSchema = z.object({
   token: z.string().min(1),
+  deviceModel: z.string().optional(),
+  pushDeviceToggles: z.boolean().optional(),
+  pushSystemAlerts: z.boolean().optional(),
 });
 
 const themeSchema = z.object({
@@ -73,6 +76,8 @@ const profileSchema = z
     email: z.string().email().max(100).optional(),
     currentPassword: z.string().min(1).max(255).optional(),
     newPassword: z.string().min(6).max(255).optional(),
+    pushDeviceToggles: z.boolean().optional(),
+    pushSystemAlerts: z.boolean().optional(),
   })
   .refine((d) => Object.keys(d).length > 0, { message: "Nothing to update" });
 
@@ -100,11 +105,29 @@ authRouter.delete("/sessions/all", requireAuth, authController.revokeAllSessions
 authRouter.delete("/sessions/:id", requireAuth, authController.revokeSession);
 
 authRouter.post("/push-token", requireAuth, validateBody(pushTokenSchema), async (req, res) => {
-  // Save the hardware push identifier onto the user's secure profile
+  // Save or sync the hardware push identifier in the Multi-Device registry
+  const { token, deviceModel, pushDeviceToggles, pushSystemAlerts } = req.body;
   const { prisma } = await import("../lib/prisma");
-  await prisma.user.update({
-    where: { id: req.user!.sub },
-    data: { expoPushToken: req.body.token }
+
+  const fallbackDT = pushDeviceToggles !== undefined ? pushDeviceToggles : true;
+  const fallbackSA = pushSystemAlerts !== undefined ? pushSystemAlerts : true;
+
+  await prisma.pushSubscription.upsert({
+    where: { token },
+    update: {
+      userId: req.user!.sub,
+      deviceModel: deviceModel || undefined,
+      pushDeviceToggles: fallbackDT,
+      pushSystemAlerts: fallbackSA
+    },
+    create: {
+      userId: req.user!.sub,
+      token,
+      deviceModel,
+      pushDeviceToggles: fallbackDT,
+      pushSystemAlerts: fallbackSA
+    }
   });
-  res.json({ success: true, message: "Push token securely stored" });
+
+  res.json({ success: true, message: "Push token securely vaulted in multi-device registry" });
 });

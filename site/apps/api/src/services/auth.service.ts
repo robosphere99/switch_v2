@@ -95,6 +95,8 @@ export async function updateProfile(
     email?: string;
     currentPassword?: string;
     newPassword?: string;
+    pushDeviceToggles?: boolean;
+    pushSystemAlerts?: boolean;
   },
 ): Promise<AuthUser> {
   const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -126,7 +128,27 @@ export async function updateProfile(
     data.tokenVersion = { increment: 1 };
   }
 
-  const updated = await prisma.user.update({ where: { id: userId }, data });
+  let updated = user as any;
+  if (Object.keys(data).length > 0) {
+    updated = await prisma.user.update({ where: { id: userId }, data });
+  }
+
+  if (input.pushDeviceToggles !== undefined || input.pushSystemAlerts !== undefined) {
+    const dt = input.pushDeviceToggles !== undefined ? (input.pushDeviceToggles ? 1 : 0) : null;
+    const sa = input.pushSystemAlerts !== undefined ? (input.pushSystemAlerts ? 1 : 0) : null;
+
+    try {
+      if (dt !== null && sa !== null) {
+        await prisma.$executeRawUnsafe(`UPDATE \`User\` SET push_device_toggles = ${dt}, push_system_alerts = ${sa} WHERE id = ${userId}`);
+      } else if (dt !== null) {
+        await prisma.$executeRawUnsafe(`UPDATE \`User\` SET push_device_toggles = ${dt} WHERE id = ${userId}`);
+      } else if (sa !== null) {
+        await prisma.$executeRawUnsafe(`UPDATE \`User\` SET push_system_alerts = ${sa} WHERE id = ${userId}`);
+      }
+    } catch (e: any) {
+      console.error("Failed to hot-patch push preferences:", e);
+    }
+  }
 
   if (input.newPassword) {
     // Purane refresh tokens bhi revoke — har session (jis device se login tha) logout.

@@ -8,27 +8,41 @@ const expo = new Expo({ accessToken: process.env.EXPO_ACCESS_TOKEN }); // access
  * Dispatch a guaranteed high-priority real-time push notification to a Specific User.
  * Bypasses polling delays by leveraging native Apple APNs and Firebase FCM pipelines.
  */
-export async function sendPushToUser(userId: number, title: string, body: string, payload?: any) {
+export async function sendPushToUser(userId: number, title: string, body: string, payload?: any, category: "device" | "system" = "system") {
     try {
-        const user = await prisma.user.findUnique({ where: { id: userId }, select: { expoPushToken: true } });
-        if (!user || !user.expoPushToken) return false; // Non-mobile or opt-out user
-
-        const pushToken = user.expoPushToken;
-
-        if (!Expo.isExpoPushToken(pushToken)) {
-            console.warn(`[Push Engine] Token ${pushToken} is completely invalid. Purging from DB.`);
-            await prisma.user.update({ where: { id: userId }, data: { expoPushToken: null } });
+        let tokensRaw: any[] = [];
+        try {
+            if (category === "device") {
+                tokensRaw = await prisma.$queryRawUnsafe(`SELECT token FROM \`PushSubscription\` WHERE user_id = ${userId} AND push_device_toggles = 1`);
+            } else {
+                tokensRaw = await prisma.$queryRawUnsafe(`SELECT token FROM \`PushSubscription\` WHERE user_id = ${userId} AND push_system_alerts = 1`);
+            }
+        } catch (e) {
             return false;
         }
 
-        const messages: ExpoPushMessage[] = [{
-            to: pushToken,
-            sound: "default",      // Forces a hardware audio alert
-            priority: "high",      // Bypass battery optimization throttling constraints
-            title,
-            body,
-            data: payload || {},
-        }];
+        if (!tokensRaw || tokensRaw.length === 0) return false;
+
+        const messages: ExpoPushMessage[] = [];
+        for (const row of tokensRaw) {
+            const pushToken = row.token;
+            if (!Expo.isExpoPushToken(pushToken)) {
+                console.warn(`[Push Engine] Token ${pushToken} is invalid. Purging from registry.`);
+                await prisma.$executeRawUnsafe(`DELETE FROM \`PushSubscription\` WHERE token = '${pushToken}'`).catch(() => { });
+                continue;
+            }
+
+            messages.push({
+                to: pushToken,
+                sound: "default",      // Forces a hardware audio alert
+                priority: "high",      // Bypass battery optimization throttling constraints
+                title,
+                body,
+                data: payload || {},
+            });
+        }
+
+        if (messages.length === 0) return false;
 
         const chunks = expo.chunkPushNotifications(messages);
 
