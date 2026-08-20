@@ -6,6 +6,7 @@ import {
   markRead,
   markAllRead,
   removeNotification,
+  removeAllNotifications,
   unreadCount,
   type Notification,
 } from "../api/notifications";
@@ -84,6 +85,11 @@ export function Notifications() {
     onSuccess: invalidate,
   });
 
+  const removeAll = useMutation({
+    mutationFn: removeAllNotifications,
+    onSuccess: invalidate,
+  });
+
   const data = list.data?.success ? list.data.data : null;
   const unreadTotal = unread.data?.success ? unread.data.data : 0;
 
@@ -136,14 +142,26 @@ export function Notifications() {
             )}
           </p>
         </div>
-        {unreadTotal > 0 && (
-          <button
-            onClick={() => readAll.mutate()}
-            className="rounded-lg border border-gray-200 bg-night-800 px-4 py-2 text-sm text-brand transition hover:border-brand hover:bg-night-700"
-          >
-            ✓ Mark all read
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {unreadTotal > 0 && (
+            <button
+              onClick={() => readAll.mutate()}
+              className="rounded-lg border border-gray-200 bg-night-800 px-4 py-2 text-sm text-brand transition hover:border-brand hover:bg-night-700"
+            >
+              ✓ Read UI
+            </button>
+          )}
+          {data && data.total > 0 && (
+            <button
+              onClick={() => {
+                if (confirm("Clear all notifications permanently?")) removeAll.mutate();
+              }}
+              className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-2 text-sm text-red-500 transition hover:border-red-500 hover:bg-red-500/20"
+            >
+              ✕ Clear
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Category filter */}
@@ -155,11 +173,10 @@ export function Notifications() {
               setCategory(c.id);
               setPage(1);
             }}
-            className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
-              category === c.id
-                ? "bg-brand text-white shadow-lg shadow-brand/25"
-                : "border border-gray-200 bg-night-800 text-gray-600 hover:border-brand/50 hover:text-brand"
-            }`}
+            className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${category === c.id
+              ? "bg-brand text-white shadow-lg shadow-brand/25"
+              : "border border-gray-200 bg-night-800 text-gray-600 hover:border-brand/50 hover:text-brand"
+              }`}
           >
             {c.icon} {c.label}
           </button>
@@ -175,11 +192,10 @@ export function Notifications() {
               setTypeFilter(t.id);
               setPage(1);
             }}
-            className={`rounded-lg border px-3 py-1 text-xs font-medium transition ${
-              typeFilter === t.id
-                ? "border-brand bg-brand/20 text-brand"
-                : "border-gray-200 bg-night-800 text-gray-500 hover:border-brand/50 hover:text-brand"
-            }`}
+            className={`rounded-lg border px-3 py-1 text-xs font-medium transition ${typeFilter === t.id
+              ? "border-brand bg-brand/20 text-brand"
+              : "border-gray-200 bg-night-800 text-gray-500 hover:border-brand/50 hover:text-brand"
+              }`}
           >
             {t.label}
           </button>
@@ -220,9 +236,8 @@ export function Notifications() {
           return (
             <div
               key={n.id}
-              className={`flex items-start gap-3 rounded-xl border-l-2 px-4 py-3 transition hover:bg-night-700 ${typeStyle(n.type)} ${
-                n.readAt ? "opacity-60" : ""
-              } ${clickable ? "cursor-pointer" : ""}`}
+              className={`flex items-start gap-3 rounded-xl border-l-2 px-4 py-3 transition hover:bg-night-700 ${typeStyle(n.type)} ${n.readAt ? "opacity-60" : ""
+                } ${clickable ? "cursor-pointer" : ""}`}
             >
               <button
                 onClick={() => {
@@ -258,7 +273,7 @@ export function Notifications() {
               </button>
               <button
                 onClick={() => {
-                  if (confirm("Delete this notification?")) remove.mutate(n.id);
+                  remove.mutate(n.id);
                 }}
                 className="rounded-lg p-2 text-gray-600 transition hover:bg-red-500/10 hover:text-red-400"
                 title="Delete"

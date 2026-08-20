@@ -95,6 +95,10 @@ authRouter.get("/me", requireAuth, authController.me);
 authRouter.patch("/me", requireAuth, validateBody(profileSchema), authController.updateProfile);
 authRouter.put("/theme", requireAuth, validateBody(themeSchema), authController.updateTheme);
 
+authRouter.get("/sessions", requireAuth, authController.listSessions);
+authRouter.delete("/sessions/all", requireAuth, authController.revokeAllSessions);
+authRouter.delete("/sessions/:id", requireAuth, authController.revokeSession);
+
 authRouter.post("/push-token", requireAuth, validateBody(pushTokenSchema), async (req, res) => {
   // Save the hardware push identifier onto the user's secure profile
   const { prisma } = await import("../lib/prisma");

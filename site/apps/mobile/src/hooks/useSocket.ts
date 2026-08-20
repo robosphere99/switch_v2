@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { DeviceEventEmitter } from 'react-native';
 import { io, Socket } from 'socket.io-client';
 import * as SecureStore from 'expo-secure-store';
 import { API_URL } from '../api/client';
@@ -24,6 +25,11 @@ export function useSocket(onDeviceUpdated?: (payload: any) => void) {
             socket.on('device:updated', (payload) => {
                 if (onDeviceUpdated) onDeviceUpdated(payload);
             });
+
+            // Global Notification Hooks (Real-Time Universal Inbox)
+            socket.on('notification:new', () => DeviceEventEmitter.emit('notification_sync'));
+            socket.on('notification:deleted', () => DeviceEventEmitter.emit('notification_sync'));
+            socket.on('notification:updated', () => DeviceEventEmitter.emit('notification_sync'));
 
             socketRef.current = socket;
         };

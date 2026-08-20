@@ -129,6 +129,13 @@ export async function listNotifications(userId: number, args: ListNotificationsA
 /** Ek notification delete karo (sirf apna). */
 export async function remove(userId: number, notificationId: number) {
   await prisma.notification.deleteMany({ where: { id: notificationId, userId } });
+  emitToUser(userId, "notification:deleted", { id: notificationId });
+  return { ok: true };
+}
+
+export async function removeAll(userId: number) {
+  await prisma.notification.deleteMany({ where: { userId } });
+  emitToUser(userId, "notification:updated", { all: true });
   return { ok: true };
 }
 
@@ -141,6 +148,7 @@ export async function markRead(userId: number, notificationId: number) {
     where: { id: notificationId, userId },
     data: { readAt: new Date() },
   });
+  emitToUser(userId, "notification:updated", { id: notificationId });
   return { ok: true };
 }
 
@@ -149,5 +157,6 @@ export async function markAllRead(userId: number) {
     where: { userId, readAt: null },
     data: { readAt: new Date() },
   });
+  emitToUser(userId, "notification:updated", { all: true });
   return { ok: true };
 }

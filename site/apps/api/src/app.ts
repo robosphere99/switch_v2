@@ -94,8 +94,8 @@ export function createApp() {
       data: {
         version: API_VERSION,
         mobileAppOptions: {
-          minRequiredVersion: "1.0.1",
-          latestVersion: "1.0.1",
+          minRequiredVersion: "1.0.0",
+          latestVersion: "1.0.0",
           downloadUrl: `${protocol}://${requestHost}/mobile-app/SwitchNest_Latest.apk`,
           updateMessage: "A mandatory server upgrade requires an app update to continue."
         },

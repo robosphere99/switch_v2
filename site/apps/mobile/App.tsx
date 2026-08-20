@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { StyleSheet, View, Text, TextInput, TouchableOpacity, ActivityIndicator, Animated } from 'react-native';
+import { StyleSheet, View, Text, TextInput, TouchableOpacity, ActivityIndicator, Animated, DeviceEventEmitter } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { DashboardScreen } from './src/components/DashboardScreen';
@@ -11,7 +11,14 @@ import { Clock, Settings } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { getSystemVersion } from './src/api/hardware';
-import { Linking } from 'react-native';
+import { Linking, LogBox } from 'react-native';
+
+// Suppress known development warnings that pollute the Expo Go screen
+LogBox.ignoreLogs([
+  'expo-notifications: Android Push notifications',
+  '`expo-notifications` functionality is not fully supported',
+  'Require cycle:',
+]);
 
 // Physical App Hardcoded Manifest Version (Increment this for new APK generation!)
 export const APP_VERSION = '1.0.0';
@@ -27,11 +34,19 @@ const compareSemver = (v1: string, v2: string) => {
 };
 
 function MainApp() {
-  const { theme } = useTheme();
+  const { theme, bindUser } = useTheme();
   const [user, setUser] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<'HOME' | 'AUTOMATIONS' | 'SETTINGS'>('HOME');
   const [isRestoring, setIsRestoring] = useState(true);
   const [biometricFailed, setBiometricFailed] = useState(false);
+
+  React.useEffect(() => {
+    if (user && user.id) {
+      bindUser(String(user.id));
+    } else {
+      setActiveTab('HOME');
+    }
+  }, [user]);
 
   // Update Guard States
   const [updateRequired, setUpdateRequired] = useState(false);
@@ -98,7 +113,19 @@ function MainApp() {
 
       setIsRestoring(false);
     };
+
+    const handleUnauthorized = async () => {
+      await SecureStore.deleteItemAsync('accessToken');
+      await SecureStore.deleteItemAsync('user');
+      setUser(null);
+    };
+    const authSub = DeviceEventEmitter.addListener('auth_unauthorized', handleUnauthorized);
+
     restoreAuth();
+
+    return () => {
+      authSub.remove();
+    };
   }, []);
 
   // Custom Micro-Router Fallback
@@ -111,6 +138,7 @@ function MainApp() {
             await SecureStore.deleteItemAsync('accessToken');
             await SecureStore.deleteItemAsync('user');
             setUser(null);
+            setActiveTab('HOME');
           }}
         />
       );
@@ -121,10 +149,12 @@ function MainApp() {
     if (activeTab === 'SETTINGS') {
       return (
         <SettingsScreen
+          user={user}
           onLogout={async () => {
             await SecureStore.deleteItemAsync('accessToken');
             await SecureStore.deleteItemAsync('user');
             setUser(null);
+            setActiveTab('HOME');
           }}
         />
       );
