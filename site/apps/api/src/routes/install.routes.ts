@@ -123,7 +123,7 @@ function persistDatabaseConfig(p: DbParts): { path: string; ok: boolean } {
     ["DB_USER", p.user],
     ["DB_PASS", p.pass],
     ["DB_NAME", p.name],
-    ["DATABASE_URL", `${buildDatabaseUrl(p)}?connection_limit=2`],
+    ["DATABASE_URL", `${buildDatabaseUrl(p)}?connection_limit=10`],
   ]);
 }
 

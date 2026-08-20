@@ -312,11 +312,11 @@ export async function bulkSetStatus(input: {
   return updated;
 }
 
-/** Update device name and/or move it to a room. */
+/** Update device name, move it to a room, or assign it to a Board Channel. */
 export async function updateDevice(
   homeId: number,
   deviceId: number,
-  patch: { name?: string; roomId?: number | null },
+  patch: { name?: string; roomId?: number | null; espId?: number | null; channel?: number | null },
 ) {
   const device = await prisma.device.findFirst({ where: { id: deviceId, homeId } });
   if (!device) throw new AppError("DEVICE_NOT_FOUND", "Device not found in this home", 404);
@@ -339,8 +339,35 @@ export async function updateDevice(
 
   return prisma.device.update({
     where: { id: deviceId },
-    data: { name: patch.name, roomId: patch.roomId },
+    data: { name: patch.name, roomId: patch.roomId, espId: patch.espId, channel: patch.channel },
   });
+}
+
+export async function setEspLed(args: {
+  homeId: number;
+  espId: number;
+  actorId: number;
+  enabled: boolean;
+}) {
+  const { homeId, espId, actorId, enabled } = args;
+
+  const esp = await prisma.espDevice.update({
+    where: { id: espId, homeId },
+    data: { ledEnabled: enabled } as any,
+  });
+
+  await prisma.auditLog.create({
+    data: {
+      homeId,
+      actorId,
+      action: "esp_led",
+      entity: "esp",
+      entityId: espId,
+      meta: { title: `Status LED ${enabled ? "enabled" : "disabled"}` },
+    },
+  });
+
+  return esp;
 }
 
 /** Recent activity log for a device (who toggled what, when). */
@@ -441,11 +468,27 @@ export async function listMyBoards(userId: number) {
           status: true,
           offline: true,
           lastSeen: true,
+          channel: true,
         },
-        orderBy: { id: "asc" },
+        orderBy: { channel: "asc" },
       },
     },
     orderBy: { id: "asc" },
+  });
+
+  const unassignedDevices = await prisma.device.findMany({
+    where: { homeId: { in: homeIds }, espId: null },
+    select: {
+      id: true,
+      homeId: true,
+      name: true,
+      type: true,
+      status: true,
+      offline: true,
+      lastSeen: true,
+      channel: true,
+    },
+    orderBy: { createdAt: "desc" },
   });
 
   // Har board ki activity timeline (rename/OTA/key events) — detail panel ke liye.
@@ -501,10 +544,10 @@ export async function listMyBoards(userId: number) {
     apiKey: apiKeyByHome.get(h.id) ?? null,
     boards: (byHome.get(h.id) ?? []).map((b) => ({
       ...b,
-      // Hotspot password = serial code (firmware me serial = AP password)
       hotspotName: b.serialCode ? `SwitchNest-${b.serialCode}` : null,
       hotspotPassword: b.serialCode ?? null,
     })),
+    unassignedDevices: unassignedDevices.filter(d => d.homeId === h.id),
   }));
 }
 

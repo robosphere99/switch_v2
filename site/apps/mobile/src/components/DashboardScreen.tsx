@@ -6,6 +6,7 @@ import { useTheme } from '../theme/ThemeContext';
 import * as Haptics from 'expo-haptics';
 import { AssistantModal } from './AssistantModal';
 import { NotificationCenterScreen } from './NotificationCenterScreen';
+import { MembersScreen } from './MembersScreen';
 import { usePushNotifications } from '../hooks/usePushNotifications';
 import { useSocket } from '../hooks/useSocket';
 import { api } from '../api/client';
@@ -81,6 +82,7 @@ export function DashboardScreen({ user, onLogout }: { user: any, onLogout: () =>
     const [activeCategory, setActiveCategory] = useState<string>('All');
     const [aiVisible, setAiVisible] = useState(false);
     const [notificationsVisible, setNotificationsVisible] = useState(false);
+    const [membersVisible, setMembersVisible] = useState(false);
     const [unreadBadge, setUnreadBadge] = useState(0);
 
     // Activates Native Push Notifications (Background Sync & Permission Handling)
@@ -184,8 +186,22 @@ export function DashboardScreen({ user, onLogout }: { user: any, onLogout: () =>
         <View style={[styles.container, { backgroundColor: theme.background }]}>
             <View style={[styles.header, { backgroundColor: theme.background }]}>
                 <View style={styles.headerLeft}>
-                    <Text style={[styles.userName, { color: theme.text }]}>Hello, {capitalize(user?.username) || 'Commander'}!</Text>
-                    <Text style={[styles.greetingLabel, { color: theme.textSecondary }]}>Welcome to your smart home</Text>
+                    {/* Avatar - opens Members/Family screen */}
+                    <TouchableOpacity
+                        onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
+                            setMembersVisible(true);
+                        }}
+                        style={[styles.avatarBtn, { backgroundColor: theme.primary + '25', borderColor: theme.primary + '60' }]}
+                    >
+                        <Text style={{ color: theme.primary, fontWeight: '900', fontSize: 16 }}>
+                            {(user?.username || 'U').slice(0, 2).toUpperCase()}
+                        </Text>
+                    </TouchableOpacity>
+                    <View>
+                        <Text style={[styles.userName, { color: theme.text }]}>Hello, {capitalize(user?.username) || 'Commander'}!</Text>
+                        <Text style={[styles.greetingLabel, { color: theme.textSecondary }]}>Welcome to your smart home</Text>
+                    </View>
                 </View>
                 <View style={styles.headerRight}>
                     <TouchableOpacity
@@ -211,7 +227,7 @@ export function DashboardScreen({ user, onLogout }: { user: any, onLogout: () =>
                         {homes.map((home: any) => {
                             const hId = home.homeId || home.id;
                             const isSelected = selectedHomeId === hId;
-                            const hName = capitalize(home.name || home.home?.name) || `Home ${hId}`;
+                            const hName = capitalize(home.homeName || home.name || home.home?.name) || `Home ${hId}`;
 
                             return (
                                 <TouchableOpacity
@@ -263,6 +279,18 @@ export function DashboardScreen({ user, onLogout }: { user: any, onLogout: () =>
                 </View>
             </ScrollView>
 
+            {/* Members/Family Modal */}
+            <Modal visible={membersVisible} animationType="slide" presentationStyle="formSheet" onRequestClose={() => setMembersVisible(false)}>
+                <View style={{ flex: 1, backgroundColor: theme.background }}>
+                    <MembersScreen
+                        homeId={selectedHomeId || 0}
+                        myRole={homes.find(h => (h.homeId || h.id) === selectedHomeId)?.role ?? homes[0]?.role ?? 'member'}
+                        homeList={homes}
+                        onClose={() => setMembersVisible(false)}
+                    />
+                </View>
+            </Modal>
+
             {/* Notifications Modal (using Activity log feed) */}
             <Modal visible={notificationsVisible} animationType="slide" presentationStyle="formSheet" onRequestClose={() => { setNotificationsVisible(false); loadData(); }}>
                 <View style={{ flex: 1, backgroundColor: theme.background }}>
@@ -304,7 +332,11 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'space-between',
     },
-    headerLeft: { justifyContent: 'center' },
+    headerLeft: { justifyContent: 'center', flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+    avatarBtn: {
+        width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center',
+        borderWidth: 1.5
+    },
     greetingLabel: { fontSize: 14, fontWeight: '500', opacity: 0.8, marginTop: 4 },
     userName: { fontSize: 24, fontWeight: '900', letterSpacing: -0.5 },
     headerRight: { flexDirection: 'row', gap: 10 },

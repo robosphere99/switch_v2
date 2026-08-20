@@ -3,12 +3,11 @@ import { PrismaClient } from "@prisma/client";
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
 /**
- * MySQL pool chhota rakhna zaroori hai — Plesk per-user
- * max_user_connections. Har process ka default pool (num_cpus*2+1)
- * multiple processes me exhaust -> ERROR 1203 -> fail -> naya process
- * -> aur zyada connections -> cascade. connection_limit=2 breaks cycle.
+ * MySQL pool size changed to 10 (from 2) to handle ESP heartbeats,
+ * polling, and scheduled tasks without exhausting the connection limit.
+ * connection_limit=10 provides a healthy buffer while preventing runaway cascades.
  */
-export function withConnLimit(url: string, limit = 2): string {
+export function withConnLimit(url: string, limit = 10): string {
   try {
     const u = new URL(url);
     u.searchParams.set("connection_limit", String(limit));

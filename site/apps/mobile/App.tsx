@@ -6,7 +6,9 @@ import { DashboardScreen } from './src/components/DashboardScreen';
 import { AutomationsScreen } from './src/components/AutomationsScreen';
 import { LoginScreen } from './src/components/LoginScreen';
 import { SettingsScreen } from './src/components/SettingsScreen';
-import { LogOut, Home as HomeIcon, Zap, Shield, Wifi, User, Activity, Bot } from 'lucide-react-native';
+import { HardwareScreen } from './src/components/HardwareScreen';
+import { ShopScreen } from './src/components/ShopScreen';
+import { Server, LogOut, Home as HomeIcon, Zap, Shield, Wifi, User, Activity, Bot, ShoppingCart } from 'lucide-react-native';
 import { Clock, Settings } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
@@ -36,7 +38,7 @@ const compareSemver = (v1: string, v2: string) => {
 function MainApp() {
   const { theme, bindUser } = useTheme();
   const [user, setUser] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'HOME' | 'AUTOMATIONS' | 'SETTINGS'>('HOME');
+  const [activeTab, setActiveTab] = useState<'HOME' | 'HARDWARE' | 'AUTOMATIONS' | 'SETTINGS' | 'SHOP'>('HOME');
   const [isRestoring, setIsRestoring] = useState(true);
   const [biometricFailed, setBiometricFailed] = useState(false);
 
@@ -143,8 +145,14 @@ function MainApp() {
         />
       );
     }
+    if (activeTab === 'HARDWARE') {
+      return <HardwareScreen />;
+    }
     if (activeTab === 'AUTOMATIONS') {
       return <AutomationsScreen />;
+    }
+    if (activeTab === 'SHOP') {
+      return <ShopScreen />;
     }
     if (activeTab === 'SETTINGS') {
       return (
@@ -168,7 +176,7 @@ function MainApp() {
   };
 
   if (user) {
-    const setNav = (tab: 'HOME' | 'AUTOMATIONS' | 'SETTINGS') => {
+    const setNav = (tab: 'HOME' | 'HARDWARE' | 'AUTOMATIONS' | 'SETTINGS' | 'SHOP') => {
       if (activeTab === tab) return;
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => { });
 
@@ -193,9 +201,19 @@ function MainApp() {
             <Text style={[styles.navText, { color: activeTab === 'HOME' ? theme.primary : theme.textSecondary }]}>Home</Text>
           </TouchableOpacity>
 
+          <TouchableOpacity style={styles.navItem} onPress={() => setNav('HARDWARE')}>
+            <Server color={activeTab === 'HARDWARE' ? theme.primary : theme.textSecondary} size={24} />
+            <Text style={[styles.navText, { color: activeTab === 'HARDWARE' ? theme.primary : theme.textSecondary }]}>Boards</Text>
+          </TouchableOpacity>
+
           <TouchableOpacity style={styles.navItem} onPress={() => setNav('AUTOMATIONS')}>
             <Clock color={activeTab === 'AUTOMATIONS' ? theme.primary : theme.textSecondary} size={24} />
             <Text style={[styles.navText, { color: activeTab === 'AUTOMATIONS' ? theme.primary : theme.textSecondary }]}>Routines</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.navItem} onPress={() => setNav('SHOP')}>
+            <ShoppingCart color={activeTab === 'SHOP' ? theme.primary : theme.textSecondary} size={24} />
+            <Text style={[styles.navText, { color: activeTab === 'SHOP' ? theme.primary : theme.textSecondary }]}>Store</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.navItem} onPress={() => setNav('SETTINGS')}>

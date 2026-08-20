@@ -83,6 +83,7 @@ scheduleRouter.patch(
     const updated = await scheduleService.updateSchedule(
       Number(req.params.homeId),
       Number(req.params.scheduleId),
+      req.user!.sub,
       req.body,
     );
     ok(res, updated);
@@ -96,7 +97,7 @@ scheduleRouter.delete(
   validateParams(scheduleParams),
   requireHomeMember("member"),
   async (req, res) => {
-    await scheduleService.deleteSchedule(Number(req.params.homeId), Number(req.params.scheduleId));
+    await scheduleService.deleteSchedule(Number(req.params.homeId), Number(req.params.scheduleId), req.user!.sub);
     ok(res, { message: "Schedule deleted" });
   },
 );

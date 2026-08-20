@@ -34,6 +34,19 @@ export const useAuthStore = create<AuthState>((set) => ({
 
     logout: async () => {
         try {
+            const refreshToken = await SecureStore.getItemAsync('refreshToken');
+            const pushToken = await SecureStore.getItemAsync('expoPushToken');
+
+            // Notify backend to proactively revoke the physical push notification bridge & JWT
+            if (refreshToken || pushToken) {
+                try {
+                    const { api } = await import('../api/client');
+                    await api.post('/auth/logout', { refreshToken, pushToken }).catch(() => { });
+                } catch (e) {
+                    console.log("[AuthStore] Logout network sync failed, preceding locally");
+                }
+            }
+
             await SecureStore.deleteItemAsync('accessToken');
             await SecureStore.deleteItemAsync('refreshToken');
             await SecureStore.deleteItemAsync('user');

@@ -44,8 +44,10 @@ export async function refresh(req: Request, res: Response) {
 }
 
 export async function logout(req: Request, res: Response) {
-  const { refreshToken } = req.body;
-  if (refreshToken) await authService.logout(refreshToken);
+  const { refreshToken, pushToken } = req.body;
+  if (refreshToken || pushToken) {
+    await authService.logout(refreshToken, pushToken);
+  }
   ok(res, { message: "Logged out" });
 }
 

@@ -14,7 +14,7 @@ const memberParams = z.object({
 });
 
 const inviteSchema = z.object({
-  email: z.string().email().max(100),
+  email: z.string().email().max(100).optional(),
   role: z.enum(["admin", "member", "viewer"]), // cannot invite as owner
 });
 

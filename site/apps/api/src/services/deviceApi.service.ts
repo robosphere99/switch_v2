@@ -12,11 +12,44 @@ function homeScope(key: ApiKey): number {
 }
 
 /** All devices of the key's home. Also marks them "alive" (lastSeen). */
-export async function readAll(key: ApiKey) {
+export async function readAll(key: ApiKey, mac?: string) {
   const homeId = homeScope(key);
+
+  if (mac) {
+    const esp = await prisma.espDevice.findFirst({
+      where: { homeId, macAddress: mac }
+    });
+    if (!esp) return { states: [], led: 1 };
+
+    // Cloud Mapping payload
+    const devices = await prisma.device.findMany({
+      where: { homeId, espId: esp.id },
+      select: { channel: true, status: true }
+    });
+
+    const relayCount = esp.modelCode === "sn-r2" ? 2 : esp.modelCode === "sn-r1" ? 1 : 4;
+    const states = new Array(relayCount).fill(0);
+    const led = (esp as any).ledEnabled ? 1 : 0;
+
+    for (const d of devices) {
+      if (d.channel != null && d.channel >= 1 && d.channel <= relayCount) {
+        states[d.channel - 1] = d.status === "on" ? 1 : 0;
+      }
+    }
+
+    await prisma.espDevice.update({
+      where: { id: esp.id },
+      data: { lastSeen: new Date(), offline: false }
+    }).catch(() => null);
+
+    return { states, led };
+  }
+
+  // Legacy sync
   const devices = await prisma.device.findMany({
     where: { homeId },
     orderBy: { createdAt: "desc" },
+    select: { id: true, name: true, status: true, offline: true }
   });
   // Mark alive + clear offline flags (device is polling us right now).
   const result = await prisma.device
@@ -28,29 +61,43 @@ export async function readAll(key: ApiKey) {
       await emitDeviceUpdated(homeId, d.id);
     }
   }
-  return devices;
+  // Strip the 'offline' field to minimize JSON payload strictly for ESP
+  return devices.map(d => ({ id: d.id, name: d.name, status: d.status }));
 }
 
 /**
  * Physical switch → server. Sets the status WITHOUT enqueueing a command
  * (the state is coming FROM the device, not from the web app).
  */
-export async function updateFromDevice(key: ApiKey, deviceId: number, status: DeviceStatus) {
+export async function updateFromDevice(key: ApiKey, deviceId: number | undefined, status: DeviceStatus, mac?: string, channel?: number) {
   const homeId = homeScope(key);
 
-  const device = await prisma.device.findFirst({ where: { id: deviceId, homeId } });
+  let targetDeviceId = deviceId;
+  if (mac && channel != null) {
+    const esp = await prisma.espDevice.findFirst({ where: { homeId, macAddress: mac } });
+    if (esp) {
+      const dev = await prisma.device.findFirst({ where: { espId: esp.id, channel, homeId } });
+      if (dev) targetDeviceId = dev.id;
+    }
+  }
+
+  if (!targetDeviceId) {
+    throw new AppError("DEVICE_NOT_FOUND", "Device not found in this home", 404);
+  }
+
+  const device = await prisma.device.findFirst({ where: { id: targetDeviceId, homeId } });
   if (!device) {
     throw new AppError("DEVICE_NOT_FOUND", "Device not found in this home", 404);
   }
 
   await prisma.$transaction([
     prisma.device.update({
-      where: { id: deviceId },
+      where: { id: targetDeviceId },
       data: { status, lastSeen: new Date(), offline: false },
     }),
     prisma.deviceLog.create({
       data: {
-        deviceId,
+        deviceId: targetDeviceId,
         actorId: null,
         logType: "status_change",
         logMessage: `Device switched ${status} (physical switch)`,
@@ -58,7 +105,7 @@ export async function updateFromDevice(key: ApiKey, deviceId: number, status: De
     }),
   ]);
 
-  const updated = await prisma.device.findUnique({ where: { id: deviceId } });
+  const updated = await prisma.device.findUnique({ where: { id: targetDeviceId } });
   if (updated) await emitDeviceUpdated(homeId, updated.id);
   return updated;
 }
@@ -117,11 +164,11 @@ export async function heartbeat(
 ) {
   const homeId = homeScope(key);
 
-  const device = await prisma.device.findFirst({
-    where: { id: input.device_id, homeId },
-  });
-  if (!device) {
-    throw new AppError("DEVICE_NOT_FOUND", "Device not found in this home", 404);
+  let device = undefined;
+  if (input.device_id) {
+    device = await prisma.device.findFirst({
+      where: { id: input.device_id, homeId },
+    });
   }
 
   const fw = input.fw_version?.trim() || undefined;
@@ -203,7 +250,7 @@ export async function heartbeat(
   if (esp) data.esp = { connect: { id: esp.id } };
 
   // ESP confirmed it now runs the pushed version -> clear pending push + progress.
-  const pendingVer = esp ? esp.otaPendingVersion : (device.otaPendingVersion ?? null);
+  const pendingVer = esp ? esp.otaPendingVersion : (device?.otaPendingVersion ?? null);
   if (fw && pendingVer && fw === pendingVer) {
     if (esp) {
       await prisma.espDevice.update({
@@ -217,45 +264,70 @@ export async function heartbeat(
     data.otaStatus = null;
   }
 
-  const updated = await prisma.device.update({ where: { id: device.id }, data });
-  if (device.offline) {
-    await emitDeviceUpdated(homeId, updated.id);
+  let updatedDevice = device;
+  if (device) {
+    updatedDevice = await prisma.device.update({ where: { id: device.id }, data });
+    if (device.offline) {
+      await emitDeviceUpdated(homeId, updatedDevice.id);
+    }
   }
 
-  // Relay state sync — the ESP's physical relays are the source of truth.
-  // Saare states wale device ids bhi is ESP ke under link ho jaate hain.
   let synced = 0;
   let statesParsed = false;
-  const controlledIds: number[] = [device.id];
+  // If no specific device.id exists (because we just sent mac), start an empty array
+  const controlledIds: number[] = device ? [device.id] : [];
+
   if (input.states && input.states.trim()) {
-    let states: Array<{ id: number; status: DeviceStatus; value?: string }> = [];
     try {
       const parsed: unknown = JSON.parse(input.states);
-      if (Array.isArray(parsed)) states = parsed as Array<{ id: number; status: DeviceStatus; value?: string }>;
+      if (Array.isArray(parsed)) {
+        statesParsed = true;
+        // V2 Array Format: [1, 0, 1, 0]
+        if (parsed.length > 0 && typeof parsed[0] === "number") {
+          if (esp) {
+            const mappedDevices = await prisma.device.findMany({ where: { espId: esp.id, homeId } });
+            for (let i = 0; i < parsed.length; i++) {
+              const channelNum = i + 1;
+              const target = mappedDevices.find(d => d.channel === channelNum);
+              if (target) {
+                const targetStatus = parsed[i] ? "on" : "off";
+                const res = await prisma.device.updateMany({
+                  where: { id: target.id, homeId },
+                  data: { status: targetStatus, lastSeen: new Date(), offline: false },
+                });
+                if (res.count > 0) {
+                  synced++;
+                  controlledIds.push(target.id);
+                  await emitDeviceUpdated(homeId, target.id);
+                }
+              }
+            }
+          }
+        } else {
+          // V1 Objects Format: [{"id": 1, "status": "on"}]
+          let states = parsed as Array<{ id: number; status: DeviceStatus; value?: string }>;
+          for (const st of states) {
+            if (!st || typeof st.id !== "number" || (st.status !== "on" && st.status !== "off")) continue;
+            const value = typeof st.value === "string" && /^\d+$/.test(st.value) ? st.value : undefined;
+            const res = await prisma.device.updateMany({
+              where: { id: st.id, homeId },
+              data: {
+                status: st.status,
+                ...(value ? { customValue: value } : {}),
+                lastSeen: new Date(),
+                offline: false,
+              },
+            });
+            if (res.count > 0) {
+              synced++;
+              controlledIds.push(st.id);
+              await emitDeviceUpdated(homeId, st.id);
+            }
+          }
+        }
+      }
     } catch {
-      states = [];
-    }
-    if (states.length > 0) statesParsed = true;
-    for (const st of states) {
-      if (!st || typeof st.id !== "number" || (st.status !== "on" && st.status !== "off")) {
-        continue;
-      }
-      // dimmer value (33/66/100...) customValue me store — dashboard dikha sakta hai
-      const value = typeof st.value === "string" && /^\d+$/.test(st.value) ? st.value : undefined;
-      const res = await prisma.device.updateMany({
-        where: { id: st.id, homeId },
-        data: {
-          status: st.status,
-          ...(value ? { customValue: value } : {}),
-          lastSeen: new Date(),
-          offline: false,
-        },
-      });
-      if (res.count > 0) {
-        synced++;
-        controlledIds.push(st.id);
-        await emitDeviceUpdated(homeId, st.id);
-      }
+      // bad JSON
     }
   }
 
@@ -281,8 +353,8 @@ export async function heartbeat(
   // Board ke model ke hisaab se firmware resolve hota hai (model-specific > universal).
   const { resolveFirmware } = await import("./firmware.service");
   const current = await resolveFirmware(esp?.modelCode);
-  const running = fw ?? updated.firmwareVersion ?? device.firmwareVersion;
-  const pendingNow = esp ? esp.otaPendingVersion : (updated.otaPendingVersion ?? device.otaPendingVersion);
+  const running = fw ?? updatedDevice?.firmwareVersion;
+  const pendingNow = esp ? esp.otaPendingVersion : (device?.otaPendingVersion);
   let ota: { version: string; url: string; releaseNotes: string | null; required: true } | null = null;
   if (pendingNow && current && running !== current.version) {
     ota = {
@@ -294,7 +366,7 @@ export async function heartbeat(
   }
 
   return {
-    device: updated,
+    device: updatedDevice,
     esp: esp
       ? { id: esp.id, macAddress: esp.macAddress, name: esp.name, ssid: esp.ssid, serialCode: esp.serialCode, modelCode: esp.modelCode, ipAddress: esp.ipAddress, firmwareVersion: esp.firmwareVersion }
       : null,
@@ -304,18 +376,42 @@ export async function heartbeat(
 }
 
 /** Pending commands for the key's home — polled by the ESP32. */
-export async function pendingCommands(key: ApiKey) {
-  const commands = await findPendingCommands(key);
+export async function pendingCommands(key: ApiKey, mac?: string) {
+  const commands = await findPendingCommands(key, mac);
   await markHomeAlive(key);
   return commands;
 }
 
-async function findPendingCommands(key: ApiKey) {
+async function findPendingCommands(key: ApiKey, mac?: string) {
   const homeId = homeScope(key);
+
+  if (mac) {
+    const esp = await prisma.espDevice.findFirst({ where: { homeId, macAddress: mac } });
+    if (!esp) return [];
+
+    // Find mapped devices to compute channel mapping for commands
+    const devices = await prisma.device.findMany({ where: { espId: esp.id, homeId } });
+    const deviceIds = devices.map(d => d.id);
+
+    const cmds = await prisma.deviceCommand.findMany({
+      where: { deviceId: { in: deviceIds }, status: "pending" },
+      orderBy: { createdAt: "asc" },
+      take: 20,
+      select: { id: true, deviceId: true, command: true },
+    });
+
+    // Emit V2 commands with channel instead of deviceId
+    return cmds.map(c => {
+      const dev = devices.find(d => d.id === c.deviceId);
+      return { id: c.id, channel: dev?.channel, command: c.command };
+    });
+  }
+
   return prisma.deviceCommand.findMany({
     where: { device: { homeId }, status: "pending" },
     orderBy: { createdAt: "asc" },
     take: 20,
+    select: { id: true, deviceId: true, command: true }
   });
 }
 
@@ -335,13 +431,14 @@ export async function pendingCommandsLongPoll(
   key: ApiKey,
   holdMs: number,
   signal?: AbortSignal,
+  mac?: string
 ) {
   const deadline = Date.now() + holdMs;
-  let commands = await findPendingCommands(key);
+  let commands = await findPendingCommands(key, mac);
   while (commands.length === 0 && Date.now() < deadline) {
     if (signal?.aborted) break;
     await new Promise((r) => setTimeout(r, 300));
-    commands = await findPendingCommands(key);
+    commands = await findPendingCommands(key, mac);
   }
   await markHomeAlive(key);
   return commands;
@@ -351,13 +448,13 @@ export async function pendingCommandsLongPoll(
 export async function ackCommand(
   key: ApiKey,
   commandId: number,
-  deviceId: number,
+  deviceId: number | undefined,
   status: "executed" | "failed",
 ) {
   const homeId = homeScope(key);
 
   const command = await prisma.deviceCommand.findFirst({
-    where: { id: commandId, deviceId },
+    where: { id: commandId },
     include: { device: true },
   });
   if (!command) {
