@@ -1,39 +1,33 @@
 #include "preferences/PreferencesManager.h"
 #include "Config.h"
-#include <ESP.h>
 #include <ArduinoJson.h>
-#include "core/MappingManager.h"
-#include "core/BoardManager.h"
+#include <ESP.h>
+
+
 Preferences preferences;
 
 namespace PreferencesManager {
 
-bool begin() {
-  return preferences.begin(PREF_NAMESPACE, false);
-}
+bool begin() { return preferences.begin(PREF_NAMESPACE, false); }
 
-bool isConfigured() {
-  return preferences.getBool(PREF_CONFIGURED, false);
-}
+bool isConfigured() { return preferences.getBool(PREF_CONFIGURED, false); }
 
 void setConfigured(bool status) {
   preferences.putBool(PREF_CONFIGURED, status);
 }
 
-void saveWiFi(const String& ssid, const String& password) {
+void saveWiFi(const String &ssid, const String &password) {
   preferences.putString(PREF_WIFI_SSID, ssid);
   preferences.putString(PREF_WIFI_PASSWORD, password);
 }
 
-String getWiFiSSID() {
-  return preferences.getString(PREF_WIFI_SSID, "");
-}
+String getWiFiSSID() { return preferences.getString(PREF_WIFI_SSID, ""); }
 
 String getWiFiPassword() {
   return preferences.getString(PREF_WIFI_PASSWORD, "");
 }
 
-void saveAdmin(const String& username, const String& password) {
+void saveAdmin(const String &username, const String &password) {
   preferences.putString(PREF_ADMIN_USER, username);
   preferences.putString(PREF_ADMIN_PASSWORD, password);
 }
@@ -48,28 +42,22 @@ String getAdminPassword() {
   return val.isEmpty() ? DEFAULT_ADMIN_PASSWORD : val;
 }
 
-void saveServer(const String& url, const String& apiKey) {
+void saveServer(const String &url, const String &apiKey) {
   preferences.putString(PREF_SERVER_URL, url);
   preferences.putString(PREF_API_KEY, apiKey);
 }
 
-String getServerURL() {
-  return preferences.getString(PREF_SERVER_URL, "");
-}
+String getServerURL() { return preferences.getString(PREF_SERVER_URL, ""); }
 
-String getApiKey() {
-  return preferences.getString(PREF_API_KEY, "");
-}
+String getApiKey() { return preferences.getString(PREF_API_KEY, ""); }
 
 void saveKeyInvalid(bool invalid) {
   preferences.putBool(PREF_KEY_INVALID, invalid);
 }
 
-bool isKeyInvalid() {
-  return preferences.getBool(PREF_KEY_INVALID, false);
-}
+bool isKeyInvalid() { return preferences.getBool(PREF_KEY_INVALID, false); }
 
-void saveSerialCode(const String& code) {
+void saveSerialCode(const String &code) {
   preferences.putString(PREF_SERIAL_CODE, code);
 }
 
@@ -79,7 +67,7 @@ String getSerialCode() {
   return preferences.getString(PREF_SERIAL_CODE, "");
 }
 
-void saveModelCode(const String& code) {
+void saveModelCode(const String &code) {
   preferences.putString(PREF_MODEL_CODE, code);
 }
 
@@ -89,9 +77,7 @@ String getModelCode() {
   return preferences.getString(PREF_MODEL_CODE, "");
 }
 
-void saveOTAURL(const String& url) {
-  preferences.putString(PREF_OTA_URL, url);
-}
+void saveOTAURL(const String &url) { preferences.putString(PREF_OTA_URL, url); }
 
 String getOTAURL() {
   // isKey check taaki key exist na kare toh noisy NVS error na aaye
@@ -101,7 +87,7 @@ String getOTAURL() {
   return preferences.getString(PREF_OTA_URL, "");
 }
 
-void saveAPName(const String& name) {
+void saveAPName(const String &name) {
   preferences.putString(PREF_AP_NAME, name);
 }
 
@@ -112,7 +98,7 @@ String getAPName() {
   return preferences.getString(PREF_AP_NAME, "");
 }
 
-void saveAPPassword(const String& password) {
+void saveAPPassword(const String &password) {
   preferences.putString(PREF_AP_PASSWORD, password);
 }
 
@@ -132,11 +118,9 @@ bool getAPKeepEnabled() {
   return preferences.getBool(PREF_AP_KEEP, true);
 }
 
-void putInt(const char* key, int value) {
-  preferences.putInt(key, value);
-}
+void putInt(const char *key, int value) { preferences.putInt(key, value); }
 
-int getInt(const char* key, int defaultValue) {
+int getInt(const char *key, int defaultValue) {
   return preferences.getInt(key, defaultValue);
 }
 
@@ -169,11 +153,11 @@ void factoryReset() {
   Serial.println("========================");
 }
 
-bool putBool(const char* key, bool value) {
+bool putBool(const char *key, bool value) {
   return preferences.putBool(key, value);
 }
 
-bool getBool(const char* key, bool defaultValue) {
+bool getBool(const char *key, bool defaultValue) {
   return preferences.getBool(key, defaultValue);
 }
 String exportConfiguration() {
@@ -206,18 +190,12 @@ String exportConfiguration() {
 
   doc["switchMode"] = getSwitchMode();
 
-  JsonArray mapping = doc["mapping"].to<JsonArray>();
-
-  for (uint8_t i = 0; i < BoardManager::getRelayCount(); i++) {
-    mapping.add(MappingManager::getMapping(i));
-  }
-
   String json;
   serializeJsonPretty(doc, json);
 
   return json;
 }
-bool validateConfiguration(const String& json) {
+bool validateConfiguration(const String &json) {
   DynamicJsonDocument doc(2048);
 
   if (deserializeJson(doc, json))
@@ -226,7 +204,7 @@ bool validateConfiguration(const String& json) {
   return true;
 }
 
-bool importConfiguration(const String& json) {
+bool importConfiguration(const String &json) {
   DynamicJsonDocument doc(2048);
 
   DeserializationError error = deserializeJson(doc, json);
@@ -235,28 +213,25 @@ bool importConfiguration(const String& json) {
     return false;
 
   // WiFi
-  saveWiFi(
-    doc["wifi"]["ssid"].as<String>(),
-    doc["wifi"]["password"].as<String>());
+  saveWiFi(doc["wifi"]["ssid"].as<String>(),
+           doc["wifi"]["password"].as<String>());
 
   // Server
-  saveServer(
-    doc["server"]["url"].as<String>(),
-    doc["server"]["apiKey"].as<String>());
+  saveServer(doc["server"]["url"].as<String>(),
+             doc["server"]["apiKey"].as<String>());
 
   // Admin
-  saveAdmin(
-    doc["admin"]["username"].as<String>(),
-    doc["admin"]["password"].as<String>());
+  saveAdmin(doc["admin"]["username"].as<String>(),
+            doc["admin"]["password"].as<String>());
 
   // OTA
   saveOTAURL(doc["ota"]["url"].as<String>());
 
   // AP name/password (backward compatible — purane configs mein chhota)
-  if (doc["ap"]["name"].is<const char*>())
+  if (doc["ap"]["name"].is<const char *>())
     saveAPName(doc["ap"]["name"].as<String>());
 
-  if (doc["ap"]["password"].is<const char*>())
+  if (doc["ap"]["password"].is<const char *>())
     saveAPPassword(doc["ap"]["password"].as<String>());
 
   // AP keep (backward compatible — purane configs mein default ON)
@@ -267,45 +242,27 @@ bool importConfiguration(const String& json) {
   if (doc["switchMode"].is<int>())
     saveSwitchMode(doc["switchMode"].as<int>());
 
-  // Mapping
-  JsonArray mapping = doc["mapping"].as<JsonArray>();
-
-  for (uint8_t i = 0; i < BoardManager::getRelayCount(); i++) {
-    MappingManager::setMapping(i, mapping[i].as<int>());
-  }
-
-  MappingManager::save();
   setConfigured(true);
   return true;
 }
-void saveStatusLedMapping(int deviceId)
-{
-    preferences.putInt(PREF_STATUS_LED_DEVICE_ID, deviceId);
+void saveStatusLedMapping(int deviceId) {
+  preferences.putInt(PREF_STATUS_LED_DEVICE_ID, deviceId);
 }
 
-int getStatusLedMapping()
-{
-    return preferences.getInt(PREF_STATUS_LED_DEVICE_ID, -1);
+int getStatusLedMapping() {
+  return preferences.getInt(PREF_STATUS_LED_DEVICE_ID, -1);
 }
 
-void saveSwitchMode(int mode)
-{
-    preferences.putInt(PREF_SWITCH_MODE, mode);
+void saveSwitchMode(int mode) { preferences.putInt(PREF_SWITCH_MODE, mode); }
+
+void saveLedEnabled(bool enabled) {
+  preferences.putBool("led_enabled", enabled);
 }
 
-void saveLedEnabled(bool enabled)
-{
-    preferences.putBool("led_enabled", enabled);
+bool getLedEnabled() { return preferences.getBool("led_enabled", true); }
+
+int getSwitchMode() {
+  return preferences.getInt(PREF_SWITCH_MODE, SWITCH_MODE_MOMENTARY);
 }
 
-bool getLedEnabled()
-{
-    return preferences.getBool("led_enabled", true);
-}
-
-int getSwitchMode()
-{
-    return preferences.getInt(PREF_SWITCH_MODE, SWITCH_MODE_MOMENTARY);
-}
-
-}
+} // namespace PreferencesManager

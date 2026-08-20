@@ -1,14 +1,13 @@
-#include <HTTPUpdate.h>
 #include "core/OTAManager.h"
+#include <HTTPUpdate.h>
 
+#include <ArduinoJson.h>
+#include <HTTPClient.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
-#include <HTTPClient.h>
-#include <ArduinoJson.h>
 
 #include "Config.h"
 #include "preferences/PreferencesManager.h"
-#include "core/MappingManager.h"
 
 namespace {
 enum OTAState {
@@ -41,7 +40,7 @@ String status = "Idle";
 
 // Server ko har 5% par progress report hota hai (OTA stream block na ho)
 static int lastReportedProgress = -1;
-}
+} // namespace
 
 namespace OTAManager {
 
@@ -114,8 +113,7 @@ bool checkUpdate() {
 
   DynamicJsonDocument doc(2048);
 
-  DeserializationError error =
-    deserializeJson(doc, payload);
+  DeserializationError error = deserializeJson(doc, payload);
 
   if (error) {
     status = "JSON Error";
@@ -125,14 +123,11 @@ bool checkUpdate() {
     return false;
   }
 
-  latestVersion =
-    doc["version"].as<String>();
+  latestVersion = doc["version"].as<String>();
 
-  firmwareURL =
-    doc["url"].as<String>();
+  firmwareURL = doc["url"].as<String>();
 
-  releaseNotes =
-    doc["releaseNotes"].as<String>();
+  releaseNotes = doc["releaseNotes"].as<String>();
 
   if (latestVersion != FIRMWARE_VERSION) {
     updateAvailable = true;
@@ -152,46 +147,39 @@ bool checkUpdate() {
 }
 
 // Fire-and-forget progress report to the server (Admin OTA tab live bar).
-// Kabhi OTA download stream ko block nahi karna chahiye — short timeout + no wait.
-static void reportProgress(int pct, const char *otaStatus)
-{
-    if (WiFi.status() != WL_CONNECTED)
-        return;
+// Kabhi OTA download stream ko block nahi karna chahiye — short timeout + no
+// wait.
+static void reportProgress(int pct, const char *otaStatus) {
+  if (WiFi.status() != WL_CONNECTED)
+    return;
 
-    String serverURL = PreferencesManager::getServerURL();
-    String apiKey = PreferencesManager::getApiKey();
+  String serverURL = PreferencesManager::getServerURL();
+  String apiKey = PreferencesManager::getApiKey();
 
-    if (serverURL.isEmpty() || apiKey.isEmpty())
-        return;
+  if (serverURL.isEmpty() || apiKey.isEmpty())
+    return;
 
-    int deviceId = MappingManager::getDeviceIdByRelay(0);
-    if (deviceId < 0)
-        return;
+  static WiFiClient plainClient;
+  static WiFiClientSecure secureClient;
+  HTTPClient http;
+  http.setTimeout(2000);
+  if (serverURL.startsWith("https://")) {
+    secureClient.setInsecure();
+    http.begin(secureClient, serverURL + "/api/device/ota-progress");
+  } else {
+    http.begin(serverURL + "/api/device/ota-progress");
+  }
+  http.addHeader("Content-Type", "application/x-www-form-urlencoded");
 
-    static WiFiClient plainClient;
-    static WiFiClientSecure secureClient;
-    HTTPClient http;
-    http.setTimeout(2000);
-    if (serverURL.startsWith("https://"))
-    {
-        secureClient.setInsecure();
-        http.begin(secureClient, serverURL + "/api/device/ota-progress");
-    }
-    else
-    {
-        http.begin(serverURL + "/api/device/ota-progress");
-    }
-    http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+  String body = "api_key=" + apiKey;
+  body += "&mac=" + WiFi.macAddress();
+  body += "&progress=" + String(pct);
+  body += "&status=" + String(otaStatus);
 
-    String body = "api_key=" + apiKey;
-    body += "&device_id=" + String(deviceId);
-    body += "&progress=" + String(pct);
-    body += "&status=" + String(otaStatus);
+  int httpCode = http.POST(body);
+  http.end();
 
-    int httpCode = http.POST(body);
-    http.end();
-
-    (void)httpCode;
+  (void)httpCode;
 }
 
 bool startUpdate() {
@@ -219,26 +207,24 @@ bool startUpdate() {
   bool useSecure = firmwareURL.startsWith("https://");
   if (useSecure)
     secureOtaClient.setInsecure();
-  WiFiClient &client = useSecure ? (WiFiClient &)secureOtaClient : (WiFiClient &)plainOtaClient;
+  WiFiClient &client =
+      useSecure ? (WiFiClient &)secureOtaClient : (WiFiClient &)plainOtaClient;
 
-  httpUpdate.onStart([]() {
-    Serial.println("OTA Started");
-  });
+  httpUpdate.onStart([]() { Serial.println("OTA Started"); });
 
   httpUpdate.onProgress([](int current, int total) {
     if (total > 0) {
       progress = (current * 100) / total;
 
-      // Har 5% (ya 100%) par server ko report — throttled, OTA stream ko block nahi karna.
+      // Har 5% (ya 100%) par server ko report — throttled, OTA stream ko block
+      // nahi karna.
       if (progress - lastReportedProgress >= 5 || progress >= 100) {
         lastReportedProgress = progress;
 
         reportProgress(progress, "downloading");
       }
 
-      Serial.printf(
-        "Progress : %d%%\n",
-        progress);
+      Serial.printf("Progress : %d%%\n", progress);
     }
   });
 
@@ -249,62 +235,60 @@ bool startUpdate() {
   });
 
   httpUpdate.onError([](int error) {
-    Serial.printf(
-      "OTA Error : %d\n",
-      error);
+    Serial.printf("OTA Error : %d\n", error);
 
     reportProgress(progress, "failed");
   });
 
-  t_httpUpdate_return result =
-    httpUpdate.update(client, firmwareURL);
+  t_httpUpdate_return result = httpUpdate.update(client, firmwareURL);
 
   updating = false;
 
   switch (result) {
-    case HTTP_UPDATE_FAILED:
-      lastError = httpUpdate.getLastErrorString();
-      Serial.println("===== OTA FAILED =====");
+  case HTTP_UPDATE_FAILED:
+    lastError = httpUpdate.getLastErrorString();
+    Serial.println("===== OTA FAILED =====");
 
-      Serial.print("Error Code : ");
-      Serial.println(httpUpdate.getLastError());
+    Serial.print("Error Code : ");
+    Serial.println(httpUpdate.getLastError());
 
-      Serial.print("Error : ");
-      Serial.println(httpUpdate.getLastErrorString());
+    Serial.print("Error : ");
+    Serial.println(httpUpdate.getLastErrorString());
 
-      status = httpUpdate.getLastErrorString();
+    status = httpUpdate.getLastErrorString();
 
-      updating = false;
+    updating = false;
 
-      return false;
+    return false;
 
-    case HTTP_UPDATE_NO_UPDATES:
+  case HTTP_UPDATE_NO_UPDATES:
 
-      Serial.println("===== NO UPDATE =====");
+    Serial.println("===== NO UPDATE =====");
 
-      updating = false;
+    updating = false;
 
-      status = "No Update";
+    status = "No Update";
 
-      return false;
+    return false;
 
-    case HTTP_UPDATE_OK:
+  case HTTP_UPDATE_OK:
 
-      Serial.println("===== OTA SUCCESS =====");
+    Serial.println("===== OTA SUCCESS =====");
 
-      updating = false;
+    updating = false;
 
-      status = "Success";
+    status = "Success";
 
-      // IMPORTANT: Update complete hone ke baad restart zaroori hai,
-      // warna device purana firmware chalata rahega aur naya kabhi boot nahi hoga.
-      Serial.println("OTA Complete. Restarting in 1 second...");
+    // IMPORTANT: Update complete hone ke baad restart zaroori hai,
+    // warna device purana firmware chalata rahega aur naya kabhi boot nahi
+    // hoga.
+    Serial.println("OTA Complete. Restarting in 1 second...");
 
-      delay(1000);
+    delay(1000);
 
-      ESP.restart();
+    ESP.restart();
 
-      return true;
+    return true;
   }
 
   return false;
@@ -322,47 +306,24 @@ bool startUpdateFromURL(const String &url) {
   return startUpdate();
 }
 
-bool isUpdateAvailable() {
-  return updateAvailable;
-}
+bool isUpdateAvailable() { return updateAvailable; }
 
-bool isUpdating() {
-  return updating;
-}
+bool isUpdating() { return updating; }
 
-int getProgress() {
-  return progress;
-}
+int getProgress() { return progress; }
 
-String getCurrentVersion() {
-  return FIRMWARE_VERSION;
-}
+String getCurrentVersion() { return FIRMWARE_VERSION; }
 
-String getLatestVersion() {
-  return latestVersion;
-}
+String getLatestVersion() { return latestVersion; }
 
-String getReleaseNotes() {
-  return releaseNotes;
-}
+String getReleaseNotes() { return releaseNotes; }
 
-String getStatus() {
-  return status;
-}
+String getStatus() { return status; }
 
-String getFirmwareURL()
-{
-    return firmwareURL;
-}
+String getFirmwareURL() { return firmwareURL; }
 
-String getLastError()
-{
-    return lastError;
-}
+String getLastError() { return lastError; }
 
-OTAState getState()
-{
-    return state;
-}
+OTAState getState() { return state; }
 
-}
+} // namespace OTAManager

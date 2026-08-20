@@ -2,13 +2,13 @@
 
 #include <Arduino.h>
 
-#include "core/BoardManager.h"
-#include "core/RelayManager.h"
-#include "core/DimmerManager.h"
-#include "core/MappingManager.h"
-#include "core/ApiManager.h"
-#include "preferences/PreferencesManager.h"
 #include "Config.h"
+#include "core/ApiManager.h"
+#include "core/BoardManager.h"
+#include "core/DimmerManager.h"
+#include "core/RelayManager.h"
+#include "preferences/PreferencesManager.h"
+
 
 static bool lastState[8];
 static unsigned long debounceStart[8];
@@ -48,9 +48,11 @@ void update() {
       currentState = digitalRead(BoardManager::getSwitchPin(i));
 
       if (currentState != lastState[i]) {
-        // MOMENTARY (push button): sirf press (LOW edge) pe toggle — release ignore
-        // TOGGLE (wall switch): har position change pe toggle — dono edges kaam karte hain
-        bool trigger = (switchMode == SWITCH_MODE_TOGGLE) || (currentState == LOW);
+        // MOMENTARY (push button): sirf press (LOW edge) pe toggle — release
+        // ignore TOGGLE (wall switch): har position change pe toggle — dono
+        // edges kaam karte hain
+        bool trigger =
+            (switchMode == SWITCH_MODE_TOGGLE) || (currentState == LOW);
 
         if (trigger) {
           Serial.println();
@@ -75,20 +77,17 @@ void update() {
           Serial.print("Relay State : ");
           Serial.println(state ? "ON" : "OFF");
 
-          int deviceId = MappingManager::getDeviceIdByRelay(i);
+          int channel = i + 1; // 1-indexed channel
 
-          Serial.print("Device ID : ");
-          Serial.println(deviceId);
+          Serial.print("Channel : ");
+          Serial.println(channel);
 
-          if (deviceId != -1) {
-            // Debounced batch push — short interval ke updates ek saath jaate hain
-            bool ok = ApiManager::queueDeviceUpdate(
-              deviceId,
-              state);
+          // Debounced batch push — short interval ke updates ek saath jaate
+          // hain
+          bool ok = ApiManager::queueDeviceUpdate(channel, state);
 
-            Serial.print("API : ");
-            Serial.println(ok ? "QUEUED" : "FAILED");
-          }
+          Serial.print("API : ");
+          Serial.println(ok ? "QUEUED" : "FAILED");
 
           Serial.println("============================");
         }
@@ -99,4 +98,4 @@ void update() {
   }
 }
 
-}
+} // namespace SwitchManager
