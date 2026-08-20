@@ -141,14 +141,12 @@ export async function setDeviceStatus(input: {
       const actorName = actor?.username || "A member";
 
       for (const m of members) {
-        // Only buzz other admins' phones
-        if (m.userId !== input.actorId) {
-          sendPushToUser(
-            m.userId,
-            `${updated.name} turned ${input.status.toUpperCase()}`,
-            `${actorName} just interacted with the ${updated.name}`
-          );
-        }
+        // Force Push to everyone including the actor (per user request)
+        sendPushToUser(
+          m.userId,
+          `${updated.name} turned ${input.status.toUpperCase()}`,
+          `${actorName} just interacted with the ${updated.name}`
+        );
         // But put it in EVERY admin's notification feed (including actor's)
         await createNotification(m.userId, {
           category: "device",
@@ -224,13 +222,11 @@ export async function sendDeviceCommand(input: {
       });
       const actor = await prisma.user.findUnique({ where: { id: input.actorId }, select: { username: true } });
       for (const m of members) {
-        if (m.userId !== input.actorId) {
-          sendPushToUser(
-            m.userId,
-            `System Command: ${input.command}`,
-            `${actor?.username || "A member"} dispatched a remote hardware command.`
-          );
-        }
+        sendPushToUser(
+          m.userId,
+          `System Command: ${input.command}`,
+          `${actor?.username || "A member"} dispatched a remote hardware command.`
+        );
         await createNotification(m.userId, {
           category: "device",
           type: "info",
@@ -312,13 +308,11 @@ export async function bulkSetStatus(input: {
     });
     const actor = await prisma.user.findUnique({ where: { id: input.actorId }, select: { username: true } });
     for (const m of members) {
-      if (m.userId !== input.actorId) {
-        sendPushToUser(
-          m.userId,
-          `Room Actuation: ${input.status.toUpperCase()}`,
-          `${actor?.username || "A member"} toggled grouped components.`
-        );
-      }
+      sendPushToUser(
+        m.userId,
+        `Room Actuation: ${input.status.toUpperCase()}`,
+        `${actor?.username || "A member"} toggled grouped components.`
+      );
       await createNotification(m.userId, {
         category: "device",
         type: "info",
