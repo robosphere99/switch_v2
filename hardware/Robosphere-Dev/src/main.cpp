@@ -1,21 +1,23 @@
-#include "core/OTAManager.h"
 #include "Config.h"
-#include <ArduinoOTA.h>
 #include "core/Logger.h"
-#include "preferences/PreferencesManager.h"
-#include "core/WiFiManager.h"
+#include "core/OTAManager.h"
 #include "core/WebServerManager.h"
-#include "core/MappingManager.h"
-#include "core/BoardManager.h"
-#include "core/RelayManager.h"
-#include "core/DimmerManager.h"
-#include "core/SwitchManager.h"
-#include "core/RecoveryManager.h"
-#include "core/SyncManager.h"
+#include "core/WiFiManager.h"
+#include "preferences/PreferencesManager.h"
+#include <ArduinoOTA.h>
+
+
 #include "core/ApiManager.h"
+#include "core/BoardManager.h"
+#include "core/DimmerManager.h"
 #include "core/LedManager.h"
+#include "core/RecoveryManager.h"
+#include "core/RelayManager.h"
+#include "core/SwitchManager.h"
+#include "core/SyncManager.h"
 #include "core/SystemManager.h"
 #include "core/TimeManager.h"
+
 
 // ==================================================
 // Serial Config - Setup mode mein USB se directly configure
@@ -35,14 +37,12 @@
 // ==================================================
 static String serialCmdLine = "";
 
-void processSerialCommand(const String &line)
-{
+void processSerialCommand(const String &line) {
   int sp = line.indexOf(' ');
   String cmd = sp > 0 ? line.substring(0, sp) : line;
   String arg = sp > 0 ? line.substring(sp + 1) : "";
 
-  if (cmd == "help")
-  {
+  if (cmd == "help") {
     Serial.println("--- Serial Config Commands ---");
     Serial.println("setwifi <ssid> <password>");
     Serial.println("setadmin <username> <password>");
@@ -59,147 +59,115 @@ void processSerialCommand(const String &line)
     Serial.println("reboot");
     Serial.println("factoryreset");
     Serial.println("finish");
-  }
-  else if (cmd == "setwifi")
-  {
+  } else if (cmd == "setwifi") {
     int sp2 = arg.indexOf(' ');
-    if (sp2 <= 0) { Serial.println("Usage: setwifi <ssid> <password>"); return; }
+    if (sp2 <= 0) {
+      Serial.println("Usage: setwifi <ssid> <password>");
+      return;
+    }
     PreferencesManager::saveWiFi(arg.substring(0, sp2), arg.substring(sp2 + 1));
     Serial.println("[OK] WiFi saved");
-  }
-  else if (cmd == "setadmin")
-  {
+  } else if (cmd == "setadmin") {
     int sp2 = arg.indexOf(' ');
-    if (sp2 <= 0) { Serial.println("Usage: setadmin <username> <password>"); return; }
-    PreferencesManager::saveAdmin(arg.substring(0, sp2), arg.substring(sp2 + 1));
+    if (sp2 <= 0) {
+      Serial.println("Usage: setadmin <username> <password>");
+      return;
+    }
+    PreferencesManager::saveAdmin(arg.substring(0, sp2),
+                                  arg.substring(sp2 + 1));
     Serial.println("[OK] Admin saved");
-  }
-  else if (cmd == "setserver")
-  {
+  } else if (cmd == "setserver") {
     int sp2 = arg.indexOf(' ');
-    if (sp2 <= 0) { Serial.println("Usage: setserver <url> <api_key>"); return; }
-    PreferencesManager::saveServer(arg.substring(0, sp2), arg.substring(sp2 + 1));
+    if (sp2 <= 0) {
+      Serial.println("Usage: setserver <url> <api_key>");
+      return;
+    }
+    PreferencesManager::saveServer(arg.substring(0, sp2),
+                                   arg.substring(sp2 + 1));
     Serial.println("[OK] Server saved");
-  }
-  else if (cmd == "setotaurl")
-  {
+  } else if (cmd == "setotaurl") {
     PreferencesManager::saveOTAURL(arg);
 
     if (arg.isEmpty())
       Serial.println("[OK] OTA URL cleared (default wapas)");
     else
       Serial.println("[OK] OTA URL saved");
-  }
-  else if (cmd == "setapname")
-  {
-    if (arg.isEmpty())
-    {
+  } else if (cmd == "setapname") {
+    if (arg.isEmpty()) {
       Serial.println("Usage: setapname <name>");
       return;
     }
 
     PreferencesManager::saveAPName(arg);
     Serial.println("[OK] AP name saved (reboot pe apply hoga)");
-  }
-  else if (cmd == "setappass")
-  {
-    if (arg.isEmpty())
-    {
+  } else if (cmd == "setappass") {
+    if (arg.isEmpty()) {
       Serial.println("Usage: setappass <pass>");
       return;
     }
 
     PreferencesManager::saveAPPassword(arg);
     Serial.println("[OK] AP password saved (reboot pe apply hoga)");
-  }
-  else if (cmd == "export")
-  {
+  } else if (cmd == "export") {
     Serial.println("===== CONFIG EXPORT =====");
     Serial.println("MAC : " + SystemManager::getMacAddress());
     Serial.println(PreferencesManager::exportConfiguration());
     Serial.println("===== CONFIG EXPORT END =====");
-  }
-  else if (cmd == "reboot")
-  {
+  } else if (cmd == "reboot") {
     Serial.println("[OK] Rebooting...");
     delay(500);
     ESP.restart();
-  }
-  else if (cmd == "factoryreset")
-  {
+  } else if (cmd == "factoryreset") {
     PreferencesManager::factoryReset();
     Serial.println("[OK] Factory reset done. Rebooting...");
     delay(500);
     ESP.restart();
-  }
-  else if (cmd == "setapkeep")
-  {
-    if (arg == "on")
-    {
+  } else if (cmd == "setapkeep") {
+    if (arg == "on") {
       PreferencesManager::saveAPKeepEnabled(true);
-      Serial.println("[OK] AP always-ON (dual mode) — 192.168.4.1 se hamesha reach");
-    }
-    else if (arg == "off")
-    {
+      Serial.println(
+          "[OK] AP always-ON (dual mode) — 192.168.4.1 se hamesha reach");
+    } else if (arg == "off") {
       PreferencesManager::saveAPKeepEnabled(false);
       Serial.println("[OK] AP WiFi connect hone ke baad band (sirf LAN pe)");
-    }
-    else
-    {
+    } else {
       Serial.println("Usage: setapkeep <on|off>");
     }
-  }
-  else if (cmd == "setswitch")
-  {
-    if (arg == "toggle")
-    {
+  } else if (cmd == "setswitch") {
+    if (arg == "toggle") {
       PreferencesManager::saveSwitchMode(SWITCH_MODE_TOGGLE);
       Serial.println("[OK] Switch mode: Wall Switch (toggle)");
-    }
-    else if (arg == "momentary")
-    {
+    } else if (arg == "momentary") {
       PreferencesManager::saveSwitchMode(SWITCH_MODE_MOMENTARY);
       Serial.println("[OK] Switch mode: Push Button (momentary)");
-    }
-    else
-    {
+    } else {
       Serial.println("Usage: setswitch <momentary|toggle>");
     }
-  }
-  else if (cmd == "setserial")
-  {
-    if (arg.isEmpty())
-    {
+  } else if (cmd == "setserial") {
+    if (arg.isEmpty()) {
       Serial.println("Usage: setserial <code>");
       return;
     }
     arg.toUpperCase();
     PreferencesManager::saveSerialCode(arg);
     Serial.println("[OK] Serial code saved: " + arg);
-  }
-  else if (cmd == "setmodel")
-  {
-    if (arg.isEmpty())
-    {
+  } else if (cmd == "setmodel") {
+    if (arg.isEmpty()) {
       Serial.println("Usage: setmodel <code>");
       return;
     }
     arg.toUpperCase();
     PreferencesManager::saveModelCode(arg);
     Serial.println("[OK] Model code saved: " + arg);
-  }
-  else if (cmd == "testrelay")
-  {
+  } else if (cmd == "testrelay") {
     uint8_t count = BoardManager::getRelayCount();
-    if (count == 0)
-    {
+    if (count == 0) {
       Serial.println("[FAIL] No relays configured");
       return;
     }
     Serial.println("=== RELAY SELF-TEST START ===");
     bool allOk = true;
-    for (uint8_t ch = 0; ch < count; ch++)
-    {
+    for (uint8_t ch = 0; ch < count; ch++) {
       RelayManager::off(ch);
       delay(100);
       RelayManager::on(ch);
@@ -207,12 +175,9 @@ void processSerialCommand(const String &line)
       bool state = RelayManager::getState(ch);
       RelayManager::off(ch);
       delay(300);
-      if (state)
-      {
+      if (state) {
         Serial.println("RELAY " + String(ch + 1) + " OK");
-      }
-      else
-      {
+      } else {
         Serial.println("RELAY " + String(ch + 1) + " FAIL");
         allOk = false;
       }
@@ -222,45 +187,32 @@ void processSerialCommand(const String &line)
     else
       Serial.println("[FAIL] Some relays failed");
     Serial.println("=== RELAY SELF-TEST END ===");
-  }
-  else if (cmd == "finish")
-  {
-    if (PreferencesManager::getWiFiSSID().isEmpty())
-    {
+  } else if (cmd == "finish") {
+    if (PreferencesManager::getWiFiSSID().isEmpty()) {
       Serial.println("[ERR] Pehle setwifi karo");
-    }
-    else
-    {
+    } else {
       PreferencesManager::setConfigured(true);
       Serial.println("[OK] Config complete. Restarting...");
       delay(500);
       ESP.restart();
     }
-  }
-  else
-  {
+  } else {
     Serial.println("Unknown command. Type 'help'");
   }
 }
 
-void handleSerialConfig()
-{
-  while (Serial.available())
-  {
+void handleSerialConfig() {
+  while (Serial.available()) {
     char c = Serial.read();
-    if (c == '\n' || c == '\r')
-    {
-      if (serialCmdLine.length() > 0)
-      {
+    if (c == '\n' || c == '\r') {
+      if (serialCmdLine.length() > 0) {
         serialCmdLine.trim();
         Serial.print("CMD> ");
         Serial.println(serialCmdLine);
         processSerialCommand(serialCmdLine);
         serialCmdLine = "";
       }
-    }
-    else
-    {
+    } else {
       serialCmdLine += c;
     }
   }
@@ -283,12 +235,9 @@ void setup() {
 
   RecoveryManager::begin();
 
-  MappingManager::begin();
-
   SyncManager::begin();
 
-  bool recoveryMode =
-    PreferencesManager::getBool(PREF_RECOVERY_MODE);
+  bool recoveryMode = PreferencesManager::getBool(PREF_RECOVERY_MODE);
 
   if (recoveryMode) {
     PreferencesManager::putBool(PREF_RECOVERY_MODE, false);
@@ -319,8 +268,9 @@ void setup() {
         Serial.println("OTA Check Failed");
       }
 
-      // ArduinoOTA — WiFi pe firmware upload (PlatformIO: pio run -t upload --upload-port <IP>)
-      // Password = admin password (web login wala) — isliye OTA bhi utna hi protected hai
+      // ArduinoOTA — WiFi pe firmware upload (PlatformIO: pio run -t upload
+      // --upload-port <IP>) Password = admin password (web login wala) — isliye
+      // OTA bhi utna hi protected hai
       ArduinoOTA.setHostname("SwitchNest-IoT");
 
       String otaPass = PreferencesManager::getAdminPassword();
@@ -329,17 +279,15 @@ void setup() {
         ArduinoOTA.setPassword(otaPass.c_str());
       }
 
-      ArduinoOTA.onStart([]() {
-        Serial.println("ArduinoOTA: Starting...");
-      });
+      ArduinoOTA.onStart([]() { Serial.println("ArduinoOTA: Starting..."); });
 
       ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-        Serial.printf("ArduinoOTA Progress: %u%%\r\n", progress / (total / 100));
+        Serial.printf("ArduinoOTA Progress: %u%%\r\n",
+                      progress / (total / 100));
       });
 
-      ArduinoOTA.onEnd([]() {
-        Serial.println("\nArduinoOTA: Done. Restarting...");
-      });
+      ArduinoOTA.onEnd(
+          []() { Serial.println("\nArduinoOTA: Done. Restarting..."); });
 
       ArduinoOTA.onError([](ota_error_t err) {
         Serial.printf("ArduinoOTA Error: %u\n", err);

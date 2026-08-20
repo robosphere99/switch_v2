@@ -7,7 +7,7 @@
 > Repo location (this machine): `C:\Users\robos\OneDrive\Documents\SwitchNest`
 >
 <!-- AUTO:STAMP:START -->
-> _Auto-updated: 2026-08-20 10:58 UTC · branch `main` · tree dirty (1 changes) · 251 commits_
+> _Auto-updated: 2026-08-20 20:09 UTC · branch `main` · tree dirty (18 changes) · 253 commits_
 <!-- AUTO:STAMP:END -->
 
 ---
@@ -112,6 +112,8 @@ that also serves real ESP32 hardware).
 <!-- AUTO:RECENT_COMMITS:START -->
 Sabse naye 20 commits:
 
+- `6567c3b` (2026-08-21) feat(mobile): complete family & member management with no-email invite flow and real-time updates
+- `4453a58` (2026-08-20) fix(core): Resolve sudden push engine failures and stabilize mobile JWT rotation mechanism
 - `60658c8` (2026-08-20) feat(observability): migrate to multi-device push configuration registry
 - `83e7d53` (2026-08-20) feat: enforce global push notifications to all actors
 - `b2faf30` (2026-08-20) fix: make actor visible in notification feed
@@ -130,8 +132,6 @@ Sabse naye 20 commits:
 - `dd05991` (2026-08-19) fix: dashboard mobile layout, device card expand arrow, admin users tab
 - `6a4b760` (2026-08-19) fix: grouped navbar + compact device cards + always-visible logout
 - `cf1fe81` (2026-08-19) fix: desktop navbar overflow — compact labels, scrollable nav, no cutoff
-- `d81a309` (2026-08-19) fix: mobile UI — navbar dropdown, ChatWidget, touch targets, dark mode
-- `4e077c9` (2026-08-19) feat: real-time notification bell — auto-update + audio feedback + browser push
 <!-- AUTO:RECENT_COMMITS:END -->
 
 - 503 root-cause work: DB probe retry loop so the app self-heals, `nodeProcessCountPerApplication=1`,
