@@ -134,7 +134,6 @@ export async function setDeviceStatus(input: {
       const members = await prisma.homeMember.findMany({
         where: {
           homeId: input.homeId,
-          userId: { not: input.actorId },
           role: { in: ['admin', 'owner'] }
         }
       });
@@ -142,13 +141,15 @@ export async function setDeviceStatus(input: {
       const actorName = actor?.username || "A member";
 
       for (const m of members) {
-        // Fire-and-forget push dispatcher
-        sendPushToUser(
-          m.userId,
-          `${updated.name} turned ${input.status.toUpperCase()}`,
-          `${actorName} just interacted with the ${updated.name}`
-        );
-        // Phase 14: Log strictly into the unified Notification Feed Database as well!
+        // Only buzz other admins' phones
+        if (m.userId !== input.actorId) {
+          sendPushToUser(
+            m.userId,
+            `${updated.name} turned ${input.status.toUpperCase()}`,
+            `${actorName} just interacted with the ${updated.name}`
+          );
+        }
+        // But put it in EVERY admin's notification feed (including actor's)
         await createNotification(m.userId, {
           category: "device",
           type: "info",
@@ -219,15 +220,17 @@ export async function sendDeviceCommand(input: {
 
     try {
       const members = await prisma.homeMember.findMany({
-        where: { homeId: input.homeId, userId: { not: input.actorId }, role: { in: ['admin', 'owner'] } }
+        where: { homeId: input.homeId, role: { in: ['admin', 'owner'] } }
       });
       const actor = await prisma.user.findUnique({ where: { id: input.actorId }, select: { username: true } });
       for (const m of members) {
-        sendPushToUser(
-          m.userId,
-          `System Command: ${input.command}`,
-          `${actor?.username || "A member"} dispatched a remote hardware command.`
-        );
+        if (m.userId !== input.actorId) {
+          sendPushToUser(
+            m.userId,
+            `System Command: ${input.command}`,
+            `${actor?.username || "A member"} dispatched a remote hardware command.`
+          );
+        }
         await createNotification(m.userId, {
           category: "device",
           type: "info",
@@ -305,15 +308,17 @@ export async function bulkSetStatus(input: {
 
   try {
     const members = await prisma.homeMember.findMany({
-      where: { homeId: input.homeId, userId: { not: input.actorId }, role: { in: ['admin', 'owner'] } }
+      where: { homeId: input.homeId, role: { in: ['admin', 'owner'] } }
     });
     const actor = await prisma.user.findUnique({ where: { id: input.actorId }, select: { username: true } });
     for (const m of members) {
-      sendPushToUser(
-        m.userId,
-        `Room Actuation: ${input.status.toUpperCase()}`,
-        `${actor?.username || "A member"} toggled grouped components.`
-      );
+      if (m.userId !== input.actorId) {
+        sendPushToUser(
+          m.userId,
+          `Room Actuation: ${input.status.toUpperCase()}`,
+          `${actor?.username || "A member"} toggled grouped components.`
+        );
+      }
       await createNotification(m.userId, {
         category: "device",
         type: "info",
