@@ -25,6 +25,11 @@ export const firmwareDir = repoRoot
   ? path.join(repoRoot, "hardware", "firmware")
   : path.resolve(process.cwd(), "../../../hardware/firmware");
 
+/** <repo>/mobile-app — hosting Android APK releases for OTA updates. */
+export const mobileAppDir = repoRoot
+  ? path.join(repoRoot, "mobile-app")
+  : path.resolve(process.cwd(), "../../../mobile-app");
+
 /** <repo>/hardware/attachments — support chat files (DB me sirf path, blobs yahan disk pe).
  *  Firmware ki tarah Plesk pe writable. Gitignore me hai (user data — commit nahi hota). */
 export const attachmentDir = repoRoot

@@ -6,9 +6,25 @@ import { DashboardScreen } from './src/components/DashboardScreen';
 import { AutomationsScreen } from './src/components/AutomationsScreen';
 import { LoginScreen } from './src/components/LoginScreen';
 import { SettingsScreen } from './src/components/SettingsScreen';
-import { Clock, Home as HomeIcon, Settings, Activity } from 'lucide-react-native';
+import { LogOut, Home as HomeIcon, Zap, Shield, Wifi, User, Activity, Bot } from 'lucide-react-native';
+import { Clock, Settings } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
+import { getSystemVersion } from './src/api/hardware';
+import { Linking } from 'react-native';
+
+// Physical App Hardcoded Manifest Version (Increment this for new APK generation!)
+export const APP_VERSION = '1.0.0';
+
+const compareSemver = (v1: string, v2: string) => {
+  const p1 = v1.split('.').map(Number);
+  const p2 = v2.split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    if ((p1[i] || 0) < (p2[i] || 0)) return -1;
+    if ((p1[i] || 0) > (p2[i] || 0)) return 1;
+  }
+  return 0;
+};
 
 function MainApp() {
   const { theme } = useTheme();
@@ -16,6 +32,11 @@ function MainApp() {
   const [activeTab, setActiveTab] = useState<'HOME' | 'AUTOMATIONS' | 'SETTINGS'>('HOME');
   const [isRestoring, setIsRestoring] = useState(true);
   const [biometricFailed, setBiometricFailed] = useState(false);
+
+  // Update Guard States
+  const [updateRequired, setUpdateRequired] = useState(false);
+  const [updateOptions, setUpdateOptions] = useState<any>(null);
+
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
   const triggerBiometrics = async (storedUser: any) => {
@@ -60,6 +81,21 @@ function MainApp() {
           }
         }
       } catch (e) { }
+
+      // Parallel Version Verification
+      try {
+        const sysVersion = await getSystemVersion();
+        if (sysVersion?.data?.mobileAppOptions) {
+          const opts = sysVersion.data.mobileAppOptions;
+          if (opts.minRequiredVersion && compareSemver(APP_VERSION, opts.minRequiredVersion) < 0) {
+            setUpdateOptions(opts);
+            setUpdateRequired(true);
+          }
+        }
+      } catch (err) {
+        console.log('Update check failed (safe bypass):', err);
+      }
+
       setIsRestoring(false);
     };
     restoreAuth();
@@ -85,7 +121,6 @@ function MainApp() {
     if (activeTab === 'SETTINGS') {
       return (
         <SettingsScreen
-          user={user}
           onLogout={async () => {
             await SecureStore.deleteItemAsync('accessToken');
             await SecureStore.deleteItemAsync('user');
@@ -142,7 +177,29 @@ function MainApp() {
     );
   }
 
-  if (isRestoring) {
+  if (updateRequired && updateOptions) {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.background }]}>
+        <Activity color={theme.accent || theme.primary} size={64} style={{ marginBottom: 20 }} />
+        <Text style={[styles.title, { color: theme.text, textAlign: 'center' }]}>Update {"\n"}Required</Text>
+        <Text style={[styles.subtitle, { color: theme.textSecondary, textAlign: 'center', marginTop: 10 }]}>
+          {updateOptions.updateMessage || 'A mandatory update is required to continue using this application.'}
+        </Text>
+        <Text style={{ color: theme.textSecondary, marginBottom: 40 }}>
+          Installed: v{APP_VERSION}  •  Required: v{updateOptions.minRequiredVersion}
+        </Text>
+
+        <TouchableOpacity
+          style={[styles.button, { backgroundColor: theme.accent || theme.primary }]}
+          onPress={() => Linking.openURL(updateOptions.downloadUrl)}
+        >
+          <Text style={styles.buttonText}>Download Latest Version</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  if (isRestoring || updateRequired) {
     return (
       <View style={[styles.container, { flex: 1, backgroundColor: theme.background }]}>
         <ActivityIndicator size="large" color={theme.primary} />

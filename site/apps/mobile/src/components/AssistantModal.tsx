@@ -5,6 +5,7 @@ import * as assistantApi from '../api/assistant';
 import { getHomes } from '../api/hardware';
 import { useTheme } from '../theme/ThemeContext';
 import * as Haptics from 'expo-haptics';
+import * as SecureStore from 'expo-secure-store';
 
 export function AssistantModal({ isVisible, onClose, homeId }: { isVisible: boolean; onClose: () => void; homeId: number | null }) {
     const { theme } = useTheme();
@@ -18,6 +19,7 @@ export function AssistantModal({ isVisible, onClose, homeId }: { isVisible: bool
     // UI State
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
+    const [showSuggestions, setShowSuggestions] = useState(true);
     const scrollViewRef = useRef<ScrollView>(null);
 
     useEffect(() => {
@@ -39,6 +41,11 @@ export function AssistantModal({ isVisible, onClose, homeId }: { isVisible: bool
 
     const loadInitialData = async (presetHomeId: number | null) => {
         try {
+            const aiPref = await SecureStore.getItemAsync('pref_ai_suggestions');
+            if (aiPref !== null) {
+                setShowSuggestions(aiPref === 'true');
+            }
+
             const hRes = await getHomes();
             if (hRes.success) {
                 setHomes(hRes.data);
@@ -72,21 +79,22 @@ export function AssistantModal({ isVisible, onClose, homeId }: { isVisible: bool
         setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: false }), 200);
     };
 
-    const handleSend = async () => {
-        if (!input.trim() || !activeChatId) return;
-        const text = input.trim();
+    const handleSend = async (overrideText?: string) => {
+        const textToProcess = overrideText || input.trim();
+        if (!textToProcess || !activeChatId) return;
+
         setInput('');
         setLoading(true);
 
         // Optimistic UX
         const tempMsg: assistantApi.AssistantMessage = {
-            id: Date.now(), chatId: activeChatId, role: 'user', content: text, proposal: null, createdAt: new Date().toISOString()
+            id: Date.now(), chatId: activeChatId, role: 'user', content: textToProcess, proposal: null, createdAt: new Date().toISOString()
         };
         setMessages(prev => [...prev, tempMsg]);
         setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
 
         try {
-            const res = await assistantApi.sendMessage(activeChatId, text);
+            const res = await assistantApi.sendMessage(activeChatId, textToProcess);
             if (res.success) {
                 setMessages(prev => {
                     const filtered = prev.filter(m => m.id !== tempMsg.id);
@@ -125,7 +133,7 @@ export function AssistantModal({ isVisible, onClose, homeId }: { isVisible: bool
                     {/* Header */}
                     <View style={[styles.header, { borderBottomColor: theme.border }]}>
                         <View style={styles.headerLeft}>
-                            <Bot color={theme.primary} size={24} />
+                            <Bot color={theme.accent} size={24} />
                             <Text style={[styles.headerTitle, { color: theme.text }]}>
                                 AI Assist
                             </Text>
@@ -199,7 +207,7 @@ export function AssistantModal({ isVisible, onClose, homeId }: { isVisible: bool
                                                     </View>
                                                 ))}
                                                 <TouchableOpacity
-                                                    style={[styles.confirmBtn, { backgroundColor: theme.primary }]}
+                                                    style={[styles.confirmBtn, { backgroundColor: theme.accent }]}
                                                     disabled={loading}
                                                     onPress={() => handleConfirm(msg.id)}
                                                 >
@@ -221,17 +229,37 @@ export function AssistantModal({ isVisible, onClose, homeId }: { isVisible: bool
                         )}
                     </ScrollView>
 
+                    {/* Suggestions Box */}
+                    {showSuggestions && (
+                        <View style={[styles.suggestionsWrapper, { backgroundColor: theme.card, borderTopColor: theme.border }]}>
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16 }}>
+                                {["Turn off everything", "Turn on the AC", "Are any devices left ON?", "Set the living room cool"].map((sug, i) => (
+                                    <TouchableOpacity
+                                        key={i}
+                                        style={[styles.suggestionChip, { backgroundColor: theme.background, borderColor: theme.border }]}
+                                        onPress={() => {
+                                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
+                                            handleSend(sug);
+                                        }}
+                                    >
+                                        <Text style={{ color: theme.accent, fontSize: 13, fontWeight: '600' }}>{sug}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </ScrollView>
+                        </View>
+                    )}
+
                     {/* Input Editor */}
-                    <View style={[styles.inputRow, { backgroundColor: theme.card, borderTopColor: theme.border }]}>
+                    <View style={[styles.inputRow, { backgroundColor: theme.card, borderTopColor: showSuggestions ? 'transparent' : theme.border }]}>
                         <TextInput
                             style={[styles.input, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
                             placeholder=" saare lights off karo..."
                             placeholderTextColor={theme.textSecondary}
                             value={input}
                             onChangeText={setInput}
-                            onSubmitEditing={handleSend}
+                            onSubmitEditing={() => handleSend()}
                         />
-                        <TouchableOpacity style={[styles.sendBtn, { backgroundColor: input.trim() ? theme.primary : theme.border }]} disabled={!input.trim() || loading} onPress={handleSend}>
+                        <TouchableOpacity style={[styles.sendBtn, { backgroundColor: input.trim() ? theme.accent : theme.border }]} disabled={!input.trim() || loading} onPress={() => handleSend()}>
                             <Send color="#ffffff" size={18} style={input.trim() ? { transform: [{ translateX: 2 }, { translateY: -2 }] } : {}} />
                         </TouchableOpacity>
                     </View>
@@ -265,6 +293,8 @@ const styles = StyleSheet.create({
     proposalItem: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
     confirmBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 12, borderRadius: 10, marginTop: 4, gap: 8 },
     confirmText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+    suggestionsWrapper: { paddingVertical: 12, borderTopWidth: 1 },
+    suggestionChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16, borderWidth: 1, marginRight: 8 },
     inputRow: { flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: 1, alignItems: 'center', gap: 12 },
     input: { flex: 1, borderWidth: 1, borderRadius: 24, paddingHorizontal: 20, paddingVertical: 14, fontSize: 16 },
     sendBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' }
