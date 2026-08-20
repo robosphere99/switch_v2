@@ -125,7 +125,30 @@ export async function setDeviceStatus(input: {
   ]);
 
   const updated = await prisma.device.findUnique({ where: { id: device.id } });
-  if (updated) await emitDeviceUpdated(input.homeId, updated.id);
+  if (updated) {
+    await emitDeviceUpdated(input.homeId, updated.id);
+
+    // Phase 14: Real-time Push Alert Broadcast (Vibration/Sound Native Mobile Alerts)
+    try {
+      const { sendPushToUser } = await import("./push.service");
+      const members = await prisma.homeMember.findMany({
+        where: { homeId: input.homeId, userId: { not: input.actorId } }
+      });
+      const actor = await prisma.user.findUnique({ where: { id: input.actorId }, select: { username: true } });
+      const actorName = actor?.username || "A member";
+
+      for (const m of members) {
+        // Fire-and-forget push dispatcher
+        sendPushToUser(
+          m.userId,
+          `${updated.name} turned ${input.status.toUpperCase()}`,
+          `${actorName} just interacted with the ${updated.name}`
+        );
+      }
+    } catch (e) {
+      console.warn("[Push] Background dispatch failure:", e);
+    }
+  }
   return updated;
 }
 

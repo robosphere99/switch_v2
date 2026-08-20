@@ -5,6 +5,8 @@ import { getHomes, getDevices, toggleDevice } from '../api/hardware';
 import { useTheme } from '../theme/ThemeContext';
 import * as Haptics from 'expo-haptics';
 import { AssistantModal } from './AssistantModal';
+import { usePushNotifications } from '../hooks/usePushNotifications';
+import { useSocket } from '../hooks/useSocket';
 
 const DeviceCard = ({ device, onToggle }: { device: any, onToggle: (id: number, status: string) => void }) => {
     const { theme } = useTheme();
@@ -113,6 +115,18 @@ export function DashboardScreen({ user, onLogout }: { user: any, onLogout: () =>
     const [activeCategory, setActiveCategory] = useState<string>('All');
     const [aiVisible, setAiVisible] = useState(false);
 
+    // Activates Native Push Notifications (Background Sync & Permission Handling)
+    usePushNotifications();
+
+    // Activates Real-Time Websocket Updates (Instantly syncs UI without pulling data)
+    useSocket((payload) => {
+        setDevices(prevDevices =>
+            prevDevices.map(d =>
+                (d.id === payload.id) ? { ...d, status: payload.status, offline: payload.offline } : d
+            )
+        );
+    });
+
     useEffect(() => {
         loadData();
     }, []);
@@ -134,6 +148,21 @@ export function DashboardScreen({ user, onLogout }: { user: any, onLogout: () =>
             }
         } catch (e: any) {
             console.log('Failed to fetch data', e);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleHomeSelect = async (homeId: number) => {
+        if (homeId === selectedHomeId) return;
+        setSelectedHomeId(homeId);
+        setActiveCategory('All');
+        setLoading(true);
+        try {
+            const devicesRes = await getDevices(homeId);
+            if (devicesRes.success) setDevices(devicesRes.data);
+        } catch (e) {
+            console.log(e);
         } finally {
             setLoading(false);
         }
@@ -169,12 +198,14 @@ export function DashboardScreen({ user, onLogout }: { user: any, onLogout: () =>
     const isAfternoon = hour >= 12 && hour < 18;
     const greeting = isMorning ? 'Good Morning' : isAfternoon ? 'Good Afternoon' : 'Good Evening';
 
+    const capitalize = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
+
     return (
         <View style={[styles.container, { backgroundColor: theme.background }]}>
             <View style={[styles.header, { backgroundColor: theme.background }]}>
                 <View style={styles.headerLeft}>
                     <Text style={[styles.greetingLabel, { color: theme.textSecondary }]}>{greeting},</Text>
-                    <Text style={[styles.userName, { color: theme.text }]}>{user?.username || 'Commander'}</Text>
+                    <Text style={[styles.userName, { color: theme.text }]}>{capitalize(user?.username) || 'Commander'}</Text>
                 </View>
                 <View style={styles.headerRight}>
                     <TouchableOpacity style={[styles.iconBtn, { backgroundColor: theme.card, borderColor: theme.border }]} onPress={() => Alert.alert("System Health", "All SwitchNest Micro-services are fully operational.")}>
@@ -185,6 +216,29 @@ export function DashboardScreen({ user, onLogout }: { user: any, onLogout: () =>
                     </TouchableOpacity>
                 </View>
             </View>
+
+            {homes.length > 1 && (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.filterScroll, { borderBottomColor: theme.border, marginBottom: 8 }]} contentContainerStyle={{ paddingHorizontal: 24, paddingVertical: 10 }}>
+                    {homes.map((home: any) => {
+                        const hId = home.homeId || home.id;
+                        const isSelected = selectedHomeId === hId;
+                        const hName = capitalize(home.name || home.home?.name) || `Home ${hId}`;
+
+                        return (
+                            <TouchableOpacity
+                                key={`home-${hId}`}
+                                style={[styles.filterChip, { backgroundColor: isSelected ? theme.primary + '20' : theme.card, borderColor: isSelected ? theme.primary : theme.border, paddingVertical: 6 }]}
+                                onPress={() => {
+                                    Haptics.selectionAsync().catch(() => { });
+                                    handleHomeSelect(hId);
+                                }}
+                            >
+                                <Text style={[styles.filterText, { color: isSelected ? theme.primary : theme.textSecondary, fontWeight: isSelected ? '600' : '400' }]}>{hName}</Text>
+                            </TouchableOpacity>
+                        );
+                    })}
+                </ScrollView>
+            )}
 
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.filterScroll, { borderBottomColor: theme.border }]} contentContainerStyle={{ paddingHorizontal: 24, paddingVertical: 12 }}>
                 {categories.map((cat: any) => (
