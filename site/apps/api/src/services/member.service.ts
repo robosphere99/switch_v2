@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import type { HomeMemberRole } from "@robosphere/shared";
 import { prisma } from "../lib/prisma";
 import { AppError } from "../lib/response";
-import { leaveHomeRoom } from "../lib/socket";
+import { leaveHomeRoom, emitToHome } from "../lib/socket";
 import { createNotification } from "./notification.service";
 
 function generateInviteCode(): string {
@@ -40,11 +40,15 @@ export async function listMembers(homeId: number, viewerRole?: HomeMemberRole) {
 /** Create an invitation (email + invite code) for someone to join the home. */
 export async function createInvitation(input: {
   homeId: number;
-  email: string;
+  email?: string;  // Optional — if omitted, code is open (anyone can use it)
   role: HomeMemberRole;
   expiresInHours?: number;
 }) {
-  const existingUser = await prisma.user.findUnique({ where: { email: input.email } });
+  const existingUser = input.email
+    ? await prisma.user.findUnique({ where: { email: input.email } })
+    : null;
+  const userFound = !!existingUser;
+
   if (existingUser) {
     const already = await prisma.homeMember.findUnique({
       where: { homeId_userId: { homeId: input.homeId, userId: existingUser.id } },
@@ -55,22 +59,23 @@ export async function createInvitation(input: {
   const expiresInHours = input.expiresInHours ?? 48;
   let inviteCode = generateInviteCode();
 
-  // Extremely unlikely collision; retry once to be safe.
   for (let attempt = 0; attempt < 3; attempt++) {
     const exists = await prisma.invitation.findUnique({ where: { inviteCode } });
     if (!exists) break;
     inviteCode = generateInviteCode();
   }
 
-  return prisma.invitation.create({
+  const invitation = await prisma.invitation.create({
     data: {
       homeId: input.homeId,
-      email: input.email,
+      email: input.email ?? "",  // Store empty string when no email given
       inviteCode,
       role: input.role,
       expiresAt: new Date(Date.now() + expiresInHours * 60 * 60 * 1000),
     },
   });
+
+  return { ...invitation, userFound };
 }
 
 /** Join a home using an invite code. The joining user is the authenticated caller. */
@@ -86,11 +91,12 @@ export async function acceptInvitation(inviteCode: string, userId: number, userE
   if (invitation.expiresAt < new Date()) {
     throw new AppError("INVITE_EXPIRED", "Invitation has expired", 410);
   }
-  if (invitation.email.toLowerCase() !== userEmail.toLowerCase()) {
+  // Only enforce email match when invitation was created with a specific email
+  if (invitation.email && invitation.email !== userEmail.toLowerCase()) {
     throw new AppError("INVITE_EMAIL_MISMATCH", "Invitation was sent to a different email", 403);
   }
 
-  return prisma.$transaction(async (tx) => {
+  const returnedHome = await prisma.$transaction(async (tx) => {
     const existing = await tx.homeMember.findUnique({
       where: { homeId_userId: { homeId: invitation.homeId, userId } },
     });
@@ -114,6 +120,9 @@ export async function acceptInvitation(inviteCode: string, userId: number, userE
 
     return invitation.home;
   });
+
+  emitToHome(returnedHome.id, "home-updated", { homeId: returnedHome.id });
+  return returnedHome;
 }
 
 /** Pending invitations for a home (admin view). */
@@ -127,10 +136,12 @@ export async function listInvitations(homeId: number) {
 export async function revokeInvitation(homeId: number, invitationId: number) {
   const invitation = await prisma.invitation.findFirst({ where: { id: invitationId, homeId } });
   if (!invitation) throw new AppError("INVITATION_NOT_FOUND", "Invitation not found", 404);
-  return prisma.invitation.update({
+  const updated = await prisma.invitation.update({
     where: { id: invitationId },
     data: { status: "revoked" },
   });
+  emitToHome(homeId, "home-updated", { homeId });
+  return updated;
 }
 
 export async function changeRole(homeId: number, userId: number, role: HomeMemberRole) {
@@ -143,10 +154,12 @@ export async function changeRole(homeId: number, userId: number, role: HomeMembe
     throw new AppError("CANNOT_DEMOTE_OWNER", "The owner's role cannot be changed", 400);
   }
 
-  return prisma.homeMember.update({
+  const updated = await prisma.homeMember.update({
     where: { homeId_userId: { homeId, userId } },
     data: { role },
   });
+  emitToHome(homeId, "home-updated", { homeId });
+  return updated;
 }
 
 export async function removeMember(homeId: number, userId: number) {
@@ -163,6 +176,7 @@ export async function removeMember(homeId: number, userId: number) {
   // Removed member ke sockets ko home room se nikaalo + access-revoked bhejo
   // — warna removed user ko devices/live updates dikhte rehte hain.
   await leaveHomeRoom(userId, homeId);
+  emitToHome(homeId, "home-updated", { homeId });
 }
 
 // ---------- Child safety / device-level access ----------
@@ -210,6 +224,7 @@ export async function updateMemberSafety(input: {
     entityId: member.id,
     meta: { targetUserId: input.targetUserId, ...data },
   });
+  emitToHome(input.homeId, "home-updated", { homeId: input.homeId });
   return updated;
 }
 
@@ -245,14 +260,14 @@ export async function setDeviceAccess(input: {
     prisma.deviceAccess.deleteMany({ where: { homeId: input.homeId, userId: input.targetUserId } }),
     ...(ids.length > 0
       ? [
-          prisma.deviceAccess.createMany({
-            data: ids.map((deviceId) => ({
-              homeId: input.homeId,
-              deviceId,
-              userId: input.targetUserId,
-            })),
-          }),
-        ]
+        prisma.deviceAccess.createMany({
+          data: ids.map((deviceId) => ({
+            homeId: input.homeId,
+            deviceId,
+            userId: input.targetUserId,
+          })),
+        }),
+      ]
       : []),
   ]);
 
@@ -263,5 +278,6 @@ export async function setDeviceAccess(input: {
     entityId: member.id,
     meta: { targetUserId: input.targetUserId, deviceIds: ids },
   });
+  emitToHome(input.homeId, "home-updated", { homeId: input.homeId });
   return { deviceIds: ids };
 }

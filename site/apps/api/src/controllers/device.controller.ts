@@ -70,22 +70,25 @@ export async function setWifi(req: Request, res: Response) {
 
 export async function setLed(req: Request, res: Response) {
   const enabled = req.body.enabled === true;
-  const device = await deviceService.sendDeviceCommand({
+  const esp = await deviceService.setEspLed({
     homeId: Number(req.params.homeId),
-    deviceId: Number(req.params.deviceId),
+    espId: Number(req.params.espId),
     actorId: req.user!.sub,
-    command: `led:${enabled ? "on" : "off"}`,
-    logType: "remote_led",
-    logMessage: `Status LED ${enabled ? "enabled" : "disabled"}`,
+    enabled,
   });
-  ok(res, device);
+  ok(res, esp);
 }
 
 export async function update(req: Request, res: Response) {
   const device = await deviceService.updateDevice(
     Number(req.params.homeId),
     Number(req.params.deviceId),
-    { name: req.body.name, roomId: req.body.roomId },
+    {
+      name: req.body.name,
+      roomId: req.body.roomId,
+      espId: req.body.espId,
+      channel: req.body.channel
+    },
   );
   ok(res, device);
 }

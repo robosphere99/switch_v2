@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { listMyBoards, renameEsp, setDeviceLed, setDeviceStatus, type MyBoard } from "../api/devices";
+import { listMyBoards, renameEsp, setEspLed, setDeviceStatus, updateDevice, type MyBoard } from "../api/devices";
 import { Switch } from "../components/Switch";
 import { historyEvent } from "../lib/boardHistory";
 
@@ -95,8 +95,8 @@ export function MyBoards() {
   });
 
   const led = useMutation({
-    mutationFn: ({ homeId, deviceId, enabled }: { homeId: number; deviceId: number; enabled: boolean }) =>
-      setDeviceLed(homeId, deviceId, enabled),
+    mutationFn: ({ homeId, espId, enabled }: { homeId: number; espId: number; enabled: boolean }) =>
+      setEspLed(homeId, espId, enabled),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["my-boards"] }),
     onError: (e) => setError(errMsg(e)),
   });
@@ -104,6 +104,16 @@ export function MyBoards() {
   const rename = useMutation({
     mutationFn: ({ homeId, espId, name }: { homeId: number; espId: number; name: string }) =>
       renameEsp(homeId, espId, name),
+    onSuccess: () => {
+      setError("");
+      queryClient.invalidateQueries({ queryKey: ["my-boards"] });
+    },
+    onError: (e) => setError(errMsg(e)),
+  });
+
+  const assignCh = useMutation({
+    mutationFn: ({ homeId, deviceId, espId, channel }: { homeId: number; deviceId: number; espId: number | null; channel: number | null }) =>
+      updateDevice(homeId, deviceId, { espId, channel }),
     onSuccess: () => {
       setError("");
       queryClient.invalidateQueries({ queryKey: ["my-boards"] });
@@ -177,11 +187,10 @@ export function MyBoards() {
               return (
                 <div
                   key={b.id}
-                  className={`flex flex-col gap-4 rounded-xl border p-5 ${
-                    online
-                      ? "border-emerald-500/30 bg-night-800"
-                      : "border-red-500/30 bg-night-800/70"
-                  }`}
+                  className={`flex flex-col gap-4 rounded-xl border p-5 ${online
+                    ? "border-emerald-500/30 bg-night-800"
+                    : "border-red-500/30 bg-night-800/70"
+                    }`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-2.5">
@@ -213,11 +222,10 @@ export function MyBoards() {
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
                       <span
-                        className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
-                          online
-                            ? "bg-emerald-500/20 text-emerald-400"
-                            : "bg-red-500/20 text-red-400"
-                        }`}
+                        className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${online
+                          ? "bg-emerald-500/20 text-emerald-400"
+                          : "bg-red-500/20 text-red-400"
+                          }`}
                       >
                         {online ? "● online" : "○ offline"}
                       </span>
@@ -227,18 +235,30 @@ export function MyBoards() {
                           if (expandedId !== b.id) setRenamingId(null);
                         }}
                         title={expandedId === b.id ? "Detail band karo" : "Detail dekho"}
-                        className={`rounded-lg border px-2 py-1 text-xs transition ${
-                          expandedId === b.id
-                            ? "border-brand bg-brand/15 text-brand"
-                            : "border-gray-200 text-gray-500 hover:border-brand hover:text-brand"
-                        }`}
+                        className={`rounded-lg border px-2 py-1 text-xs transition ${expandedId === b.id
+                          ? "border-brand bg-brand/15 text-brand"
+                          : "border-gray-200 text-gray-500 hover:border-brand hover:text-brand"
+                          }`}
                       >
                         {expandedId === b.id ? "▴" : "▾"} Detail
                       </button>
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap gap-1.5 text-[11px]">
+                  <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                    <button
+                      onClick={() =>
+                        led.mutate({ homeId: g.homeId, espId: b.id, enabled: !b.ledEnabled })
+                      }
+                      disabled={!online || led.isPending}
+                      title="Status LED toggle for this board"
+                      className={`rounded-lg border px-2.5 py-1 font-bold shadow-sm transition disabled:opacity-40 ${b.ledEnabled !== false
+                        ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/30"
+                        : "border-gray-300/40 bg-night-900 text-gray-400 hover:border-brand hover:text-brand"
+                        }`}
+                    >
+                      💡 LED {b.ledEnabled !== false ? "ON" : "OFF"}
+                    </button>
                     {b.modelCode && (
                       <span className="rounded-full bg-gray-100 px-2 py-0.5 text-gray-600">
                         {b.modelCode}
@@ -466,61 +486,90 @@ export function MyBoards() {
                     </div>
                   )}
 
-                  {b.devices.length > 0 ? (
-                    <div className="flex flex-col gap-2">
-                      {b.devices.map((d) => {
-                        const on = d.status === "on";
-                        const ledOn = d.ledEnabled !== false;
-                        return (
-                          <div
-                            key={d.id}
-                            className="flex items-center justify-between rounded-lg border border-gray-200 bg-night-900/60 px-3 py-2"
-                          >
-                            <span className="flex items-center gap-2 text-sm">
-                              <span>{TYPE_ICONS[d.type] ?? "⚙️"}</span>
-                              <span className="font-medium">{d.name}</span>
-                              {d.offline && (
-                                <span className="rounded bg-red-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase text-red-400">
-                                  offline
-                                </span>
-                              )}
+                  <div className="mt-4 flex flex-col gap-2 border-t border-gray-200/30 pt-3">
+                    <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                      ⚙️ Physical Relays (Cloud Mapping)
+                    </p>
+                    {Array.from({ length: b.modelCode === "sn-r2" ? 2 : b.modelCode === "sn-r1" ? 1 : 4 }, (_, i) => i + 1).map((ch) => {
+                      const d = b.devices.find((dev) => dev.channel === ch);
+                      return (
+                        <div
+                          key={ch}
+                          className="flex flex-col justify-between gap-3 rounded-xl border border-gray-200/50 bg-night-900/40 p-3 sm:flex-row sm:items-center"
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className="flex w-12 shrink-0 items-center justify-center rounded bg-brand/10 px-2 py-1 text-xs font-bold text-brand">
+                              CH {ch}
                             </span>
-                            <div className="flex items-center gap-2">
-                              {/* Status LED on/off — seedha device card me hi */}
-                              <button
-                                onClick={() => led.mutate({ homeId: g.homeId, deviceId: d.id, enabled: !ledOn })}
-                                disabled={!online || led.isPending}
-                                title="Status LED on/off (restart pe bhi yaad rahega)"
-                                className={`rounded border px-2 py-1.5 text-[10px] font-bold transition disabled:opacity-40 ${
-                                  ledOn
-                                    ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
-                                    : "border-gray-300/40 bg-night-900 text-gray-400 hover:border-brand hover:text-brand"
-                                }`}
+                            {d ? (
+                              <span className="flex items-center gap-2 text-sm text-gray-200">
+                                <span>{TYPE_ICONS[d.type] ?? "⚙️"}</span>
+                                <span className="font-semibold">{d.name}</span>
+                                {d.offline && (
+                                  <span className="rounded bg-red-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase text-red-400">
+                                    offline
+                                  </span>
+                                )}
+                              </span>
+                            ) : (
+                              <select
+                                className="w-48 appearance-none rounded-lg border border-gray-200/50 bg-night-800 p-2 text-xs font-medium text-gray-400 outline-none focus:border-brand"
+                                onChange={(e) => {
+                                  if (e.target.value) {
+                                    assignCh.mutate({ homeId: g.homeId, deviceId: Number(e.target.value), espId: b.id, channel: ch });
+                                  }
+                                }}
+                                disabled={assignCh.isPending}
+                                value=""
                               >
-                                💡 LED {ledOn ? "ON" : "OFF"}
-                              </button>
+                                <option value="" disabled>+ Assign Unmapped Device</option>
+                                {g.unassignedDevices.map((ud) => (
+                                  <option key={ud.id} value={ud.id}>
+                                    {TYPE_ICONS[ud.type]} {ud.name}
+                                  </option>
+                                ))}
+                                {g.unassignedDevices.length === 0 && (
+                                  <option disabled>No free devices. Create one first.</option>
+                                )}
+                              </select>
+                            )}
+                          </div>
+
+                          {d && (
+                            <div className="flex flex-wrap items-center gap-2">
+
                               <Switch
-                                checked={on}
+                                checked={d.status === "on"}
                                 onChange={() =>
                                   toggle.mutate({
                                     homeId: g.homeId,
                                     deviceId: d.id,
-                                    status: on ? "off" : "on",
+                                    status: d.status === "on" ? "off" : "on",
                                   })
                                 }
                                 disabled={toggle.isPending}
-                                label={`${d.name} ${on ? "band karo" : "chalu karo"}`}
+                                label="Toggle"
                               />
+
+                              {/* Unmap Button */}
+                              <button
+                                onClick={() => {
+                                  if (window.confirm(`${d.name} ko sach me Channel ${ch} se hatana hai?`)) {
+                                    assignCh.mutate({ homeId: g.homeId, deviceId: d.id, espId: null, channel: null });
+                                  }
+                                }}
+                                disabled={assignCh.isPending}
+                                title="Remove from Board"
+                                className="ml-1 rounded-lg border border-red-500/40 bg-red-500/10 px-2 py-1 text-[10px] uppercase text-red-500 transition hover:bg-red-500 hover:text-white"
+                              >
+                                ✕
+                              </button>
                             </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-gray-500">
-                      Is board se koi device link nahi hai.
-                    </p>
-                  )}
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               );
             })}

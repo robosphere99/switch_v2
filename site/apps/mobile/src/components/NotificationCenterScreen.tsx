@@ -145,10 +145,16 @@ export function NotificationCenterScreen({ onClose }: { onClose?: () => void }) 
                     )}
                 </View>
 
-                <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-                    <Text style={[styles.subtitle, { color: theme.textSecondary, flex: 1, marginRight: 16 }]}>
-                        <Text style={{ color: theme.primary, fontWeight: '700' }}>{unreadCount} unread</Text> — system updates and routines.
-                    </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <TouchableOpacity
+                        onPress={() => setUnreadOnly(!unreadOnly)}
+                        style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 16 }}
+                    >
+                        <View style={[{ width: 18, height: 18, borderRadius: 4, borderWidth: 1, borderColor: theme.border, marginRight: 6, alignItems: 'center', justifyContent: 'center' }, unreadOnly && { backgroundColor: theme.primary, borderColor: theme.primary }]}>
+                            {unreadOnly && <CheckCheck size={12} color={theme.background} />}
+                        </View>
+                        <Text style={{ color: theme.textSecondary, fontSize: 13, fontWeight: '600' }}>Unread only</Text>
+                    </TouchableOpacity>
                     <View style={{ flexDirection: 'row', gap: 8 }}>
                         <TouchableOpacity onPress={markAllRead} style={[styles.markAllBtn, { borderColor: theme.border, backgroundColor: theme.card }]}>
                             <CheckCheck size={15} color={theme.primary} />
@@ -188,7 +194,7 @@ export function NotificationCenterScreen({ onClose }: { onClose?: () => void }) 
             </View>
 
             {/* Bottom Filter Row 2 */}
-            <View style={{ paddingHorizontal: 20, marginBottom: 20, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <View style={{ paddingHorizontal: 20, marginBottom: 20, flexDirection: 'row', alignItems: 'center' }}>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                     {['all', 'info', 'warning', 'error'].map((typ) => (
                         <TouchableOpacity
@@ -210,15 +216,6 @@ export function NotificationCenterScreen({ onClose }: { onClose?: () => void }) 
                         </TouchableOpacity>
                     ))}
                 </ScrollView>
-                <TouchableOpacity
-                    onPress={() => setUnreadOnly(!unreadOnly)}
-                    style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 12 }}
-                >
-                    <View style={[{ width: 18, height: 18, borderRadius: 4, borderWidth: 1, borderColor: theme.border, marginRight: 6, alignItems: 'center', justifyContent: 'center' }, unreadOnly && { backgroundColor: theme.primary, borderColor: theme.primary }]}>
-                        {unreadOnly && <CheckCheck size={12} color={theme.background} />}
-                    </View>
-                    <Text style={{ color: theme.textSecondary, fontSize: 13, fontWeight: '500' }}>Unread only</Text>
-                </TouchableOpacity>
             </View>
 
             <ScrollView

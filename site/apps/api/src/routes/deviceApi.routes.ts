@@ -36,18 +36,21 @@ const keyQuery = z.object({
   // bina long=1 ke same instant behaviour paata hai.
   long: z.string().optional(),
   hold: z.string().optional(),
+  mac: z.string().optional(),
 });
 
 const updateSchema = z.object({
   api_key: z.string().optional(),
-  device_id: z.coerce.number().int().positive(),
+  device_id: z.coerce.number().int().positive().optional(),
   status: z.enum(["on", "off"]),
+  mac: z.string().optional(),
+  channel: z.coerce.number().int().positive().optional(),
 });
 
 const ackSchema = z.object({
   api_key: z.string().optional(),
   command_id: z.coerce.number().int().positive(),
-  device_id: z.coerce.number().int().positive(),
+  device_id: z.coerce.number().int().positive().optional(),
   status: z.enum(["executed", "failed"]),
 });
 
@@ -55,7 +58,7 @@ const ackSchema = z.object({
 // and receives an OTA instruction when the admin pushed an update to it.
 const heartbeatSchema = z.object({
   api_key: z.string().optional(),
-  device_id: z.coerce.number().int().positive(),
+  device_id: z.coerce.number().int().positive().optional(),
   ip: z.string().optional(),
   fw_version: z.string().optional(),
   mac: z.string().optional(),
@@ -70,7 +73,15 @@ deviceApiRouter.get(
   readLimiter,
   validateQuery(keyQuery),
   requireApiKey,
-  async (req, res) => ok(res, { devices: await deviceApi.readAll(req.apiKey!) }),
+  async (req, res) => {
+    const mac = req.query.mac as string | undefined;
+    if (mac) {
+      // V2 Smart Cloud mapping response
+      return ok(res, await deviceApi.readAll(req.apiKey!, mac));
+    }
+    // V1 legacy mapping response
+    return ok(res, { devices: await deviceApi.readAll(req.apiKey!) });
+  },
 );
 
 deviceApiRouter.post(
@@ -78,8 +89,10 @@ deviceApiRouter.post(
   mutateLimiter,
   requireApiKey,
   validateBody(updateSchema),
-  async (req, res) =>
-    ok(res, await deviceApi.updateFromDevice(req.apiKey!, req.body.device_id, req.body.status)),
+  async (req, res) => {
+    // Forward the MAC and channel parameters to the service handler
+    return ok(res, await deviceApi.updateFromDevice(req.apiKey!, req.body.device_id, req.body.status, req.body.mac, req.body.channel));
+  }
 );
 
 deviceApiRouter.post(
@@ -135,19 +148,21 @@ deviceApiRouter.get(
   requireApiKey,
   async (req, res) => {
     const long = req.query.long === "1" || req.query.long === "true";
+    const mac = req.query.mac as string | undefined;
+
     if (!long) {
-      // Legacy path — old firmware ko pehle jaisa instant empty/commands response.
-      return ok(res, { commands: await deviceApi.pendingCommands(req.apiKey!) });
+      // Short poll
+      return ok(res, { commands: await deviceApi.pendingCommands(req.apiKey!, mac) });
     }
     const holdSec = Math.min(25, Math.max(1, Number(req.query.hold) || 20));
-    // Client disconnect (ESP reboot / network change) pe wait loop jaldi khatam
-    // karo — held request server pe kabhi stuck na rahe.
+    // Client disconnect pe abort
     const ac = new AbortController();
     res.on("close", () => ac.abort());
     const commands = await deviceApi.pendingCommandsLongPoll(
       req.apiKey!,
       holdSec * 1000,
       ac.signal,
+      mac
     );
     if (!res.headersSent) ok(res, { commands });
   },

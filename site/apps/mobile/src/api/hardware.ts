@@ -2,7 +2,7 @@ import { api, extractApiError } from './client';
 
 export const getHomes = async () => {
     try {
-        const res = await api.get('/homes');
+        const res = await api.get('/homes/my-boards');
         return res.data;
     } catch (e) {
         throw extractApiError(e);
@@ -46,6 +46,15 @@ export const getSchedules = async (homeId: number) => {
     }
 };
 
+export const createSchedule = async (homeId: number, deviceId: number, type: 'once' | 'cron', action: 'on' | 'off', runAt?: string, cron?: string) => {
+    try {
+        const res = await api.post(`/homes/${homeId}/schedules`, { deviceId, type, action, runAt, cron });
+        return res.data;
+    } catch (e) {
+        throw extractApiError(e);
+    }
+};
+
 export const deleteSchedule = async (homeId: number, scheduleId: number) => {
     try {
         const res = await api.delete(`/homes/${homeId}/schedules/${scheduleId}`);
@@ -74,5 +83,23 @@ export const getHomeActivity = async (homeId: number, limit: number = 50, device
         return { success: true, data: res.data };
     } catch (e: any) {
         return { success: false, error: extractApiError(e) };
+    }
+};
+
+export const setEspLed = async (homeId: number, espId: number, enabled: boolean) => {
+    try {
+        const res = await api.post(`/homes/${homeId}/esp/${espId}/led`, { enabled });
+        return res.data;
+    } catch (e) {
+        throw extractApiError(e);
+    }
+};
+
+export const assignEspChannel = async (homeId: number, deviceId: number, espId: number | null, channel: number | null) => {
+    try {
+        const res = await api.patch(`/homes/${homeId}/devices/${deviceId}`, { espId, channel });
+        return res.data;
+    } catch (e) {
+        throw extractApiError(e);
     }
 };

@@ -63,8 +63,15 @@ export async function setDeviceWifi(
 }
 
 /** Status LED on/off — site se, firmware NVS persist (restart pe yaad rahe). */
-export async function setDeviceLed(homeId: number, deviceId: number, enabled: boolean): Promise<ApiResponse<Device>> {
-  const { data } = await api.post<ApiResponse<Device>>(`/homes/${homeId}/devices/${deviceId}/led`, { enabled });
+export async function setEspLed(
+  homeId: number,
+  espId: number,
+  enabled: boolean,
+): Promise<ApiResponse<MyBoard>> {
+  const { data } = await api.post<ApiResponse<MyBoard>>(
+    `/homes/${homeId}/esp/${espId}/led`,
+    { enabled },
+  );
   return data;
 }
 
@@ -83,7 +90,7 @@ export async function bulkSetDeviceStatus(
 export async function updateDevice(
   homeId: number,
   deviceId: number,
-  patch: { name?: string; roomId?: number | null },
+  patch: { name?: string; roomId?: number | null; espId?: number | null; channel?: number | null },
 ): Promise<ApiResponse<Device>> {
   const { data } = await api.patch<ApiResponse<Device>>(
     `/homes/${homeId}/devices/${deviceId}`,
@@ -164,8 +171,7 @@ export interface MyBoardDevice {
   status: "on" | "off";
   offline: boolean;
   lastSeen: string | null;
-  /** Status LED site se on/off (board pe NVS persist — restart pe yaad rahe). */
-  ledEnabled: boolean;
+  channel: number | null;
 }
 
 export interface BoardHistoryEvent {
@@ -196,6 +202,7 @@ export interface MyBoard {
   createdAt: string | null;
   hotspotName: string | null;
   hotspotPassword: string | null;
+  ledEnabled: boolean;
   history: BoardHistoryEvent[];
   devices: MyBoardDevice[];
 }
@@ -206,6 +213,7 @@ export interface MyBoardsGroup {
   role: string;
   apiKey: { keyPrefix: string; expiresAt: string | null } | null;
   boards: MyBoard[];
+  unassignedDevices: MyBoardDevice[];
 }
 
 export async function listMyBoards(): Promise<ApiResponse<MyBoardsGroup[]>> {

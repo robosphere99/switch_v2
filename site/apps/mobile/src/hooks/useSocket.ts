@@ -31,6 +31,12 @@ export function useSocket(onDeviceUpdated?: (payload: any) => void) {
             socket.on('notification:deleted', () => DeviceEventEmitter.emit('notification_sync'));
             socket.on('notification:updated', () => DeviceEventEmitter.emit('notification_sync'));
 
+            socket.on('schedule:sync', () => DeviceEventEmitter.emit('schedule_sync'));
+
+            // Home Member Hooks
+            socket.on('home-updated', (data) => DeviceEventEmitter.emit('home_updated', data));
+            socket.on('home:access-revoked', (data) => DeviceEventEmitter.emit('access_revoked', data));
+
             socketRef.current = socket;
         };
         initSocket();

@@ -10,11 +10,13 @@ export interface Invitation {
   status: InvitationStatus;
   expiresAt: string;
   createdAt: string;
+  /** True if the invited email is already registered on SwitchNest */
+  userFound?: boolean;
 }
 
 export async function inviteMember(
   homeId: number,
-  input: { email: string; role: "admin" | "member" | "viewer" },
+  input: { email?: string; role: "admin" | "member" | "viewer" },
 ): Promise<ApiResponse<Invitation>> {
   const { data } = await api.post<ApiResponse<Invitation>>(
     `/homes/${homeId}/invitations`,

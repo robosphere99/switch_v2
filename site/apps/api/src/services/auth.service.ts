@@ -265,13 +265,30 @@ export async function refresh(refreshToken: string, deviceInfo?: string, ipAddre
   return issueTokens(user, deviceInfo, ipAddress);
 }
 
-/** Revoke a refresh token (logout). */
-export async function logout(refreshToken: string): Promise<void> {
-  const stored = await prisma.refreshToken.findUnique({
-    where: { tokenHash: hashToken(refreshToken) },
-  });
-  if (stored) {
-    await prisma.refreshToken.update({ where: { id: stored.id }, data: { revokedAt: new Date() } });
+/** Revoke a refresh token and wipe ALL device push bridges for the user (logout). */
+export async function logout(refreshToken?: string, pushToken?: string): Promise<void> {
+  let userId: number | undefined;
+
+  if (refreshToken) {
+    const stored = await prisma.refreshToken.findUnique({
+      where: { tokenHash: hashToken(refreshToken) },
+    });
+    if (stored) {
+      userId = stored.userId;
+      await prisma.refreshToken.update({ where: { id: stored.id }, data: { revokedAt: new Date() } });
+    }
+  }
+
+  // Delete ALL push subscriptions for this user so no device gets notifications after logout
+  if (userId) {
+    await prisma.pushSubscription.deleteMany({
+      where: { userId }
+    }).catch(() => { });
+  } else if (pushToken) {
+    // Fallback: if we couldn't resolve userId, try matching by token directly
+    await prisma.pushSubscription.deleteMany({
+      where: { token: pushToken }
+    }).catch(() => { });
   }
 }
 

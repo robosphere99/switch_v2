@@ -16,6 +16,11 @@ const deviceParams = z.object({
   deviceId: z.coerce.number().int().positive(),
 });
 
+const espParams = z.object({
+  homeId: z.coerce.number().int().positive(),
+  espId: z.coerce.number().int().positive(),
+});
+
 const createSchema = z.object({
   name: z.string().min(1).max(100),
   type: z.enum(["bulb", "fan", "ac", "tv", "plug", "custom"]),
@@ -37,6 +42,8 @@ const espNameSchema = z.object({ name: z.string().min(1).max(60) });
 const updateSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   roomId: z.coerce.number().int().positive().nullable().optional(),
+  espId: z.coerce.number().int().positive().nullable().optional(),
+  channel: z.coerce.number().int().min(0).max(16).nullable().optional(),
 });
 
 deviceRouter.get(
@@ -115,9 +122,9 @@ deviceRouter.post(
 
 /** Status LED on/off — site se, firmware NVS me persist (restart pe yaad rahe). */
 deviceRouter.post(
-  "/:homeId/devices/:deviceId/led",
+  "/:homeId/esp/:espId/led",
   requireAuth,
-  validateParams(deviceParams),
+  validateParams(espParams),
   requireHomeMember("member"),
   validateBody(ledSchema),
   deviceController.setLed,

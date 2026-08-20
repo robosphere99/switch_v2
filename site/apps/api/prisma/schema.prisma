@@ -310,6 +310,7 @@ model Device {
   otaProgress       Int?       @map("ota_progress")
   otaStatus         String?    @db.VarChar(32) @map("ota_status")
   espId           Int?
+  channel         Int?       // Relay 1..N index within the ESP board
   createdBy       Int
   createdAt       DateTime     @default(now()) @map("created_at")
   lastUpdated     DateTime     @updatedAt @map("last_updated")
@@ -346,6 +347,7 @@ model EspDevice {
   otaRequestedAt     DateTime? @map("ota_requested_at")
   otaProgress        Int?      @map("ota_progress")
   otaStatus          String?   @db.VarChar(32) @map("ota_status")
+  ledEnabled         Boolean   @default(true) @map("led_enabled")
   createdAt          DateTime  @default(now()) @map("created_at")
   updatedAt          DateTime  @updatedAt @map("updated_at")
 
