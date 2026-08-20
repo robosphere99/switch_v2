@@ -148,6 +148,13 @@ export async function setDeviceStatus(input: {
           `${updated.name} turned ${input.status.toUpperCase()}`,
           `${actorName} just interacted with the ${updated.name}`
         );
+        // Phase 14: Log strictly into the unified Notification Feed Database as well!
+        await createNotification(m.userId, {
+          category: "device",
+          type: "info",
+          title: `🔌 ${updated.name} turned ${input.status.toUpperCase()}`,
+          body: `${actorName} manually toggled this device from the Command Center.`,
+        });
       }
     } catch (e) {
       console.warn("[Push] Background dispatch failure:", e);
@@ -207,7 +214,31 @@ export async function sendDeviceCommand(input: {
   ]);
 
   const updated = await prisma.device.findUnique({ where: { id: device.id } });
-  if (updated) await emitDeviceUpdated(input.homeId, updated.id);
+  if (updated) {
+    await emitDeviceUpdated(input.homeId, updated.id);
+
+    try {
+      const members = await prisma.homeMember.findMany({
+        where: { homeId: input.homeId, userId: { not: input.actorId }, role: { in: ['admin', 'owner'] } }
+      });
+      const actor = await prisma.user.findUnique({ where: { id: input.actorId }, select: { username: true } });
+      for (const m of members) {
+        sendPushToUser(
+          m.userId,
+          `System Command: ${input.command}`,
+          `${actor?.username || "A member"} dispatched a remote hardware command.`
+        );
+        await createNotification(m.userId, {
+          category: "device",
+          type: "info",
+          title: `🛠 Remote Command Executed`,
+          body: `${actor?.username || "A member"} dispatched a '${input.command}' instruction to ${updated.name}.`,
+        });
+      }
+    } catch (e) {
+      console.warn("[Push] Remote Command Background dispatch failure:", e);
+    }
+  }
   return updated;
 }
 
@@ -271,6 +302,29 @@ export async function bulkSetStatus(input: {
     where: { id: { in: devices.map((d) => d.id) }, homeId: input.homeId },
   });
   for (const d of updated) await emitDeviceUpdated(input.homeId, d.id);
+
+  try {
+    const members = await prisma.homeMember.findMany({
+      where: { homeId: input.homeId, userId: { not: input.actorId }, role: { in: ['admin', 'owner'] } }
+    });
+    const actor = await prisma.user.findUnique({ where: { id: input.actorId }, select: { username: true } });
+    for (const m of members) {
+      sendPushToUser(
+        m.userId,
+        `Room Actuation: ${input.status.toUpperCase()}`,
+        `${actor?.username || "A member"} toggled grouped components.`
+      );
+      await createNotification(m.userId, {
+        category: "device",
+        type: "info",
+        title: `🔌 Group Actuation Executed`,
+        body: `${actor?.username || "A member"} manually switched multiple appliances ${input.status.toUpperCase()}.`,
+      });
+    }
+  } catch (e) {
+    console.warn("[Push] Bulk Group Background dispatch failure:", e);
+  }
+
   return updated;
 }
 

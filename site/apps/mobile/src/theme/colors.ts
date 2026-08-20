@@ -36,20 +36,20 @@ export const AppThemes: Record<string, ThemePalette> = {
     },
     defaultDark: {
         id: 'defaultDark',
-        name: 'Midnight Slate (Classic)',
+        name: 'Titanium Gold (Premium)',
         isPremium: false,
-        background: '#0f172a',
-        card: '#1e293b',
-        text: '#f8fafc',
-        textSecondary: '#94a3b8',
-        primary: '#3b82f6',
-        primaryGlow: 'rgba(59, 130, 246, 0.4)',
-        accent: '#8b5cf6', // Violet Accent
-        accentGlow: 'rgba(139, 92, 246, 0.4)',
-        danger: '#ef4444',
-        success: '#10b981',
-        border: '#334155',
-        tabBar: '#0f172a',
+        background: '#121212',
+        card: '#1C1C1E',
+        text: '#FFFFFF',
+        textSecondary: '#A1A1AA',
+        primary: '#FACC15', // Vibrant Gold/Yellow
+        primaryGlow: 'rgba(250, 204, 21, 0.4)',
+        accent: '#D97706', // Deep Amber
+        accentGlow: 'rgba(217, 119, 6, 0.4)',
+        danger: '#EF4444',
+        success: '#10B981',
+        border: '#27272A',
+        tabBar: '#000000',
     },
     glassOcean: {
         id: 'glassOcean',
@@ -84,5 +84,39 @@ export const AppThemes: Record<string, ThemePalette> = {
         success: '#22c55e',
         border: '#27272a',
         tabBar: '#09090b',
+    },
+    indiaHeritage: {
+        id: 'indiaHeritage',
+        name: 'India Tiranga',
+        isPremium: true,
+        background: '#FFFFFF', // White Center
+        card: '#F8FAFC',
+        text: '#0F172A',       // Ashoka Navy
+        textSecondary: '#64748B',
+        primary: '#FF671F',    // Saffron 
+        primaryGlow: 'rgba(255, 103, 31, 0.4)',
+        accent: '#046A38',     // India Green 
+        accentGlow: 'rgba(4, 106, 56, 0.4)',
+        danger: '#DC2626',
+        success: '#16A34A',
+        border: '#E2E8F0',
+        tabBar: '#FFFFFF',
+    },
+    cherryBlossom: {
+        id: 'cherryBlossom',
+        name: 'Sakura Pink',
+        isPremium: true,
+        background: '#FFF0F5',
+        card: '#FFFFFF',
+        text: '#4A0E2E',
+        textSecondary: '#9A5B7E',
+        primary: '#FF69B4',
+        primaryGlow: 'rgba(255, 105, 180, 0.4)',
+        accent: '#FF1493',
+        accentGlow: 'rgba(255, 20, 147, 0.4)',
+        danger: '#DC143C',
+        success: '#10B981',
+        border: '#FFC0CB',
+        tabBar: '#FFF0F5',
     }
 };

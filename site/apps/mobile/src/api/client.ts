@@ -1,5 +1,6 @@
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
+import { DeviceEventEmitter } from 'react-native';
 
 // Using EXPO_PUBLIC_ variables allows you to change the IP for physical device testing.
 // Defaulting to 10.0.2.2 for Android emulators if no env is set.
@@ -21,6 +22,16 @@ api.interceptors.request.use(async (config) => {
     }
     return config;
 });
+
+api.interceptors.response.use(
+    (response) => response,
+    (error) => {
+        if (error.response && error.response.status === 401) {
+            DeviceEventEmitter.emit('auth_unauthorized');
+        }
+        return Promise.reject(error);
+    }
+);
 
 export const extractApiError = (error: any) => {
     if (error.response?.data?.error) {

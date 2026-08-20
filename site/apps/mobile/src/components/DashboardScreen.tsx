@@ -1,12 +1,14 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert, StyleSheet, Animated, Image, PanResponder, Dimensions } from 'react-native';
-import { LogOut, Home as HomeIcon, Zap, Shield, Wifi, User, Activity, Bot } from 'lucide-react-native';
+import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert, StyleSheet, Animated, Image, PanResponder, Dimensions, Modal, DeviceEventEmitter } from 'react-native';
+import { LogOut, Home as HomeIcon, Zap, Shield, Wifi, User, Activity, Bot, Bell } from 'lucide-react-native';
 import { getHomes, getDevices, toggleDevice } from '../api/hardware';
 import { useTheme } from '../theme/ThemeContext';
 import * as Haptics from 'expo-haptics';
 import { AssistantModal } from './AssistantModal';
+import { NotificationCenterScreen } from './NotificationCenterScreen';
 import { usePushNotifications } from '../hooks/usePushNotifications';
 import { useSocket } from '../hooks/useSocket';
+import { api } from '../api/client';
 
 const DeviceCard = ({ device, onToggle }: { device: any, onToggle: (id: number, status: string) => void }) => {
     const { theme } = useTheme();
@@ -15,44 +17,15 @@ const DeviceCard = ({ device, onToggle }: { device: any, onToggle: (id: number, 
     // Animation References
     const animScale = useRef(new Animated.Value(1)).current;
     const animGlow = useRef(new Animated.Value(isON ? 1 : 0)).current;
-    const fillAnim = useRef(new Animated.Value(isON ? 1 : 0)).current;
-    const panX = useRef(new Animated.Value(0)).current;
-    const screenWidth = Dimensions.get('window').width;
 
     useEffect(() => {
-        Animated.parallel([
-            Animated.timing(animGlow, { toValue: isON ? 1 : 0, duration: 300, useNativeDriver: false }),
-            Animated.timing(fillAnim, { toValue: isON ? 1 : 0, duration: 500, useNativeDriver: false })
-        ]).start();
+        Animated.timing(animGlow, { toValue: isON ? 1 : 0, duration: 300, useNativeDriver: false }).start();
     }, [isON]);
-
-    const panResponder = useRef(
-        PanResponder.create({
-            onMoveShouldSetPanResponder: (_, gestureState) => Math.abs(gestureState.dx) > 15,
-            onPanResponderGrant: () => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
-                Animated.timing(animScale, { toValue: 0.95, duration: 150, useNativeDriver: true }).start();
-            },
-            onPanResponderMove: Animated.event([null, { dx: panX }], { useNativeDriver: false }),
-            onPanResponderRelease: (_, gestureState) => {
-                Animated.timing(animScale, { toValue: 1, duration: 200, useNativeDriver: true }).start();
-
-                if (gestureState.dx > 80 && !isON) {
-                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
-                    onToggle(device.id, device.status);
-                } else if (gestureState.dx < -80 && isON) {
-                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
-                    onToggle(device.id, device.status);
-                }
-                Animated.spring(panX, { toValue: 0, bounciness: 12, useNativeDriver: false }).start();
-            }
-        })
-    ).current;
 
     const handlePress = () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => { });
         Animated.sequence([
-            Animated.timing(animScale, { toValue: 0.94, duration: 100, useNativeDriver: true }),
+            Animated.timing(animScale, { toValue: 0.92, duration: 100, useNativeDriver: true }),
             Animated.timing(animScale, { toValue: 1, duration: 150, useNativeDriver: true }),
         ]).start();
         onToggle(device.id, device.status);
@@ -60,7 +33,7 @@ const DeviceCard = ({ device, onToggle }: { device: any, onToggle: (id: number, 
 
     const bgColor = animGlow.interpolate({
         inputRange: [0, 1],
-        outputRange: [theme.card, theme.card === '#1e293b' ? '#0f172a' : theme.card]
+        outputRange: [theme.card, theme.card] // Keep card dark, let text/icons glow
     });
 
     const borderColor = animGlow.interpolate({
@@ -68,37 +41,30 @@ const DeviceCard = ({ device, onToggle }: { device: any, onToggle: (id: number, 
         outputRange: [theme.border, theme.primary]
     });
 
-    const fillWidth = fillAnim.interpolate({
-        inputRange: [0, 1],
-        outputRange: ['0%', '100%']
-    });
-
-    const swipeTranslate = panX.interpolate({
-        inputRange: [-screenWidth, screenWidth],
-        outputRange: [-screenWidth, screenWidth],
-        extrapolate: 'clamp'
-    });
-
     return (
-        <Animated.View style={[styles.cardWrapper, { transform: [{ scale: animScale }, { translateX: swipeTranslate }] }]} {...panResponder.panHandlers}>
-            <TouchableOpacity activeOpacity={1} onPress={handlePress} delayPressIn={100}>
+        <Animated.View style={[styles.cardWrapper, { transform: [{ scale: animScale }] }]}>
+            <TouchableOpacity activeOpacity={0.85} onPress={handlePress} delayPressIn={100}>
                 <Animated.View style={[
                     styles.cardContent,
-                    { backgroundColor: bgColor, borderColor: borderColor, overflow: 'hidden' }
+                    { backgroundColor: bgColor, borderColor: borderColor }
                 ]}>
-                    <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: theme.primary, opacity: 0.15, width: fillWidth }]} />
-                    <View style={{ zIndex: 1 }}>
-                        <Text style={[styles.deviceName, { color: theme.text }]}>{device.name}</Text>
-                        <Text style={[styles.deviceSub, { color: theme.textSecondary }]}>
-                            {device.type?.toUpperCase()} • {device.room?.name || 'Home'}
-                        </Text>
+                    <View style={styles.cardHeader}>
+                        <View style={[
+                            styles.iconBox,
+                            isON ? { backgroundColor: theme.primary, shadowColor: theme.primaryGlow, shadowOpacity: 0.8, shadowRadius: 8, elevation: 10 } : { backgroundColor: theme.border }
+                        ]}>
+                            <Zap color={isON ? '#000000' : theme.textSecondary} fill={isON ? '#000000' : 'transparent'} size={20} />
+                        </View>
+                        <View style={[styles.pillToggle, { backgroundColor: isON ? theme.primary : theme.border }]}>
+                            <View style={[styles.pillNub, { transform: [{ translateX: isON ? 12 : 2 }] }]} />
+                        </View>
                     </View>
-                    <View style={[
-                        styles.iconWrapper,
-                        isON ? { backgroundColor: theme.primary, shadowColor: theme.primary, shadowOpacity: 0.5, shadowRadius: 10, elevation: 10 } : { backgroundColor: theme.border },
-                        { zIndex: 1 }
-                    ]}>
-                        <Zap color={isON ? '#ffffff' : theme.textSecondary} fill={isON ? '#ffffff' : 'transparent'} size={24} />
+
+                    <View style={{ marginTop: 12 }}>
+                        <Text style={[styles.deviceName, { color: isON ? theme.primary : theme.text }]} numberOfLines={1}>{device.name}</Text>
+                        <Text style={[styles.deviceSub, { color: theme.textSecondary }]} numberOfLines={1}>
+                            {device.room?.name || 'Home'}
+                        </Text>
                     </View>
                 </Animated.View>
             </TouchableOpacity>
@@ -114,6 +80,8 @@ export function DashboardScreen({ user, onLogout }: { user: any, onLogout: () =>
     const [selectedHomeId, setSelectedHomeId] = useState<number | null>(null);
     const [activeCategory, setActiveCategory] = useState<string>('All');
     const [aiVisible, setAiVisible] = useState(false);
+    const [notificationsVisible, setNotificationsVisible] = useState(false);
+    const [unreadBadge, setUnreadBadge] = useState(0);
 
     // Activates Native Push Notifications (Background Sync & Permission Handling)
     usePushNotifications();
@@ -129,6 +97,13 @@ export function DashboardScreen({ user, onLogout }: { user: any, onLogout: () =>
 
     useEffect(() => {
         loadData();
+        const syncSub = DeviceEventEmitter.addListener('notification_sync', async () => {
+            try {
+                const badgeRes = await api.get('/notifications/unread-count');
+                if (badgeRes?.data?.data !== undefined) setUnreadBadge(badgeRes.data.data);
+            } catch (e) { }
+        });
+        return () => syncSub.remove();
     }, []);
 
     const loadData = async () => {
@@ -146,6 +121,11 @@ export function DashboardScreen({ user, onLogout }: { user: any, onLogout: () =>
                     setDevices(devicesRes.data);
                 }
             }
+
+            try {
+                const badgeRes = await api.get('/notifications/unread-count');
+                if (badgeRes?.data?.data !== undefined) setUnreadBadge(badgeRes.data.data);
+            } catch (e) { }
         } catch (e: any) {
             console.log('Failed to fetch data', e);
         } finally {
@@ -204,75 +184,91 @@ export function DashboardScreen({ user, onLogout }: { user: any, onLogout: () =>
         <View style={[styles.container, { backgroundColor: theme.background }]}>
             <View style={[styles.header, { backgroundColor: theme.background }]}>
                 <View style={styles.headerLeft}>
-                    <Text style={[styles.greetingLabel, { color: theme.textSecondary }]}>{greeting},</Text>
-                    <Text style={[styles.userName, { color: theme.text }]}>{capitalize(user?.username) || 'Commander'}</Text>
+                    <Text style={[styles.userName, { color: theme.text }]}>Hello, {capitalize(user?.username) || 'Commander'}!</Text>
+                    <Text style={[styles.greetingLabel, { color: theme.textSecondary }]}>Welcome to your smart home</Text>
                 </View>
                 <View style={styles.headerRight}>
-                    <TouchableOpacity style={[styles.iconBtn, { backgroundColor: theme.card, borderColor: theme.border }]} onPress={() => Alert.alert("System Health", "All SwitchNest Micro-services are fully operational.")}>
-                        <Activity color={theme.text} size={20} />
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={onLogout} style={[styles.iconBtn, { backgroundColor: theme.danger + '20', borderColor: theme.danger + '40' }]}>
-                        <LogOut color={theme.danger} size={20} />
+                    <TouchableOpacity
+                        onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
+                            setNotificationsVisible(true);
+                        }}
+                        style={[styles.iconBtn, { backgroundColor: theme.card, borderColor: theme.border, position: 'relative' }]}
+                    >
+                        <Bell color={theme.textSecondary} size={20} />
+                        {unreadBadge > 0 && (
+                            <View style={{ position: 'absolute', top: -4, right: -4, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: theme.danger, borderWidth: 1.5, borderColor: theme.card, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 4 }}>
+                                <Text style={{ color: '#fff', fontSize: 9, fontWeight: 'bold' }}>{unreadBadge > 99 ? '99+' : unreadBadge}</Text>
+                            </View>
+                        )}
                     </TouchableOpacity>
                 </View>
             </View>
 
             {homes.length > 1 && (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.filterScroll, { borderBottomColor: theme.border, marginBottom: 8 }]} contentContainerStyle={{ paddingHorizontal: 24, paddingVertical: 10 }}>
-                    {homes.map((home: any) => {
-                        const hId = home.homeId || home.id;
-                        const isSelected = selectedHomeId === hId;
-                        const hName = capitalize(home.name || home.home?.name) || `Home ${hId}`;
+                <View style={{ paddingHorizontal: 24, paddingBottom: 10 }}>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 24 }}>
+                        {homes.map((home: any) => {
+                            const hId = home.homeId || home.id;
+                            const isSelected = selectedHomeId === hId;
+                            const hName = capitalize(home.name || home.home?.name) || `Home ${hId}`;
 
-                        return (
-                            <TouchableOpacity
-                                key={`home-${hId}`}
-                                style={[styles.filterChip, { backgroundColor: isSelected ? theme.primary + '20' : theme.card, borderColor: isSelected ? theme.primary : theme.border, paddingVertical: 6 }]}
-                                onPress={() => {
-                                    Haptics.selectionAsync().catch(() => { });
-                                    handleHomeSelect(hId);
-                                }}
-                            >
-                                <Text style={[styles.filterText, { color: isSelected ? theme.primary : theme.textSecondary, fontWeight: isSelected ? '600' : '400' }]}>{hName}</Text>
-                            </TouchableOpacity>
-                        );
-                    })}
-                </ScrollView>
+                            return (
+                                <TouchableOpacity
+                                    key={`home-${hId}`}
+                                    style={[styles.filterChip, { backgroundColor: isSelected ? theme.primary + '20' : theme.card, borderColor: isSelected ? theme.primary : theme.border }]}
+                                    onPress={() => {
+                                        Haptics.selectionAsync().catch(() => { });
+                                        handleHomeSelect(hId);
+                                    }}
+                                >
+                                    <Text style={[styles.filterText, { color: isSelected ? theme.primary : theme.textSecondary }]}>{hName}</Text>
+                                </TouchableOpacity>
+                            );
+                        })}
+                    </ScrollView>
+                </View>
             )}
 
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.filterScroll, { borderBottomColor: theme.border }]} contentContainerStyle={{ paddingHorizontal: 24, paddingVertical: 12 }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll} contentContainerStyle={{ paddingHorizontal: 24, paddingVertical: 4 }}>
                 {categories.map((cat: any) => (
                     <TouchableOpacity
                         key={cat}
-                        style={[styles.filterChip, { backgroundColor: activeCategory === cat ? theme.primary : theme.card, borderColor: activeCategory === cat ? theme.primaryGlow : theme.border }]}
+                        style={[styles.filterChip, { backgroundColor: activeCategory === cat ? theme.text : theme.card, borderColor: activeCategory === cat ? theme.text : theme.border }]}
                         onPress={() => {
                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
                             setActiveCategory(cat);
                         }}
                     >
-                        <Text style={[styles.filterText, { color: activeCategory === cat ? '#ffffff' : theme.textSecondary }]}>{cat}</Text>
+                        <Text style={[styles.filterText, { color: activeCategory === cat ? theme.background : theme.textSecondary, fontWeight: activeCategory === cat ? '700' : '500' }]}>{cat}</Text>
                     </TouchableOpacity>
                 ))}
             </ScrollView>
 
-            <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false}>
-                <Text style={[styles.sectionTitle, { color: theme.text }]}>My Devices</Text>
-
-                {loading ? (
-                    <View style={styles.centerBox}>
-                        <ActivityIndicator size="large" color={theme.primary} />
-                    </View>
-                ) : filteredDevices.length > 0 ? (
-                    filteredDevices.map((device) => (
-                        <DeviceCard key={device.id} device={device} onToggle={handleToggle} />
-                    ))
-                ) : (
-                    <View style={[styles.emptyBox, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                        <Text style={[styles.emptyText, { color: theme.textSecondary }]}>No devices detected for this category.</Text>
-                    </View>
-                )}
-                <View style={{ height: 120 }} />
+            <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
+                <View style={styles.gridContainer}>
+                    {loading ? (
+                        <View style={styles.centerBox}>
+                            <ActivityIndicator size="large" color={theme.primary} />
+                        </View>
+                    ) : filteredDevices.length > 0 ? (
+                        filteredDevices.map((device) => (
+                            <DeviceCard key={device.id} device={device} onToggle={handleToggle} />
+                        ))
+                    ) : (
+                        <View style={[styles.emptyBox, { backgroundColor: theme.card, borderColor: theme.border, width: '100%' }]}>
+                            <Text style={[styles.emptyText, { color: theme.textSecondary }]}>No devices detected for this category.</Text>
+                        </View>
+                    )}
+                </View>
             </ScrollView>
+
+            {/* Notifications Modal (using Activity log feed) */}
+            <Modal visible={notificationsVisible} animationType="slide" presentationStyle="formSheet" onRequestClose={() => { setNotificationsVisible(false); loadData(); }}>
+                <View style={{ flex: 1, backgroundColor: theme.background }}>
+                    <NotificationCenterScreen onClose={() => { setNotificationsVisible(false); loadData(); }} />
+                </View>
+            </Modal>
 
             {/* Smart Assistant Overlay Setup */}
             <AssistantModal
@@ -285,13 +281,13 @@ export function DashboardScreen({ user, onLogout }: { user: any, onLogout: () =>
             />
 
             <TouchableOpacity
-                style={[styles.fab, { backgroundColor: theme.accent, shadowColor: theme.accentGlow }]}
+                style={[styles.fab, { backgroundColor: theme.accent || theme.primary, shadowColor: theme.accentGlow || theme.primaryGlow }]}
                 onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => { });
                     setAiVisible(true);
                 }}
             >
-                <Bot color="#ffffff" size={28} />
+                <Bot color={theme.background} size={28} />
             </TouchableOpacity>
 
         </View>
@@ -309,62 +305,51 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
     },
     headerLeft: { justifyContent: 'center' },
-    greetingLabel: { fontSize: 14, fontWeight: '700', letterSpacing: 0.5, marginBottom: 2 },
-    userName: { fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
+    greetingLabel: { fontSize: 14, fontWeight: '500', opacity: 0.8, marginTop: 4 },
+    userName: { fontSize: 24, fontWeight: '900', letterSpacing: -0.5 },
     headerRight: { flexDirection: 'row', gap: 10 },
-    iconBtn: { padding: 10, borderRadius: 18, borderWidth: 1 },
+    iconBtn: { padding: 10, borderRadius: 20, borderWidth: 1 },
 
-    scrollArea: { flex: 1, paddingHorizontal: 24, paddingTop: 16 },
-    sectionTitle: { fontSize: 20, fontWeight: '800', marginBottom: 20 },
-    centerBox: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 100 },
+    scrollArea: { flex: 1, paddingHorizontal: 20, paddingTop: 20 },
+    gridContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+    centerBox: { width: '100%', justifyContent: 'center', alignItems: 'center', paddingVertical: 100 },
     emptyBox: { backgroundColor: '#1e293b', borderRadius: 20, padding: 30, borderWidth: 1, borderColor: '#334155', alignItems: 'center', marginVertical: 40 },
     emptyText: { color: '#9ca3af', textAlign: 'center', fontSize: 16, lineHeight: 24 },
 
-    filterScroll: { maxHeight: 65, minHeight: 65, borderBottomWidth: 1, borderBottomColor: '#1e293b' },
-    filterChip: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20, backgroundColor: '#1e293b', marginRight: 12, borderWidth: 1, borderColor: '#334155' },
-    filterChipActive: { backgroundColor: '#3b82f6', borderColor: '#60a5fa' },
-    filterText: { color: '#9ca3af', fontWeight: 'bold' },
-    filterTextActive: { color: '#ffffff' },
+    filterScroll: { maxHeight: 55, minHeight: 55 },
+    filterChip: { paddingHorizontal: 20, paddingVertical: 8, borderRadius: 24, backgroundColor: '#1C1C1E', marginRight: 12, borderWidth: 1, borderColor: '#27272A' },
+    filterText: { color: '#9ca3af', fontWeight: '500' },
 
-    // Custom Card Styles
-    cardWrapper: { marginBottom: 18 },
+    // Grid Card Styles
+    cardWrapper: { width: '47.5%', marginBottom: 16 },
     cardContent: {
         borderRadius: 24,
-        padding: 20,
+        padding: 16,
+        paddingTop: 20,
         borderWidth: 1.5,
-        flexDirection: 'row',
         justifyContent: 'space-between',
-        alignItems: 'center',
-        shadowColor: '#60a5fa',
-        shadowOffset: { width: 0, height: 6 },
-        shadowRadius: 16,
-        elevation: 8,
     },
-    deviceName: { color: '#ffffff', fontWeight: '800', fontSize: 18, marginBottom: 4 },
-    deviceSub: { color: '#94a3b8', fontSize: 13 },
-    iconWrapper: { padding: 14, borderRadius: 24 },
-    iconWrapperON: {
-        backgroundColor: '#3b82f6',
-        shadowColor: '#3b82f6',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.5,
-        shadowRadius: 10,
-        elevation: 10
-    },
-    iconWrapperOFF: { backgroundColor: '#334155' },
+    cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
+    iconBox: { padding: 8, borderRadius: 16 },
+    pillToggle: { width: 34, height: 20, borderRadius: 10, justifyContent: 'center', paddingHorizontal: 2 },
+    pillNub: { width: 16, height: 16, borderRadius: 8, backgroundColor: '#FFFFFF' },
+
+    deviceName: { color: '#ffffff', fontWeight: '800', fontSize: 16, marginBottom: 2 },
+    deviceSub: { color: '#94a3b8', fontSize: 12 },
+
     fab: {
         position: 'absolute',
-        bottom: 30,
-        right: 24,
-        width: 64,
-        height: 64,
-        borderRadius: 32,
+        bottom: 25,
+        alignSelf: 'center',
+        width: 66,
+        height: 66,
+        borderRadius: 33,
         alignItems: 'center',
         justifyContent: 'center',
-        shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.5,
-        shadowRadius: 16,
-        elevation: 8,
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.6,
+        shadowRadius: 12,
+        elevation: 10,
         zIndex: 100
     }
 });

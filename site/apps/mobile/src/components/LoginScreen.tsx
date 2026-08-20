@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, StyleSheet, KeyboardAvoidingView, Platform, Dimensions } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../theme/ThemeContext';
-import { login } from '../api/auth';
+import { login, signup } from '../api/auth';
 import * as SecureStore from 'expo-secure-store';
 import { ScanFace, CheckSquare, Square } from 'lucide-react-native';
 
@@ -15,6 +15,8 @@ const { height } = Dimensions.get('window');
 
 export function LoginScreen({ onLoginSuccess, onBiometricRetry }: Props) {
     const { theme } = useTheme();
+    const [isSignup, setIsSignup] = useState(false);
+    const [username, setUsername] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [rememberMe, setRememberMe] = useState(true);
@@ -33,10 +35,10 @@ export function LoginScreen({ onLoginSuccess, onBiometricRetry }: Props) {
         loadSaved();
     }, []);
 
-    const handleLogin = async () => {
-        if (!email || !password) {
+    const handleAuth = async () => {
+        if (!email || !password || (isSignup && !username)) {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => { });
-            setError('Email and password required');
+            setError('All required fields must be filled');
             return;
         }
 
@@ -45,26 +47,40 @@ export function LoginScreen({ onLoginSuccess, onBiometricRetry }: Props) {
         setLoading(true);
 
         try {
-            const res = await login({ usernameEmail: email, password });
-            if (res.success && res.data) {
-                if (res.data.accessToken) {
-                    await SecureStore.setItemAsync('accessToken', res.data.accessToken);
+            if (isSignup) {
+                await signup({ username, email, password });
+                const loginRes = await login({ usernameEmail: email, password });
+                if (loginRes.success && loginRes.data) {
+                    if (loginRes.data.accessToken) {
+                        await SecureStore.setItemAsync('accessToken', loginRes.data.accessToken);
+                    }
+                    await SecureStore.setItemAsync('user', JSON.stringify(loginRes.data.user));
+                    await SecureStore.setItemAsync('loginTimestamp', String(Date.now()));
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
+                    onLoginSuccess(loginRes.data.user);
                 }
-                await SecureStore.setItemAsync('user', JSON.stringify(res.data.user));
-                await SecureStore.setItemAsync('loginTimestamp', String(Date.now()));
+            } else {
+                const res = await login({ usernameEmail: email, password });
+                if (res.success && res.data) {
+                    if (res.data.accessToken) {
+                        await SecureStore.setItemAsync('accessToken', res.data.accessToken);
+                    }
+                    await SecureStore.setItemAsync('user', JSON.stringify(res.data.user));
+                    await SecureStore.setItemAsync('loginTimestamp', String(Date.now()));
 
-                if (rememberMe) {
-                    await SecureStore.setItemAsync('savedCredentials', JSON.stringify({ email, password }));
-                } else {
-                    await SecureStore.deleteItemAsync('savedCredentials');
+                    if (rememberMe) {
+                        await SecureStore.setItemAsync('savedCredentials', JSON.stringify({ email, password }));
+                    } else {
+                        await SecureStore.deleteItemAsync('savedCredentials');
+                    }
+
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
+                    onLoginSuccess(res.data.user);
                 }
-
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
-                onLoginSuccess(res.data.user);
             }
         } catch (e: any) {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => { });
-            setError(e.message || 'Login failed. Make sure backend is running.');
+            setError(e.message || 'Authentication failed. Please verify credentials.');
         } finally {
             setLoading(false);
         }
@@ -88,14 +104,28 @@ export function LoginScreen({ onLoginSuccess, onBiometricRetry }: Props) {
                         </View>
                     ) : null}
 
+                    {isSignup && (
+                        <View style={styles.inputContainer}>
+                            <Text style={[styles.label, { color: theme.textSecondary }]}>USERNAME</Text>
+                            <TextInput
+                                style={[styles.input, { backgroundColor: theme.card, borderColor: theme.border, color: theme.text, marginBottom: 20 }]}
+                                placeholder="Choose a username"
+                                placeholderTextColor={theme.textSecondary + '80'}
+                                autoCapitalize="none"
+                                value={username}
+                                onChangeText={(txt) => { setError(''); setUsername(txt); }}
+                            />
+                        </View>
+                    )}
+
                     <View style={styles.inputContainer}>
-                        <Text style={[styles.label, { color: theme.textSecondary }]}>EMAIL OR USERNAME</Text>
+                        <Text style={[styles.label, { color: theme.textSecondary }]}>{isSignup ? "EMAIL ADDRESS" : "EMAIL OR USERNAME"}</Text>
                         <TextInput
                             style={[styles.input, { backgroundColor: theme.card, borderColor: theme.border, color: theme.text }]}
-                            placeholder="Enter email or username"
+                            placeholder={isSignup ? "Enter your email" : "Enter email or username"}
                             placeholderTextColor={theme.textSecondary + '80'}
                             autoCapitalize="none"
-                            keyboardType="default"
+                            keyboardType={isSignup ? "email-address" : "default"}
                             value={email}
                             onChangeText={(txt) => { setError(''); setEmail(txt); }}
                         />
@@ -105,7 +135,7 @@ export function LoginScreen({ onLoginSuccess, onBiometricRetry }: Props) {
                         <Text style={[styles.label, { color: theme.textSecondary }]}>PASSWORD</Text>
                         <TextInput
                             style={[styles.input, { backgroundColor: theme.card, borderColor: theme.border, color: theme.text }]}
-                            placeholder="Enter your password"
+                            placeholder={isSignup ? "Create a password" : "Enter your password"}
                             placeholderTextColor={theme.textSecondary + '80'}
                             secureTextEntry
                             value={password}
@@ -113,21 +143,35 @@ export function LoginScreen({ onLoginSuccess, onBiometricRetry }: Props) {
                         />
                     </View>
 
-                    <TouchableOpacity style={styles.checkboxRow} onPress={() => setRememberMe(!rememberMe)} activeOpacity={0.8}>
-                        {rememberMe ? <CheckSquare color={theme.primary} size={20} /> : <Square color={theme.textSecondary} size={20} />}
-                        <Text style={[styles.checkboxText, { color: theme.textSecondary }]}>Save password for future logins</Text>
-                    </TouchableOpacity>
+                    {!isSignup && (
+                        <TouchableOpacity style={styles.checkboxRow} onPress={() => setRememberMe(!rememberMe)} activeOpacity={0.8}>
+                            {rememberMe ? <CheckSquare color={theme.primary} size={20} /> : <Square color={theme.textSecondary} size={20} />}
+                            <Text style={[styles.checkboxText, { color: theme.textSecondary }]}>Save password for future logins</Text>
+                        </TouchableOpacity>
+                    )}
 
                     <TouchableOpacity
                         style={[styles.button, { backgroundColor: theme.primary, shadowColor: theme.primaryGlow }]}
-                        onPress={handleLogin}
+                        onPress={handleAuth}
                         disabled={loading}
                         activeOpacity={0.8}
                     >
-                        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Authenticate</Text>}
+                        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>{isSignup ? "Create Account" : "Authenticate"}</Text>}
                     </TouchableOpacity>
 
-                    {onBiometricRetry && (
+                    <TouchableOpacity
+                        style={{ marginTop: 24, alignItems: 'center' }}
+                        onPress={() => { setIsSignup(!isSignup); setError(''); }}
+                    >
+                        <Text style={{ color: theme.textSecondary, fontSize: 13 }}>
+                            {isSignup ? "Already have an account? " : "Don't have an account? "}
+                            <Text style={{ color: theme.primary, fontWeight: '700' }}>
+                                {isSignup ? "Sign In" : "Sign Up"}
+                            </Text>
+                        </Text>
+                    </TouchableOpacity>
+
+                    {(!isSignup && onBiometricRetry) && (
                         <TouchableOpacity
                             style={[styles.bioButton, { backgroundColor: theme.primary + '15', borderColor: theme.primary + '30' }]}
                             onPress={() => {

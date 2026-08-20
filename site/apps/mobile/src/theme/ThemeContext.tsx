@@ -3,7 +3,7 @@ import * as SecureStore from 'expo-secure-store';
 import { AppThemes, ThemePalette } from './colors';
 import { StatusBar, useColorScheme } from 'react-native';
 
-export type ThemeMode = 'light' | 'dark';
+export type ThemeMode = 'light' | 'dark' | 'auto';
 
 type ThemeContextType = {
     theme: ThemePalette;
@@ -12,21 +12,23 @@ type ThemeContextType = {
     themeId: string;
     setThemeId: (id: string) => Promise<void>;
     availableThemes: ThemePalette[];
+    bindUser: (userId: string) => Promise<void>;
 };
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const [mode, setModeState] = useState<ThemeMode>('dark');
+    const [mode, setModeState] = useState<ThemeMode>('auto');
     const [activeThemeId, setActiveThemeId] = useState<string>('defaultDark');
+    const [activeUserId, setActiveUserId] = useState<string | null>(null);
     const [isLoaded, setIsLoaded] = useState(false);
 
     useEffect(() => {
         const loadSavedSettings = async () => {
             try {
-                let currentMode: ThemeMode = 'dark';
+                let currentMode: ThemeMode = 'auto'; // default to auto instead of dark
                 const savedMode = await SecureStore.getItemAsync('user_theme_mode') as ThemeMode;
-                if (savedMode && ['light', 'dark'].includes(savedMode)) {
+                if (savedMode && ['light', 'dark', 'auto'].includes(savedMode)) {
                     currentMode = savedMode;
                     setModeState(currentMode);
                 }
@@ -50,28 +52,55 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    const systemColorScheme = useColorScheme();
+
     useEffect(() => {
         if (!isLoaded) return;
-        // Native OS appearance syncing removed as per user request to enforce strict manual light/dark locks.
-    }, [mode, isLoaded]);
+        if (mode === 'auto') {
+            const autoTheme = systemColorScheme === 'dark' ? 'defaultDark' : 'defaultLight';
+            if (activeThemeId !== autoTheme) {
+                // Only override standard defaults so they track OS, ignore if they explicitly tapped a custom premium theme previously
+                if (activeThemeId === 'defaultDark' || activeThemeId === 'defaultLight') {
+                    setActiveThemeId(autoTheme);
+                }
+            }
+        }
+    }, [mode, systemColorScheme, isLoaded]);
+
+    const bindUser = async (userId: string) => {
+        setActiveUserId(userId);
+        try {
+            const savedTheme = await SecureStore.getItemAsync(`user_theme_pref_${userId}`);
+            if (savedTheme && AppThemes[savedTheme]) {
+                setActiveThemeId(savedTheme);
+            }
+        } catch (e) {
+            console.log('Failed to bind user theme:', e);
+        }
+    };
 
     const setMode = async (newMode: ThemeMode) => {
         setModeState(newMode);
         await SecureStore.setItemAsync('user_theme_mode', newMode);
 
-        let targetTheme = activeThemeId;
-        if (newMode === 'light') targetTheme = 'defaultLight';
-        else if (newMode === 'dark') targetTheme = 'defaultDark';
-
-        if (targetTheme !== activeThemeId) {
-            await changeTheme(targetTheme);
+        if (newMode === 'light') {
+            await changeTheme('defaultLight');
+        } else if (newMode === 'dark') {
+            await changeTheme('defaultDark');
+        } else if (newMode === 'auto') {
+            const autoTheme = systemColorScheme === 'dark' ? 'defaultDark' : 'defaultLight';
+            await changeTheme(autoTheme);
         }
     };
 
     const changeTheme = async (id: string) => {
         if (AppThemes[id]) {
             setActiveThemeId(id);
-            await SecureStore.setItemAsync('user_theme_pref', id);
+            if (activeUserId) {
+                await SecureStore.setItemAsync(`user_theme_pref_${activeUserId}`, id);
+            } else {
+                await SecureStore.setItemAsync('user_theme_pref', id);
+            }
         }
     };
 
@@ -88,7 +117,8 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 setMode,
                 themeId: activeThemeId,
                 setThemeId: changeTheme,
-                availableThemes: Object.values(AppThemes)
+                availableThemes: Object.values(AppThemes),
+                bindUser
             }}
         >
             <StatusBar barStyle={isLight ? "dark-content" : "light-content"} backgroundColor={currentTheme.background} animated />

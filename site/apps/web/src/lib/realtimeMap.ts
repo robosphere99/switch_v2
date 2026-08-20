@@ -10,6 +10,8 @@ export const REALTIME_INVALIDATIONS: Record<string, Array<Array<string | number>
   "esp:updated": [["devices"], ["home"], ["my-boards"]],
   "command:updated": [["devices"]],
   "notification:new": [["notifications"]],
+  "notification:deleted": [["notifications"]],
+  "notification:updated": [["notifications"]],
   "support:new": [["support"]],
   "home:access-revoked": [["homes"]],
 };

@@ -35,7 +35,7 @@ export async function sendPushToUser(userId: number, title: string, body: string
         for (const chunk of chunks) {
             try {
                 const ticketChunk = await expo.sendPushNotificationsAsync(chunk);
-                console.log(`[Push Engine] Dispatched payload ${ticketChunk[0].id} to hardware bridging layer.`);
+                console.log(`[Push Engine] Dispatched payload ${(ticketChunk[0] as any).id || 'batch'} to hardware bridging layer.`);
             } catch (ticketError) {
                 console.error("[Push Engine] Segment Delivery Error:", ticketError);
             }

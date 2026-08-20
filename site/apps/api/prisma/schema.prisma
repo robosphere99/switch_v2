@@ -441,6 +441,9 @@ model RefreshToken {
   id        Int       @id @default(autoincrement())
   userId    Int
   tokenHash String    @unique @db.VarChar(64) @map("token_hash")
+  deviceInfo String?  @db.VarChar(255) @map("device_info")
+  ipAddress  String?  @db.VarChar(45)  @map("ip_address")
+  lastActive DateTime @default(now())  @map("last_active")
   expiresAt DateTime  @map("expires_at")
   createdAt DateTime  @default(now()) @map("created_at")
   revokedAt DateTime? @map("revoked_at")

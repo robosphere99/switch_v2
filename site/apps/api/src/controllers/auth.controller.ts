@@ -5,13 +5,17 @@ import * as authService from "../services/auth.service";
 
 export async function signup(req: Request, res: Response) {
   const { username, email, password, homeName } = req.body;
-  const result = await authService.signup({ username, email, password, homeName });
+  const deviceInfo = req.headers["user-agent"]?.substring(0, 255);
+  const ipAddress = (req.ip || req.socket.remoteAddress)?.substring(0, 45);
+  const result = await authService.signup({ username, email, password, homeName }, deviceInfo, ipAddress);
   ok(res, result, 201);
 }
 
 export async function login(req: Request, res: Response) {
   const { usernameEmail, password } = req.body;
-  const result = await authService.login(usernameEmail, password);
+  const deviceInfo = req.headers["user-agent"]?.substring(0, 255);
+  const ipAddress = (req.ip || req.socket.remoteAddress)?.substring(0, 45);
+  const result = await authService.login(usernameEmail, password, deviceInfo, ipAddress);
   ok(res, result);
 }
 
@@ -25,7 +29,9 @@ export async function me(req: Request, res: Response) {
 
 export async function refresh(req: Request, res: Response) {
   const { refreshToken } = req.body;
-  const result = await authService.refresh(refreshToken);
+  const deviceInfo = req.headers["user-agent"]?.substring(0, 255);
+  const ipAddress = (req.ip || req.socket.remoteAddress)?.substring(0, 45);
+  const result = await authService.refresh(refreshToken, deviceInfo, ipAddress);
   ok(res, result);
 }
 
@@ -55,4 +61,19 @@ export async function resetPassword(req: Request, res: Response) {
   const { token, newPassword } = req.body;
   await authService.resetPassword(token as string, newPassword as string);
   ok(res, { message: "Password reset ho gaya — naye password se login karo" });
+}
+
+export async function listSessions(req: Request, res: Response) {
+  const sessions = await authService.listSessions(req.user!.sub);
+  ok(res, sessions);
+}
+
+export async function revokeAllSessions(req: Request, res: Response) {
+  await authService.revokeAllSessions(req.user!.sub);
+  ok(res, { message: "All sessions revoked successfully." });
+}
+
+export async function revokeSession(req: Request, res: Response) {
+  await authService.revokeSession(req.user!.sub, Number(req.params.id));
+  ok(res, { ok: true });
 }

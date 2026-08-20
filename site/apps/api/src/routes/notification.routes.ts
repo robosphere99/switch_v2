@@ -33,6 +33,10 @@ notificationRouter.post("/:id/read", requireAuth, validateParams(idParams), asyn
   ok(res, await notificationService.markRead(req.user!.sub, Number(req.params.id)));
 });
 
+notificationRouter.delete("/delete-all", requireAuth, async (req, res) => {
+  ok(res, await notificationService.removeAll(req.user!.sub));
+});
+
 notificationRouter.delete("/:id", requireAuth, validateParams(idParams), async (req, res) => {
   ok(res, await notificationService.remove(req.user!.sub, Number(req.params.id)));
 });

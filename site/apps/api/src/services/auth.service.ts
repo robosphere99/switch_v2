@@ -51,7 +51,7 @@ export async function signup(input: {
   email: string;
   password: string;
   homeName?: string;
-}): Promise<LoginResponse> {
+}, deviceInfo?: string, ipAddress?: string): Promise<LoginResponse> {
   const existing = await prisma.user.findFirst({
     where: { OR: [{ username: input.username }, { email: input.email }] },
   });
@@ -84,7 +84,7 @@ export async function signup(input: {
     return created;
   });
 
-  return issueTokens(user);
+  return issueTokens(user, deviceInfo, ipAddress);
 }
 
 /** Update profile fields (username/email) and/or password. */
@@ -155,7 +155,7 @@ export async function updateThemePref(userId: number, theme: string): Promise<Au
 }
 
 /** Login with username OR email + password. */
-export async function login(usernameEmail: string, password: string): Promise<LoginResponse> {
+export async function login(usernameEmail: string, password: string, deviceInfo?: string, ipAddress?: string): Promise<LoginResponse> {
   const user = await prisma.user.findFirst({
     where: { OR: [{ username: usernameEmail }, { email: usernameEmail }] },
   });
@@ -185,16 +185,18 @@ export async function login(usernameEmail: string, password: string): Promise<Lo
       // lastLoginAt also missing — just skip stats update.
     }
   }
-  return issueTokens(user);
+  return issueTokens(user, deviceInfo, ipAddress);
 }
 
 /** Issue a fresh access + refresh token pair, persisting the refresh token hash. */
-async function issueTokens(user: User): Promise<LoginResponse> {
+async function issueTokens(user: User, deviceInfo?: string, ipAddress?: string): Promise<LoginResponse> {
   const refreshToken = signRefreshToken(user);
   await prisma.refreshToken.create({
     data: {
       userId: user.id,
       tokenHash: hashToken(refreshToken),
+      deviceInfo,
+      ipAddress,
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     },
   });
@@ -207,7 +209,7 @@ async function issueTokens(user: User): Promise<LoginResponse> {
 }
 
 /** Rotate a refresh token into a new token pair. */
-export async function refresh(refreshToken: string): Promise<LoginResponse> {
+export async function refresh(refreshToken: string, deviceInfo?: string, ipAddress?: string): Promise<LoginResponse> {
   let payload: { sub: number };
   try {
     payload = jwt.verify(refreshToken, env.JWT_REFRESH_SECRET) as unknown as { sub: number };
@@ -237,7 +239,8 @@ export async function refresh(refreshToken: string): Promise<LoginResponse> {
     throw new AppError("INVALID_REFRESH_TOKEN", "Session invalidated — dobara login karo", 401);
   }
 
-  return issueTokens(user);
+  // Optional: Add logic here to touch the 'lastActive' tracker for this session if required
+  return issueTokens(user, deviceInfo, ipAddress);
 }
 
 /** Revoke a refresh token (logout). */
@@ -343,4 +346,29 @@ export async function resetPassword(token: string, newPassword: string): Promise
       res.ok ? { path: res.path } : undefined,
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Active Session Controls 
+// ---------------------------------------------------------------------------
+export async function listSessions(userId: number) {
+  return prisma.refreshToken.findMany({
+    where: { userId, revokedAt: null },
+    select: { id: true, deviceInfo: true, ipAddress: true, lastActive: true, createdAt: true },
+    orderBy: { lastActive: 'desc' }
+  });
+}
+
+export async function revokeAllSessions(userId: number) {
+  await prisma.refreshToken.updateMany({
+    where: { userId, revokedAt: null },
+    data: { revokedAt: new Date() }
+  });
+}
+
+export async function revokeSession(userId: number, sessionId: number) {
+  await prisma.refreshToken.updateMany({
+    where: { id: sessionId, userId, revokedAt: null },
+    data: { revokedAt: new Date() }
+  });
 }
