@@ -5,7 +5,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { corsOrigins } from "./config/env";
 import { errorHandler } from "./middleware/errorHandler";
-import { firmwareDir, webDist } from "./lib/paths";
+import { firmwareDir, webDist, mobileAppDir } from "./lib/paths";
 import { apiRouter } from "./routes";
 import { installRouter } from "./routes/install.routes";
 import { docsRouter } from "./routes/docs.routes";
@@ -43,11 +43,11 @@ async function schemaDiag() {
 export function createApp() {
   const app = express();
 
-// Health monitor ko apna public URL batao (admin/ESP requests ka Host header).
-app.use((req, _res, next) => {
-  if (req.headers.host) setLastSeenHost(req.headers.host);
-  next();
-});
+  // Health monitor ko apna public URL batao (admin/ESP requests ka Host header).
+  app.use((req, _res, next) => {
+    if (req.headers.host) setLastSeenHost(req.headers.host);
+    next();
+  });
 
   app.use(helmet());
   app.use(
@@ -85,8 +85,23 @@ app.use((req, _res, next) => {
     });
   });
 
-  app.get("/api/version", (_req, res) => {
-    res.json({ success: true, data: { version: API_VERSION, ts: new Date().toISOString() } });
+  app.get("/api/version", (req, res) => {
+    const requestHost = req.get('host') || '192.168.1.36:4000';
+    const protocol = req.protocol || 'http';
+
+    res.json({
+      success: true,
+      data: {
+        version: API_VERSION,
+        mobileAppOptions: {
+          minRequiredVersion: "1.0.1",
+          latestVersion: "1.0.1",
+          downloadUrl: `${protocol}://${requestHost}/mobile-app/SwitchNest_Latest.apk`,
+          updateMessage: "A mandatory server upgrade requires an app update to continue."
+        },
+        ts: new Date().toISOString()
+      }
+    });
   });
 
   // Install routes hamesha available — setup mode me bhi.
@@ -110,8 +125,10 @@ app.use((req, _res, next) => {
   app.use("/api", apiRouter);
 
   // Serve published ESP32 firmware at /firmware/firmware.bin (OTA downloads).
-  // Folder: <repo>/hardware/firmware — written by the admin firmware upload.
   app.use("/firmware", express.static(firmwareDir));
+
+  // Serve compiled Mobile APK releases.
+  app.use("/mobile-app", express.static(mobileAppDir));
 
   // Production: built web app (Vite dist) ko bhi API hi serve karta hai —
   // Plesk pe ek hi Node.js app se sab chalta hai (dev me Vite proxy hota hai).

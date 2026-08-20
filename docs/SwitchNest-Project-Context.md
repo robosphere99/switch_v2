@@ -7,7 +7,7 @@
 > Repo location (this machine): `C:\Users\robos\OneDrive\Documents\SwitchNest`
 >
 <!-- AUTO:STAMP:START -->
-> _Auto-updated: 2026-08-19 23:40 UTC · branch `main` · tree clean · 244 commits_
+> _Auto-updated: 2026-08-20 01:22 UTC · branch `main` · tree clean · 246 commits_
 <!-- AUTO:STAMP:END -->
 
 ---
@@ -112,6 +112,8 @@ that also serves real ESP32 hardware).
 <!-- AUTO:RECENT_COMMITS:START -->
 Sabse naye 20 commits:
 
+- `bc1d599` (2026-08-20) feat(mobile): refine auth layout, secure push notifications to admins, add functional theme overrides, unify identifier parsing
+- `b0f226b` (2026-08-20) feat(mobile): Phase 14 - Push Notifications, Live WebSocket Sync, and Multi-Home Dashboard Selector
 - `ec3403c` (2026-08-20) feat(ai): Enforce persistent Context-Per-Home AI threads across Web and Mobile
 - `e0e34aa` (2026-08-20) chore: complete phases 1-11, finalize automations and admin OTA updates
 - `d51c3cf` (2026-08-20) feat(mobile): Complete Phase 8 Mobile SDK 54 MVP
@@ -130,8 +132,6 @@ Sabse naye 20 commits:
 - `c6cf4b3` (2026-08-19) fix: use console.error instead of fileLog in api-keys catch to fix ReferenceError
 - `b8a5d48` (2026-08-19) fix: remove esbuild from deploy.cmd - dist pre-built and committed, no server rebuild needed
 - `6e26b50` (2026-08-19) fix: wrap api-keys endpoint with try-catch fallback to prevent 500
-- `0cb8625` (2026-08-19) fix: rewrite deploy.cmd with for-loop output suppression to eliminate error 255
-- `4fd82ec` (2026-08-19) fix(deploy): suppress CMD error 255 by redirecting prisma output to nul
 <!-- AUTO:RECENT_COMMITS:END -->
 
 - 503 root-cause work: DB probe retry loop so the app self-heals, `nodeProcessCountPerApplication=1`,
@@ -156,6 +156,8 @@ Sabse naye 20 commits:
    chain), kills stale duplicates tree-wise (CIM tree + Stop-Process; taskkill /T hangs
    on hidden-console processes). `-DryRun` mode included. Live kill-path tested.
 4. **TESTING.md** — verification checklist for all the above.
+5. **OTA Semantic Locking System** — App.tsx leverages Node express.static resolving dynamic domains to enforce forced Android .apk distribution prompts isolated in a root mobile-app/ dir.
+6. **Smart Assistant Overlay UI** — Unified explicit Accent color matrices separating normal IoT hardware inputs from local AI quick-prompts.
 
 ---
 

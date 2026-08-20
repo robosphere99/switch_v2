@@ -285,7 +285,7 @@ export function DashboardScreen({ user, onLogout }: { user: any, onLogout: () =>
             />
 
             <TouchableOpacity
-                style={[styles.fab, { backgroundColor: theme.primary, shadowColor: theme.primary }]}
+                style={[styles.fab, { backgroundColor: theme.accent, shadowColor: theme.accentGlow }]}
                 onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => { });
                     setAiVisible(true);

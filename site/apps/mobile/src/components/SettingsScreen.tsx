@@ -1,13 +1,32 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Switch } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { ActivityScreen } from './ActivityScreen';
-import { Activity, User, Monitor, Sun, Moon } from 'lucide-react-native';
+import { Activity, User, Monitor, Sun, Moon, Bot } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
+import * as SecureStore from 'expo-secure-store';
+import { APP_VERSION } from '../../App';
 
-export function SettingsScreen({ user, onLogout }: { user: any; onLogout: () => void }) {
+export function SettingsScreen({ onLogout }: { onLogout: () => void }) {
     const { theme, mode, setMode } = useTheme();
+    const [aiSuggestions, setAiSuggestions] = useState(true);
     const [view, setView] = useState<'MAIN' | 'TIMELINE'>('MAIN');
+
+    useEffect(() => {
+        const loadPrefs = async () => {
+            const aiPref = await SecureStore.getItemAsync('pref_ai_suggestions');
+            if (aiPref !== null) {
+                setAiSuggestions(aiPref === 'true');
+            }
+        };
+        loadPrefs();
+    }, []);
+
+    const handleAiSuggestionToggle = async (val: boolean) => {
+        setAiSuggestions(val);
+        await SecureStore.setItemAsync('pref_ai_suggestions', String(val));
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
+    };
 
     if (view === 'TIMELINE') {
         return (
@@ -55,6 +74,24 @@ export function SettingsScreen({ user, onLogout }: { user: any; onLogout: () => 
                 </View>
             </View>
 
+            <View style={{ marginBottom: 30 }}>
+                <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>SMART ASSISTANT</Text>
+                <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border, padding: 0, overflow: 'hidden', flexDirection: 'column' }]}>
+                    <View style={[styles.appearanceRow, { borderBottomColor: theme.border }]}>
+                        <View style={styles.rowLeft}>
+                            <Bot color={theme.primary} size={20} />
+                            <Text style={[styles.rowText, { color: theme.text }]}>Floating Suggestions</Text>
+                        </View>
+                        <Switch
+                            value={aiSuggestions}
+                            onValueChange={handleAiSuggestionToggle}
+                            trackColor={{ false: theme.border, true: theme.primary }}
+                            thumbColor="#fff"
+                        />
+                    </View>
+                </View>
+            </View>
+
             <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>ACCOUNT & DATA</Text>
             <TouchableOpacity
                 style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}
@@ -80,6 +117,11 @@ export function SettingsScreen({ user, onLogout }: { user: any; onLogout: () => 
                 <User color="#ef4444" size={24} style={{ marginRight: 12 }} />
                 <Text style={[styles.cardTitle, { color: '#ef4444' }]}>Sign Out</Text>
             </TouchableOpacity>
+
+            <View style={{ alignItems: 'center', marginTop: 40, marginBottom: 80, opacity: 0.5 }}>
+                <Text style={{ color: theme.textSecondary, fontSize: 13, fontWeight: '700', letterSpacing: 2 }}>SWITCHNEST MOBILE</Text>
+                <Text style={{ color: theme.textSecondary, fontSize: 11, marginTop: 4 }}>Version {APP_VERSION} (OTA Protocol 2)</Text>
+            </View>
         </View>
     );
 }

@@ -9,6 +9,16 @@ export const getHomes = async () => {
     }
 };
 
+export const getSystemVersion = async () => {
+    try {
+        // Unauthenticated generic GET
+        const res = await api.get('/version');
+        return res.data;
+    } catch (e) {
+        throw extractApiError(e);
+    }
+};
+
 export const getDevices = async (homeId: number) => {
     try {
         const res = await api.get(`/homes/${homeId}/devices`);
