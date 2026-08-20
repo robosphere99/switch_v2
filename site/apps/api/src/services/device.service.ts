@@ -132,28 +132,19 @@ export async function setDeviceStatus(input: {
     // Phase 14: Real-time Push Alert Broadcast (Vibration/Sound Native Mobile Alerts)
     try {
       const members = await prisma.homeMember.findMany({
-        where: {
-          homeId: input.homeId,
-          role: { in: ['admin', 'owner'] }
-        }
+        where: { homeId: input.homeId, role: { in: ['admin', 'owner'] } }
       });
       const actor = await prisma.user.findUnique({ where: { id: input.actorId }, select: { username: true } });
       const actorName = actor?.username || "A member";
 
       for (const m of members) {
-        // Force Push to everyone including the actor (per user request)
         sendPushToUser(
           m.userId,
           `${updated.name} turned ${input.status.toUpperCase()}`,
-          `${actorName} just interacted with the ${updated.name}`
+          `${actorName} just interacted with the ${updated.name}`,
+          undefined,
+          "device"
         );
-        // But put it in EVERY admin's notification feed (including actor's)
-        await createNotification(m.userId, {
-          category: "device",
-          type: "info",
-          title: `🔌 ${updated.name} turned ${input.status.toUpperCase()}`,
-          body: `${actorName} manually toggled this device from the Command Center.`,
-        });
       }
     } catch (e) {
       console.warn("[Push] Background dispatch failure:", e);
@@ -221,18 +212,15 @@ export async function sendDeviceCommand(input: {
         where: { homeId: input.homeId, role: { in: ['admin', 'owner'] } }
       });
       const actor = await prisma.user.findUnique({ where: { id: input.actorId }, select: { username: true } });
+
       for (const m of members) {
         sendPushToUser(
           m.userId,
           `System Command: ${input.command}`,
-          `${actor?.username || "A member"} dispatched a remote hardware command.`
+          `${actor?.username || "A member"} dispatched a remote hardware command.`,
+          undefined,
+          "device"
         );
-        await createNotification(m.userId, {
-          category: "device",
-          type: "info",
-          title: `🛠 Remote Command Executed`,
-          body: `${actor?.username || "A member"} dispatched a '${input.command}' instruction to ${updated.name}.`,
-        });
       }
     } catch (e) {
       console.warn("[Push] Remote Command Background dispatch failure:", e);
@@ -307,18 +295,15 @@ export async function bulkSetStatus(input: {
       where: { homeId: input.homeId, role: { in: ['admin', 'owner'] } }
     });
     const actor = await prisma.user.findUnique({ where: { id: input.actorId }, select: { username: true } });
+
     for (const m of members) {
       sendPushToUser(
         m.userId,
         `Room Actuation: ${input.status.toUpperCase()}`,
-        `${actor?.username || "A member"} toggled grouped components.`
+        `${actor?.username || "A member"} toggled grouped components.`,
+        undefined,
+        "device"
       );
-      await createNotification(m.userId, {
-        category: "device",
-        type: "info",
-        title: `🔌 Group Actuation Executed`,
-        body: `${actor?.username || "A member"} manually switched multiple appliances ${input.status.toUpperCase()}.`,
-      });
     }
   } catch (e) {
     console.warn("[Push] Bulk Group Background dispatch failure:", e);

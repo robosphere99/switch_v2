@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Switch, ScrollView, Modal, TextInput, KeyboardAvoidingView, Platform, Alert, ActivityIndicator } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { ActivityScreen } from './ActivityScreen';
-import { Activity, User, Monitor, Sun, Moon, Bot, Shield } from 'lucide-react-native';
+import { Activity, User, Monitor, Sun, Moon, Bot, Shield, Bell, Zap } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import * as SecureStore from 'expo-secure-store';
 import { APP_VERSION } from '../../App';
@@ -10,7 +10,7 @@ import { APP_VERSION } from '../../App';
 export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () => void }) {
     const { theme, mode, setMode, themeId, setThemeId, availableThemes } = useTheme();
     const [aiSuggestions, setAiSuggestions] = useState(true);
-    const [view, setView] = useState<'MAIN' | 'TIMELINE' | 'APPEARANCE' | 'PROFILE'>('MAIN');
+    const [view, setView] = useState<'MAIN' | 'TIMELINE' | 'APPEARANCE' | 'PROFILE' | 'NOTIFICATIONS'>('MAIN');
 
     // Password Update States
     const [pwModalVisible, setPwModalVisible] = useState(false);
@@ -21,6 +21,10 @@ export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () =>
     // Sessions States
     const [sessions, setSessions] = useState<any[]>([]);
     const [loadingSessions, setLoadingSessions] = useState(false);
+
+    // Notification Prefs
+    const [pushDeviceToggles, setPushDeviceToggles] = useState(user?.pushDeviceToggles ?? true);
+    const [pushSystemAlerts, setPushSystemAlerts] = useState(user?.pushSystemAlerts ?? true);
 
     useEffect(() => {
         if (view === 'PROFILE') {
@@ -106,6 +110,107 @@ export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () =>
         await SecureStore.setItemAsync('pref_ai_suggestions', String(val));
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
     };
+
+    useEffect(() => {
+        const fetchMe = async () => {
+            try {
+                const { api: apiInstance } = await import('../api/client');
+                const res = await apiInstance.get('/auth/me');
+                if (res.data?.success && res.data?.data) {
+                    // Ignored 1:1 user push settings fetching; preferring SecureStore token defaults instead
+                }
+            } catch (e) { }
+        }
+        if (view === 'MAIN') fetchMe();
+
+        async function fetchLocalPrefs() {
+            try {
+                const sa = await SecureStore.getItemAsync('pushSystemAlerts');
+                const dt = await SecureStore.getItemAsync('pushDeviceToggles');
+                setPushSystemAlerts(sa !== 'false');
+                setPushDeviceToggles(dt !== 'false');
+            } catch (e) { }
+        }
+        if (view === 'MAIN' || view === 'NOTIFICATIONS') fetchLocalPrefs();
+    }, [view]);
+
+    const toggleSystemAlerts = async (val: boolean) => {
+        setPushSystemAlerts(val);
+        Haptics.selectionAsync().catch(() => { });
+        try {
+            await SecureStore.setItemAsync('pushSystemAlerts', val ? 'true' : 'false');
+            const token = await SecureStore.getItemAsync('expoPushToken');
+            if (token) {
+                const { api: apiInstance } = await import('../api/client');
+                await apiInstance.post('/auth/push-token', { token, pushSystemAlerts: val });
+            }
+        } catch (e) { setPushSystemAlerts(!val); }
+    };
+
+    const toggleDeviceToggles = async (val: boolean) => {
+        setPushDeviceToggles(val);
+        Haptics.selectionAsync().catch(() => { });
+        try {
+            await SecureStore.setItemAsync('pushDeviceToggles', val ? 'true' : 'false');
+            const token = await SecureStore.getItemAsync('expoPushToken');
+            if (token) {
+                const { api: apiInstance } = await import('../api/client');
+                await apiInstance.post('/auth/push-token', { token, pushDeviceToggles: val });
+            }
+        } catch (e) { setPushDeviceToggles(!val); }
+    };
+
+    if (view === 'NOTIFICATIONS') {
+        return (
+            <View style={[styles.container, { backgroundColor: theme.background }]}>
+                <View style={{ marginBottom: 30 }}>
+                    <TouchableOpacity
+                        style={[styles.backBtn, { backgroundColor: theme.card, borderColor: theme.border, marginBottom: 16 }]}
+                        onPress={() => { Haptics.selectionAsync().catch(() => { }); setView('MAIN'); }}
+                    >
+                        <Text style={{ color: theme.primary, fontWeight: 'bold' }}>← Back</Text>
+                    </TouchableOpacity>
+                    <Text style={[styles.headerTitle, { color: theme.text }]}>Push Alerts</Text>
+                </View>
+
+                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
+                    <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>PREFERENCES</Text>
+                    <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border, padding: 0, overflow: 'hidden', flexDirection: 'column' }]}>
+                        <View style={[styles.appearanceRow, { borderBottomWidth: 1, borderBottomColor: theme.border }]}>
+                            <View style={styles.rowLeft}>
+                                <Bell color={theme.primary} size={20} />
+                                <View>
+                                    <Text style={[styles.rowText, { color: theme.text }]}>System & Security</Text>
+                                    <Text style={{ color: theme.textSecondary, fontSize: 11, marginTop: 2 }}>Login alerts, schedules, and warnings</Text>
+                                </View>
+                            </View>
+                            <Switch
+                                value={pushSystemAlerts}
+                                onValueChange={toggleSystemAlerts}
+                                trackColor={{ false: theme.border, true: theme.primary }}
+                                thumbColor="#fff"
+                            />
+                        </View>
+                        <View style={styles.appearanceRow}>
+                            <View style={styles.rowLeft}>
+                                <Zap color={theme.primary} size={20} />
+                                <View>
+                                    <Text style={[styles.rowText, { color: theme.text }]}>Device Controls</Text>
+                                    <Text style={{ color: theme.textSecondary, fontSize: 11, marginTop: 2 }}>Get alerts when hardware is toggled</Text>
+                                </View>
+                            </View>
+                            <Switch
+                                value={pushDeviceToggles}
+                                onValueChange={toggleDeviceToggles}
+                                trackColor={{ false: theme.border, true: theme.primary }}
+                                thumbColor="#fff"
+                            />
+                        </View>
+                    </View>
+                </ScrollView>
+            </View>
+        );
+    }
 
     if (view === 'TIMELINE') {
         return (
@@ -348,69 +453,89 @@ export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () =>
                 </TouchableOpacity>
             </View>
 
-            <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>APP CONFIGURATION</Text>
-            <TouchableOpacity
-                style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border, marginBottom: 30 }]}
-                onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
-                    setView('APPEARANCE');
-                }}
-            >
-                <Monitor color={theme.primary} size={24} style={{ marginRight: 12 }} />
-                <View>
-                    <Text style={[styles.cardTitle, { color: theme.text }]}>Appearance</Text>
-                    <Text style={[styles.cardSub, { color: theme.textSecondary }]}>Themes, Light/Dark, and Mode</Text>
-                </View>
-            </TouchableOpacity>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+                <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>APP CONFIGURATION</Text>
+                <TouchableOpacity
+                    style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border, marginBottom: 30 }]}
+                    onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
+                        setView('APPEARANCE');
+                    }}
+                >
+                    <Monitor color={theme.primary} size={24} style={{ marginRight: 12 }} />
+                    <View>
+                        <Text style={[styles.cardTitle, { color: theme.text }]}>Appearance</Text>
+                        <Text style={[styles.cardSub, { color: theme.textSecondary }]}>Themes, Light/Dark, and Mode</Text>
+                    </View>
+                </TouchableOpacity>
 
-            <View style={{ marginBottom: 30 }}>
-                <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>SMART ASSISTANT</Text>
-                <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border, padding: 0, overflow: 'hidden', flexDirection: 'column' }]}>
-                    <View style={[styles.appearanceRow, { borderBottomColor: theme.border }]}>
-                        <View style={styles.rowLeft}>
-                            <Bot color={theme.primary} size={20} />
-                            <Text style={[styles.rowText, { color: theme.text }]}>Floating Suggestions</Text>
+                <View style={{ marginBottom: 30 }}>
+                    <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>SMART ASSISTANT</Text>
+                    <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border, padding: 0, overflow: 'hidden', flexDirection: 'column' }]}>
+                        <View style={styles.appearanceRow}>
+                            <View style={styles.rowLeft}>
+                                <Bot color={theme.primary} size={20} />
+                                <Text style={[styles.rowText, { color: theme.text }]}>Floating Suggestions</Text>
+                            </View>
+                            <Switch
+                                value={aiSuggestions}
+                                onValueChange={handleAiSuggestionToggle}
+                                trackColor={{ false: theme.border, true: theme.primary }}
+                                thumbColor="#fff"
+                            />
                         </View>
-                        <Switch
-                            value={aiSuggestions}
-                            onValueChange={handleAiSuggestionToggle}
-                            trackColor={{ false: theme.border, true: theme.primary }}
-                            thumbColor="#fff"
-                        />
                     </View>
                 </View>
-            </View>
 
-            <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>ACCOUNT & DATA</Text>
-            <TouchableOpacity
-                style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}
-                onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
-                    setView('TIMELINE');
-                }}
-            >
-                <Activity color={theme.primary} size={24} style={{ marginRight: 12 }} />
-                <View>
-                    <Text style={[styles.cardTitle, { color: theme.text }]}>Audit Logs</Text>
-                    <Text style={[styles.cardSub, { color: theme.textSecondary }]}>View chronological history (Admins Only)</Text>
+                <View style={{ marginBottom: 30 }}>
+                    <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>NOTIFICATION ALERTS</Text>
+                    <TouchableOpacity
+                        style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}
+                        onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
+                            setView('NOTIFICATIONS');
+                        }}
+                    >
+                        <Bell color={theme.primary} size={24} style={{ marginRight: 12 }} />
+                        <View>
+                            <Text style={[styles.cardTitle, { color: theme.text }]}>Push Settings</Text>
+                            <Text style={[styles.cardSub, { color: theme.textSecondary }]}>Configure device and system alerts</Text>
+                        </View>
+                        <Text style={{ color: theme.textSecondary, fontSize: 18, fontWeight: 'bold', marginLeft: 'auto' }}>›</Text>
+                    </TouchableOpacity>
                 </View>
-            </TouchableOpacity>
 
-            <TouchableOpacity
-                style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border, marginTop: 20 }]}
-                onPress={() => {
-                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
-                    onLogout();
-                }}
-            >
-                <User color="#ef4444" size={24} style={{ marginRight: 12 }} />
-                <Text style={[styles.cardTitle, { color: '#ef4444' }]}>Sign Out</Text>
-            </TouchableOpacity>
+                <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>ACCOUNT & DATA</Text>
+                <TouchableOpacity
+                    style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}
+                    onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
+                        setView('TIMELINE');
+                    }}
+                >
+                    <Activity color={theme.primary} size={24} style={{ marginRight: 12 }} />
+                    <View>
+                        <Text style={[styles.cardTitle, { color: theme.text }]}>Audit Logs</Text>
+                        <Text style={[styles.cardSub, { color: theme.textSecondary }]}>View chronological history (Admins Only)</Text>
+                    </View>
+                </TouchableOpacity>
 
-            <View style={{ alignItems: 'center', marginTop: 40, marginBottom: 80, opacity: 0.5 }}>
-                <Text style={{ color: theme.textSecondary, fontSize: 13, fontWeight: '700', letterSpacing: 2 }}>SWITCHNEST MOBILE</Text>
-                <Text style={{ color: theme.textSecondary, fontSize: 11, marginTop: 4 }}>Version {APP_VERSION} (OTA Protocol 2)</Text>
-            </View>
+                <TouchableOpacity
+                    style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border, marginTop: 20 }]}
+                    onPress={() => {
+                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
+                        onLogout();
+                    }}
+                >
+                    <User color="#ef4444" size={24} style={{ marginRight: 12 }} />
+                    <Text style={[styles.cardTitle, { color: '#ef4444' }]}>Sign Out</Text>
+                </TouchableOpacity>
+
+                <View style={{ alignItems: 'center', marginTop: 40, marginBottom: 80, opacity: 0.5 }}>
+                    <Text style={{ color: theme.textSecondary, fontSize: 13, fontWeight: '700', letterSpacing: 2 }}>SWITCHNEST MOBILE</Text>
+                    <Text style={{ color: theme.textSecondary, fontSize: 11, marginTop: 4 }}>Version {APP_VERSION} (OTA Protocol 2)</Text>
+                </View>
+            </ScrollView>
         </View>
     );
 }

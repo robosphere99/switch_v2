@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
+import * as SecureStore from 'expo-secure-store';
 import { api } from '../api/client';
 
 // Extremely critical for real-time foreground alerts with tone & vibration
@@ -21,8 +22,19 @@ export function usePushNotifications() {
         registerForPushNotificationsAsync().then(token => {
             if (token) {
                 setExpoPushToken(token);
-                // Background Sync token with SwitchNest DB
-                api.post('/auth/push-token', { token }).catch(err => console.log("[Push] Failed to sync token", err));
+                SecureStore.setItemAsync('expoPushToken', token).catch(() => { });
+
+                Promise.all([
+                    SecureStore.getItemAsync('pushSystemAlerts'),
+                    SecureStore.getItemAsync('pushDeviceToggles')
+                ]).then(([sa, dt]) => {
+                    api.post('/auth/push-token', {
+                        token,
+                        deviceModel: Platform.OS,
+                        pushSystemAlerts: sa !== 'false',
+                        pushDeviceToggles: dt !== 'false'
+                    }).catch(err => console.log("[Push] Failed to sync individual token params", err));
+                });
             }
         });
     }, []);

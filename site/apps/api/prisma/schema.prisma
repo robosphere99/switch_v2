@@ -116,9 +116,11 @@ model User {
   status      UserStatus @default(active)
   createdAt   DateTime   @default(now()) @map("created_at")
   lastLoginAt DateTime?  @map("last_login_at")
-  themePref   String?    @db.VarChar(16) @map("theme_pref")
-  tokenVersion Int       @default(0) @map("token_version")
-  expoPushToken String?  @db.VarChar(100) @map("expo_push_token")
+  themePref        String?    @db.VarChar(16) @map("theme_pref")
+  pushDeviceToggles Boolean   @default(true) @map("push_device_toggles")
+  pushSystemAlerts  Boolean   @default(true) @map("push_system_alerts")
+  tokenVersion     Int        @default(0) @map("token_version")
+  expoPushToken    String?    @db.VarChar(100) @map("expo_push_token")
 
   ownedHomes     Home[]            @relation("HomeOwner")
   memberships    HomeMember[]
@@ -143,6 +145,7 @@ model User {
   oauthCodes      OAuthAuthCode[]
   oauthTokens     OAuthToken[]
   integrations    IntegrationConnection[]
+  pushSubscriptions PushSubscription[]
 
   @@map("users")
 }
@@ -754,4 +757,17 @@ model IntegrationConnection {
   @@unique([userId, provider]) // One provider connection per user
   @@index([homeId])
   @@map("integration_connections")
+}
+
+model PushSubscription {
+  id                Int      @id @default(autoincrement())
+  userId            Int      @map("user_id")
+  token             String   @unique @db.VarChar(255)
+  deviceModel       String?  @db.VarChar(100) @map("device_model")
+  pushDeviceToggles Boolean  @default(true) @map("push_device_toggles")
+  pushSystemAlerts  Boolean  @default(true) @map("push_system_alerts")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

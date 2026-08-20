@@ -53,6 +53,16 @@ export async function createNotification(userId: number, input: CreateNotificati
     },
   });
   emitToUser(userId, "notification:new", notification);
+
+  import("./push.service").then(({ sendPushToUser }) => {
+    let plaintext = input.body || "";
+    try {
+      const p = JSON.parse(plaintext);
+      if (p.t) plaintext = p.t;
+    } catch { /* parse ignore */ }
+    sendPushToUser(userId, input.title, plaintext, undefined, "system");
+  }).catch(console.error);
+
   return notification;
 }
 

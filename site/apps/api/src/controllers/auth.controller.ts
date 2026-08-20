@@ -20,11 +20,19 @@ export async function login(req: Request, res: Response) {
 }
 
 export async function me(req: Request, res: Response) {
-  const user = await prisma.user.findUnique({
-    where: { id: req.user!.sub },
-    select: { id: true, username: true, email: true, role: true, themePref: true, createdAt: true },
-  });
-  ok(res, user);
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user!.sub },
+      select: { id: true, username: true, email: true, role: true, themePref: true, createdAt: true, pushDeviceToggles: true, pushSystemAlerts: true },
+    });
+    ok(res, user);
+  } catch (err) {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user!.sub },
+      select: { id: true, username: true, email: true, role: true, themePref: true, createdAt: true },
+    });
+    ok(res, { ...user, pushDeviceToggles: true, pushSystemAlerts: true });
+  }
 }
 
 export async function refresh(req: Request, res: Response) {
