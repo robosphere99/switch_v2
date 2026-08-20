@@ -7,7 +7,7 @@
 > Repo location (this machine): `C:\Users\robos\OneDrive\Documents\SwitchNest`
 >
 <!-- AUTO:STAMP:START -->
-> _Auto-updated: 2026-08-20 01:22 UTC · branch `main` · tree clean · 246 commits_
+> _Auto-updated: 2026-08-20 09:16 UTC · branch `main` · tree clean · 248 commits_
 <!-- AUTO:STAMP:END -->
 
 ---
@@ -112,6 +112,8 @@ that also serves real ESP32 hardware).
 <!-- AUTO:RECENT_COMMITS:START -->
 Sabse naye 20 commits:
 
+- `8715d23` (2026-08-20) feat: Implement Active Sessions & Bulk Feed Notifications
+- `ae6cc20` (2026-08-20) feat(mobile/api): Implement Forced OTA Update lock, Assistant Suggestion Chips, and isolated Mobile APK distribution route
 - `bc1d599` (2026-08-20) feat(mobile): refine auth layout, secure push notifications to admins, add functional theme overrides, unify identifier parsing
 - `b0f226b` (2026-08-20) feat(mobile): Phase 14 - Push Notifications, Live WebSocket Sync, and Multi-Home Dashboard Selector
 - `ec3403c` (2026-08-20) feat(ai): Enforce persistent Context-Per-Home AI threads across Web and Mobile
@@ -130,8 +132,6 @@ Sabse naye 20 commits:
 - `bc9f958` (2026-08-19) fix: add api_keys.revoked_at auto-migration on boot + defensive try-catch in user api-keys routes
 - `c44e522` (2026-08-19) fix: add settle delay after setserver + retry setapname (3 attempts, 15s timeout) to prevent Connection Timeout
 - `c6cf4b3` (2026-08-19) fix: use console.error instead of fileLog in api-keys catch to fix ReferenceError
-- `b8a5d48` (2026-08-19) fix: remove esbuild from deploy.cmd - dist pre-built and committed, no server rebuild needed
-- `6e26b50` (2026-08-19) fix: wrap api-keys endpoint with try-catch fallback to prevent 500
 <!-- AUTO:RECENT_COMMITS:END -->
 
 - 503 root-cause work: DB probe retry loop so the app self-heals, `nodeProcessCountPerApplication=1`,
