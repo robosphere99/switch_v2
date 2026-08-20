@@ -5,6 +5,7 @@ import { AppError } from "../lib/response";
 import { emitDeviceUpdated, emitToHome } from "../lib/socket";
 import { audit } from "./audit.service";
 import { createNotification } from "./notification.service";
+import { sendPushToUser } from "./push.service";
 import { resolveFirmware } from "./firmware.service";
 
 export async function listDevices(homeId: number, viewerId?: number) {
@@ -130,9 +131,12 @@ export async function setDeviceStatus(input: {
 
     // Phase 14: Real-time Push Alert Broadcast (Vibration/Sound Native Mobile Alerts)
     try {
-      const { sendPushToUser } = await import("./push.service");
       const members = await prisma.homeMember.findMany({
-        where: { homeId: input.homeId, userId: { not: input.actorId } }
+        where: {
+          homeId: input.homeId,
+          userId: { not: input.actorId },
+          role: { in: ['admin', 'owner'] }
+        }
       });
       const actor = await prisma.user.findUnique({ where: { id: input.actorId }, select: { username: true } });
       const actorName = actor?.username || "A member";

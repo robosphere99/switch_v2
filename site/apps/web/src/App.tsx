@@ -5,6 +5,7 @@ import { ChatWidget } from "./components/ChatWidget";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { useRealtime } from "./hooks/useRealtime";
 import { Dashboard } from "./pages/Dashboard";
+import { Settings } from "./pages/Settings";
 import { DeviceKeys } from "./pages/DeviceKeys";
 import { Homes } from "./pages/Homes";
 import { Notifications } from "./pages/Notifications";
@@ -140,6 +141,14 @@ export default function App() {
             element={
               <ProtectedRoute customerOnly>
                 <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute customerOnly>
+                <Settings />
               </ProtectedRoute>
             }
           />

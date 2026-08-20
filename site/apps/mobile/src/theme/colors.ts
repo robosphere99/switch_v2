@@ -15,6 +15,21 @@ export type ThemePalette = {
 };
 
 export const AppThemes: Record<string, ThemePalette> = {
+    defaultLight: {
+        id: 'defaultLight',
+        name: 'Snow White (Classic)',
+        isPremium: false,
+        background: '#f8fafc',
+        card: '#ffffff',
+        text: '#0f172a',
+        textSecondary: '#64748b',
+        primary: '#3b82f6',
+        primaryGlow: 'rgba(59, 130, 246, 0.4)',
+        danger: '#ef4444',
+        success: '#10b981',
+        border: '#e2e8f0',
+        tabBar: '#ffffff',
+    },
     defaultDark: {
         id: 'defaultDark',
         name: 'Midnight Slate (Classic)',

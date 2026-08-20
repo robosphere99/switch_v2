@@ -49,3 +49,18 @@ homeRouter.post(
   validateBody(transferSchema),
   homeController.transfer,
 );
+
+homeRouter.get(
+  "/:homeId/activity",
+  requireAuth,
+  validateParams(idParams),
+  requireHomeMember("admin"),
+  homeController.activity,
+);
+homeRouter.get(
+  "/:homeId/members",
+  requireAuth,
+  validateParams(idParams),
+  requireHomeMember("member"),
+  homeController.listMembers,
+);

@@ -26,6 +26,13 @@ export async function listHomesForUser(userId: number) {
   });
 }
 
+export async function getHomeMembers(homeId: number) {
+  return prisma.homeMember.findMany({
+    where: { homeId },
+    include: { user: { select: { id: true, username: true, email: true } } }
+  });
+}
+
 export async function getHomeDetail(homeId: number) {
   return prisma.home.findUnique({
     where: { id: homeId },
@@ -70,4 +77,28 @@ export async function transferOwnership(homeId: number, newOwnerId: number) {
 
 export async function deleteHome(homeId: number) {
   await prisma.home.delete({ where: { id: homeId } });
+}
+
+export async function getHomeActivity(homeId: number, limit: number = 50, deviceId?: number, userId?: number, timeRange?: string) {
+  const whereClause: any = { device: { homeId } };
+  if (deviceId) whereClause.deviceId = deviceId;
+  if (userId) whereClause.actorId = userId;
+
+  if (timeRange === '24h') {
+    whereClause.createdAt = { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) };
+  } else if (timeRange === '7d') {
+    whereClause.createdAt = { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) };
+  } else if (timeRange === '30d') {
+    whereClause.createdAt = { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) };
+  }
+
+  return prisma.deviceLog.findMany({
+    where: whereClause,
+    orderBy: { createdAt: "desc" },
+    take: limit,
+    include: {
+      actor: { select: { id: true, username: true } },
+      device: { select: { id: true, name: true, type: true } }
+    }
+  });
 }

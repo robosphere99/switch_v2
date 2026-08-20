@@ -5,7 +5,8 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import { DashboardScreen } from './src/components/DashboardScreen';
 import { AutomationsScreen } from './src/components/AutomationsScreen';
 import { LoginScreen } from './src/components/LoginScreen';
-import { Clock, Home as HomeIcon, Settings } from 'lucide-react-native';
+import { SettingsScreen } from './src/components/SettingsScreen';
+import { Clock, Home as HomeIcon, Settings, Activity } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 
@@ -80,6 +81,18 @@ function MainApp() {
     }
     if (activeTab === 'AUTOMATIONS') {
       return <AutomationsScreen />;
+    }
+    if (activeTab === 'SETTINGS') {
+      return (
+        <SettingsScreen
+          user={user}
+          onLogout={async () => {
+            await SecureStore.deleteItemAsync('accessToken');
+            await SecureStore.deleteItemAsync('user');
+            setUser(null);
+          }}
+        />
+      );
     }
     return (
       <View style={styles.comingSoon}>
