@@ -7,7 +7,7 @@
 > Repo location (this machine): `C:\Users\robos\OneDrive\Documents\SwitchNest`
 >
 <!-- AUTO:STAMP:START -->
-> _Auto-updated: 2026-08-20 09:16 UTC · branch `main` · tree clean · 248 commits_
+> _Auto-updated: 2026-08-20 10:58 UTC · branch `main` · tree dirty (1 changes) · 251 commits_
 <!-- AUTO:STAMP:END -->
 
 ---
@@ -112,6 +112,9 @@ that also serves real ESP32 hardware).
 <!-- AUTO:RECENT_COMMITS:START -->
 Sabse naye 20 commits:
 
+- `60658c8` (2026-08-20) feat(observability): migrate to multi-device push configuration registry
+- `83e7d53` (2026-08-20) feat: enforce global push notifications to all actors
+- `b2faf30` (2026-08-20) fix: make actor visible in notification feed
 - `8715d23` (2026-08-20) feat: Implement Active Sessions & Bulk Feed Notifications
 - `ae6cc20` (2026-08-20) feat(mobile/api): Implement Forced OTA Update lock, Assistant Suggestion Chips, and isolated Mobile APK distribution route
 - `bc1d599` (2026-08-20) feat(mobile): refine auth layout, secure push notifications to admins, add functional theme overrides, unify identifier parsing
@@ -129,9 +132,6 @@ Sabse naye 20 commits:
 - `cf1fe81` (2026-08-19) fix: desktop navbar overflow — compact labels, scrollable nav, no cutoff
 - `d81a309` (2026-08-19) fix: mobile UI — navbar dropdown, ChatWidget, touch targets, dark mode
 - `4e077c9` (2026-08-19) feat: real-time notification bell — auto-update + audio feedback + browser push
-- `bc9f958` (2026-08-19) fix: add api_keys.revoked_at auto-migration on boot + defensive try-catch in user api-keys routes
-- `c44e522` (2026-08-19) fix: add settle delay after setserver + retry setapname (3 attempts, 15s timeout) to prevent Connection Timeout
-- `c6cf4b3` (2026-08-19) fix: use console.error instead of fileLog in api-keys catch to fix ReferenceError
 <!-- AUTO:RECENT_COMMITS:END -->
 
 - 503 root-cause work: DB probe retry loop so the app self-heals, `nodeProcessCountPerApplication=1`,

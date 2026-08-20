@@ -10,22 +10,19 @@ const expo = new Expo({ accessToken: process.env.EXPO_ACCESS_TOKEN }); // access
  */
 export async function sendPushToUser(userId: number, title: string, body: string, payload?: any, category: "device" | "system" = "system") {
     try {
-        let tokensRaw: any[] = [];
-        try {
-            if (category === "device") {
-                tokensRaw = await prisma.$queryRawUnsafe(`SELECT token FROM \`PushSubscription\` WHERE user_id = ${userId} AND push_device_toggles = 1`);
-            } else {
-                tokensRaw = await prisma.$queryRawUnsafe(`SELECT token FROM \`PushSubscription\` WHERE user_id = ${userId} AND push_system_alerts = 1`);
-            }
-        } catch (e) {
-            return false;
-        }
+        const subscriptions = await prisma.pushSubscription.findMany({
+            where: {
+                userId,
+                ...(category === "device" ? { pushDeviceToggles: true } : { pushSystemAlerts: true })
+            },
+            select: { token: true }
+        });
 
-        if (!tokensRaw || tokensRaw.length === 0) return false;
+        if (!subscriptions || subscriptions.length === 0) return false;
 
         const messages: ExpoPushMessage[] = [];
-        for (const row of tokensRaw) {
-            const pushToken = row.token;
+        for (const sub of subscriptions) {
+            const pushToken = sub.token;
             if (!Expo.isExpoPushToken(pushToken)) {
                 console.warn(`[Push Engine] Token ${pushToken} is invalid. Purging from registry.`);
                 await prisma.$executeRawUnsafe(`DELETE FROM \`PushSubscription\` WHERE token = '${pushToken}'`).catch(() => { });
