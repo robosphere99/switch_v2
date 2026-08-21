@@ -2,6 +2,15 @@ import { api, extractApiError } from './client';
 
 export const getHomes = async () => {
     try {
+        const res = await api.get('/homes');
+        return res.data;
+    } catch (e) {
+        throw extractApiError(e);
+    }
+};
+
+export const getHardwareHomes = async () => {
+    try {
         const res = await api.get('/homes/my-boards');
         return res.data;
     } catch (e) {

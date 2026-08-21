@@ -222,7 +222,9 @@ supportRouter.post("/admin/messages", requireAuth, adminSendLimiter, validateBod
       body: JSON.stringify({ u: req.user!.sub, t: message.slice(0, 200) }),
     });
   }
+  // Sender (Admin) aur Recipient (User) dono ko emit karo taaki dono ke multi-session sync ho
   emitToUser(userId, "support:new", { senderRole: "admin", message: created });
+  emitToUser(req.user!.sub, "support:new", { senderRole: "admin", message: created });
 
   // Email notification — user ko jab admin reply kare (SMTP configured ho to; nahi to skip)
   if (user.email) {
@@ -307,6 +309,10 @@ supportRouter.post("/messages", requireAuth, userSendLimiter, validateBody(userS
     }
     emitToUser(admin.id, "support:new", { senderRole: "user", message: created });
   }
+
+  // Sender (User) ko bhi emit karo taaki uske web/mobile dono devices sync ho jayen
+  emitToUser(userId, "support:new", { senderRole: "user", message: created });
+
   ok(res, created, 201);
 });
 
@@ -408,9 +414,9 @@ supportRouter.get("/admin/conversations", requireAuth, async (req, res) => {
   const users =
     userIds.length > 0
       ? await prisma.user.findMany({
-          where: { id: { in: userIds } },
-          select: { id: true, username: true, email: true },
-        })
+        where: { id: { in: userIds } },
+        select: { id: true, username: true, email: true },
+      })
       : [];
   const userMap = new Map(users.map((u) => [u.id, u]));
   const conversations = [...byUser.entries()]
@@ -515,40 +521,40 @@ supportRouter.get("/admin/context", requireAuth, async (req, res) => {
   const [devices, esps] =
     homeIds.length > 0
       ? await Promise.all([
-          prisma.device.findMany({
-            where: { homeId: { in: homeIds } },
-            select: {
-              id: true,
-              name: true,
-              type: true,
-              status: true,
-              serialNumber: true,
-              offline: true,
-              lastSeen: true,
-              room: { select: { name: true } },
-              home: { select: { name: true } },
-            },
-            orderBy: { name: "asc" },
-            take: 100,
-          }),
-          prisma.espDevice.findMany({
-            where: { homeId: { in: homeIds } },
-            select: {
-              id: true,
-              name: true,
-              macAddress: true,
-              serialCode: true,
-              modelCode: true,
-              firmwareVersion: true,
-              offline: true,
-              ipAddress: true,
-              lastSeen: true,
-              home: { select: { name: true } },
-            },
-            orderBy: { id: "asc" },
-            take: 50,
-          }),
-        ])
+        prisma.device.findMany({
+          where: { homeId: { in: homeIds } },
+          select: {
+            id: true,
+            name: true,
+            type: true,
+            status: true,
+            serialNumber: true,
+            offline: true,
+            lastSeen: true,
+            room: { select: { name: true } },
+            home: { select: { name: true } },
+          },
+          orderBy: { name: "asc" },
+          take: 100,
+        }),
+        prisma.espDevice.findMany({
+          where: { homeId: { in: homeIds } },
+          select: {
+            id: true,
+            name: true,
+            macAddress: true,
+            serialCode: true,
+            modelCode: true,
+            firmwareVersion: true,
+            offline: true,
+            ipAddress: true,
+            lastSeen: true,
+            home: { select: { name: true } },
+          },
+          orderBy: { id: "asc" },
+          take: 50,
+        }),
+      ])
       : [[], []];
 
   ok(res, {

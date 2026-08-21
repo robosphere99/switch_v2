@@ -56,6 +56,7 @@ export function MembersScreen({ homeId, myRole, homeList, onClose }: {
     const [joinCode, setJoinCode] = useState('');
     const [joining, setJoining] = useState(false);
     const [joinMsg, setJoinMsg] = useState<{ ok: boolean; text: string } | null>(null);
+    const [joinModalVisible, setJoinModalVisible] = useState(false);
 
     // FIX: Derive role dynamically from the currently active home (not static prop)
     const activeHome = homeList.find((h: any) => (h.homeId || h.id) === activeHomeId);
@@ -201,9 +202,14 @@ export function MembersScreen({ homeId, myRole, homeList, onClose }: {
                     <Users color={theme.primary} size={24} />
                     <Text style={[styles.title, { color: theme.text }]}>Family</Text>
                 </View>
-                <TouchableOpacity onPress={onClose} style={{ padding: 6 }}>
-                    <X color={theme.textSecondary} size={26} />
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <TouchableOpacity onPress={() => { Haptics.selectionAsync(); setJoinModalVisible(true); }} style={{ paddingHorizontal: 12, paddingVertical: 6, backgroundColor: theme.primary + '20', borderRadius: 12 }}>
+                        <Text style={{ color: theme.primary, fontWeight: '700', fontSize: 12 }}>Join Home</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={onClose} style={{ padding: 6 }}>
+                        <X color={theme.textSecondary} size={26} />
+                    </TouchableOpacity>
+                </View>
             </View>
 
             <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 60 }}>
@@ -384,43 +390,54 @@ export function MembersScreen({ homeId, myRole, homeList, onClose }: {
                         <Text style={{ color: theme.textSecondary, textAlign: 'center', paddingVertical: 20 }}>No members found.</Text>
                     )}
                 </View>
-
-                {/* Join Home */}
-                <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.primary + '40', borderStyle: 'dashed' }]}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                        <Key color={theme.primary} size={16} />
-                        <Text style={{ color: theme.primary, fontWeight: '700', fontSize: 13 }}>JOIN A HOME</Text>
-                    </View>
-                    <Text style={{ color: theme.textSecondary, fontSize: 12, marginBottom: 14 }}>
-                        Got an invite code from a family member? Enter it here.
-                    </Text>
-                    <View style={{ flexDirection: 'row', gap: 10 }}>
-                        <TextInput
-                            placeholder="e.g. 5YTHFA4M"
-                            placeholderTextColor={theme.textSecondary}
-                            autoCapitalize="characters"
-                            autoCorrect={false}
-                            value={joinCode}
-                            onChangeText={t => setJoinCode(t.toUpperCase())}
-                            style={[styles.input, { flex: 1, borderColor: theme.border, color: theme.text, marginBottom: 0, fontFamily: 'monospace', letterSpacing: 3 }]}
-                        />
-                        <TouchableOpacity
-                            onPress={handleJoin}
-                            disabled={joinCode.trim().length < 6 || joining}
-                            style={[styles.actionBtn, { backgroundColor: '#10b981', paddingHorizontal: 20, opacity: joinCode.trim().length < 6 ? 0.5 : 1 }]}
-                        >
-                            {joining ? <ActivityIndicator color="#fff" size="small" /> : (
-                                <Text style={{ color: '#fff', fontWeight: '700' }}>Join</Text>
-                            )}
-                        </TouchableOpacity>
-                    </View>
-                    {joinMsg && (
-                        <Text style={{ marginTop: 10, color: joinMsg.ok ? '#10b981' : '#ef4444', fontWeight: '600', fontSize: 13 }}>
-                            {joinMsg.ok ? '✅ ' : '✗ '}{joinMsg.text}
-                        </Text>
-                    )}
-                </View>
             </ScrollView>
+
+            {/* Join Home Modal */}
+            <Modal visible={joinModalVisible} transparent animationType="fade" onRequestClose={() => setJoinModalVisible(false)}>
+                <TouchableOpacity style={{ flex: 1, backgroundColor: '#00000080', justifyContent: 'center', alignItems: 'center', padding: 20 }} activeOpacity={1} onPress={() => setJoinModalVisible(false)}>
+                    <View style={[styles.card, { backgroundColor: theme.background, borderColor: theme.primary + '40', borderWidth: 2, width: '100%', maxWidth: 400, marginTop: 0 }]} onStartShouldSetResponder={() => true}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                <Key color={theme.primary} size={18} />
+                                <Text style={{ color: theme.primary, fontWeight: '800', fontSize: 15 }}>
+                                    JOIN A HOME
+                                </Text>
+                            </View>
+                            <TouchableOpacity onPress={() => setJoinModalVisible(false)} style={{ padding: 4 }}>
+                                <X color={theme.textSecondary} size={20} />
+                            </TouchableOpacity>
+                        </View>
+                        <Text style={{ color: theme.textSecondary, fontSize: 13, marginBottom: 18, lineHeight: 18 }}>
+                            Got an invite code for a different home? Enter it here to join.
+                        </Text>
+                        <View style={{ flexDirection: 'row', gap: 10 }}>
+                            <TextInput
+                                placeholder="e.g. 5YTHFA4M"
+                                placeholderTextColor={theme.textSecondary}
+                                autoCapitalize="characters"
+                                autoCorrect={false}
+                                value={joinCode}
+                                onChangeText={t => setJoinCode(t.toUpperCase())}
+                                style={[styles.input, { flex: 1, borderColor: theme.border, color: theme.text, marginBottom: 0, fontFamily: 'monospace', letterSpacing: 3, fontSize: 16 }]}
+                            />
+                            <TouchableOpacity
+                                onPress={handleJoin}
+                                disabled={joinCode.trim().length < 6 || joining}
+                                style={[styles.actionBtn, { backgroundColor: '#10b981', paddingHorizontal: 24, opacity: joinCode.trim().length < 6 ? 0.5 : 1 }]}
+                            >
+                                {joining ? <ActivityIndicator color="#fff" size="small" /> : (
+                                    <Text style={{ color: '#fff', fontWeight: '800', fontSize: 15 }}>Join</Text>
+                                )}
+                            </TouchableOpacity>
+                        </View>
+                        {joinMsg && (
+                            <Text style={{ marginTop: 14, color: joinMsg.ok ? '#10b981' : '#ef4444', fontWeight: '600', fontSize: 14 }}>
+                                {joinMsg.ok ? '✅ ' : '✗ '}{joinMsg.text}
+                            </Text>
+                        )}
+                    </View>
+                </TouchableOpacity>
+            </Modal>
         </View>
     );
 }

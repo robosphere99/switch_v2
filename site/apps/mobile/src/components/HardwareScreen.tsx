@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Modal } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { Cpu, Wifi, Server, X, PlusCircle, Monitor, Shield } from 'lucide-react-native';
-import { getHomes, setEspLed, assignEspChannel } from '../api/hardware';
+import { getHardwareHomes, setEspLed, assignEspChannel } from '../api/hardware';
 import * as Haptics from 'expo-haptics';
 
 const getRelativeTime = (dateString: string) => {
@@ -34,7 +34,7 @@ export function HardwareScreen() {
     const loadDashboards = async () => {
         setLoading(true);
         try {
-            const res = await getHomes();
+            const res = await getHardwareHomes();
             if (res.success && res.data) {
                 setHomes(res.data);
                 if (res.data.length > 0 && !selectedHomeId) {
@@ -96,6 +96,24 @@ export function HardwareScreen() {
         );
     }
 
+    if (!loading && homes.length === 0) {
+        return (
+            <View style={[styles.container, { backgroundColor: theme.background }]}>
+                <View style={[styles.header, { backgroundColor: theme.background }]}>
+                    <Text style={[styles.headerTitle, { color: theme.text }]}>Hardware</Text>
+                    <Text style={{ color: theme.textSecondary, marginTop: 4 }}>Cloud Physical Mappings</Text>
+                </View>
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+                    <Shield color={theme.textSecondary} size={48} style={{ marginBottom: 16 }} />
+                    <Text style={{ color: theme.text, fontSize: 20, fontWeight: 'bold', marginBottom: 8 }}>Access Restricted</Text>
+                    <Text style={{ color: theme.textSecondary, textAlign: 'center', fontSize: 16 }}>
+                        You must be an Owner or Admin of a home to view and manage its internal hardware.
+                    </Text>
+                </View>
+            </View>
+        );
+    }
+
     return (
         <View style={[styles.container, { backgroundColor: theme.background }]}>
             <View style={[styles.header, { backgroundColor: theme.background }]}>
@@ -120,13 +138,7 @@ export function HardwareScreen() {
             )}
 
             <ScrollView contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
-                {currentHome && currentHome.role !== 'owner' && currentHome.role !== 'admin' ? (
-                    <View style={[styles.emptyBox, { borderColor: theme.border, backgroundColor: theme.card }]}>
-                        <Shield color={theme.textSecondary} size={32} style={{ marginBottom: 12 }} />
-                        <Text style={{ color: theme.text, fontSize: 18, fontWeight: 'bold', marginBottom: 4 }}>Access Restricted</Text>
-                        <Text style={{ color: theme.textSecondary, textAlign: 'center' }}>You must be the Owner or Admin of '{currentHome.homeName}' to manage hardware.</Text>
-                    </View>
-                ) : currentHome?.boards?.length === 0 ? (
+                {currentHome?.boards?.length === 0 ? (
                     <View style={[styles.emptyBox, { borderColor: theme.border, backgroundColor: theme.card }]}>
                         <Server color={theme.textSecondary} size={32} style={{ marginBottom: 12 }} />
                         <Text style={{ color: theme.textSecondary, textAlign: 'center' }}>No hardware hubs registered to this home.</Text>

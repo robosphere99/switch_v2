@@ -319,18 +319,20 @@ class FlasherApp:
         self.b_refresh = ttk.Button(row, text="⟳", width=3, command=self.refresh_ports)
         self.b_refresh.grid(row=0, column=2, padx=2)
 
+        self.b_wipe = ttk.Button(row, text="0 · Fresh Start", command=self.do_wipe)
+        self.b_wipe.grid(row=0, column=3, padx=6)
         self.b_flash = ttk.Button(row, text="1 · Flash Firmware", command=self.do_flash)
-        self.b_flash.grid(row=0, column=3, padx=6)
+        self.b_flash.grid(row=0, column=4, padx=6)
         self.b_prov = ttk.Button(row, text="2 · Provision + Test", command=self.do_provision)
-        self.b_prov.grid(row=0, column=4, padx=6)
+        self.b_prov.grid(row=0, column=5, padx=6)
         self.b_mark = ttk.Button(row, text="3 · Mark Tested", command=self.do_mark)
-        self.b_mark.grid(row=0, column=5, padx=6)
+        self.b_mark.grid(row=0, column=6, padx=6)
         self.b_monitor = ttk.Button(row, text="🔍 Serial Monitor", command=self.toggle_monitor)
-        self.b_monitor.grid(row=0, column=6, padx=6)
+        self.b_monitor.grid(row=0, column=7, padx=6)
         self.b_next = ttk.Button(row, text="Next Board ▸", command=self.do_next)
-        self.b_next.grid(row=0, column=7, padx=6)
+        self.b_next.grid(row=0, column=8, padx=6)
         self.l_prog = ttk.Label(row, text="Idle", foreground="orange")
-        self.l_prog.grid(row=0, column=8, padx=8)
+        self.l_prog.grid(row=0, column=9, padx=8)
 
         # Row 3b — serial monitor (inline, toggle se show/hide — alag window nahi)
         self.mon_frame = ttk.LabelFrame(f, text=" Serial Monitor ", padding=8)
@@ -745,6 +747,62 @@ class FlasherApp:
                 line = ANSI_RE.sub("", line).strip()
                 if line:
                     self._log("  " + line)
+
+    def do_wipe(self):
+        if self.busy:
+            return
+        if self.monitor_on:
+            messagebox.showwarning("Serial Monitor",
+                                   "Serial Monitor ON hai — Close Serial Monitor dabao, phir Fresh Start karo (port busy hai)")
+            return
+        if not messagebox.askyesno(
+            "Confirm — Fresh Start",
+            "Kya aap सचमुच ESP flash ko wipe karna chahte hain?\n\nYeh current firmware aur NVS configs clear kar dega aur 'blink' flash karega."
+        ):
+            self._log("Fresh Start cancelled", "warn")
+            return
+        self.set_busy(True)
+        def work():
+            try:
+                port = self._com()
+                self._log(f"Absolute Factory Erase (esptool) on {port}…", "info")
+                self._run_esptool(["--port", port, "--baud", "115200", "erase_flash"])
+                self._log("Erase OK. Ab Blink code upload ho raha hai...", "info")
+                
+                # Fetch blink_full.bin (contains bootloader + partitions + app)
+                import os
+                local_path = os.path.join(os.path.dirname(__file__), "..", "..", "hardware", "firmware", "blink_full.bin")
+                bin_path = "blink_full.bin"
+                got_blink = False
+
+                if os.path.exists(local_path):
+                    import shutil
+                    shutil.copy(local_path, bin_path)
+                    got_blink = True
+                else:
+                    base = self.e_server.get().rstrip("/") + "/firmware/"
+                    r = requests.get(base + "blink_full.bin", timeout=15)
+                    if r.status_code == 200:
+                        with open(bin_path, "wb") as fh:
+                            fh.write(r.content)
+                        got_blink = True
+
+                if got_blink:
+                    self._log("Blink mila. Flashing FULL image at 0x0...", "info")
+                    self._run_esptool(["--port", port, "--baud", "115200", "write_flash", "0x0", bin_path])
+                    self._log("✅ Fresh Start Complete! Board is wiped and blinking.", "ok")
+                    self.root.after(0, lambda: self.l_prog.config(text="Wiped ✓ (Blinking)", foreground="#7ee787"))
+                else:
+                    self._log("✅ Fresh Start (Wipe) Complete, lekin blink_full.bin server pe nahi mila. Board fir bhi naya jaisa ho gaya hai.", "ok")
+                    self.root.after(0, lambda: self.l_prog.config(text="Wiped ✓", foreground="#7ee787"))
+                
+                time.sleep(1)
+            except Exception as e:
+                self._log(f"Fresh Start FAIL: {e}", "err")
+            finally:
+                self.root.after(0, lambda: self.set_busy(False))
+        threading.Thread(target=work, daemon=True).start()
+
 
     def do_flash(self):
         if self.busy:

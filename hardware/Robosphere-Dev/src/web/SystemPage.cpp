@@ -72,32 +72,33 @@ String SystemPage(const String &board, const String &serial,
 
   // Status LED UI completely offloaded to the Web Dashboard (thin client)
 
+  html += R"rawliteral(
 <h3 class="sectionTitle">📦 Firmware Update (OTA)</h3>
 
 <div class="info"><b>Current Version</b><span id="currentVersion">)rawliteral";
-    html += currentVersion;
-html += R"rawliteral(</span></div>
+  html += currentVersion;
+  html += R"rawliteral(</span></div>
 
 <div class="info"><b>Latest Version</b><span id="latestVersion">)rawliteral";
-html += latestVersion;
-html += R"rawliteral(</span></div>
+  html += latestVersion;
+  html += R"rawliteral(</span></div>
 
 <div class="info"><b>Status</b><span id="otaStatus">)rawliteral";
-html += otaStatus;
-html += R"rawliteral(</span></div>
+  html += otaStatus;
+  html += R"rawliteral(</span></div>
 
 <div class="info"><b>Release Notes</b><div class="notes" id="releaseNotes">)rawliteral";
-html += releaseNotes;
-html += R"rawliteral(</div></div>
+  html += releaseNotes;
+  html += R"rawliteral(</div></div>
 
 <progress id="progressBar" value=")rawliteral";
-html += String(otaProgress);
-html += R"rawliteral(" max="100"></progress>
+  html += String(otaProgress);
+  html += R"rawliteral(" max="100"></progress>
 
 <div id="progressText" style="text-align:center;margin-top:5px;">)rawliteral";
-html += String(otaProgress);
-html += "%";
-html += R"rawliteral(</div>
+  html += String(otaProgress);
+  html += "%";
+  html += R"rawliteral(</div>
 
 <div class="btn-row">
 <button class="blue" onclick="checkOTA()">🔍 Check Update</button>
@@ -331,8 +332,8 @@ else
 // OTA URL input ko saved URL se prefill karo
 (function(){
     var saved = ")rawliteral";
-html += otaUrl;
-html += R"rawliteral(";
+  html += otaUrl;
+  html += R"rawliteral(";
     if(saved && saved.length > 0){
         document.getElementById("otaUrl").value = saved;
     }
@@ -455,7 +456,7 @@ async function startOTA()
 </script>
 )rawliteral";
 
-html += uiEnd();
+  html += uiEnd();
 
-return html;
+  return html;
 }

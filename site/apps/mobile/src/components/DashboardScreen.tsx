@@ -8,7 +8,7 @@ import { AssistantModal } from './AssistantModal';
 import { NotificationCenterScreen } from './NotificationCenterScreen';
 import { MembersScreen } from './MembersScreen';
 import { usePushNotifications } from '../hooks/usePushNotifications';
-import { useSocket } from '../hooks/useSocket';
+
 import { api } from '../api/client';
 
 const DeviceCard = ({ device, onToggle }: { device: any, onToggle: (id: number, status: string) => void }) => {
@@ -88,14 +88,6 @@ export function DashboardScreen({ user, onLogout }: { user: any, onLogout: () =>
     // Activates Native Push Notifications (Background Sync & Permission Handling)
     usePushNotifications();
 
-    // Activates Real-Time Websocket Updates (Instantly syncs UI without pulling data)
-    useSocket((payload) => {
-        setDevices(prevDevices =>
-            prevDevices.map(d =>
-                (d.id === payload.id) ? { ...d, status: payload.status, offline: payload.offline } : d
-            )
-        );
-    });
 
     useEffect(() => {
         loadData();
@@ -105,7 +97,19 @@ export function DashboardScreen({ user, onLogout }: { user: any, onLogout: () =>
                 if (badgeRes?.data?.data !== undefined) setUnreadBadge(badgeRes.data.data);
             } catch (e) { }
         });
-        return () => syncSub.remove();
+
+        const deviceSyncSub = DeviceEventEmitter.addListener('device_sync', (payload) => {
+            setDevices(prevDevices =>
+                prevDevices.map(d =>
+                    (d.id === payload.id) ? { ...d, status: payload.status, offline: payload.offline } : d
+                )
+            );
+        });
+
+        return () => {
+            syncSub.remove();
+            deviceSyncSub.remove();
+        };
     }, []);
 
     const loadData = async () => {

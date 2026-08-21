@@ -6,7 +6,7 @@ import type { QueryClient } from "@tanstack/react-query";
  * source of truth (testable, aur naye events yahan ek line me add hote hain).
  */
 export const REALTIME_INVALIDATIONS: Record<string, Array<Array<string | number>>> = {
-  "device:updated": [["devices"], ["home"]],
+  "device:updated": [["devices"], ["home"], ["my-boards"]],
   "esp:updated": [["devices"], ["home"], ["my-boards"]],
   "command:updated": [["devices"]],
   "notification:new": [["notifications"]],

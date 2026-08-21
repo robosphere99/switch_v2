@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Switch, ScrollView, Modal, TextInput, KeyboardAvoidingView, Platform, Alert, ActivityIndicator } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { ActivityScreen } from './ActivityScreen';
-import { Activity, User, Monitor, Sun, Moon, Bot, Shield, Bell, Zap } from 'lucide-react-native';
+import { SupportScreen } from './SupportScreen';
+import { Activity, User, Monitor, Sun, Moon, Bot, Shield, Bell, Zap, Headset } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import * as SecureStore from 'expo-secure-store';
 import { APP_VERSION } from '../../App';
@@ -10,7 +11,7 @@ import { APP_VERSION } from '../../App';
 export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () => void }) {
     const { theme, mode, setMode, themeId, setThemeId, availableThemes } = useTheme();
     const [aiSuggestions, setAiSuggestions] = useState(true);
-    const [view, setView] = useState<'MAIN' | 'TIMELINE' | 'APPEARANCE' | 'PROFILE' | 'NOTIFICATIONS'>('MAIN');
+    const [view, setView] = useState<'MAIN' | 'TIMELINE' | 'APPEARANCE' | 'PROFILE' | 'NOTIFICATIONS' | 'SUPPORT'>('MAIN');
 
     // Password Update States
     const [pwModalVisible, setPwModalVisible] = useState(false);
@@ -210,6 +211,10 @@ export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () =>
                 </ScrollView>
             </View>
         );
+    }
+
+    if (view === 'SUPPORT') {
+        return <SupportScreen onClose={() => setView('MAIN')} user={user} />;
     }
 
     if (view === 'TIMELINE') {
@@ -522,6 +527,20 @@ export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () =>
 
                 <TouchableOpacity
                     style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border, marginTop: 20 }]}
+                    onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
+                        setView('SUPPORT');
+                    }}
+                >
+                    <Headset color={theme.primary} size={24} style={{ marginRight: 12 }} />
+                    <View>
+                        <Text style={[styles.cardTitle, { color: theme.text }]}>Contact Support</Text>
+                        <Text style={[styles.cardSub, { color: theme.textSecondary }]}>Get help with orders and devices</Text>
+                    </View>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                    style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border, marginTop: 12 }]}
                     onPress={() => {
                         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
                         onLogout();

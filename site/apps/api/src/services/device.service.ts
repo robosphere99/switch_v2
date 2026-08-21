@@ -367,6 +367,9 @@ export async function setEspLed(args: {
     },
   });
 
+  // Push immediate update to ESP, Web, and Mobile
+  emitToHome(homeId, "esp:updated", { id: esp.id, ledEnabled: esp.ledEnabled });
+
   return esp;
 }
 
@@ -435,7 +438,7 @@ export async function renameEsp(homeId: number, espId: number, name: string, act
  */
 export async function listMyBoards(userId: number) {
   const homes = await prisma.home.findMany({
-    where: { members: { some: { userId } } },
+    where: { members: { some: { userId, role: { in: ["owner", "admin"] } } } },
     select: {
       id: true,
       name: true,
@@ -537,18 +540,23 @@ export async function listMyBoards(userId: number) {
     byHome.set(b.homeId, arr);
   }
 
-  return homes.map((h) => ({
-    homeId: h.id,
-    homeName: h.name,
-    role: h.members[0]?.role ?? "member",
-    apiKey: apiKeyByHome.get(h.id) ?? null,
-    boards: (byHome.get(h.id) ?? []).map((b) => ({
-      ...b,
-      hotspotName: b.serialCode ? `SwitchNest-${b.serialCode}` : null,
-      hotspotPassword: b.serialCode ?? null,
-    })),
-    unassignedDevices: unassignedDevices.filter(d => d.homeId === h.id),
-  }));
+  return homes.map((h) => {
+    const role = h.members[0]?.role ?? "member";
+    const canManage = role === "owner" || role === "admin";
+
+    return {
+      homeId: h.id,
+      homeName: h.name,
+      role: role,
+      apiKey: canManage ? (apiKeyByHome.get(h.id) ?? null) : null,
+      boards: canManage ? (byHome.get(h.id) ?? []).map((b) => ({
+        ...b,
+        hotspotName: b.serialCode ? `SwitchNest-${b.serialCode}` : null,
+        hotspotPassword: b.serialCode ?? null,
+      })) : [],
+      unassignedDevices: canManage ? unassignedDevices.filter(d => d.homeId === h.id) : [],
+    };
+  });
 }
 
 /** User apne board pe firmware update push kare (OTA). */

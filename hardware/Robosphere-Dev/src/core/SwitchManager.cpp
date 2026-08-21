@@ -9,7 +9,6 @@
 #include "core/RelayManager.h"
 #include "preferences/PreferencesManager.h"
 
-
 static bool lastState[8];
 static unsigned long debounceStart[8];
 static bool debouncing[8];
@@ -48,11 +47,10 @@ void update() {
       currentState = digitalRead(BoardManager::getSwitchPin(i));
 
       if (currentState != lastState[i]) {
-        // MOMENTARY (push button): sirf press (LOW edge) pe toggle — release
-        // ignore TOGGLE (wall switch): har position change pe toggle — dono
-        // edges kaam karte hain
-        bool trigger =
-            (switchMode == SWITCH_MODE_TOGGLE) || (currentState == LOW);
+        // Hardcoding standard toggle (wall switch) behavior.
+        // Har position change pe toggle hoga (dono edges kaam karenge),
+        // overriding software preferences.
+        bool trigger = true;
 
         if (trigger) {
           Serial.println();

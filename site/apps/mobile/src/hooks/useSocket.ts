@@ -6,13 +6,14 @@ import { API_URL } from '../api/client';
 
 const SOCKET_URL = API_URL.replace('/api', '');
 
-export function useSocket(onDeviceUpdated?: (payload: any) => void) {
+export function useSocket(userId: number | null) {
     const socketRef = useRef<Socket | null>(null);
 
     useEffect(() => {
         let active = true;
 
         const initSocket = async () => {
+            if (!userId) return; // Wait for active user Session
             const token = await SecureStore.getItemAsync('accessToken');
             if (!token || !active) return;
 
@@ -23,7 +24,12 @@ export function useSocket(onDeviceUpdated?: (payload: any) => void) {
 
             // The backend emits 'device:updated' when any user interacts with a switch
             socket.on('device:updated', (payload) => {
-                if (onDeviceUpdated) onDeviceUpdated(payload);
+                DeviceEventEmitter.emit('device_sync', payload);
+            });
+
+            // The backend emits 'esp:updated' when the physical ESP LED is toggled from Web/Mobile
+            socket.on('esp:updated', (payload) => {
+                DeviceEventEmitter.emit('device_sync', payload);
             });
 
             // Global Notification Hooks (Real-Time Universal Inbox)
@@ -37,6 +43,9 @@ export function useSocket(onDeviceUpdated?: (payload: any) => void) {
             socket.on('home-updated', (data) => DeviceEventEmitter.emit('home_updated', data));
             socket.on('home:access-revoked', (data) => DeviceEventEmitter.emit('access_revoked', data));
 
+            // Support Hooks
+            socket.on('support:new', () => DeviceEventEmitter.emit('support_sync'));
+
             socketRef.current = socket;
         };
         initSocket();
@@ -47,5 +56,5 @@ export function useSocket(onDeviceUpdated?: (payload: any) => void) {
                 socketRef.current.disconnect();
             }
         };
-    }, []);
+    }, [userId]);
 }
