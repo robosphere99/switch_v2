@@ -13,6 +13,7 @@ import { Clock, Settings } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { getSystemVersion } from './src/api/hardware';
+import { useSocket } from './src/hooks/useSocket';
 import { Linking, LogBox } from 'react-native';
 
 // Suppress known development warnings that pollute the Expo Go screen
@@ -41,6 +42,10 @@ function MainApp() {
   const [activeTab, setActiveTab] = useState<'HOME' | 'HARDWARE' | 'AUTOMATIONS' | 'SETTINGS' | 'SHOP'>('HOME');
   const [isRestoring, setIsRestoring] = useState(true);
   const [biometricFailed, setBiometricFailed] = useState(false);
+
+  // Initialize Global Socket Engine
+  // Engine spins up securely only when the active `user` context exists (and restarts cleanly on logout).
+  useSocket(user?.id ?? null);
 
   React.useEffect(() => {
     if (user && user.id) {

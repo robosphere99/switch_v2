@@ -16,8 +16,9 @@ export async function readAll(key: ApiKey, mac?: string) {
   const homeId = homeScope(key);
 
   if (mac) {
+    const macKey = mac.replace(/[^0-9A-Fa-f:]/g, "").toLowerCase();
     const esp = await prisma.espDevice.findFirst({
-      where: { homeId, macAddress: mac }
+      where: { homeId, macAddress: macKey }
     });
     if (!esp) return { states: [], led: 1 };
 

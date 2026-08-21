@@ -157,9 +157,11 @@ export function MyBoards() {
 
       {!boards.isLoading && groups.length === 0 && (
         <div className="rounded-xl border border-dashed border-gray-200 bg-night-800 p-10 text-center text-gray-500">
-          🛰️ Abhi koi board connected nahi hai.
-          <br />
-          <span className="text-sm">Order ke baad board activate karo ya support se baat karo.</span>
+          <span className="text-3xl">🛡️</span>
+          <p className="mt-4 text-lg font-medium text-gray-300">No Hardware Access</p>
+          <span className="text-sm mt-2 max-w-sm mx-auto block leading-relaxed">
+            You must be an <b>Owner</b> or <b>Admin</b> of a home to view, configure, and manage its physical SwitchNest hardware boards.
+          </span>
         </div>
       )}
 
@@ -511,7 +513,7 @@ export function MyBoards() {
                                   </span>
                                 )}
                               </span>
-                            ) : (
+                            ) : canRename ? (
                               <select
                                 className="w-48 appearance-none rounded-lg border border-gray-200/50 bg-night-800 p-2 text-xs font-medium text-gray-400 outline-none focus:border-brand"
                                 onChange={(e) => {
@@ -532,6 +534,8 @@ export function MyBoards() {
                                   <option disabled>No free devices. Create one first.</option>
                                 )}
                               </select>
+                            ) : (
+                              <span className="text-gray-500 italic text-[11px]">Unmapped</span>
                             )}
                           </div>
 
@@ -552,18 +556,20 @@ export function MyBoards() {
                               />
 
                               {/* Unmap Button */}
-                              <button
-                                onClick={() => {
-                                  if (window.confirm(`${d.name} ko sach me Channel ${ch} se hatana hai?`)) {
-                                    assignCh.mutate({ homeId: g.homeId, deviceId: d.id, espId: null, channel: null });
-                                  }
-                                }}
-                                disabled={assignCh.isPending}
-                                title="Remove from Board"
-                                className="ml-1 rounded-lg border border-red-500/40 bg-red-500/10 px-2 py-1 text-[10px] uppercase text-red-500 transition hover:bg-red-500 hover:text-white"
-                              >
-                                ✕
-                              </button>
+                              {canRename && (
+                                <button
+                                  onClick={() => {
+                                    if (window.confirm(`${d.name} ko sach me Channel ${ch} se hatana hai?`)) {
+                                      assignCh.mutate({ homeId: g.homeId, deviceId: d.id, espId: null, channel: null });
+                                    }
+                                  }}
+                                  disabled={assignCh.isPending}
+                                  title="Remove from Board"
+                                  className="ml-1 rounded-lg border border-red-500/40 bg-red-500/10 px-2 py-1 text-[10px] uppercase text-red-500 transition hover:bg-red-500 hover:text-white"
+                                >
+                                  ✕
+                                </button>
+                              )}
                             </div>
                           )}
                         </div>
@@ -574,8 +580,9 @@ export function MyBoards() {
               );
             })}
           </div>
-        </section>
-      ))}
-    </div>
+        </section >
+      ))
+      }
+    </div >
   );
 }

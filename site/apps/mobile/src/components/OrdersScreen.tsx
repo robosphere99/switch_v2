@@ -87,7 +87,7 @@ export function OrdersScreen({ visible, onClose }: OrdersScreenProps) {
                                 <View key={order.id} style={[styles.orderCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
                                         <View>
-                                            <Text style={{ color: theme.active || theme.primary, fontWeight: '900', fontSize: 16 }}>{order.orderNumber}</Text>
+                                            <Text style={{ color: theme.primary, fontWeight: '900', fontSize: 16 }}>{order.orderNumber}</Text>
                                             <Text style={{ color: theme.textSecondary, fontSize: 12, marginTop: 2 }}>
                                                 {new Date(order.createdAt).toLocaleDateString()}
                                             </Text>

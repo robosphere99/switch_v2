@@ -3,7 +3,6 @@
 #include <ArduinoJson.h>
 #include <ESP.h>
 
-
 Preferences preferences;
 
 namespace PreferencesManager {
@@ -262,7 +261,7 @@ void saveLedEnabled(bool enabled) {
 bool getLedEnabled() { return preferences.getBool("led_enabled", true); }
 
 int getSwitchMode() {
-  return preferences.getInt(PREF_SWITCH_MODE, SWITCH_MODE_MOMENTARY);
+  return preferences.getInt(PREF_SWITCH_MODE, SWITCH_MODE_TOGGLE);
 }
 
 } // namespace PreferencesManager

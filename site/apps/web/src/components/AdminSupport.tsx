@@ -121,8 +121,10 @@ export function AdminSupport({
   // Realtime — user naya message bheje to list turant refresh
   useEffect(() => {
     const socket = getSocket();
-    const refresh = () =>
+    const refresh = () => {
       queryClient.invalidateQueries({ queryKey: ["support", "admin", "conversations"] });
+      queryClient.invalidateQueries({ queryKey: ["support", "admin", "chat"] });
+    };
     socket.on("support:new", refresh);
     return () => {
       socket.off("support:new", refresh);
@@ -136,10 +138,10 @@ export function AdminSupport({
     const needle = q.trim().toLowerCase();
     const base = needle
       ? list.conversations.filter(
-          (c) =>
-            c.username.toLowerCase().includes(needle) ||
-            (c.email ?? "").toLowerCase().includes(needle),
-        )
+        (c) =>
+          c.username.toLowerCase().includes(needle) ||
+          (c.email ?? "").toLowerCase().includes(needle),
+      )
       : list.conversations;
     // Pinned pehle, phir latest message ke hisaab se
     return [...base].sort((a, b) => {
@@ -353,11 +355,10 @@ export function AdminSupport({
                   onTouchStart={(e) => onRowTouchStart(c.userId, e)}
                   onTouchMove={cancelLongPress}
                   onTouchEnd={cancelLongPress}
-                  className={`flex w-full select-none items-start gap-3 px-3 py-3 text-left transition ${
-                    active
+                  className={`flex w-full select-none items-start gap-3 px-3 py-3 text-left transition ${active
                       ? "bg-brand/15"
                       : "hover:bg-night-700"
-                  }`}
+                    }`}
                 >
                   <div
                     className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white ${avatarColor(c.userId)}`}
@@ -379,9 +380,8 @@ export function AdminSupport({
                     </div>
                     <div className="mt-0.5 flex items-center justify-between gap-2">
                       <span
-                        className={`truncate text-xs ${
-                          c.unreadCount > 0 ? "font-medium text-gray-700" : "text-gray-500"
-                        }`}
+                        className={`truncate text-xs ${c.unreadCount > 0 ? "font-medium text-gray-700" : "text-gray-500"
+                          }`}
                       >
                         {c.lastSenderRole === "admin" ? (
                           <CheckCheck className="mr-1 inline h-3 w-3 text-brand" />
@@ -415,205 +415,201 @@ export function AdminSupport({
           <div className="flex min-h-0 flex-1">
             {/* Thread + right-side user context (WhatsApp contact-info jaisa) */}
             <div className="flex min-w-0 flex-1 flex-col">
-            {/* Thread header */}
-            <div className="flex items-center gap-3 border-b border-gray-200 bg-night-900 px-4 py-2.5">
-              {/* Mobile back — chats list pe wapas */}
-              <button
-                onClick={() => onSelectUser(null)}
-                className="rounded-lg p-1.5 text-gray-500 transition hover:bg-night-700 hover:text-brand md:hidden"
-                title="Chats wapas"
-                aria-label="Back to chats"
-              >
-                <ArrowLeft className="h-4 w-4" />
-              </button>
-              <div
-                className={`flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold text-white ${avatarColor(selectedUserId)}`}
-              >
-                {selected?.username.slice(0, 1).toUpperCase() ?? "?"}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-gray-700">
-                  {selected?.username ?? `User #${selectedUserId}`}
-                </p>
-                {selected?.email && (
-                  <p className="truncate text-[11px] text-gray-500">{selected.email}</p>
+              {/* Thread header */}
+              <div className="flex items-center gap-3 border-b border-gray-200 bg-night-900 px-4 py-2.5">
+                {/* Mobile back — chats list pe wapas */}
+                <button
+                  onClick={() => onSelectUser(null)}
+                  className="rounded-lg p-1.5 text-gray-500 transition hover:bg-night-700 hover:text-brand md:hidden"
+                  title="Chats wapas"
+                  aria-label="Back to chats"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </button>
+                <div
+                  className={`flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold text-white ${avatarColor(selectedUserId)}`}
+                >
+                  {selected?.username.slice(0, 1).toUpperCase() ?? "?"}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-gray-700">
+                    {selected?.username ?? `User #${selectedUserId}`}
+                  </p>
+                  {selected?.email && (
+                    <p className="truncate text-[11px] text-gray-500">{selected.email}</p>
+                  )}
+                </div>
+                {chat.data?.success && chat.data.data.unread > 0 && (
+                  <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-bold text-amber-600">
+                    {chat.data.data.unread} unread
+                  </span>
                 )}
+                {/* Pin + Mute + Clear — WhatsApp-style chat actions */}
+                <div className="flex shrink-0 items-center gap-1">
+                  <button
+                    onClick={() => setSettings.mutate({ peerUserId: selectedUserId, pinned: !set?.pinnedAt })}
+                    className={`rounded-lg p-1.5 transition ${set?.pinnedAt ? "bg-brand/15 text-brand" : "text-gray-500 hover:bg-night-700 hover:text-brand"
+                      }`}
+                    title={set?.pinnedAt ? "Unpin" : "Pin — sabse upar rakho"}
+                  >
+                    {set?.pinnedAt ? <Pin className="h-4 w-4" /> : <PinOff className="h-4 w-4" />}
+                  </button>
+                  <button
+                    onClick={() => setSettings.mutate({ peerUserId: selectedUserId, muted: !set?.mutedAt })}
+                    className={`rounded-lg p-1.5 transition ${set?.mutedAt ? "bg-brand/15 text-brand" : "text-gray-500 hover:bg-night-700 hover:text-brand"
+                      }`}
+                    title={set?.mutedAt ? "Unmute — notifications wapas" : "Mute — is user ki notifications band"}
+                  >
+                    {set?.mutedAt ? <BellOff className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (confirm(`Saara chat ${selected?.username ?? "is user"} ke saath clear karein?`)) {
+                        clearChat.mutate(selectedUserId);
+                      }
+                    }}
+                    className="rounded-lg p-1.5 text-gray-500 transition hover:bg-red-500/10 hover:text-red-400"
+                    title="Clear chat — poora thread hat jayega"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+                <button
+                  onClick={() => setShowContext((v) => !v)}
+                  className={`flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition ${showContext
+                      ? "border-brand/50 bg-brand/15 text-brand"
+                      : "border-gray-200 text-gray-500 hover:bg-night-700"
+                    }`}
+                  title={showContext ? "Info band karo — dobara dabao to hat jayega" : "User ka order/home/device context dikhao"}
+                >
+                  {showContext ? <X className="h-3.5 w-3.5" /> : <UserRound className="h-3.5 w-3.5" />}
+                  <span className="hidden md:inline">{showContext ? "Close" : "Info"}</span>
+                </button>
               </div>
-              {chat.data?.success && chat.data.data.unread > 0 && (
-                <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-bold text-amber-600">
-                  {chat.data.data.unread} unread
-                </span>
-              )}
-              {/* Pin + Mute + Clear — WhatsApp-style chat actions */}
-              <div className="flex shrink-0 items-center gap-1">
-                <button
-                  onClick={() => setSettings.mutate({ peerUserId: selectedUserId, pinned: !set?.pinnedAt })}
-                  className={`rounded-lg p-1.5 transition ${
-                    set?.pinnedAt ? "bg-brand/15 text-brand" : "text-gray-500 hover:bg-night-700 hover:text-brand"
-                  }`}
-                  title={set?.pinnedAt ? "Unpin" : "Pin — sabse upar rakho"}
-                >
-                  {set?.pinnedAt ? <Pin className="h-4 w-4" /> : <PinOff className="h-4 w-4" />}
-                </button>
-                <button
-                  onClick={() => setSettings.mutate({ peerUserId: selectedUserId, muted: !set?.mutedAt })}
-                  className={`rounded-lg p-1.5 transition ${
-                    set?.mutedAt ? "bg-brand/15 text-brand" : "text-gray-500 hover:bg-night-700 hover:text-brand"
-                  }`}
-                  title={set?.mutedAt ? "Unmute — notifications wapas" : "Mute — is user ki notifications band"}
-                >
-                  {set?.mutedAt ? <BellOff className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
-                </button>
-                <button
-                  onClick={() => {
-                    if (confirm(`Saara chat ${selected?.username ?? "is user"} ke saath clear karein?`)) {
-                      clearChat.mutate(selectedUserId);
+
+              {/* Messages */}
+              <div className="no-scrollbar flex-1 space-y-2 overflow-y-auto bg-night-900/60 p-4">
+                {chat.isLoading && (
+                  <p className="py-10 text-center text-sm text-gray-500">Loading…</p>
+                )}
+                {!chat.isLoading && msgs.length === 0 && (
+                  <p className="py-10 text-center text-sm text-gray-500">
+                    Koi message nahi — pehla message bhejo 👇
+                  </p>
+                )}
+                {msgs.map((m) => (
+                  <div key={m.id} className="group relative">
+                    <div
+                      className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm shadow-sm ${m.senderRole === "admin"
+                          ? "ml-auto rounded-br-sm bg-brand text-white"
+                          : "mr-auto rounded-bl-sm border border-gray-200 bg-night-800 text-gray-200"
+                        }`}
+                    >
+                      <div className="text-[10px] font-bold uppercase opacity-70">
+                        {m.senderRole === "admin" ? "Admin" : m.senderName || "User"}
+                      </div>
+                      {m.message && <div className="whitespace-pre-wrap">{m.message}</div>}
+                      {m.attachmentName && m.attachmentType && (m.attachmentData || m.attachmentPath) && (
+                        <AttachmentBubble
+                          name={m.attachmentName}
+                          type={m.attachmentType}
+                          data={m.attachmentData}
+                          url={getAttachmentUrl(m)}
+                        />
+                      )}
+                      <div className={`mt-0.5 flex items-center justify-end gap-1 text-right text-[10px] opacity-60`}>
+                        {new Date(m.createdAt).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                        {/* Read receipt — single ✓ = sent, double ✓✓ = user ne padha */}
+                        {m.senderRole === "admin" &&
+                          (m.readByUser ? (
+                            <CheckCheck className="h-3 w-3 text-blue-300" />
+                          ) : (
+                            <CheckCheck className="h-3 w-3 opacity-70" />
+                          ))}
+                      </div>
+                    </div>
+                    {/* Copy + delete — desktop hover pe, mobile pe hamesha visible (touch pe hover nahi hota) */}
+                    <div className="absolute right-0 top-0 z-10 flex items-center gap-1 rounded-lg bg-night-800/95 p-1 shadow-lg opacity-0 transition group-hover:opacity-100 max-md:opacity-100">
+                      {m.message && (
+                        <button
+                          onClick={() => navigator.clipboard?.writeText(m.message)}
+                          className="rounded-md bg-night-700 p-1 text-gray-400 shadow hover:text-brand"
+                          title="Copy"
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => {
+                          if (confirm("Message delete karein? (dono side se gayab)")) deleteMsg.mutate(m.id);
+                        }}
+                        className="rounded-md bg-night-700 p-1 text-gray-400 shadow hover:text-red-400"
+                        title="Delete"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                <div ref={bottomRef} />
+              </div>
+
+              {/* Input — quick replies (ek-click templates) + message box */}
+              <div className="border-t border-gray-200 bg-night-900">
+                <div className="flex flex-wrap items-center gap-1.5 px-3 pt-2">
+                  <span className="mr-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                    Quick reply
+                  </span>
+                  {QUICK_REPLIES.map((qr) => (
+                    <button
+                      key={qr.label}
+                      type="button"
+                      onClick={() => {
+                        setDraft(qr.text);
+                        replyInputRef.current?.focus();
+                      }}
+                      title={qr.text}
+                      className="rounded-full border border-gray-200 bg-night-800 px-2.5 py-1 text-xs text-gray-300 transition hover:border-brand hover:text-brand"
+                    >
+                      {qr.emoji} {qr.label}
+                    </button>
+                  ))}
+                </div>
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const t = draft.trim();
+                    if ((t || attachment) && !send.isPending) {
+                      send.mutate({ message: t, attachment });
                     }
                   }}
-                  className="rounded-lg p-1.5 text-gray-500 transition hover:bg-red-500/10 hover:text-red-400"
-                  title="Clear chat — poora thread hat jayega"
+                  className="flex items-center gap-2 p-3"
                 >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
-              <button
-                onClick={() => setShowContext((v) => !v)}
-                className={`flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition ${
-                  showContext
-                    ? "border-brand/50 bg-brand/15 text-brand"
-                    : "border-gray-200 text-gray-500 hover:bg-night-700"
-                }`}
-                title={showContext ? "Info band karo — dobara dabao to hat jayega" : "User ka order/home/device context dikhao"}
-              >
-                {showContext ? <X className="h-3.5 w-3.5" /> : <UserRound className="h-3.5 w-3.5" />}
-                <span className="hidden md:inline">{showContext ? "Close" : "Info"}</span>
-              </button>
-            </div>
-
-            {/* Messages */}
-            <div className="no-scrollbar flex-1 space-y-2 overflow-y-auto bg-night-900/60 p-4">
-              {chat.isLoading && (
-                <p className="py-10 text-center text-sm text-gray-500">Loading…</p>
-              )}
-              {!chat.isLoading && msgs.length === 0 && (
-                <p className="py-10 text-center text-sm text-gray-500">
-                  Koi message nahi — pehla message bhejo 👇
-                </p>
-              )}
-              {msgs.map((m) => (
-                <div key={m.id} className="group relative">
-                  <div
-                    className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm shadow-sm ${
-                      m.senderRole === "admin"
-                        ? "ml-auto rounded-br-sm bg-brand text-white"
-                        : "mr-auto rounded-bl-sm border border-gray-200 bg-night-800 text-gray-200"
-                    }`}
-                  >
-                    <div className="text-[10px] font-bold uppercase opacity-70">
-                      {m.senderRole === "admin" ? "Admin" : m.senderName || "User"}
-                    </div>
-                    {m.message && <div className="whitespace-pre-wrap">{m.message}</div>}
-                    {m.attachmentName && m.attachmentType && (m.attachmentData || m.attachmentPath) && (
-                      <AttachmentBubble
-                        name={m.attachmentName}
-                        type={m.attachmentType}
-                        data={m.attachmentData}
-                        url={getAttachmentUrl(m)}
-                      />
-                    )}
-                    <div className={`mt-0.5 flex items-center justify-end gap-1 text-right text-[10px] opacity-60`}>
-                      {new Date(m.createdAt).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                      {/* Read receipt — single ✓ = sent, double ✓✓ = user ne padha */}
-                      {m.senderRole === "admin" &&
-                        (m.readByUser ? (
-                          <CheckCheck className="h-3 w-3 text-blue-300" />
-                        ) : (
-                          <CheckCheck className="h-3 w-3 opacity-70" />
-                        ))}
-                    </div>
-                  </div>
-                  {/* Copy + delete — desktop hover pe, mobile pe hamesha visible (touch pe hover nahi hota) */}
-                  <div className="absolute right-0 top-0 z-10 flex items-center gap-1 rounded-lg bg-night-800/95 p-1 shadow-lg opacity-0 transition group-hover:opacity-100 max-md:opacity-100">
-                    {m.message && (
-                      <button
-                        onClick={() => navigator.clipboard?.writeText(m.message)}
-                        className="rounded-md bg-night-700 p-1 text-gray-400 shadow hover:text-brand"
-                        title="Copy"
-                      >
-                        <Copy className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                    <button
-                      onClick={() => {
-                        if (confirm("Message delete karein? (dono side se gayab)")) deleteMsg.mutate(m.id);
-                      }}
-                      className="rounded-md bg-night-700 p-1 text-gray-400 shadow hover:text-red-400"
-                      title="Delete"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-              <div ref={bottomRef} />
-            </div>
-
-            {/* Input — quick replies (ek-click templates) + message box */}
-            <div className="border-t border-gray-200 bg-night-900">
-              <div className="flex flex-wrap items-center gap-1.5 px-3 pt-2">
-                <span className="mr-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
-                  Quick reply
-                </span>
-                {QUICK_REPLIES.map((qr) => (
+                  <AttachmentPicker value={attachment} onChange={setAttachment} />
+                  <input
+                    ref={replyInputRef}
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    placeholder="User ko message likho… (Enter se bhejo)"
+                    className="flex-1 rounded-full border border-gray-200 bg-night-800 px-4 py-2 text-sm text-gray-200 outline-none placeholder:text-gray-500 focus:border-brand"
+                  />
                   <button
-                    key={qr.label}
-                    type="button"
-                    onClick={() => {
-                      setDraft(qr.text);
-                      replyInputRef.current?.focus();
-                    }}
-                    title={qr.text}
-                    className="rounded-full border border-gray-200 bg-night-800 px-2.5 py-1 text-xs text-gray-300 transition hover:border-brand hover:text-brand"
+                    type="submit"
+                    disabled={send.isPending || (!draft.trim() && !attachment)}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand text-white transition hover:brightness-110 disabled:opacity-40"
+                    title="Bhejo"
                   >
-                    {qr.emoji} {qr.label}
+                    <Send className="h-4 w-4" />
                   </button>
-                ))}
+                </form>
               </div>
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  const t = draft.trim();
-                  if ((t || attachment) && !send.isPending) {
-                    send.mutate({ message: t, attachment });
-                  }
-                }}
-                className="flex items-center gap-2 p-3"
-              >
-                <AttachmentPicker value={attachment} onChange={setAttachment} />
-                <input
-                  ref={replyInputRef}
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  placeholder="User ko message likho… (Enter se bhejo)"
-                  className="flex-1 rounded-full border border-gray-200 bg-night-800 px-4 py-2 text-sm text-gray-200 outline-none placeholder:text-gray-500 focus:border-brand"
-                />
-                <button
-                  type="submit"
-                  disabled={send.isPending || (!draft.trim() && !attachment)}
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand text-white transition hover:brightness-110 disabled:opacity-40"
-                  title="Bhejo"
-                >
-                  <Send className="h-4 w-4" />
-                </button>
-              </form>
+              {send.isError && (
+                <p className="px-4 pb-2 text-xs text-red-500">Bhejne me dikkat — dobara try karo.</p>
+              )}
             </div>
-            {send.isError && (
-              <p className="px-4 pb-2 text-xs text-red-500">Bhejne me dikkat — dobara try karo.</p>
-            )}
-          </div>
 
             {/* Right — user context (orders / homes / devices / boards):
                 desktop = right column, mobile = full-screen drawer (Info button se) */}
@@ -738,9 +734,8 @@ function MenuItem({
   return (
     <button
       onClick={onClick}
-      className={`flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition ${
-        danger ? "text-red-400 hover:bg-red-500/10" : "text-gray-300 hover:bg-night-700"
-      }`}
+      className={`flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition ${danger ? "text-red-400 hover:bg-red-500/10" : "text-gray-300 hover:bg-night-700"
+        }`}
     >
       <Icon className="h-4 w-4 shrink-0" />
       <span className="min-w-0 flex-1">{label}</span>

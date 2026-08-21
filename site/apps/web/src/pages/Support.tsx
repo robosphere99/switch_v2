@@ -17,6 +17,7 @@ import {
 import { getMyOrders, type Order } from "../api/shop";
 import { getAttachmentUrl } from "../api/client";
 import { useSiteStore } from "../stores/site";
+import { getSocket } from "../lib/socket";
 import { AttachmentPicker } from "../components/AttachmentPicker";
 import { AttachmentBubble } from "../components/AttachmentBubble";
 
@@ -82,8 +83,19 @@ export function Support() {
 
   useEffect(() => {
     refreshChat();
-    getMySupportSettings().then(setChatSettings).catch(() => {});
+    getMySupportSettings().then(setChatSettings).catch(() => { });
+
+    const handleNewMessage = () => refreshChat();
+    const activeSocket = getSocket();
+    activeSocket.on("support:new", handleNewMessage);
+    return () => { activeSocket.off("support:new", handleNewMessage); };
   }, []);
+
+  useEffect(() => {
+    if (chatBottomRef.current) {
+      chatBottomRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [chatMsgs]);
 
   const mySetting = chatSettings[0];
 
@@ -329,13 +341,12 @@ export function Support() {
             <p className="m-auto text-sm text-gray-500">Koi message nahi — pehla message bhejo 👇</p>
           )}
           {chatMsgs.map((m) => (
-            <div key={m.id} className="group relative">
+            <div key={m.id} className="group relative flex flex-col">
               <div
-                className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${
-                  m.senderRole === "user"
-                    ? "self-end rounded-br-sm bg-brand text-white"
-                    : "self-start rounded-bl-sm border border-gray-200 bg-white text-gray-800"
-                }`}
+                className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${m.senderRole === "user"
+                  ? "self-end rounded-br-sm bg-brand text-white"
+                  : "self-start rounded-bl-sm border border-gray-200 bg-white text-gray-800"
+                  }`}
               >
                 <div className="text-[10px] font-bold uppercase opacity-70">{m.senderRole === "user" ? "Aap" : "Support"}</div>
                 {m.message && <div className="whitespace-pre-wrap">{m.message}</div>}
