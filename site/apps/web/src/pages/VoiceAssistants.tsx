@@ -1,16 +1,14 @@
 import { useState, useEffect } from "react";
-import { api } from "../api/client"; // assuming api client is exported here, or we use fetch
+
 
 // Assuming standard layout components exist in this project based on standard conventions in Tailwind React
 export function VoiceAssistants() {
-    const [connections, setConnections] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
+    const [connections] = useState<any[]>([]);
 
     useEffect(() => {
         // In a real implementation this would fetch from /api/homes/meta or a dedicated endpoint.
         // For this milestone, we'll mock it if the endpoint doesn't exist yet, 
         // or just assume the user has no connections initially.
-        setLoading(false);
     }, []);
 
     const handleDisconnect = async (provider: string) => {

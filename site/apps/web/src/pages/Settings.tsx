@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import { Zap, Power, AlertCircle, Clock, Settings2, Filter, User, Calendar } from "lucide-react";
-import { useAuthStore } from "../stores/auth";
+
 
 export function Settings() {
     const [homes, setHomes] = useState<any[]>([]);
