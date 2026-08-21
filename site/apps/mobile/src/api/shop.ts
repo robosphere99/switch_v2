@@ -57,7 +57,26 @@ export async function cancelOrder(id: number): Promise<void> {
     await api.post(`/shop/orders/${id}/cancel`);
 }
 
-export async function demoPay(orderId: number): Promise<{ paid: boolean; status: string }> {
+export async function demoPay(orderId: number): Promise<{ paid: boolean; status: string; paymentRef?: string }> {
     const { data } = await api.post(`/shop/orders/${orderId}/pay/demo`);
+    return data.data;
+}
+
+export interface PayIntent {
+    mode: "razorpay" | "demo";
+    razorpayOrderId?: string;
+    keyId?: string;
+    upiIntent?: string;
+    amount: number;
+    note?: string;
+}
+
+export async function initiatePayment(orderId: number): Promise<PayIntent> {
+    const { data } = await api.post(`/shop/orders/${orderId}/pay`);
+    return data.data;
+}
+
+export async function verifyPayment(orderId: number, payload: { razorpayOrderId: string; razorpayPaymentId: string; razorpaySignature: string }) {
+    const { data } = await api.post(`/shop/orders/${orderId}/pay/verify`, payload);
     return data.data;
 }

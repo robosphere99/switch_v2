@@ -20,8 +20,7 @@ import {
   Wrench,
   Settings as SettingsIcon,
   X,
-  Zap,
-  Activity,
+  Zap
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Moon, Sun } from "lucide-react";

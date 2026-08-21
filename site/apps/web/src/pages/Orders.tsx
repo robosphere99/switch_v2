@@ -10,6 +10,20 @@ import {
   type PayIntent,
 } from "../api/shop";
 
+function loadRazorpayScript(): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (document.querySelector('script[src="https://checkout.razorpay.com/v1/checkout.js"]')) {
+      resolve(true);
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+}
+
 const STEPS = ["placed", "paid", "shipped", "delivered"] as const;
 
 const STEP_LABEL: Record<string, string> = {
@@ -95,7 +109,6 @@ export function Orders() {
   const [payingFor, setPayingFor] = useState<number | null>(null);
   const [payBusy, setPayBusy] = useState(false);
   const [payMsg, setPayMsg] = useState<string | null>(null);
-  const [verifyFields, setVerifyFields] = useState({ paymentId: "", signature: "" });
 
   const refresh = () => getMyOrders().then(setOrders);
 
@@ -110,8 +123,52 @@ export function Orders() {
     setPayMsg(null);
     try {
       const intent = await initiatePayment(orderId);
-      setPayingFor(orderId);
-      setPayIntent(intent);
+      if (intent.mode === "demo") {
+        setPayingFor(orderId);
+        setPayIntent(intent);
+      } else {
+        const loaded = await loadRazorpayScript();
+        if (!loaded) {
+          setPayMsg("Razorpay SDK failed to load. Are you offline?");
+          return;
+        }
+
+        const options = {
+          key: intent.keyId,
+          amount: intent.amount * 100, // INR to paise
+          currency: "INR",
+          name: "SwitchNest",
+          description: "Order #" + orderId,
+          order_id: intent.razorpayOrderId ?? "",
+          handler: async function (response: any) {
+            setPayBusy(true);
+            try {
+              await verifyPayment(orderId, {
+                razorpayOrderId: response.razorpay_order_id,
+                razorpayPaymentId: response.razorpay_payment_id,
+                razorpaySignature: response.razorpay_signature,
+              });
+              setPayMsg("✅ Payment verified successfully");
+              await refresh();
+            } catch (err: any) {
+              setPayMsg(String(err?.message ?? err));
+            } finally {
+              setPayBusy(false);
+            }
+          },
+          prefill: {
+            name: "SwitchNest User",
+            email: "support@switchnest.com",
+            contact: "9999999999"
+          },
+          theme: { color: "#4f46e5" }
+        };
+        const rzp = new (window as any).Razorpay(options);
+        rzp.on("payment.failed", function (response: any) {
+          setPayMsg("Payment failed: " + response.error.description);
+        });
+        rzp.open();
+      }
     } catch (e) {
       setPayMsg(String((e as Error).message ?? e));
     } finally {
@@ -135,25 +192,7 @@ export function Orders() {
     }
   };
 
-  const confirmRazorpay = async (orderId: number) => {
-    setPayBusy(true);
-    setPayMsg(null);
-    try {
-      await verifyPayment(orderId, {
-        razorpayOrderId: payIntent?.razorpayOrderId ?? "",
-        razorpayPaymentId: verifyFields.paymentId.trim(),
-        razorpaySignature: verifyFields.signature.trim(),
-      });
-      setPayIntent(null);
-      setPayingFor(null);
-      setPayMsg("✅ Payment verified");
-      await refresh();
-    } catch (e) {
-      setPayMsg(String((e as Error).message ?? e));
-    } finally {
-      setPayBusy(false);
-    }
-  };
+
 
   if (loading) return <div className="p-10 text-center text-gray-500">Loading orders…</div>;
 
@@ -274,7 +313,7 @@ export function Orders() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setPayIntent(null)}>
           <div className="w-full max-w-md rounded-xl border border-brand/30 bg-night-800 p-6" onClick={(e) => e.stopPropagation()}>
             <h3 className="mb-3 text-lg font-bold">💳 Pay ₹{payIntent.amount.toLocaleString("en-IN")}</h3>
-            {payIntent.mode === "demo" ? (
+            {payIntent.mode === "demo" && (
               <>
                 <p className="mb-3 text-sm text-gray-500">
                   Demo mode — kisi bhi UPI app me yeh intent use karo:
@@ -288,33 +327,6 @@ export function Orders() {
                   className="w-full rounded-lg bg-brand px-4 py-2.5 font-semibold text-white disabled:opacity-50"
                 >
                   {payBusy ? "Verifying…" : "✅ Maine UPI se pay kar diya (Demo verify)"}
-                </button>
-              </>
-            ) : (
-              <>
-                <p className="mb-3 text-sm text-gray-500">
-                  Razorpay checkout — payment ke baad yahan payment ID + signature daalo (server verify karega):
-                </p>
-                <label className="mb-1 block text-xs text-gray-500">Razorpay Payment ID</label>
-                <input
-                  value={verifyFields.paymentId}
-                  onChange={(e) => setVerifyFields((v) => ({ ...v, paymentId: e.target.value }))}
-                  className="mb-3 w-full rounded-lg border border-brand/30 bg-night-700 px-3 py-2 text-sm text-night-950"
-                  placeholder="pay_xxxxxxxx"
-                />
-                <label className="mb-1 block text-xs text-gray-500">Razorpay Signature</label>
-                <input
-                  value={verifyFields.signature}
-                  onChange={(e) => setVerifyFields((v) => ({ ...v, signature: e.target.value }))}
-                  className="mb-3 w-full rounded-lg border border-brand/30 bg-night-700 px-3 py-2 text-sm text-night-950"
-                  placeholder="signature_hex"
-                />
-                <button
-                  onClick={() => confirmRazorpay(payingFor)}
-                  disabled={payBusy}
-                  className="w-full rounded-lg bg-brand px-4 py-2.5 font-semibold text-white disabled:opacity-50"
-                >
-                  {payBusy ? "Verifying…" : "Verify & Confirm Payment"}
                 </button>
               </>
             )}

@@ -99,9 +99,23 @@ claimRouter.post("/", claimLimiter, async (req, res) => {
         warrantyExpiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
       },
     });
+
+    const espStub = await tx.espDevice.create({
+      data: {
+        homeId,
+        macAddress: `PENDING-${serial.serialCode}`,
+        name: deviceName,
+        serialCode: serial.serialCode,
+        modelCode: serial.product.modelCode,
+        offline: true,
+      },
+    });
+
     return tx.device.create({
       data: {
         homeId,
+        espId: espStub.id,
+        channel: 1, // Auto-map first device to CH 1
         name: deviceName,
         type,
         status: "off",

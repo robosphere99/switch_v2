@@ -56,6 +56,10 @@ export function createApp() {
       credentials: true,
     }),
   );
+
+  // Razorpay webhooks require raw body for HMAC verification
+  app.use("/api/webhooks/razorpay", express.raw({ type: "application/json" }));
+
   app.use(express.json({ limit: "4mb" }));
   // ESP32 posts form-encoded data (application/x-www-form-urlencoded).
   app.use(express.urlencoded({ extended: true }));

@@ -122,7 +122,7 @@ export interface GlobalSearchResult {
 export async function globalSearch(q: string): Promise<ApiResponse<GlobalSearchResult>> {
   const { data } = await api.get<ApiResponse<GlobalSearchResult>>("/admin/search", { params: { q } });
   return data;
-}export async function getStats(): Promise<ApiResponse<AdminStats>> {
+} export async function getStats(): Promise<ApiResponse<AdminStats>> {
   const { data } = await api.get<ApiResponse<AdminStats>>("/admin/stats");
   return data;
 }
@@ -819,5 +819,15 @@ export interface ResetResult {
 /** Danger zone — admin power: site reset (data = test data clear; factory = sab clear + setup mode). */
 export async function resetSite(mode: "data" | "factory"): Promise<ApiResponse<ResetResult>> {
   const { data } = await api.post("/admin/reset", { mode, confirm: "RESET" });
+  return data;
+}
+
+export async function updateOrderStatus(id: number, status: string): Promise<ApiResponse<unknown>> {
+  const { data } = await api.patch(`/admin/orders/${id}/status`, { status });
+  return data;
+}
+
+export async function updateOrderPaymentStatus(id: number, paymentStatus: string): Promise<ApiResponse<unknown>> {
+  const { data } = await api.patch(`/admin/orders/${id}/payment-status`, { paymentStatus });
   return data;
 }

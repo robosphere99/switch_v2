@@ -29,7 +29,7 @@ export interface Order {
   id: number;
   orderNumber: string;
   userId: number;
-  status: "pending" | "paid" | "shipped" | "delivered" | "cancelled";
+  status: "pending" | "processing" | "packed" | "shipped" | "delivered" | "cancelled";
   paymentMethod: "cod" | "upi" | "manual";
   paymentStatus: string;
   paymentRef: string | null;
@@ -167,6 +167,11 @@ export async function getAdminOrder(id: number): Promise<Order> {
 
 export async function updateOrderStatus(id: number, status: string): Promise<Order> {
   const { data } = await api.patch(`/admin/orders/${id}/status`, { status });
+  return data.data;
+}
+
+export async function updateOrderPaymentStatus(id: number, paymentStatus: string): Promise<Order> {
+  const { data } = await api.patch(`/admin/orders/${id}/payment-status`, { paymentStatus });
   return data.data;
 }
 

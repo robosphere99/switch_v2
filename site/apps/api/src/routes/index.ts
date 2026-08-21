@@ -18,6 +18,7 @@ import { supportRouter } from "./support.routes";
 import { oauthRouter } from "./oauth.routes";
 import { googleRouter } from "./google.routes";
 import { alexaRouter } from "./alexa.routes";
+import { webhookRouter } from "./webhook.routes";
 import { requireAuth } from "../middleware/auth";
 import { prisma } from "../lib/prisma";
 import { ok } from "../lib/response";
@@ -43,6 +44,7 @@ apiRouter.use("/public", publicRouter);
 apiRouter.use("/oauth", oauthRouter);
 apiRouter.use("/integration/google", googleRouter);
 apiRouter.use("/integration/alexa", alexaRouter);
+apiRouter.use("/webhooks", webhookRouter);
 /**
  * Mount table — OpenAPI docs (src/lib/openapi.ts) isi se paths enumerate
  * karta hai. Naya router mount karo to yahan ek line add karo — docs khud
@@ -69,6 +71,7 @@ export const apiMounts: Array<{ router: ReturnType<typeof Router>; prefix: strin
   { router: oauthRouter, prefix: "/oauth" },
   { router: googleRouter, prefix: "/integration/google" },
   { router: alexaRouter, prefix: "/integration/alexa" },
+  { router: webhookRouter, prefix: "/webhooks" },
 ];
 
 apiRouter.get("/firmware/current", requireAuth, async (_req, res) => {
