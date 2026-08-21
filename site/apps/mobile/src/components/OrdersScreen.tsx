@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, StyleSheet, Modal } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, StyleSheet, Modal, Alert } from 'react-native';
 import { Package, Truck, CheckCircle, ChevronLeft, CalendarClock, Wifi } from 'lucide-react-native';
-import { getMyOrders, Order } from '../api/shop';
+import { getMyOrders, Order, initiatePayment, verifyPayment, demoPay } from '../api/shop';
+import RazorpayCheckout from 'react-native-razorpay';
 import { useTheme } from '../theme/ThemeContext';
 
 interface OrdersScreenProps {
@@ -13,6 +14,7 @@ export function OrdersScreen({ visible, onClose }: OrdersScreenProps) {
     const { theme } = useTheme();
     const [loading, setLoading] = useState(true);
     const [orders, setOrders] = useState<Order[]>([]);
+    const [payBusy, setPayBusy] = useState(false);
 
     useEffect(() => {
         if (visible) {
@@ -30,6 +32,52 @@ export function OrdersScreen({ visible, onClose }: OrdersScreenProps) {
             console.error("Order fetch failed: ", e);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handlePay = async (orderId: number) => {
+        setPayBusy(true);
+        try {
+            const intent = await initiatePayment(orderId);
+            if (intent.mode === 'demo') {
+                await demoPay(orderId);
+                Alert.alert('Demo Mode Test', 'Payment was successful via demo mode.');
+                await fetchOrders();
+            } else {
+                const options = {
+                    description: `Order #${orderId}`,
+                    currency: 'INR',
+                    key: intent.keyId,
+                    amount: intent.amount * 100, // amount in paise
+                    name: 'SwitchNest',
+                    order_id: intent.razorpayOrderId ?? "",
+                    theme: { color: theme.primary },
+                    prefill: {
+                        name: "SwitchNest User",
+                        email: "support@switchnest.com",
+                        contact: "9999999999"
+                    }
+                };
+
+                // Open Native Razorpay 
+                const response = await RazorpayCheckout.open(options);
+
+                // Verify with backend
+                await verifyPayment(orderId, {
+                    razorpayOrderId: response.razorpay_order_id,
+                    razorpayPaymentId: response.razorpay_payment_id,
+                    razorpaySignature: response.razorpay_signature,
+                });
+
+                Alert.alert('Payment Success', 'Your payment was verified!');
+                await fetchOrders();
+            }
+        } catch (error: any) {
+            console.error("Payment error:", error);
+            const msg = error?.description || error?.message || error?.error?.description || "Payment failed or cancelled";
+            Alert.alert('Payment Failed', String(msg));
+        } finally {
+            setPayBusy(false);
         }
     };
 
@@ -97,6 +145,20 @@ export function OrdersScreen({ visible, onClose }: OrdersScreenProps) {
 
                                     <View style={[styles.divider, { borderColor: theme.border }]} />
 
+                                    {order.status === 'pending' && order.paymentMethod !== 'cod' && (
+                                        <TouchableOpacity
+                                            onPress={() => handlePay(order.id)}
+                                            disabled={payBusy}
+                                            style={[styles.payButton, { backgroundColor: theme.primary, opacity: payBusy ? 0.7 : 1 }]}
+                                        >
+                                            {payBusy ? (
+                                                <ActivityIndicator size="small" color="#fff" />
+                                            ) : (
+                                                <Text style={styles.payButtonText}>💳 Pay Now</Text>
+                                            )}
+                                        </TouchableOpacity>
+                                    )}
+
                                     {order.items.map((item, idx) => (
                                         <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', marginVertical: 4 }}>
                                             <Text style={{ color: theme.text, fontSize: 14 }}><Text style={{ color: theme.textSecondary }}>{item.quantity}x </Text>{item.productName}</Text>
@@ -133,5 +195,7 @@ const styles = StyleSheet.create({
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     scroll: { padding: 24 },
     orderCard: { padding: 16, borderRadius: 16, borderWidth: 1, marginBottom: 16 },
-    divider: { borderBottomWidth: 1, marginVertical: 12, borderStyle: 'dashed' }
+    divider: { borderBottomWidth: 1, marginVertical: 12, borderStyle: 'dashed' },
+    payButton: { padding: 12, borderRadius: 8, alignItems: 'center', marginBottom: 12, justifyContent: 'center' },
+    payButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 }
 });

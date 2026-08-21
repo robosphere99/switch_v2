@@ -7,7 +7,7 @@
 > Repo location (this machine): `C:\Users\robos\OneDrive\Documents\SwitchNest`
 >
 <!-- AUTO:STAMP:START -->
-> _Auto-updated: 2026-08-20 20:09 UTC · branch `main` · tree dirty (18 changes) · 253 commits_
+> _Auto-updated: 2026-08-21 17:08 UTC · branch `main` · tree dirty (13 changes) · 256 commits_
 <!-- AUTO:STAMP:END -->
 
 ---
@@ -112,6 +112,9 @@ that also serves real ESP32 hardware).
 <!-- AUTO:RECENT_COMMITS:START -->
 Sabse naye 20 commits:
 
+- `a3f7330` (2026-08-21) fix(frontend): remove unused imports causing typecheck failures in Settings and VoiceAssistants
+- `c0a9132` (2026-08-21) feat(support): Full Native Support Platform Integration with WebSocket Multi-device Sync
+- `2844d8f` (2026-08-21) chore: sync firmware changes and project context documentation
 - `6567c3b` (2026-08-21) feat(mobile): complete family & member management with no-email invite flow and real-time updates
 - `4453a58` (2026-08-20) fix(core): Resolve sudden push engine failures and stabilize mobile JWT rotation mechanism
 - `60658c8` (2026-08-20) feat(observability): migrate to multi-device push configuration registry
@@ -129,9 +132,6 @@ Sabse naye 20 commits:
 - `1528aa8` (2026-08-19) feat: pagination for serials table — prev/next + page size selector
 - `7c9ddc5` (2026-08-19) feat: admin panel — serials delete + bulk delete + filters + user management
 - `356993e` (2026-08-19) chore: rebuild production assets after UI fixes
-- `dd05991` (2026-08-19) fix: dashboard mobile layout, device card expand arrow, admin users tab
-- `6a4b760` (2026-08-19) fix: grouped navbar + compact device cards + always-visible logout
-- `cf1fe81` (2026-08-19) fix: desktop navbar overflow — compact labels, scrollable nav, no cutoff
 <!-- AUTO:RECENT_COMMITS:END -->
 
 - 503 root-cause work: DB probe retry loop so the app self-heals, `nodeProcessCountPerApplication=1`,

@@ -263,11 +263,11 @@ adminRouter.get("/users", async (req, res) => {
     },
     where: q
       ? {
-          OR: [
-            { username: { contains: q } },
-            { email: { contains: q } },
-          ],
-        }
+        OR: [
+          { username: { contains: q } },
+          { email: { contains: q } },
+        ],
+      }
       : undefined,
     orderBy: { createdAt: "desc" },
     take: 200,
@@ -620,14 +620,14 @@ adminRouter.get("/devices", async (req, res) => {
     },
     where: q
       ? {
-          OR: [
-            { name: { contains: q } },
-            { serialNumber: { contains: q } },
-            { ipAddress: { contains: q } },
-            { home: { name: { contains: q } } },
-            { home: { owner: { username: { contains: q } } } },
-          ],
-        }
+        OR: [
+          { name: { contains: q } },
+          { serialNumber: { contains: q } },
+          { ipAddress: { contains: q } },
+          { home: { name: { contains: q } } },
+          { home: { owner: { username: { contains: q } } } },
+        ],
+      }
       : undefined,
     orderBy: { id: "desc" },
     take: 200,
@@ -970,7 +970,8 @@ function buildDiagnosticsText(d: {
   error?: string;
   logPath: string | null;
   logBytes: number;
-}): string {  const L: string[] = [];
+}): string {
+  const L: string[] = [];
   const sec = (t: string) => L.push(`\n${"=".repeat(70)}\n${t}\n${"=".repeat(70)}`);
   L.push(`SwitchNest Diagnostics Export`);
   L.push(`Exported: ${new Date().toISOString()}`);
@@ -1012,7 +1013,7 @@ function buildDiagnosticsText(d: {
   for (const inc of hc.incidents) {
     L.push(
       `  ${inc.ts}  id=${inc.id}  ${inc.lastStatus ? `HTTP ${inc.lastStatus}` : inc.lastErr ?? "?"}` +
-        (inc.end ? `  -> recovered ${inc.end.durationSec}s` : "  -> OPEN"),
+      (inc.end ? `  -> recovered ${inc.end.durationSec}s` : "  -> OPEN"),
     );
   }
 
@@ -1737,16 +1738,16 @@ adminRouter.get("/esp", async (req, res) => {
   const esps = await prisma.espDevice.findMany({
     where: q
       ? {
-          OR: [
-            { name: { contains: q } },
-            { serialCode: { contains: q } },
-            { macAddress: { contains: q } },
-            { ipAddress: { contains: q } },
-            { ssid: { contains: q } },
-            { modelCode: { contains: q } },
-            { home: { OR: [{ name: { contains: q } }, { owner: { username: { contains: q } } }] } },
-          ],
-        }
+        OR: [
+          { name: { contains: q } },
+          { serialCode: { contains: q } },
+          { macAddress: { contains: q } },
+          { ipAddress: { contains: q } },
+          { ssid: { contains: q } },
+          { modelCode: { contains: q } },
+          { home: { OR: [{ name: { contains: q } }, { owner: { username: { contains: q } } }] } },
+        ],
+      }
       : undefined,
     select: {
       id: true,
@@ -2350,6 +2351,7 @@ adminRouter.get("/orders", async (req, res) => {
     where: status ? { status: status as never } : undefined,
     include: {
       items: true,
+      serials: { select: { serialCode: true, testedAt: true } },
       user: { select: { id: true, username: true, email: true } },
     },
     orderBy: { createdAt: "desc" },
@@ -2365,6 +2367,7 @@ adminRouter.get("/orders/:id", async (req, res) => {
     where: { id },
     include: {
       items: true,
+      serials: { select: { serialCode: true, testedAt: true } },
       user: { select: { id: true, username: true, email: true } },
     },
   });
@@ -2378,6 +2381,24 @@ adminRouter.patch("/orders/:id/status", async (req, res) => {
   const status = String(req.body?.status ?? "");
   const order = await updateOrderStatus(id, status);
   await audit(req.user!.sub, `admin.order.${status}`, {
+    entity: "order",
+    entityId: id,
+    meta: { orderNumber: order.orderNumber },
+  });
+  ok(res, order);
+});
+
+adminRouter.patch("/orders/:id/payment-status", async (req, res) => {
+  const id = Number(req.params.id);
+  const paymentStatus = String(req.body?.paymentStatus ?? "");
+  const order = await prisma.order.update({
+    where: { id },
+    data: {
+      paymentStatus,
+      paidAt: paymentStatus === "paid" ? new Date() : null
+    }
+  });
+  await audit(req.user!.sub, `admin.order.payment.${paymentStatus}`, {
     entity: "order",
     entityId: id,
     meta: { orderNumber: order.orderNumber },
@@ -2687,18 +2708,29 @@ adminRouter.post("/serials/:code/mark-tested", async (req, res) => {
     try {
       const order = await prisma.order.findUnique({
         where: { id: serial.orderId },
-        select: { userId: true, orderNumber: true },
+        include: { items: true, serials: { select: { testedAt: true } } },
       });
-      if (order) {
+      if (order && order.status === "processing") { // Only process if currently in 'processing/testing' phase
+        // Notification
         await createNotification(order.userId, {
           category: "system",
           type: "info",
           title: "✅ Factory test pass",
-          body: `Aapka board (${code}) factory relay self-test pass kar chuka hai — ab pack hone chala gaya. Order ${order.orderNumber}.`,
+          body: `Aapka board (${code}) factory relay self-test pass kar chuka hai. Order ${order.orderNumber}.`,
         });
+
+        // Pack auto-cascade validation
+        const qtyRequired = order.items.reduce((sum, item) => sum + item.quantity, 0);
+        const testedCount = order.serials.filter(s => s.testedAt !== null).length;
+
+        // If we have met or exceeded the quantity with valid tests, mark packed.
+        if (testedCount >= qtyRequired) {
+          // Inside shop.service this emits the final summary PACKED notification.
+          await updateOrderStatus(order.id, "packed");
+        }
       }
     } catch (err) {
-      console.error("[admin] tested notification failed", err);
+      console.error("[admin] tested notification/cascade failed", err);
     }
   }
 

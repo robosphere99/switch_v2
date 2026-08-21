@@ -15,6 +15,7 @@ import {
   getSerials,
   updateAdminProduct,
   updateOrderStatus,
+  updateOrderPaymentStatus,
   updateWarrantyStatus,
   type WarrantyClaimRow,
   type Order,
@@ -24,7 +25,9 @@ import {
 
 const ORDER_BADGE: Record<string, string> = {
   pending: "bg-amber-500/20 text-amber-600",
+  processing: "bg-blue-500/20 text-blue-700",
   paid: "bg-blue-500/20 text-blue-700",
+  packed: "bg-indigo-500/20 text-indigo-400",
   shipped: "bg-purple-500/20 text-purple-300",
   delivered: "bg-green-500/20 text-green-700",
   cancelled: "bg-red-500/20 text-red-600",
@@ -149,10 +152,16 @@ function OrdersSection() {
   const [serialDetail, setSerialDetail] = useState<string | null>(null);
 
   async function advance(o: Order) {
-    const next: Record<string, string> = { pending: "paid", paid: "shipped", shipped: "delivered" };
+    const next: Record<string, string> = { pending: "processing", processing: "packed", packed: "shipped", shipped: "delivered" };
     const target = next[o.status];
     if (!target) return;
     await updateOrderStatus(o.id, target);
+    queryClient.invalidateQueries({ queryKey: ["admin-orders"] });
+  }
+
+  async function markPaidSettled(o: Order) {
+    if (!window.confirm(`Cod/Remittance verify kar rahe ho? Order #${o.orderNumber} payments ko paid mark karna hai?`)) return;
+    await updateOrderPaymentStatus(o.id, "paid");
     queryClient.invalidateQueries({ queryKey: ["admin-orders"] });
   }
 
@@ -181,12 +190,30 @@ function OrdersSection() {
               <span className={`rounded-full px-3 py-1 text-xs font-bold ${ORDER_BADGE[o.status] ?? ""}`}>{o.status}</span>
             </div>
             <div className="mb-3 text-sm text-gray-600">
-              {o.items.map((i) => (
-                <div key={i.id} className="flex justify-between">
-                  <span>{i.productName} × {i.quantity} {i.serialCode && <CopyText text={i.serialCode} className="text-xs text-brand" title="Right-click/hold = copy · click = details" onClick={() => setSerialDetail(i.serialCode)}>({i.serialCode})</CopyText>}</span>
-                  <span>₹{(Number(i.price) * i.quantity).toLocaleString("en-IN")}</span>
-                </div>
-              ))}
+              {o.items.map((i) => {
+                const itemSerial = (o as any).serials?.find((s: any) => s.serialCode === i.serialCode);
+                const isTested = Boolean(itemSerial?.testedAt);
+                return (
+                  <div key={i.id} className="flex justify-between items-center mb-1">
+                    <span className="flex items-center gap-2">
+                      {i.productName} × {i.quantity}
+                      {i.serialCode && (
+                        <span className="flex items-center gap-2">
+                          <CopyText text={i.serialCode} className="text-xs font-mono text-brand bg-night-900 px-1 py-0.5 rounded" title="Right-click/hold = copy · click = details" onClick={() => setSerialDetail(i.serialCode)}>
+                            {i.serialCode}
+                          </CopyText>
+                          {isTested ? (
+                            <span className="rounded bg-green-500/20 px-1.5 py-0.5 text-[9px] font-bold tracking-wider text-green-500 uppercase">✅ Tested</span>
+                          ) : (
+                            <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-bold tracking-wider text-amber-500 uppercase">⏳ Untested</span>
+                          )}
+                        </span>
+                      )}
+                    </span>
+                    <span>₹{(Number(i.price) * i.quantity).toLocaleString("en-IN")}</span>
+                  </div>
+                );
+              })}
               <div className="flex justify-between border-t border-brand/20 pt-2 font-bold">
                 <span>Total · {o.paymentMethod.toUpperCase()}</span>
                 <span>₹{Number(o.totalAmount).toLocaleString("en-IN")}</span>
@@ -206,11 +233,17 @@ function OrdersSection() {
               </button>
               {o.status === "pending" && (
                 <>
-                  <button onClick={() => advance(o)} className="rounded bg-blue-600 px-3 py-1.5 font-semibold text-white hover:bg-blue-700">Mark Paid</button>
+                  <button onClick={() => advance(o)} className="rounded bg-blue-600 px-3 py-1.5 font-semibold text-white hover:bg-blue-700">Process Order</button>
                   <button onClick={() => cancel(o)} className="rounded bg-red-900/40 px-3 py-1.5 font-semibold text-red-600">Cancel</button>
                 </>
               )}
-              {o.status === "paid" && (
+              {o.status === "processing" && (
+                <>
+                  <button onClick={() => advance(o)} className="rounded bg-indigo-600 px-3 py-1.5 font-semibold text-white hover:bg-indigo-700">Mark Packed</button>
+                  <button onClick={() => cancel(o)} className="rounded bg-red-900/40 px-3 py-1.5 font-semibold text-red-600">Cancel</button>
+                </>
+              )}
+              {o.status === "packed" && (
                 <>
                   <button onClick={() => advance(o)} className="rounded bg-purple-600 px-3 py-1.5 font-semibold text-white hover:bg-purple-700">Mark Shipped</button>
                   <button onClick={() => cancel(o)} className="rounded bg-red-900/40 px-3 py-1.5 font-semibold text-red-600">Cancel</button>
@@ -218,6 +251,9 @@ function OrdersSection() {
               )}
               {o.status === "shipped" && (
                 <button onClick={() => advance(o)} className="rounded bg-green-600 px-3 py-1.5 font-semibold text-white hover:bg-green-700">Mark Delivered</button>
+              )}
+              {o.paymentStatus !== "paid" && o.status !== "cancelled" && (
+                <button onClick={() => markPaidSettled(o)} className="rounded bg-emerald-700/80 px-3 py-1.5 font-semibold text-emerald-100 border border-emerald-500 hover:bg-emerald-600">₹ Mark Paid</button>
               )}
             </div>
           </div>
@@ -530,11 +566,10 @@ function SerialsSection() {
                 <button
                   key={pageNum}
                   onClick={() => setPage(pageNum)}
-                  className={`rounded px-2.5 py-1 text-xs font-semibold ${
-                    pageNum === safePage
-                      ? "border border-brand bg-brand/20 text-brand"
-                      : "border border-gray-200 text-gray-500 hover:bg-night-700"
-                  }`}
+                  className={`rounded px-2.5 py-1 text-xs font-semibold ${pageNum === safePage
+                    ? "border border-brand bg-brand/20 text-brand"
+                    : "border border-gray-200 text-gray-500 hover:bg-night-700"
+                    }`}
                 >
                   {pageNum}
                 </button>

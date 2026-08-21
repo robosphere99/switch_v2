@@ -189,6 +189,26 @@ export async function heartbeat(
   // board apna kaam phir bhi karega, par serial wahi rahega jis board ko mila.
   let attachSerial = serial;
   if (macKey && serial) {
+    // ---- Web Activation Stub Absorption ----
+    // Jab user website pe serial daalta hai, ek PENDING- MAC wala stub banta hai.
+    // Jab board asli me online aata hai, ye block us stub ko asli MAC se swap karke bridge banata hai.
+    const pendingStub = await prisma.espDevice.findUnique({
+      where: { macAddress: `PENDING-${serial}` },
+    });
+    if (pendingStub) {
+      const existingMac = await prisma.espDevice.findUnique({ where: { macAddress: macKey } });
+      if (!existingMac) {
+        await prisma.espDevice.update({
+          where: { id: pendingStub.id },
+          data: { macAddress: macKey }
+        });
+      } else {
+        // Agar MAC already exist karta hai, usko stub delete karna padega 
+        // phir niche ka upsert baaki fields natively push kar dega.
+        await prisma.espDevice.delete({ where: { id: pendingStub.id } });
+      }
+    }
+
     const other = await prisma.espDevice.findFirst({
       where: { serialCode: serial, macAddress: { not: macKey } },
       select: { id: true },

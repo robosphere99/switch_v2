@@ -13,8 +13,9 @@ export interface CreateOrderInput {
 }
 
 const ORDER_STATUS_FLOW: Record<string, string[]> = {
-  pending: ["paid", "cancelled"],
-  paid: ["shipped", "cancelled"],
+  pending: ["processing", "cancelled"],
+  processing: ["packed", "cancelled"],
+  packed: ["shipped", "cancelled"],
   shipped: ["delivered", "cancelled"],
   delivered: [],
   cancelled: [],
@@ -161,6 +162,21 @@ export async function updateOrderStatus(orderId: number, status: string) {
     throw new AppError("BAD_REQUEST", `Cannot move order from ${order.status} to ${status}`);
   }
 
+  // Pre-provision: If status is 'processing', ensure we have enough 'available' serial stock BEFORE entering transaction.
+  if (status === "processing") {
+    for (const item of order.items) {
+      if (item.serialCode) continue; // Already reserved during createOrder
+      const need = item.quantity;
+      const foundCount = await prisma.serialRegistry.count({
+        where: { productId: item.productId, status: "available" }
+      });
+      const delta = need - foundCount;
+      if (delta > 0) {
+        await generateSerials(item.productId, delta); // Dynamically spawns exactly what's needed
+      }
+    }
+  }
+
   const updated = await prisma.$transaction(async (tx) => {
     if (status === "cancelled") {
       // Release reserved serials back to stock.
@@ -168,8 +184,8 @@ export async function updateOrderStatus(orderId: number, status: string) {
         where: { orderId: order.id },
         data: { status: "available", orderId: null },
       });
-    } else if (status === "shipped") {
-      // Make sure every item has a serial — top up from available stock.
+    } else if (status === "processing") {
+      // Make sure every item has a serial — top up from available stock (which we just guaranteed exists above)
       for (const item of order.items) {
         if (item.serialCode) continue;
         const need = item.quantity;
@@ -181,7 +197,7 @@ export async function updateOrderStatus(orderId: number, status: string) {
         if (found.length) {
           await tx.serialRegistry.updateMany({
             where: { id: { in: found.map((f) => f.id) } },
-            data: { status: "shipped", orderId: order.id },
+            data: { status: "reserved", orderId: order.id },
           });
           await tx.orderItem.update({
             where: { id: item.id },
@@ -189,6 +205,7 @@ export async function updateOrderStatus(orderId: number, status: string) {
           });
         }
       }
+    } else if (status === "shipped") {
       await tx.serialRegistry.updateMany({
         where: { orderId: order.id, status: "reserved" },
         data: { status: "shipped" },
@@ -203,28 +220,45 @@ export async function updateOrderStatus(orderId: number, status: string) {
     return tx.order.update({
       where: { id: order.id },
       data: {
-        status: status as "pending" | "paid" | "shipped" | "delivered" | "cancelled",
-        paymentStatus: status === "paid" ? "paid" : order.paymentStatus,
+        status: status as "pending" | "processing" | "packed" | "shipped" | "delivered" | "cancelled",
       },
       include: { items: true, user: { select: { id: true, username: true, email: true } } },
     });
   });
 
-  // Payment verified → user ko notification + EMAIL.
-  if (status === "paid") {
+  // Order validation confirmed → factory allocation completed.
+  if (status === "processing") {
     try {
       await createNotificationWithEmail(
         updated.userId,
         {
           category: "system",
           type: "info",
-          title: "✅ Payment verified",
-          body: `Order ${updated.orderNumber} ka payment verify ho gaya — aapka order taiyaar ho raha hai.`,
+          title: "⚙️ Order Processing",
+          body: `Order ${updated.orderNumber} processing initiate hui hai — aapka order factory se taiyaar ho raha hai.`,
         },
-        { emailSubject: `✅ Payment verified — order ${updated.orderNumber}`, ctaUrl: "/orders", ctaLabel: "Order dekho" },
+        { emailSubject: `⚙️ Order Processing — ${updated.orderNumber}`, ctaUrl: "/orders", ctaLabel: "Order dekho" },
       );
     } catch (err) {
       console.error("[shop] payment notification failed", err);
+    }
+  }
+
+  // Packed confirmation → user ko notification
+  if (status === "packed") {
+    try {
+      await createNotificationWithEmail(
+        updated.userId,
+        {
+          category: "system",
+          type: "info",
+          title: "📦 Order packed",
+          body: `Order ${updated.orderNumber} ki saari testing done, ab yeh pack ho chuka hai aur dispatch hone wala hai.`,
+        },
+        { emailSubject: `📦 Order ${updated.orderNumber} packed`, ctaUrl: "/orders", ctaLabel: "Order dekho" },
+      );
+    } catch (err) {
+      console.error("[shop] packed notification failed", err);
     }
   }
 

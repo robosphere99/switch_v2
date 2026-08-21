@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useSiteStore } from "../stores/site"; // assuming a standard store exists
+
 
 export function OAuthConsent() {
     const [searchParams] = useSearchParams();
@@ -12,7 +12,7 @@ export function OAuthConsent() {
     const clientId = searchParams.get("client_id") || "";
     const redirectUri = searchParams.get("redirect_uri") || "";
     const state = searchParams.get("state") || "";
-    const responseType = searchParams.get("response_type") || "code";
+
 
     // Very simplistic check: determine provider from client ID or redirect URI
     const isGoogle = redirectUri.includes("google");

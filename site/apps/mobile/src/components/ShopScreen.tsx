@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Image, ActivityIndicator, Alert, StyleSheet, Modal, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { ShoppingCart, Package, CreditCard, Check, X, Truck, Wifi } from 'lucide-react-native';
-import { getProducts, Product, createOrder, demoPay } from '../api/shop';
+import { getProducts, Product, createOrder } from '../api/shop';
 import { useTheme } from '../theme/ThemeContext';
 import * as Haptics from 'expo-haptics';
 import { OrdersScreen } from './OrdersScreen';
@@ -21,6 +21,7 @@ export function ShopScreen() {
     const [processing, setProcessing] = useState(false);
     const [successDisplay, setSuccessDisplay] = useState(false);
     const [shipping, setShipping] = useState({ name: '', phone: '', address: '' });
+    const [paymentMethod, setPaymentMethod] = useState<'cod' | 'upi'>('cod');
     const [wifiConfig, setWifiConfig] = useState({ ssid: '', password: '' });
     const [savedWifis, setSavedWifis] = useState<{ ssid: string, password: string }[]>([]);
 
@@ -103,11 +104,8 @@ export function ShopScreen() {
                 items: cart.map(c => ({ productId: c.product.id, quantity: c.qty })),
                 shipping,
                 wifi: (wifiConfig.ssid.trim().length > 0) ? wifiConfig : undefined,
-                paymentMethod: 'manual' // Auto payment method for demonstration loop
+                paymentMethod: paymentMethod
             });
-
-            // Simulate the backend payment bypass since native Razorpay requires dev account setups
-            await demoPay(created.id);
 
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             setCart([]);
@@ -271,6 +269,33 @@ export function ShopScreen() {
                             />
                         </View>
 
+                        <View style={{ marginVertical: 0, marginBottom: 24, padding: 16, backgroundColor: theme.card, borderRadius: 12, borderWidth: 1, borderColor: theme.border }}>
+                            <Text style={{ color: theme.textSecondary, fontWeight: 'bold', marginBottom: 16, fontSize: 12 }}>PAYMENT METHOD</Text>
+                            <View style={{ gap: 12 }}>
+                                <TouchableOpacity
+                                    onPress={() => setPaymentMethod('cod')}
+                                    style={[styles.payMethodCard, paymentMethod === 'cod' && { borderColor: theme.primary, backgroundColor: theme.primary + '10' }]}
+                                >
+                                    <View style={[styles.radioDot, paymentMethod === 'cod' && { backgroundColor: theme.primary, borderColor: theme.primary }]} />
+                                    <View>
+                                        <Text style={{ color: theme.text, fontWeight: 'bold', fontSize: 16 }}>💵 Cash on Delivery</Text>
+                                        <Text style={{ color: theme.textSecondary, fontSize: 12, marginTop: 4 }}>Pay upon doorstep delivery</Text>
+                                    </View>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                    onPress={() => setPaymentMethod('upi')}
+                                    style={[styles.payMethodCard, paymentMethod === 'upi' && { borderColor: theme.primary, backgroundColor: theme.primary + '10' }]}
+                                >
+                                    <View style={[styles.radioDot, paymentMethod === 'upi' && { backgroundColor: theme.primary, borderColor: theme.primary }]} />
+                                    <View>
+                                        <Text style={{ color: theme.text, fontWeight: 'bold', fontSize: 16 }}>📱 UPI / Netbanking</Text>
+                                        <Text style={{ color: theme.textSecondary, fontSize: 12, marginTop: 4 }}>Pay securely online via Razorpay</Text>
+                                    </View>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+
                         <View style={[styles.checkoutFooter, { backgroundColor: theme.card, borderColor: theme.border }]}>
                             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 }}>
                                 <Text style={{ color: theme.text, fontSize: 18, fontWeight: 'bold' }}>Total:</Text>
@@ -298,9 +323,14 @@ export function ShopScreen() {
                         <Check color="#000" size={40} />
                     </View>
                     <Text style={{ color: '#fff', fontSize: 28, fontWeight: 'bold', marginBottom: 8 }}>Order Placed!</Text>
-                    <Text style={{ color: '#aaa', fontSize: 16, textAlign: 'center', paddingHorizontal: 40, marginBottom: 32 }}>Your SwitchNest hardware is being shipped securely and will be delivered shortly.</Text>
-                    <TouchableOpacity onPress={() => setSuccessDisplay(false)} style={{ paddingVertical: 14, paddingHorizontal: 32, borderRadius: 24, backgroundColor: '#333' }}>
-                        <Text style={{ color: '#fff', fontWeight: 'bold' }}>Return to Store</Text>
+                    <Text style={{ color: '#aaa', fontSize: 16, textAlign: 'center', paddingHorizontal: 40, marginBottom: 32 }}>Check the Orders tab to track status {paymentMethod === 'upi' && 'or complete your payment'}.</Text>
+                    <TouchableOpacity onPress={() => {
+                        setSuccessDisplay(false);
+                        if (paymentMethod === 'upi') {
+                            setOrdersVisible(true);
+                        }
+                    }} style={{ paddingVertical: 14, paddingHorizontal: 32, borderRadius: 24, backgroundColor: '#333' }}>
+                        <Text style={{ color: '#fff', fontWeight: 'bold' }}>{paymentMethod === 'upi' ? 'Go to Orders (Pay Now)' : 'Return to Store'}</Text>
                     </TouchableOpacity>
                 </View>
             )}
@@ -332,6 +362,8 @@ const styles = StyleSheet.create({
     modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24, paddingTop: 40, paddingBottom: 16 },
     modalTitle: { fontSize: 24, fontWeight: '800' },
     formInput: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, fontSize: 16, marginBottom: 16 },
+    payMethodCard: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#444', borderRadius: 12, padding: 16 },
+    radioDot: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: '#666', marginRight: 16 },
     checkoutFooter: { padding: 24, borderRadius: 16, borderWidth: 1, marginTop: 8 },
     checkoutBtn: { paddingVertical: 18, borderRadius: 16, flexDirection: 'row', justifyContent: 'center', gap: 12, alignItems: 'center' }
 });

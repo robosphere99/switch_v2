@@ -78,7 +78,8 @@ enum NotificationType {
 
 enum OrderStatus {
   pending
-  paid
+  processing
+  packed
   shipped
   delivered
   cancelled

@@ -3,7 +3,7 @@ import { requireAuth } from "../middleware/auth";
 import { prisma } from "../lib/prisma";
 import { AppError, ok } from "../lib/response";
 import { audit } from "../services/audit.service";
-import { createOrder } from "../services/shop.service";
+import { createOrder, updateOrderStatus } from "../services/shop.service";
 import { createRazorpayOrder, razorpayConfigured, verifyRazorpaySignature } from "../services/payment.service";
 
 export const shopRouter = Router();
@@ -192,9 +192,13 @@ shopRouter.post("/orders/:id/pay/verify", requireAuth, async (req, res) => {
   if (!verifyRazorpaySignature(razorpayOrderId, razorpayPaymentId, razorpaySignature)) {
     throw new AppError("PAYMENT_ERROR", "Signature verify fail");
   }
-  await prisma.order.update({ where: { id }, data: { status: "paid", paidAt: new Date(), paymentRef: razorpayPaymentId } });
+  await prisma.order.update({ where: { id }, data: { paidAt: new Date(), paymentRef: razorpayPaymentId } });
+
+  // NATIVELY INVOKE the inventory allocation engine via the shared service layer
+  const updatedOrder = await updateOrderStatus(id, "processing");
+
   await audit(req.user!.sub, "shop.payment.verified", { entity: "order", entityId: id, meta: { paymentId: razorpayPaymentId } });
-  ok(res, { paid: true, status: "paid", paymentRef: razorpayPaymentId });
+  ok(res, { paid: true, status: "processing", paymentRef: razorpayPaymentId });
 });
 
 /** Demo mode — UPI manual pay ke baad admin/tester mark paid. */
@@ -211,7 +215,11 @@ shopRouter.post("/orders/:id/pay/demo", requireAuth, async (req, res) => {
     throw new AppError("BAD_REQUEST", "COD order me online payment nahi hoti");
   }
   const ref = `DEMO-${Date.now()}`;
-  await prisma.order.update({ where: { id }, data: { status: "paid", paidAt: new Date(), paymentRef: ref } });
+  await prisma.order.update({ where: { id }, data: { paidAt: new Date(), paymentRef: ref } });
+
+  // NATIVELY INVOKE the inventory allocation engine via the shared service layer
+  await updateOrderStatus(id, "processing");
+
   await audit(req.user!.sub, "shop.payment.demo", { entity: "order", entityId: id, meta: { ref, total: Number(order.totalAmount) } });
-  ok(res, { paid: true, status: "paid", paymentRef: ref });
+  ok(res, { paid: true, status: "processing", paymentRef: ref });
 });
