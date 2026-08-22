@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert, StyleSheet, Animated, Image, PanResponder, Dimensions, Modal, DeviceEventEmitter } from 'react-native';
-import { LogOut, Home as HomeIcon, Zap, Shield, Wifi, User, Activity, Bot, Bell } from 'lucide-react-native';
-import { getHomes, getDevices, toggleDevice } from '../api/hardware';
+import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert, StyleSheet, Animated, Image, PanResponder, Dimensions, Modal, DeviceEventEmitter, TextInput, Platform, KeyboardAvoidingView } from 'react-native';
+import { LogOut, Home as HomeIcon, Zap, Shield, Wifi, User, Activity, Bot, Bell, Plus, Trash2, Edit3, X } from 'lucide-react-native';
+import { getHomes, getDevices, toggleDevice, getRooms, createDevice, deleteDeviceApi, createRoom, deleteRoomApi, updateDeviceApi } from '../api/hardware';
 import { useTheme } from '../theme/ThemeContext';
 import * as Haptics from 'expo-haptics';
 import { AssistantModal } from './AssistantModal';
@@ -11,7 +11,7 @@ import { usePushNotifications } from '../hooks/usePushNotifications';
 
 import { api } from '../api/client';
 
-const DeviceCard = ({ device, onToggle }: { device: any, onToggle: (id: number, status: string) => void }) => {
+const DeviceCard = ({ device, onToggle, onLongPress }: { device: any, onToggle: (id: number, status: string) => void, onLongPress: (device: any) => void }) => {
     const { theme } = useTheme();
     const isON = device.status === 'on';
 
@@ -44,7 +44,7 @@ const DeviceCard = ({ device, onToggle }: { device: any, onToggle: (id: number, 
 
     return (
         <Animated.View style={[styles.cardWrapper, { transform: [{ scale: animScale }] }]}>
-            <TouchableOpacity activeOpacity={0.85} onPress={handlePress} delayPressIn={100}>
+            <TouchableOpacity activeOpacity={0.85} onPress={handlePress} delayPressIn={100} onLongPress={() => onLongPress(device)}>
                 <Animated.View style={[
                     styles.cardContent,
                     { backgroundColor: bgColor, borderColor: borderColor }
@@ -84,6 +84,19 @@ export function DashboardScreen({ user, onLogout }: { user: any, onLogout: () =>
     const [notificationsVisible, setNotificationsVisible] = useState(false);
     const [membersVisible, setMembersVisible] = useState(false);
     const [unreadBadge, setUnreadBadge] = useState(0);
+
+    const [createVisible, setCreateVisible] = useState(false);
+    const [createBusy, setCreateBusy] = useState(false);
+    const [rooms, setRooms] = useState<any[]>([]);
+    const [createData, setCreateData] = useState({ id: null as number | null, name: '', type: 'bulb', roomId: null as number | null });
+    const [newRoomName, setNewRoomName] = useState('');
+    const [creatingRoom, setCreatingRoom] = useState(false);
+    const [confirmModal, setConfirmModal] = useState<{ visible: boolean; title: string; message: string; onConfirm: () => void }>({
+        visible: false,
+        title: '',
+        message: '',
+        onConfirm: () => { }
+    });
 
     // Activates Native Push Notifications (Background Sync & Permission Handling)
     usePushNotifications();
@@ -171,6 +184,114 @@ export function DashboardScreen({ user, onLogout }: { user: any, onLogout: () =>
         }
     };
 
+    const handleOpenCreate = async () => {
+        if (!selectedHomeId) return;
+        setCreateData({ id: null, name: '', type: 'bulb', roomId: null });
+        setCreateVisible(true);
+        try {
+            const res = await getRooms(selectedHomeId);
+            if (res.success) {
+                setRooms(res.data);
+                setCreateData({ id: null, name: '', type: 'bulb', roomId: res.data.length > 0 ? res.data[0].id : null });
+            } else {
+                setCreateData({ id: null, name: '', type: 'bulb', roomId: null });
+            }
+        } catch (e) {
+            setCreateData({ id: null, name: '', type: 'bulb', roomId: null });
+            console.log(e);
+        }
+    };
+
+    const handleOpenEdit = async (device: any) => {
+        if (!selectedHomeId) return;
+        setCreateData({ id: device.id, name: device.name, type: device.type, roomId: device.roomId || null });
+        setCreateVisible(true);
+        try {
+            const res = await getRooms(selectedHomeId);
+            if (res.success) setRooms(res.data);
+        } catch (e) {
+            console.log(e);
+        }
+    };
+
+    const submitCreateRoom = async () => {
+        if (!selectedHomeId || !newRoomName.trim()) return;
+        setCreatingRoom(true);
+        try {
+            const res = await createRoom(selectedHomeId, newRoomName.trim());
+            if (res.success && res.data) {
+                const rms = await getRooms(selectedHomeId);
+                if (rms.success) setRooms(rms.data);
+                setCreateData({ ...createData, roomId: res.data.id });
+                setNewRoomName('');
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
+            }
+        } catch (e: any) {
+            Alert.alert('Room Creation Failed', e.message);
+        } finally {
+            setCreatingRoom(false);
+        }
+    };
+
+    const handleDeleteRoom = (roomId: number, roomName: string) => {
+        setConfirmModal({
+            visible: true,
+            title: "Delete Room",
+            message: `Are you sure you want to delete ${roomName}? Devices in this room will NOT be deleted, they will just become unassigned.`,
+            onConfirm: async () => {
+                if (!selectedHomeId) return;
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => { });
+                try {
+                    await deleteRoomApi(selectedHomeId, roomId);
+                    setRooms(prev => prev.filter(r => r.id !== roomId));
+                    if (createData.roomId === roomId) {
+                        setCreateData({ ...createData, roomId: null });
+                    }
+                } catch (e: any) {
+                    Alert.alert('Cannot delete room', e.message);
+                }
+            }
+        });
+    };
+
+    const submitCreateDevice = async () => {
+        if (!selectedHomeId || !createData.name) return;
+        setCreateBusy(true);
+        try {
+            if (createData.id) {
+                await updateDeviceApi(selectedHomeId, createData.id, createData);
+                Alert.alert("Success", "Device updated successfully.");
+            } else {
+                await createDevice(selectedHomeId, createData);
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
+            }
+            setCreateVisible(false);
+            loadData();
+        } catch (e: any) {
+            Alert.alert(createData.id ? 'Update Failed' : 'Creation Failed', e.message);
+        } finally {
+            setCreateBusy(false);
+        }
+    };
+
+    const handleDeleteDevice = (device: any) => {
+        setConfirmModal({
+            visible: true,
+            title: "Delete Device",
+            message: `Are you sure you want to delete ${device.name}?`,
+            onConfirm: async () => {
+                if (!selectedHomeId) return;
+                try {
+                    await deleteDeviceApi(selectedHomeId, device.id);
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => { });
+                    loadData();
+                } catch (e: any) {
+                    Alert.alert("Delete Failed", e.message);
+                }
+            }
+        });
+    };
+
     // Extract dynamic categories based on user's assigned rooms
     const categories = ['All', ...Array.from(new Set(devices.map(d => d.room?.name).filter(Boolean)))];
 
@@ -208,6 +329,15 @@ export function DashboardScreen({ user, onLogout }: { user: any, onLogout: () =>
                     </View>
                 </View>
                 <View style={styles.headerRight}>
+                    <TouchableOpacity
+                        onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
+                            handleOpenCreate();
+                        }}
+                        style={[styles.iconBtn, { backgroundColor: theme.card, borderColor: theme.border }]}
+                    >
+                        <Plus color={theme.textSecondary} size={20} />
+                    </TouchableOpacity>
                     <TouchableOpacity
                         onPress={() => {
                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
@@ -273,7 +403,7 @@ export function DashboardScreen({ user, onLogout }: { user: any, onLogout: () =>
                         </View>
                     ) : filteredDevices.length > 0 ? (
                         filteredDevices.map((device) => (
-                            <DeviceCard key={device.id} device={device} onToggle={handleToggle} />
+                            <DeviceCard key={device.id} device={device} onToggle={handleToggle} onLongPress={handleOpenEdit} />
                         ))
                     ) : (
                         <View style={[styles.emptyBox, { backgroundColor: theme.card, borderColor: theme.border, width: '100%' }]}>
@@ -321,6 +451,132 @@ export function DashboardScreen({ user, onLogout }: { user: any, onLogout: () =>
             >
                 <Bot color={theme.background} size={28} />
             </TouchableOpacity>
+
+            {/* Create Device Modal */}
+            <Modal visible={createVisible} transparent animationType="slide" onRequestClose={() => setCreateVisible(false)}>
+                <KeyboardAvoidingView
+                    style={{ flex: 1 }}
+                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                >
+                    <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}>
+                        <View style={{ backgroundColor: theme.background, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, borderColor: theme.border, borderWidth: 1 }}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 }}>
+                                <Text style={{ color: theme.text, fontSize: 18, fontWeight: 'bold' }}>{createData.id ? 'Edit Device' : 'Create New Device'}</Text>
+                                <TouchableOpacity onPress={() => setCreateVisible(false)}>
+                                    <X color={theme.textSecondary} size={24} />
+                                </TouchableOpacity>
+                            </View>
+
+                            <Text style={{ color: theme.textSecondary, marginBottom: 8 }}>Device Name</Text>
+                            <TextInput
+                                style={[styles.inputField, { color: theme.text, borderColor: theme.border, backgroundColor: theme.card }]}
+                                value={createData.name}
+                                onChangeText={t => setCreateData({ ...createData, name: t })}
+                                placeholder="e.g. Ceiling Light"
+                                placeholderTextColor={theme.textSecondary}
+                            />
+
+                            <Text style={{ color: theme.textSecondary, marginBottom: 8, marginTop: 16 }}>Device Type</Text>
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                                {['bulb', 'fan', 'ac', 'tv', 'plug', 'dimmer', 'custom'].map(t => (
+                                    <TouchableOpacity
+                                        key={t}
+                                        style={[styles.filterChip, { marginBottom: 12, backgroundColor: createData.type === t ? theme.primary + '20' : theme.card, borderColor: createData.type === t ? theme.primary : theme.border }]}
+                                        onPress={() => setCreateData({ ...createData, type: t })}
+                                    >
+                                        <Text style={{ color: createData.type === t ? theme.primary : theme.textSecondary, textTransform: 'capitalize' }}>{t}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </ScrollView>
+
+                            <Text style={{ color: theme.textSecondary, marginBottom: 8, marginTop: 12 }}>Select Room</Text>
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                                {rooms.length === 0 && (
+                                    <Text style={{ color: theme.textSecondary, fontStyle: 'italic', marginLeft: 4 }}>No rooms found.</Text>
+                                )}
+                                {rooms.map(r => (
+                                    <TouchableOpacity
+                                        key={r.id}
+                                        delayLongPress={400}
+                                        style={[styles.filterChip, { marginBottom: 12, backgroundColor: createData.roomId === r.id ? theme.primary + '20' : theme.card, borderColor: createData.roomId === r.id ? theme.primary : theme.border }]}
+                                        onPress={() => setCreateData({ ...createData, roomId: r.id })}
+                                        onLongPress={() => {
+                                            Haptics.selectionAsync().catch(() => { });
+                                            handleDeleteRoom(r.id, r.name);
+                                        }}
+                                    >
+                                        <Text style={{ color: createData.roomId === r.id ? theme.primary : theme.textSecondary }}>{r.name}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </ScrollView>
+
+                            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, marginBottom: 16 }}>
+                                <TextInput
+                                    style={[styles.inputField, { flex: 1, paddingVertical: 10, paddingHorizontal: 12, color: theme.text, borderColor: theme.border, backgroundColor: theme.card, borderRadius: 8, fontSize: 14 }]}
+                                    value={newRoomName}
+                                    onChangeText={setNewRoomName}
+                                    placeholder="New room name..."
+                                    placeholderTextColor={theme.textSecondary}
+                                />
+                                <TouchableOpacity
+                                    style={{ backgroundColor: theme.primary, paddingVertical: 10, paddingHorizontal: 16, borderRadius: 8, marginLeft: 8, opacity: (!newRoomName.trim() || creatingRoom) ? 0.5 : 1 }}
+                                    onPress={submitCreateRoom}
+                                    disabled={creatingRoom || !newRoomName.trim()}
+                                >
+                                    {creatingRoom ? <ActivityIndicator size="small" color="#fff" /> : <Text style={{ color: '#fff', fontWeight: 'bold' }}>Add</Text>}
+                                </TouchableOpacity>
+                            </View>
+
+                            <TouchableOpacity
+                                style={[styles.submitButton, { backgroundColor: theme.primary, opacity: (!createData.name || createBusy) ? 0.5 : 1, marginBottom: createData.id ? 12 : 0 }]}
+                                disabled={!createData.name || createBusy}
+                                onPress={submitCreateDevice}
+                            >
+                                {createBusy ? <ActivityIndicator size="small" color="#fff" /> : <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }}>{createData.id ? 'Save Changes' : 'Create Device'}</Text>}
+                            </TouchableOpacity>
+
+                            {createData.id && (
+                                <TouchableOpacity
+                                    style={[styles.submitButton, { backgroundColor: theme.card, borderColor: theme.danger, borderWidth: 1 }]}
+                                    onPress={() => {
+                                        setCreateVisible(false);
+                                        handleDeleteDevice({ id: createData.id, name: createData.name });
+                                    }}
+                                >
+                                    <Text style={{ color: theme.danger || '#ef4444', fontSize: 16, fontWeight: 'bold' }}>Delete Device</Text>
+                                </TouchableOpacity>
+                            )}
+                        </View>
+                    </View>
+                </KeyboardAvoidingView>
+            </Modal>
+
+            {/* Custom Confirm Modal */}
+            <Modal visible={confirmModal.visible} transparent animationType="fade" onRequestClose={() => setConfirmModal(prev => ({ ...prev, visible: false }))}>
+                <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 24 }}>
+                    <View style={{ backgroundColor: theme.background, borderRadius: 24, padding: 24, borderColor: theme.border, borderWidth: 1 }}>
+                        <Text style={{ color: theme.text, fontSize: 20, fontWeight: 'bold', marginBottom: 12 }}>{confirmModal.title}</Text>
+                        <Text style={{ color: theme.textSecondary, fontSize: 16, lineHeight: 24, marginBottom: 24 }}>{confirmModal.message}</Text>
+                        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12 }}>
+                            <TouchableOpacity
+                                style={{ paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12, backgroundColor: theme.card }}
+                                onPress={() => setConfirmModal(prev => ({ ...prev, visible: false }))}
+                            >
+                                <Text style={{ color: theme.text, fontWeight: 'bold' }}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={{ paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12, backgroundColor: theme.danger || '#ef4444' }}
+                                onPress={() => {
+                                    setConfirmModal(prev => ({ ...prev, visible: false }));
+                                    confirmModal.onConfirm();
+                                }}
+                            >
+                                <Text style={{ color: '#fff', fontWeight: 'bold' }}>Delete</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
 
         </View>
     );
@@ -387,5 +643,20 @@ const styles = StyleSheet.create({
         shadowRadius: 12,
         elevation: 10,
         zIndex: 100
+    },
+
+    inputField: {
+        borderWidth: 1,
+        borderRadius: 12,
+        padding: 14,
+        fontSize: 16,
+    },
+    submitButton: {
+        marginTop: 24,
+        padding: 16,
+        borderRadius: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: Platform.OS === 'ios' ? 20 : 0
     }
 });

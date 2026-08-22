@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Modal, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
-import { Cpu, Wifi, Server, X, PlusCircle, Monitor, Shield } from 'lucide-react-native';
+import { Cpu, Wifi, Server, X, PlusCircle, Monitor, Shield, Camera } from 'lucide-react-native';
 import { getHardwareHomes, setEspLed, assignEspChannel } from '../api/hardware';
+import { getClaimHomes, claimDevice } from '../api/shop';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 
 const getRelativeTime = (dateString: string) => {
@@ -27,6 +29,14 @@ export function HardwareScreen() {
     const [mappingModal, setMappingModal] = useState<{ visible: boolean, espId: number | null, channel: number | null }>({ visible: false, espId: null, channel: null });
     const [detailsModal, setDetailsModal] = useState<any | null>(null);
 
+    // Modal state for hardware activation
+    const [activateModal, setActivateModal] = useState<{ visible: boolean, mode: 'manual' | 'camera' }>({ visible: false, mode: 'manual' });
+    const [permission, requestPermission] = useCameraPermissions();
+    const [serialCodeStr, setSerialCodeStr] = useState('');
+    const [claimHomeId, setClaimHomeId] = useState<number | "">("");
+    const [claimHomes, setClaimHomes] = useState<any[]>([]);
+    const [claimBusy, setClaimBusy] = useState(false);
+
     useEffect(() => {
         loadDashboards();
     }, []);
@@ -49,6 +59,74 @@ export function HardwareScreen() {
     };
 
     const currentHome = homes.find(h => h.homeId === selectedHomeId);
+
+    const handleOpenActivate = async (mode: 'manual' | 'camera') => {
+        if (mode === 'camera' && !permission?.granted) {
+            const res = await requestPermission();
+            if (!res.granted) {
+                Alert.alert("Permission Refused", "Cannot scan QR without camera permissions.");
+                return;
+            }
+        }
+        setActivateModal({ visible: true, mode });
+        setSerialCodeStr('');
+        setClaimBusy(true);
+        try {
+            const hs = await getClaimHomes();
+            setClaimHomes(hs);
+            if (hs.length === 1) setClaimHomeId(hs[0].id);
+        } catch (e: any) {
+            Alert.alert("Error", e.message || "Could not load homes.");
+        } finally {
+            setClaimBusy(false);
+        }
+    };
+
+    const handleSerialCodeChange = (text: string) => {
+        const raw = text.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+        if (!raw.startsWith('RS')) { setSerialCodeStr(raw); return; }
+        const afterRS = raw.substring(2);
+        const mMap: Record<string, string> = { 'FANDIM': 'FAN-DIM', 'DIM4S': 'DIM-4S', 'DIM3S': 'DIM-3S', '4CHIR': '4CH-IR', '16CH': '16CH', '8CH': '8CH', '6CH': '6CH', '5CH': '5CH', '4CH': '4CH', '2CH': '2CH', '1CH': '1CH', 'SNR2': 'SN-R2', 'SNR1': 'SN-R1' };
+        const kModels = Object.keys(mMap).sort((a, b) => b.length - a.length);
+        let matched = '';
+        for (const m of kModels) {
+            if (afterRS.startsWith(m)) { matched = m; break; }
+        }
+        if (matched) {
+            const rem = afterRS.substring(matched.length);
+            setSerialCodeStr(rem.length > 0 ? `RS-${mMap[matched]}-${rem}` : `RS-${mMap[matched]}`);
+        } else if (raw.length > 2) {
+            setSerialCodeStr(`RS-${afterRS}`);
+        } else {
+            setSerialCodeStr(raw);
+        }
+    };
+
+    const handleBarcodeScanned = async (result: any) => {
+        if (claimBusy) return;
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
+        let extractedSerial = result.data;
+        if (extractedSerial.includes('serial=')) {
+            extractedSerial = extractedSerial.split('serial=')[1].split('&')[0];
+        }
+        handleSerialCodeChange(extractedSerial);
+        setActivateModal({ visible: true, mode: 'manual' });
+    };
+
+    const submitClaim = async () => {
+        if (!serialCodeStr || typeof claimHomeId !== 'number') return;
+        setClaimBusy(true);
+        try {
+            const res = await claimDevice(serialCodeStr.toUpperCase(), claimHomeId);
+            Alert.alert("Success", `Device ${res.device.name} activated successfully.`);
+            setActivateModal({ visible: false, mode: 'manual' });
+            loadDashboards();
+        } catch (e: any) {
+            Alert.alert("Failed", e.message || "Failed to claim device.");
+        } finally {
+            setClaimBusy(false);
+        }
+    };
 
     const toggleLed = async (espId: number, currentEnabled: boolean) => {
         if (!currentHome) return;
@@ -116,9 +194,19 @@ export function HardwareScreen() {
 
     return (
         <View style={[styles.container, { backgroundColor: theme.background }]}>
-            <View style={[styles.header, { backgroundColor: theme.background }]}>
-                <Text style={[styles.headerTitle, { color: theme.text }]}>Hardware</Text>
-                <Text style={{ color: theme.textSecondary, marginTop: 4 }}>Cloud Physical Mappings</Text>
+            <View style={[styles.header, { backgroundColor: theme.background, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }]}>
+                <View>
+                    <Text style={[styles.headerTitle, { color: theme.text }]}>Hardware</Text>
+                    <Text style={{ color: theme.textSecondary, marginTop: 4 }}>Cloud Physical Mappings</Text>
+                </View>
+                <View style={{ flexDirection: 'row', gap: 12 }}>
+                    <TouchableOpacity style={[styles.headerActionBtn, { backgroundColor: theme.card, borderColor: theme.border }]} onPress={() => handleOpenActivate('camera')}>
+                        <Camera color={theme.text} size={20} />
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.headerActionBtn, { backgroundColor: theme.primary, borderColor: theme.primary }]} onPress={() => handleOpenActivate('manual')}>
+                        <Text style={{ color: '#fff', fontWeight: 'bold' }}>Activate</Text>
+                    </TouchableOpacity>
+                </View>
             </View>
 
             {homes.length > 1 && (
@@ -215,6 +303,80 @@ export function HardwareScreen() {
                 )}
             </ScrollView>
 
+            {/* Activation Scanner / Manual Modal */}
+            <Modal visible={activateModal.visible} transparent animationType="slide" onRequestClose={() => setActivateModal({ visible: false, mode: 'manual' })}>
+                <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+                    <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' }}>
+
+                        {activateModal.mode === 'camera' && (
+                            <View style={{ flex: 1 }}>
+                                <CameraView
+                                    style={{ flex: 1 }}
+                                    facing="back"
+                                    barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
+                                    onBarcodeScanned={handleBarcodeScanned}
+                                />
+                                <View style={{ position: 'absolute', top: 60, right: 24 }}>
+                                    <TouchableOpacity style={{ padding: 12, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 24 }} onPress={() => setActivateModal({ visible: false, mode: 'manual' })}>
+                                        <X color="#fff" size={24} />
+                                    </TouchableOpacity>
+                                </View>
+                                <View style={{ position: 'absolute', bottom: 60, alignSelf: 'center' }}>
+                                    <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold', textShadowColor: '#000', textShadowRadius: 4 }}>Scan QR Code on Device Box</Text>
+                                </View>
+                            </View>
+                        )}
+
+                        {activateModal.mode === 'manual' && (
+                            <View style={{ backgroundColor: theme.background, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, minHeight: 300, borderColor: theme.border, borderWidth: 1 }}>
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 }}>
+                                    <Text style={{ color: theme.text, fontSize: 18, fontWeight: 'bold' }}>Activate Hardware</Text>
+                                    <TouchableOpacity onPress={() => setActivateModal({ visible: false, mode: 'manual' })}>
+                                        <X color={theme.textSecondary} size={24} />
+                                    </TouchableOpacity>
+                                </View>
+
+                                <ScrollView>
+                                    <Text style={{ color: theme.textSecondary, marginBottom: 8 }}>Serial Code</Text>
+                                    <TextInput
+                                        style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.card }]}
+                                        value={serialCodeStr}
+                                        onChangeText={handleSerialCodeChange}
+                                        placeholder="RS-XXXXXX"
+                                        placeholderTextColor={theme.textSecondary}
+                                        autoCapitalize="characters"
+                                    />
+
+                                    <Text style={{ color: theme.textSecondary, marginBottom: 8, marginTop: 16 }}>Select Home</Text>
+                                    <View style={{ gap: 8 }}>
+                                        {claimHomes.length === 0 && !claimBusy && (
+                                            <Text style={{ color: theme.textSecondary }}>No available homes to claim to.</Text>
+                                        )}
+                                        {claimHomes.map(h => (
+                                            <TouchableOpacity
+                                                key={h.id}
+                                                style={[styles.homeSelectBtn, { borderColor: claimHomeId === h.id ? theme.primary : theme.border, backgroundColor: claimHomeId === h.id ? theme.primary + '20' : theme.card }]}
+                                                onPress={() => setClaimHomeId(h.id)}
+                                            >
+                                                <Text style={{ color: claimHomeId === h.id ? theme.primary : theme.text }}>{h.name}</Text>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </View>
+
+                                    <TouchableOpacity
+                                        style={[styles.payButton, { backgroundColor: theme.primary, marginTop: 32, opacity: claimBusy || !claimHomeId || !serialCodeStr ? 0.5 : 1 }]}
+                                        disabled={claimBusy || claimHomes.length === 0 || !claimHomeId || !serialCodeStr}
+                                        onPress={submitClaim}
+                                    >
+                                        {claimBusy ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.payButtonText}>Activate</Text>}
+                                    </TouchableOpacity>
+                                </ScrollView>
+                            </View>
+                        )}
+                    </View>
+                </KeyboardAvoidingView>
+            </Modal>
+
             {/* Modal picker for Unassigned Devices */}
             <Modal visible={mappingModal.visible} transparent animationType="slide" onRequestClose={() => setMappingModal({ visible: false, espId: null, channel: null })}>
                 <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}>
@@ -299,6 +461,7 @@ const styles = StyleSheet.create({
     container: { flex: 1 },
     header: { paddingTop: 64, paddingBottom: 16, paddingHorizontal: 24 },
     headerTitle: { fontSize: 32, fontWeight: 'bold' },
+    headerActionBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
     filterChip: { paddingHorizontal: 20, paddingVertical: 8, borderRadius: 24, borderWidth: 1, marginRight: 12 },
     filterText: { fontWeight: '500' },
     emptyBox: { borderRadius: 16, padding: 30, borderWidth: 1, alignItems: 'center', marginVertical: 40 },
@@ -309,5 +472,9 @@ const styles = StyleSheet.create({
     channelRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderTopWidth: 1 },
     chBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
     unmapBtn: { borderWidth: 1, borderRadius: 8, padding: 6 },
-    unassignedCard: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 12, borderWidth: 1, marginBottom: 12 }
+    unassignedCard: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 12, borderWidth: 1, marginBottom: 12 },
+    input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, fontFamily: 'monospace' },
+    homeSelectBtn: { paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12, borderWidth: 1 },
+    payButton: { padding: 16, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+    payButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
 });

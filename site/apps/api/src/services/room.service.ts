@@ -15,3 +15,10 @@ export async function deleteRoom(homeId: number, roomId: number) {
   // Devices in the room get roomId = NULL (SetNull), they are not deleted.
   await prisma.room.delete({ where: { id: roomId } });
 }
+
+export async function listRooms(homeId: number) {
+  return prisma.room.findMany({
+    where: { homeId },
+    orderBy: { name: "asc" },
+  });
+}
