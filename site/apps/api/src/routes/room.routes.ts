@@ -16,6 +16,14 @@ const roomParams = z.object({
 
 const createSchema = z.object({ name: z.string().min(1).max(100) });
 
+roomRouter.get(
+  "/:homeId/rooms",
+  requireAuth,
+  validateParams(idParams),
+  requireHomeMember("viewer"),
+  async (req, res) => ok(res, await roomService.listRooms(Number(req.params.homeId))),
+);
+
 roomRouter.post(
   "/:homeId/rooms",
   requireAuth,

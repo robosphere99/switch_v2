@@ -31,10 +31,9 @@ webhookRouter.post("/razorpay", async (req, res) => {
         const payload = JSON.parse(rawBody);
         const event = payload.event;
 
-        // We only care about successful payment or order paid webhook.
-        // Razorpay sends "payment.captured" or "order.paid".
-        if (event === "payment.captured" || event === "order.paid") {
-            const paymentEntity = event === "payment.captured" ? payload.payload.payment.entity : null;
+        // We handle successful payment ("payment.captured" or "order.paid") and failed payments ("payment.failed")
+        if (event === "payment.captured" || event === "order.paid" || event === "payment.failed") {
+            const paymentEntity = (event === "payment.captured" || event === "payment.failed") ? payload.payload.payment.entity : null;
             const orderEntity = event === "order.paid" ? payload.payload.order.entity : null;
 
             const razorpayOrderId = paymentEntity?.order_id || orderEntity?.id;
@@ -60,19 +59,42 @@ webhookRouter.post("/razorpay", async (req, res) => {
                 return res.status(200).send("OK");
             }
 
-            // Mark order as paid
-            await prisma.order.update({
-                where: { id: order.id },
-                data: {
-                    paidAt: new Date(),
-                    paymentRef: paymentId || "Webhook Automatically Paid",
-                },
-            });
+            if (event === "payment.failed") {
+                const reason = paymentEntity?.error_reason || paymentEntity?.error_description || "Payment Failed";
+                await prisma.order.update({
+                    where: { id: order.id },
+                    data: {
+                        paymentStatus: "failed",
+                    },
+                });
+                logger.warn(`Razorpay Webhook: Order ${order.id} payment failed: ${reason}`);
 
-            // Invoke service logic to handle factory allocation
-            await updateOrderStatus(order.id, "processing");
+                // Send notification
+                import("../services/notification.service").then(({ createNotification }) => {
+                    createNotification(order.userId, {
+                        title: "Payment Failed",
+                        body: `Payment for your order ${order.orderNumber} failed (${reason}). Please retry from the app.`,
+                        type: "error",
+                        category: "system"
+                    });
+                }).catch((err) => {
+                    logger.error(`Failed to send notification for order ${order.id}: ${err}`);
+                });
+            } else {
+                // Mark order as paid
+                await prisma.order.update({
+                    where: { id: order.id },
+                    data: {
+                        paidAt: new Date(),
+                        paymentRef: paymentId || "Webhook Automatically Paid",
+                    },
+                });
 
-            logger.info(`Razorpay Webhook: Order ${order.id} marked as processing via webhook.`);
+                // Invoke service logic to handle factory allocation
+                await updateOrderStatus(order.id, "processing");
+
+                logger.info(`Razorpay Webhook: Order ${order.id} marked as processing via webhook.`);
+            }
         }
 
         // Always return 200 OK to acknowledge webhook

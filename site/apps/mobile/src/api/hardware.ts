@@ -112,3 +112,57 @@ export const assignEspChannel = async (homeId: number, deviceId: number, espId: 
         throw extractApiError(e);
     }
 };
+
+export const getRooms = async (homeId: number) => {
+    try {
+        const res = await api.get(`/homes/${homeId}/rooms`);
+        return res.data;
+    } catch (e) {
+        throw extractApiError(e);
+    }
+};
+
+export const createRoom = async (homeId: number, name: string) => {
+    try {
+        const res = await api.post(`/homes/${homeId}/rooms`, { name });
+        return res.data;
+    } catch (e) {
+        throw extractApiError(e);
+    }
+};
+
+export const deleteRoomApi = async (homeId: number, roomId: number) => {
+    try {
+        const res = await api.delete(`/homes/${homeId}/rooms/${roomId}`);
+        return res.data;
+    } catch (e) {
+        throw extractApiError(e);
+    }
+};
+
+export const createDevice = async (homeId: number, data: { name: string; type: string; roomId?: number | null }) => {
+    try {
+        const res = await api.post(`/homes/${homeId}/devices`, data);
+        return res.data;
+    } catch (e) {
+        throw extractApiError(e);
+    }
+};
+
+export const updateDeviceApi = async (homeId: number, deviceId: number, data: { name?: string; type?: string; roomId?: number | null }) => {
+    try {
+        const res = await api.patch(`/homes/${homeId}/devices/${deviceId}`, data);
+        return res.data;
+    } catch (e) {
+        throw extractApiError(e);
+    }
+};
+
+export const deleteDeviceApi = async (homeId: number, deviceId: number) => {
+    try {
+        const res = await api.delete(`/homes/${homeId}/devices/${deviceId}`);
+        return res.data;
+    } catch (e) {
+        throw extractApiError(e);
+    }
+};

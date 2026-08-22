@@ -74,8 +74,34 @@ export function OrdersScreen({ visible, onClose }: OrdersScreenProps) {
             }
         } catch (error: any) {
             console.error("Payment error:", error);
-            const msg = error?.description || error?.message || error?.error?.description || "Payment failed or cancelled";
-            Alert.alert('Payment Failed', String(msg));
+            let parsedMsg = "Payment failed or cancelled";
+
+            // The Razorpay React Native wrapper often stringifies the JSON payload into error.description
+            if (error?.description && typeof error.description === 'string') {
+                try {
+                    const parsed = JSON.parse(error.description);
+                    if (parsed?.error) {
+                        parsedMsg = parsed.error.description || parsed.error.reason || error.description;
+                    } else {
+                        parsedMsg = error.description;
+                    }
+                } catch (e) {
+                    parsedMsg = error.description;
+                }
+            } else if (error?.message) {
+                parsedMsg = error.message;
+            } else if (error?.error?.description) {
+                parsedMsg = error.error.description;
+            } else if (error?.description) {
+                parsedMsg = String(error.description);
+            }
+
+            // Remove useless "undefined" strings thrown by internal razorpay logic if reason is absent
+            if (parsedMsg === "undefined" || !parsedMsg || parsedMsg.includes("undefined")) {
+                parsedMsg = "Payment failed or cancelled";
+            }
+
+            Alert.alert('Payment Failed', String(parsedMsg));
         } finally {
             setPayBusy(false);
         }
@@ -146,17 +172,27 @@ export function OrdersScreen({ visible, onClose }: OrdersScreenProps) {
                                     <View style={[styles.divider, { borderColor: theme.border }]} />
 
                                     {order.status === 'pending' && order.paymentMethod !== 'cod' && (
-                                        <TouchableOpacity
-                                            onPress={() => handlePay(order.id)}
-                                            disabled={payBusy}
-                                            style={[styles.payButton, { backgroundColor: theme.primary, opacity: payBusy ? 0.7 : 1 }]}
-                                        >
-                                            {payBusy ? (
-                                                <ActivityIndicator size="small" color="#fff" />
-                                            ) : (
-                                                <Text style={styles.payButtonText}>💳 Pay Now</Text>
+                                        <>
+                                            {order.paymentStatus === 'failed' && (
+                                                <Text style={{ color: '#ef4444', fontSize: 13, marginBottom: 8, textAlign: 'center', fontWeight: 'bold' }}>
+                                                    Last payment attempt failed.
+                                                </Text>
                                             )}
-                                        </TouchableOpacity>
+                                            <TouchableOpacity
+                                                onPress={() => handlePay(order.id)}
+                                                disabled={payBusy}
+                                                style={[
+                                                    styles.payButton,
+                                                    { backgroundColor: order.paymentStatus === 'failed' ? '#ef4444' : theme.primary, opacity: payBusy ? 0.7 : 1 }
+                                                ]}
+                                            >
+                                                {payBusy ? (
+                                                    <ActivityIndicator size="small" color="#fff" />
+                                                ) : (
+                                                    <Text style={styles.payButtonText}>{order.paymentStatus === 'failed' ? '⚠️ Retry Payment' : '💳 Pay Now'}</Text>
+                                                )}
+                                            </TouchableOpacity>
+                                        </>
                                     )}
 
                                     {order.items.map((item, idx) => (

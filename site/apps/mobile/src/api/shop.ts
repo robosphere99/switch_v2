@@ -1,4 +1,4 @@
-import { api } from './client';
+import { api, extractApiError } from './client';
 
 export interface Product {
     id: number;
@@ -79,4 +79,22 @@ export async function initiatePayment(orderId: number): Promise<PayIntent> {
 export async function verifyPayment(orderId: number, payload: { razorpayOrderId: string; razorpayPaymentId: string; razorpaySignature: string }) {
     const { data } = await api.post(`/shop/orders/${orderId}/pay/verify`, payload);
     return data.data;
+}
+
+export async function getClaimHomes(): Promise<Array<{ id: number; name: string }>> {
+    try {
+        const { data } = await api.get('/claim/homes');
+        return data.data;
+    } catch (e) {
+        throw extractApiError(e);
+    }
+}
+
+export async function claimDevice(serialCode: string, homeId: number): Promise<{ device: { id: number; name: string }; serialCode: string }> {
+    try {
+        const { data } = await api.post('/claim', { serialCode, homeId });
+        return data.data;
+    } catch (e) {
+        throw extractApiError(e);
+    }
 }

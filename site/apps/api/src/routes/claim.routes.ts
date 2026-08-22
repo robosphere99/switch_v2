@@ -111,29 +111,20 @@ claimRouter.post("/", claimLimiter, async (req, res) => {
       },
     });
 
-    return tx.device.create({
-      data: {
-        homeId,
-        espId: espStub.id,
-        channel: 1, // Auto-map first device to CH 1
-        name: deviceName,
-        type,
-        status: "off",
-        serialNumber: serial.serialCode,
-        createdBy: req.user!.sub,
-      },
-    });
+    // Sirf hardware board (EspDevice) create karte hain.
+    // Logical devices user baad me khud create/map karega app/web se.
+    return espStub;
   });
 
   await audit(req.user!.sub, "shop.device.claim", {
-    entity: "device",
+    entity: "esp_device",
     entityId: device.id,
     meta: { serialCode, homeId, model: serial.product.modelCode },
   });
 
   ok(res, {
     claimed: true,
-    device: { id: device.id, name: device.name, type },
+    device: { id: device.id, name: device.name, type: "custom" },
     serialCode,
     homeId,
   }, 201);
