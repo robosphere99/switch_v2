@@ -23,13 +23,13 @@ export async function me(req: Request, res: Response) {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.user!.sub },
-      select: { id: true, username: true, email: true, role: true, themePref: true, createdAt: true, pushDeviceToggles: true, pushSystemAlerts: true },
+      select: { id: true, username: true, email: true, role: true, themePref: true, createdAt: true, pushDeviceToggles: true, pushSystemAlerts: true, avatarUrl: true, dob: true, gender: true, phone: true, address: true },
     });
     ok(res, user);
   } catch (err) {
     const user = await prisma.user.findUnique({
       where: { id: req.user!.sub },
-      select: { id: true, username: true, email: true, role: true, themePref: true, createdAt: true },
+      select: { id: true, username: true, email: true, role: true, themePref: true, createdAt: true, avatarUrl: true, dob: true, gender: true, phone: true, address: true },
     });
     ok(res, { ...user, pushDeviceToggles: true, pushSystemAlerts: true });
   }

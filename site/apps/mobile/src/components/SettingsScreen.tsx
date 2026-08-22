@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Switch, ScrollView, Modal, TextInput, KeyboardAvoidingView, Platform, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Switch, ScrollView, Modal, TextInput, KeyboardAvoidingView, Platform, Alert, ActivityIndicator, Image } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { ActivityScreen } from './ActivityScreen';
 import { SupportScreen } from './SupportScreen';
@@ -10,7 +10,12 @@ import { APP_VERSION } from '../../App';
 
 export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () => void }) {
     const { theme, mode, setMode, themeId, setThemeId, availableThemes } = useTheme();
+    const [localUser, setLocalUser] = useState(user);
     const [aiSuggestions, setAiSuggestions] = useState(true);
+
+    useEffect(() => {
+        setLocalUser(user);
+    }, [user]);
     const [view, setView] = useState<'MAIN' | 'TIMELINE' | 'APPEARANCE' | 'PROFILE' | 'NOTIFICATIONS' | 'SUPPORT'>('MAIN');
 
     // Password Update States
@@ -22,6 +27,15 @@ export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () =>
     // Sessions States
     const [sessions, setSessions] = useState<any[]>([]);
     const [loadingSessions, setLoadingSessions] = useState(false);
+
+    // Edit Profile States
+    const [editProfileVisible, setEditProfileVisible] = useState(false);
+    const [editAvatarUrl, setEditAvatarUrl] = useState('');
+    const [editDob, setEditDob] = useState('');
+    const [editGender, setEditGender] = useState('');
+    const [editPhone, setEditPhone] = useState('');
+    const [editAddress, setEditAddress] = useState('');
+    const [editingProfile, setEditingProfile] = useState(false);
 
     // Notification Prefs
     const [pushDeviceToggles, setPushDeviceToggles] = useState(user?.pushDeviceToggles ?? true);
@@ -66,6 +80,30 @@ export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () =>
                 }
             }
         ]);
+    };
+
+    const handleSaveProfile = async () => {
+        setEditingProfile(true);
+        try {
+            const { api: apiInstance } = await import('../api/client');
+            const payload: any = {};
+            if (editAvatarUrl.trim()) payload.avatarUrl = editAvatarUrl.trim();
+            if (editDob.trim()) payload.dob = editDob.trim();
+            if (editGender.trim()) payload.gender = editGender.trim();
+            if (editPhone.trim()) payload.phone = editPhone.trim();
+            if (editAddress.trim()) payload.address = editAddress.trim();
+
+            const res = await apiInstance.patch('/auth/me', payload);
+            if (res.data?.success) {
+                setLocalUser({ ...localUser, ...res.data.data });
+                setEditProfileVisible(false);
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
+            }
+        } catch (e: any) {
+            Alert.alert("Error", e.response?.data?.error?.message || "Could not update profile.");
+        } finally {
+            setEditingProfile(false);
+        }
     };
 
     const changePassword = async () => {
@@ -333,27 +371,64 @@ export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () =>
                     >
                         <Text style={{ color: theme.primary, fontWeight: 'bold' }}>← Back</Text>
                     </TouchableOpacity>
-                    <Text style={[styles.headerTitle, { color: theme.text }]}>Profile</Text>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Text style={[styles.headerTitle, { color: theme.text }]}>Profile</Text>
+                        <TouchableOpacity
+                            style={{ backgroundColor: theme.primary + '20', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 }}
+                            onPress={() => {
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
+                                setEditAvatarUrl(localUser?.avatarUrl || '');
+                                setEditDob(localUser?.dob ? new Date(localUser.dob).toISOString().split('T')[0] : '');
+                                setEditGender(localUser?.gender || '');
+                                setEditPhone(localUser?.phone || '');
+                                setEditAddress(localUser?.address || '');
+                                setEditProfileVisible(true);
+                            }}
+                        >
+                            <Text style={{ color: theme.primary, fontWeight: 'bold' }}>Edit Profile</Text>
+                        </TouchableOpacity>
+                    </View>
                 </View>
 
                 <ScrollView showsVerticalScrollIndicator={false}>
                     <View style={{ alignItems: 'center', marginBottom: 30 }}>
-                        <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: theme.primary + '15', borderWidth: 3, borderColor: theme.primary, alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
-                            <User color={theme.primary} size={40} />
+                        <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: theme.primary + '15', borderWidth: 3, borderColor: theme.primary, alignItems: 'center', justifyContent: 'center', marginBottom: 16, overflow: 'hidden' }}>
+                            {localUser?.avatarUrl ? (
+                                <Image source={{ uri: localUser.avatarUrl }} style={{ width: '100%', height: '100%' }} />
+                            ) : (
+                                <User color={theme.primary} size={40} />
+                            )}
                         </View>
-                        <Text style={{ fontSize: 24, fontWeight: '800', color: theme.text }}>{user?.username || 'Commander'}</Text>
-                        <Text style={{ fontSize: 13, color: theme.textSecondary, marginTop: 6, fontWeight: '500' }}>IDENTIFIER: #{user?.id || '----'}</Text>
+                        <Text style={{ fontSize: 24, fontWeight: '800', color: theme.text }}>{localUser?.username || 'Commander'}</Text>
+                        <Text style={{ fontSize: 13, color: theme.textSecondary, marginTop: 6, fontWeight: '500' }}>IDENTIFIER: #{localUser?.id || '----'}</Text>
                     </View>
 
                     <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>ACCOUNT DETAILS</Text>
                     <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border, flexDirection: 'column', alignItems: 'flex-start', marginBottom: 30 }]}>
                         <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '700' }}>EMAIL ADDRESS</Text>
-                        <Text style={{ color: theme.text, fontSize: 16, marginTop: 4, fontWeight: '500' }}>{user?.email || 'No email attached'}</Text>
+                        <Text style={{ color: theme.text, fontSize: 16, marginTop: 4, fontWeight: '500' }}>{localUser?.email || 'No email attached'}</Text>
+
+                        <View style={{ height: 1, backgroundColor: theme.border, width: '100%', marginVertical: 16 }} />
+
+                        <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '700' }}>PHONE</Text>
+                        <Text style={{ color: theme.primary, fontSize: 16, marginTop: 4, fontWeight: '600' }}>{localUser?.phone || 'Not set'}</Text>
+
+                        <View style={{ height: 1, backgroundColor: theme.border, width: '100%', marginVertical: 16 }} />
+
+                        <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '700' }}>DOB & GENDER</Text>
+                        <Text style={{ color: theme.text, fontSize: 16, marginTop: 4, fontWeight: '600' }}>
+                            {(localUser?.dob ? new Date(localUser.dob).toLocaleDateString() : 'N/A')} • {localUser?.gender || 'N/A'}
+                        </Text>
+
+                        <View style={{ height: 1, backgroundColor: theme.border, width: '100%', marginVertical: 16 }} />
+
+                        <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '700' }}>ADDRESS</Text>
+                        <Text style={{ color: theme.text, fontSize: 16, marginTop: 4, fontWeight: '500' }}>{localUser?.address || 'Not Location Set'}</Text>
 
                         <View style={{ height: 1, backgroundColor: theme.border, width: '100%', marginVertical: 16 }} />
 
                         <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '700' }}>SECURITY CLEARANCE</Text>
-                        <Text style={{ color: theme.primary, fontSize: 16, marginTop: 4, fontWeight: '700', textTransform: 'uppercase' }}>{user?.role?.replace('_', ' ') || 'User'}</Text>
+                        <Text style={{ color: theme.primary, fontSize: 16, marginTop: 4, fontWeight: '700', textTransform: 'uppercase' }}>{localUser?.role?.replace('_', ' ') || 'User'}</Text>
                     </View>
 
                     <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>SECURITY</Text>
@@ -443,6 +518,71 @@ export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () =>
                         </View>
                     </KeyboardAvoidingView>
                 </Modal>
+
+                {/* Edit Profile Modal */}
+                <Modal visible={editProfileVisible} animationType="slide" presentationStyle="formSheet" onRequestClose={() => setEditProfileVisible(false)}>
+                    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, backgroundColor: theme.background }}>
+                        <View style={[styles.header, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 24, borderBottomWidth: 1, borderColor: theme.border, marginBottom: 0 }]}>
+                            <Text style={{ fontSize: 22, fontWeight: 'bold', color: theme.text }}>Edit Profile</Text>
+                            <TouchableOpacity onPress={() => setEditProfileVisible(false)}>
+                                <Text style={{ color: theme.textSecondary, fontWeight: '700', fontSize: 16 }}>Close</Text>
+                            </TouchableOpacity>
+                        </View>
+                        <ScrollView contentContainerStyle={{ padding: 24 }}>
+                            <Text style={{ color: theme.textSecondary, marginBottom: 8, fontSize: 12, fontWeight: '700' }}>AVATAR URL (Optional)</Text>
+                            <TextInput
+                                style={[{ backgroundColor: theme.card, color: theme.text, padding: 16, borderRadius: 12, borderWidth: 1, borderColor: theme.border, marginBottom: 16 }]}
+                                placeholder="https://example.com/avatar.jpg"
+                                placeholderTextColor={theme.textSecondary}
+                                autoCapitalize="none"
+                                value={editAvatarUrl}
+                                onChangeText={setEditAvatarUrl}
+                            />
+                            <Text style={{ color: theme.textSecondary, marginBottom: 8, fontSize: 12, fontWeight: '700' }}>DATE OF BIRTH (YYYY-MM-DD)</Text>
+                            <TextInput
+                                style={[{ backgroundColor: theme.card, color: theme.text, padding: 16, borderRadius: 12, borderWidth: 1, borderColor: theme.border, marginBottom: 16 }]}
+                                placeholder="e.g. 1995-12-25"
+                                placeholderTextColor={theme.textSecondary}
+                                value={editDob}
+                                onChangeText={setEditDob}
+                            />
+                            <Text style={{ color: theme.textSecondary, marginBottom: 8, fontSize: 12, fontWeight: '700' }}>GENDER</Text>
+                            <TextInput
+                                style={[{ backgroundColor: theme.card, color: theme.text, padding: 16, borderRadius: 12, borderWidth: 1, borderColor: theme.border, marginBottom: 16 }]}
+                                placeholder="e.g. Male, Female, Other"
+                                placeholderTextColor={theme.textSecondary}
+                                value={editGender}
+                                onChangeText={setEditGender}
+                            />
+                            <Text style={{ color: theme.textSecondary, marginBottom: 8, fontSize: 12, fontWeight: '700' }}>PHONE NUMBER</Text>
+                            <TextInput
+                                style={[{ backgroundColor: theme.card, color: theme.text, padding: 16, borderRadius: 12, borderWidth: 1, borderColor: theme.border, marginBottom: 16 }]}
+                                placeholder="+1 234 567 890"
+                                placeholderTextColor={theme.textSecondary}
+                                keyboardType="phone-pad"
+                                value={editPhone}
+                                onChangeText={setEditPhone}
+                            />
+                            <Text style={{ color: theme.textSecondary, marginBottom: 8, fontSize: 12, fontWeight: '700' }}>ADDRESS</Text>
+                            <TextInput
+                                style={[{ backgroundColor: theme.card, color: theme.text, padding: 16, borderRadius: 12, borderWidth: 1, borderColor: theme.border, marginBottom: 32, minHeight: 80, textAlignVertical: 'top' }]}
+                                placeholder="Your full address..."
+                                placeholderTextColor={theme.textSecondary}
+                                multiline
+                                value={editAddress}
+                                onChangeText={setEditAddress}
+                            />
+                            <TouchableOpacity
+                                onPress={handleSaveProfile}
+                                disabled={editingProfile}
+                                style={{ backgroundColor: theme.primary, padding: 16, borderRadius: 12, alignItems: 'center', marginBottom: 60 }}
+                            >
+                                {editingProfile ? <ActivityIndicator color="#000" /> : <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 16 }}>Save Changes</Text>}
+                            </TouchableOpacity>
+                        </ScrollView>
+                    </KeyboardAvoidingView>
+                </Modal>
+
             </View>
         );
     }

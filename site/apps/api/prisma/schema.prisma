@@ -122,6 +122,11 @@ model User {
   pushSystemAlerts  Boolean   @default(true) @map("push_system_alerts")
   tokenVersion     Int        @default(0) @map("token_version")
   expoPushToken    String?    @db.VarChar(100) @map("expo_push_token")
+  avatarUrl        String?    @db.VarChar(500) @map("avatar_url")
+  dob              DateTime?  @db.Date
+  gender           String?    @db.VarChar(20)
+  phone            String?    @db.VarChar(20)
+  address          String?    @db.Text
 
   ownedHomes     Home[]            @relation("HomeOwner")
   memberships    HomeMember[]

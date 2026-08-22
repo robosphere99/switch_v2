@@ -97,6 +97,11 @@ export async function updateProfile(
     newPassword?: string;
     pushDeviceToggles?: boolean;
     pushSystemAlerts?: boolean;
+    avatarUrl?: string | null;
+    dob?: string | null;
+    gender?: string | null;
+    phone?: string | null;
+    address?: string | null;
   },
 ): Promise<AuthUser> {
   const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -127,6 +132,12 @@ export async function updateProfile(
     // Password change → tokenVersion bump: saare purane access tokens turant invalid.
     data.tokenVersion = { increment: 1 };
   }
+
+  if (input.avatarUrl !== undefined) data.avatarUrl = input.avatarUrl;
+  if (input.dob !== undefined) data.dob = input.dob ? new Date(input.dob) : null;
+  if (input.gender !== undefined) data.gender = input.gender;
+  if (input.phone !== undefined) data.phone = input.phone;
+  if (input.address !== undefined) data.address = input.address;
 
   let updated = user as any;
   if (Object.keys(data).length > 0) {
