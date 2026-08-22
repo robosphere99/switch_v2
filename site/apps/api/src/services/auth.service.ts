@@ -12,7 +12,18 @@ import { getSiteSettings } from "./siteSettings.service";
 import { sendPasswordResetEmail } from "../lib/email.service";
 
 function toAuthUser(user: User): AuthUser {
-  return { id: user.id, username: user.username, email: user.email, role: user.role, themePref: user.themePref };
+  return {
+    id: user.id,
+    username: user.username,
+    email: user.email,
+    role: user.role,
+    themePref: user.themePref,
+    avatarUrl: user.avatarUrl ?? null,
+    dob: user.dob ? user.dob.toISOString().split("T")[0] : null,
+    gender: user.gender ?? null,
+    phone: user.phone ?? null,
+    address: user.address ?? null,
+  };
 }
 
 function hashToken(token: string): string {

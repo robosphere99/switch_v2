@@ -5,7 +5,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { corsOrigins } from "./config/env";
 import { errorHandler } from "./middleware/errorHandler";
-import { firmwareDir, webDist, mobileAppDir } from "./lib/paths";
+import { firmwareDir, webDist, mobileAppDir, uploadsDir } from "./lib/paths";
 import { apiRouter } from "./routes";
 import { installRouter } from "./routes/install.routes";
 import { docsRouter } from "./routes/docs.routes";
@@ -130,6 +130,9 @@ export function createApp() {
 
   // Serve published ESP32 firmware at /firmware/firmware.bin (OTA downloads).
   app.use("/firmware", express.static(firmwareDir));
+
+  // Serve User Uploads at /uploads (Avatars, pictures).
+  app.use("/uploads", express.static(uploadsDir));
 
   // Serve compiled Mobile APK releases.
   app.use("/mobile-app", express.static(mobileAppDir));
