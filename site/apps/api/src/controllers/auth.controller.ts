@@ -56,6 +56,16 @@ export async function updateProfile(req: Request, res: Response) {
   ok(res, user);
 }
 
+export async function uploadAvatar(req: Request, res: Response) {
+  if (!req.file) {
+    res.status(400).json({ success: false, error: { code: "NO_FILE", message: "No avatar image provided." } });
+    return;
+  }
+  const avatarUrl = `/uploads/${req.file.filename}`;
+  const user = await authService.updateProfile(req.user!.sub, { avatarUrl });
+  ok(res, user);
+}
+
 export async function updateTheme(req: Request, res: Response) {
   const user = await authService.updateThemePref(req.user!.sub, req.body.theme as string);
   ok(res, user);

@@ -6,7 +6,10 @@ import { SupportScreen } from './SupportScreen';
 import { Activity, User, Monitor, Sun, Moon, Bot, Shield, Bell, Zap, Headset } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import * as SecureStore from 'expo-secure-store';
+import * as ImagePicker from 'expo-image-picker';
 import { APP_VERSION } from '../../App';
+
+const API_BASE = "http://192.168.1.36:4000"; // fallback for native rendering
 
 export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () => void }) {
     const { theme, mode, setMode, themeId, setThemeId, availableThemes } = useTheme();
@@ -34,7 +37,11 @@ export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () =>
     const [editDob, setEditDob] = useState('');
     const [editGender, setEditGender] = useState('');
     const [editPhone, setEditPhone] = useState('');
-    const [editAddress, setEditAddress] = useState('');
+    const [editAddrState, setEditAddrState] = useState('');
+    const [editAddrDistrict, setEditAddrDistrict] = useState('');
+    const [editAddrPin, setEditAddrPin] = useState('');
+    const [editAddrLandmark, setEditAddrLandmark] = useState('');
+    const [editAddrStreet, setEditAddrStreet] = useState('');
     const [editingProfile, setEditingProfile] = useState(false);
 
     // Notification Prefs
@@ -91,7 +98,7 @@ export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () =>
             if (editDob.trim()) payload.dob = editDob.trim();
             if (editGender.trim()) payload.gender = editGender.trim();
             if (editPhone.trim()) payload.phone = editPhone.trim();
-            if (editAddress.trim()) payload.address = editAddress.trim();
+            payload.address = JSON.stringify({ state: editAddrState, district: editAddrDistrict, pin: editAddrPin, landmark: editAddrLandmark, street: editAddrStreet });
 
             const res = await apiInstance.patch('/auth/me', payload);
             if (res.data?.success) {
@@ -143,6 +150,36 @@ export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () =>
         };
         loadPrefs();
     }, []);
+
+    const pickImage = async () => {
+        let result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.5,
+        });
+        if (!result.canceled) {
+            uploadAvatarFile(result.assets[0].uri, result.assets[0].mimeType || 'image/jpeg');
+        }
+    };
+
+    const uploadAvatarFile = async (uri: string, type: string) => {
+        const formData = new FormData();
+        formData.append('avatar', { uri, name: 'avatar.jpg', type } as any);
+        try {
+            const { api: apiInstance } = await import('../api/client');
+            const res = await apiInstance.post('/auth/me/avatar', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            });
+            if (res.data?.success) {
+                setEditAvatarUrl(res.data.data.avatarUrl);
+                setLocalUser({ ...localUser, ...res.data.data });
+                Alert.alert("Success", "Avatar uploaded successfully.");
+            }
+        } catch (e: any) {
+            Alert.alert("Error", e.response?.data?.error?.message || "Failed to upload avatar");
+        }
+    };
 
     const handleAiSuggestionToggle = async (val: boolean) => {
         setAiSuggestions(val);
@@ -380,8 +417,16 @@ export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () =>
                                 setEditAvatarUrl(localUser?.avatarUrl || '');
                                 setEditDob(localUser?.dob ? new Date(localUser.dob).toISOString().split('T')[0] : '');
                                 setEditGender(localUser?.gender || '');
-                                setEditPhone(localUser?.phone || '');
-                                setEditAddress(localUser?.address || '');
+                                setEditPhone(localUser?.phone || '+91 ');
+                                let initialAddr = { state: '', district: '', pin: '', landmark: '', street: '' };
+                                if (localUser?.address) {
+                                    try { initialAddr = JSON.parse(localUser.address); } catch { initialAddr.street = localUser.address; }
+                                }
+                                setEditAddrState(initialAddr.state || '');
+                                setEditAddrDistrict(initialAddr.district || '');
+                                setEditAddrPin(initialAddr.pin || '');
+                                setEditAddrLandmark(initialAddr.landmark || '');
+                                setEditAddrStreet(initialAddr.street || '');
                                 setEditProfileVisible(true);
                             }}
                         >
@@ -394,9 +439,9 @@ export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () =>
                     <View style={{ alignItems: 'center', marginBottom: 30 }}>
                         <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: theme.primary + '15', borderWidth: 3, borderColor: theme.primary, alignItems: 'center', justifyContent: 'center', marginBottom: 16, overflow: 'hidden' }}>
                             {localUser?.avatarUrl ? (
-                                <Image source={{ uri: localUser.avatarUrl }} style={{ width: '100%', height: '100%' }} />
+                                <Image source={{ uri: localUser.avatarUrl.startsWith('http') ? localUser.avatarUrl : API_BASE + localUser.avatarUrl }} style={{ width: '100%', height: '100%' }} />
                             ) : (
-                                <User color={theme.primary} size={40} />
+                                <Image source={{ uri: `https://api.dicebear.com/9.x/avataaars/png?seed=${localUser?.username || 'User'}` }} style={{ width: '100%', height: '100%' }} />
                             )}
                         </View>
                         <Text style={{ fontSize: 24, fontWeight: '800', color: theme.text }}>{localUser?.username || 'Commander'}</Text>
@@ -529,15 +574,19 @@ export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () =>
                             </TouchableOpacity>
                         </View>
                         <ScrollView contentContainerStyle={{ padding: 24 }}>
-                            <Text style={{ color: theme.textSecondary, marginBottom: 8, fontSize: 12, fontWeight: '700' }}>AVATAR URL (Optional)</Text>
-                            <TextInput
-                                style={[{ backgroundColor: theme.card, color: theme.text, padding: 16, borderRadius: 12, borderWidth: 1, borderColor: theme.border, marginBottom: 16 }]}
-                                placeholder="https://example.com/avatar.jpg"
-                                placeholderTextColor={theme.textSecondary}
-                                autoCapitalize="none"
-                                value={editAvatarUrl}
-                                onChangeText={setEditAvatarUrl}
-                            />
+                            <Text style={{ color: theme.textSecondary, marginBottom: 8, fontSize: 12, fontWeight: '700' }}>PROFILE PHOTO</Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+                                <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border, marginRight: 16, overflow: 'hidden' }}>
+                                    <Image
+                                        source={{ uri: editAvatarUrl ? (editAvatarUrl.startsWith('http') ? editAvatarUrl : API_BASE + editAvatarUrl) : `https://api.dicebear.com/9.x/avataaars/png?seed=${localUser?.username || 'User'}` }}
+                                        style={{ width: '100%', height: '100%' }}
+                                    />
+                                </View>
+                                <TouchableOpacity onPress={pickImage} style={{ backgroundColor: theme.primary + '20', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 }}>
+                                    <Text style={{ color: theme.primary, fontWeight: 'bold' }}>Upload Photo</Text>
+                                </TouchableOpacity>
+                            </View>
+
                             <Text style={{ color: theme.textSecondary, marginBottom: 8, fontSize: 12, fontWeight: '700' }}>DATE OF BIRTH (YYYY-MM-DD)</Text>
                             <TextInput
                                 style={[{ backgroundColor: theme.card, color: theme.text, padding: 16, borderRadius: 12, borderWidth: 1, borderColor: theme.border, marginBottom: 16 }]}
@@ -546,32 +595,41 @@ export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () =>
                                 value={editDob}
                                 onChangeText={setEditDob}
                             />
+
                             <Text style={{ color: theme.textSecondary, marginBottom: 8, fontSize: 12, fontWeight: '700' }}>GENDER</Text>
-                            <TextInput
-                                style={[{ backgroundColor: theme.card, color: theme.text, padding: 16, borderRadius: 12, borderWidth: 1, borderColor: theme.border, marginBottom: 16 }]}
-                                placeholder="e.g. Male, Female, Other"
-                                placeholderTextColor={theme.textSecondary}
-                                value={editGender}
-                                onChangeText={setEditGender}
-                            />
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 }}>
+                                {['Male', 'Female', 'Prefer not to say'].map((g) => (
+                                    <TouchableOpacity
+                                        key={g}
+                                        onPress={() => setEditGender(g)}
+                                        style={{ flex: 1, padding: 12, borderWidth: 1, borderColor: editGender === g ? theme.primary : theme.border, borderRadius: 12, marginRight: g === 'Prefer not to say' ? 0 : 8, backgroundColor: editGender === g ? theme.primary + '20' : theme.card, alignItems: 'center' }}
+                                    >
+                                        <Text style={{ color: editGender === g ? theme.primary : theme.text, fontSize: 11, fontWeight: '600', textAlign: 'center' }}>{g}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+
                             <Text style={{ color: theme.textSecondary, marginBottom: 8, fontSize: 12, fontWeight: '700' }}>PHONE NUMBER</Text>
                             <TextInput
                                 style={[{ backgroundColor: theme.card, color: theme.text, padding: 16, borderRadius: 12, borderWidth: 1, borderColor: theme.border, marginBottom: 16 }]}
-                                placeholder="+1 234 567 890"
+                                placeholder="+91 234 567 890"
                                 placeholderTextColor={theme.textSecondary}
                                 keyboardType="phone-pad"
                                 value={editPhone}
                                 onChangeText={setEditPhone}
                             />
-                            <Text style={{ color: theme.textSecondary, marginBottom: 8, fontSize: 12, fontWeight: '700' }}>ADDRESS</Text>
-                            <TextInput
-                                style={[{ backgroundColor: theme.card, color: theme.text, padding: 16, borderRadius: 12, borderWidth: 1, borderColor: theme.border, marginBottom: 32, minHeight: 80, textAlignVertical: 'top' }]}
-                                placeholder="Your full address..."
-                                placeholderTextColor={theme.textSecondary}
-                                multiline
-                                value={editAddress}
-                                onChangeText={setEditAddress}
-                            />
+
+                            <Text style={{ color: theme.textSecondary, marginBottom: 8, fontSize: 12, fontWeight: '700' }}>ADDRESS BREAKDOWN</Text>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 }}>
+                                <TextInput style={[{ flex: 1, backgroundColor: theme.card, color: theme.text, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.border, marginRight: 8 }]} placeholder="State" placeholderTextColor={theme.textSecondary} value={editAddrState} onChangeText={setEditAddrState} />
+                                <TextInput style={[{ flex: 1, backgroundColor: theme.card, color: theme.text, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.border }]} placeholder="District" placeholderTextColor={theme.textSecondary} value={editAddrDistrict} onChangeText={setEditAddrDistrict} />
+                            </View>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 }}>
+                                <TextInput style={[{ flex: 1, backgroundColor: theme.card, color: theme.text, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.border, marginRight: 8 }]} placeholder="PIN Code" placeholderTextColor={theme.textSecondary} value={editAddrPin} onChangeText={setEditAddrPin} />
+                                <TextInput style={[{ flex: 1, backgroundColor: theme.card, color: theme.text, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.border }]} placeholder="Landmark" placeholderTextColor={theme.textSecondary} value={editAddrLandmark} onChangeText={setEditAddrLandmark} />
+                            </View>
+                            <TextInput style={[{ backgroundColor: theme.card, color: theme.text, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.border, marginBottom: 32, minHeight: 80, textAlignVertical: 'top' }]} placeholder="Street Address..." placeholderTextColor={theme.textSecondary} multiline value={editAddrStreet} onChangeText={setEditAddrStreet} />
+
                             <TouchableOpacity
                                 onPress={handleSaveProfile}
                                 disabled={editingProfile}

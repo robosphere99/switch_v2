@@ -4,6 +4,21 @@ import * as authController from "../controllers/auth.controller";
 import { requireAuth } from "../middleware/auth";
 import { rateLimit } from "../middleware/rateLimit";
 import { validateBody } from "../middleware/validate";
+import multer from "multer";
+import path from "node:path";
+import { uploadsDir } from "../lib/paths";
+
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, uploadsDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, "user-" + (req.user?.sub || "any") + "-" + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+const upload = multer({ storage });
+
 
 export const authRouter = Router();
 
@@ -104,6 +119,7 @@ authRouter.post("/forgot-password", forgotLimiter, validateBody(forgotPasswordSc
 authRouter.post("/reset-password", resetLimiter, validateBody(resetPasswordSchema), authController.resetPassword);
 authRouter.get("/me", requireAuth, authController.me);
 authRouter.patch("/me", requireAuth, validateBody(profileSchema), authController.updateProfile);
+authRouter.post("/me/avatar", requireAuth, upload.single("avatar"), authController.uploadAvatar);
 authRouter.put("/theme", requireAuth, validateBody(themeSchema), authController.updateTheme);
 
 authRouter.get("/sessions", requireAuth, authController.listSessions);

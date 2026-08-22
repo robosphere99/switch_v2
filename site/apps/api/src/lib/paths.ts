@@ -46,3 +46,8 @@ export const webDist = repoRoot
 export const swaggerUiDir = repoRoot
   ? path.join(repoRoot, "site", "apps", "api", "public", "swagger-ui")
   : path.resolve(process.cwd(), "public/swagger-ui");
+
+/** <repo>/site/apps/api/uploads — avatars and user uploaded assets. */
+export const uploadsDir = repoRoot
+  ? path.join(repoRoot, "site", "apps", "api", "uploads")
+  : path.resolve(process.cwd(), "uploads");
