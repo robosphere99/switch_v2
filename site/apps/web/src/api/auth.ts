@@ -26,6 +26,11 @@ export async function updateProfile(input: {
   email?: string;
   currentPassword?: string;
   newPassword?: string;
+  avatarUrl?: string | null;
+  dob?: string | null;
+  gender?: string | null;
+  phone?: string | null;
+  address?: string | null;
 }): Promise<ApiResponse<AuthUser>> {
   const { data } = await api.patch<ApiResponse<AuthUser>>("/auth/me", input);
   return data;

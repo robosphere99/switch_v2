@@ -186,6 +186,11 @@ export interface AuthUser {
   email: string;
   role: UserRole;
   themePref: string | null;
+  avatarUrl: string | null;
+  dob: string | null;
+  gender: string | null;
+  phone: string | null;
+  address: string | null;
 }
 
 export interface AccessTokenPayload {

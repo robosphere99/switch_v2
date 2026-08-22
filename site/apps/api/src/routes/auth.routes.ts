@@ -79,6 +79,11 @@ const profileSchema = z
     newPassword: z.string().min(6).max(255).optional(),
     pushDeviceToggles: z.boolean().optional(),
     pushSystemAlerts: z.boolean().optional(),
+    avatarUrl: z.string().url().max(500).optional().nullable(),
+    dob: z.string().refine((val) => !isNaN(Date.parse(val)), { message: "Invalid date format" }).optional().nullable(),
+    gender: z.string().max(20).optional().nullable(),
+    phone: z.string().max(20).optional().nullable(),
+    address: z.string().max(1000).optional().nullable(),
   })
   .refine((d) => Object.keys(d).length > 0, { message: "Nothing to update" });
 

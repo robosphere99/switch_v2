@@ -7,7 +7,7 @@
 > Repo location (this machine): `C:\Users\robos\OneDrive\Documents\SwitchNest`
 >
 <!-- AUTO:STAMP:START -->
-> _Auto-updated: 2026-08-21 17:08 UTC · branch `main` · tree dirty (13 changes) · 256 commits_
+> _Auto-updated: 2026-08-22 08:42 UTC · branch `main` · tree clean · 258 commits_
 <!-- AUTO:STAMP:END -->
 
 ---
@@ -112,6 +112,8 @@ that also serves real ESP32 hardware).
 <!-- AUTO:RECENT_COMMITS:START -->
 Sabse naye 20 commits:
 
+- `0813bb0` (2026-08-22) feat: Mobile device management, room creation, edit device and custom popup modals via in-app UI
+- `e7415c8` (2026-08-22) feat(commerce): integrate Razorpay checkout for Web and Mobile
 - `a3f7330` (2026-08-21) fix(frontend): remove unused imports causing typecheck failures in Settings and VoiceAssistants
 - `c0a9132` (2026-08-21) feat(support): Full Native Support Platform Integration with WebSocket Multi-device Sync
 - `2844d8f` (2026-08-21) chore: sync firmware changes and project context documentation
@@ -130,8 +132,6 @@ Sabse naye 20 commits:
 - `eef9f3d` (2026-08-20) fix(api): rebuild dist bundle to include serial delete routes
 - `92562d5` (2026-08-19) chore: rebuild production assets with latest admin features
 - `1528aa8` (2026-08-19) feat: pagination for serials table — prev/next + page size selector
-- `7c9ddc5` (2026-08-19) feat: admin panel — serials delete + bulk delete + filters + user management
-- `356993e` (2026-08-19) chore: rebuild production assets after UI fixes
 <!-- AUTO:RECENT_COMMITS:END -->
 
 - 503 root-cause work: DB probe retry loop so the app self-heals, `nodeProcessCountPerApplication=1`,
