@@ -147,6 +147,9 @@ export interface SiteSettingsPayload {
   aiApiKey?: string;
   aiBaseUrl?: string;
   aiModel?: string;
+  deviceTelemetryRetentionDays?: number;
+  supportTicketMediaRetentionDays?: number;
+  chatHistoryRetentionDays?: number;
 }
 
 export interface AdminSettings extends SiteSettingsPayload {

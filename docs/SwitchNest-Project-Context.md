@@ -7,7 +7,7 @@
 > Repo location (this machine): `C:\Users\robos\OneDrive\Documents\SwitchNest`
 >
 <!-- AUTO:STAMP:START -->
-> _Auto-updated: 2026-08-22 10:07 UTC · branch `main` · tree clean · 260 commits_
+> _Auto-updated: 2026-08-23 21:14 UTC · branch `main` · tree dirty (12 changes) · 273 commits_
 <!-- AUTO:STAMP:END -->
 
 ---
@@ -112,6 +112,19 @@ that also serves real ESP32 hardware).
 <!-- AUTO:RECENT_COMMITS:START -->
 Sabse naye 20 commits:
 
+- `19e8fbd` (2026-08-24) fix(ci): disable tests and update openapi to unblock critical production hotfix
+- `591d28a` (2026-08-24) fix(api): force iisnode route to app.js Alias to bypass mjs binary crash
+- `c493fe3` (2026-08-24) fix(api): brutal string replace bypass for plesk ESM bootstrap collision
+- `08510ed` (2026-08-24) fix(api): expose patch script for plesk GUI
+- `b7826f8` (2026-08-24) fix(api): bypass plesk .bootstrap.cjs ESM crash loop via web.config rewrite
+- `444929f` (2026-08-24) build: dump web.config in diag array
+- `9251945` (2026-08-24) fix(api): alias entrypoints for plesk IISNode auto-reset fallbacks
+- `1a235cb` (2026-08-24) fix(api): allow string named pipes for IISNode in zod schema
+- `41b7a41` (2026-08-24) fix(api): inject ESM createRequire polyfill for ESBuild to resolve aedes dynamic module crash
+- `f72139f` (2026-08-24) build: add active boot invocation to diag script
+- `2ac5bce` (2026-08-24) build: instrument diag script with iisnode crash log extraction
+- `ae667fd` (2026-08-24) build: compile plesk artifacts for MQTT and UI enhancements
+- `13cfca1` (2026-08-24) feat: IoT Transport Modernization, Vertical Grid UI, and Rate-Limiting
 - `b5a65dd` (2026-08-22) fix(mobile): babel syntax error with template literals in profile view
 - `d4a63d6` (2026-08-22) feat(profile): User profile expansion with avatar, dob, mobile app edit modal
 - `0813bb0` (2026-08-22) feat: Mobile device management, room creation, edit device and custom popup modals via in-app UI
@@ -119,19 +132,6 @@ Sabse naye 20 commits:
 - `a3f7330` (2026-08-21) fix(frontend): remove unused imports causing typecheck failures in Settings and VoiceAssistants
 - `c0a9132` (2026-08-21) feat(support): Full Native Support Platform Integration with WebSocket Multi-device Sync
 - `2844d8f` (2026-08-21) chore: sync firmware changes and project context documentation
-- `6567c3b` (2026-08-21) feat(mobile): complete family & member management with no-email invite flow and real-time updates
-- `4453a58` (2026-08-20) fix(core): Resolve sudden push engine failures and stabilize mobile JWT rotation mechanism
-- `60658c8` (2026-08-20) feat(observability): migrate to multi-device push configuration registry
-- `83e7d53` (2026-08-20) feat: enforce global push notifications to all actors
-- `b2faf30` (2026-08-20) fix: make actor visible in notification feed
-- `8715d23` (2026-08-20) feat: Implement Active Sessions & Bulk Feed Notifications
-- `ae6cc20` (2026-08-20) feat(mobile/api): Implement Forced OTA Update lock, Assistant Suggestion Chips, and isolated Mobile APK distribution route
-- `bc1d599` (2026-08-20) feat(mobile): refine auth layout, secure push notifications to admins, add functional theme overrides, unify identifier parsing
-- `b0f226b` (2026-08-20) feat(mobile): Phase 14 - Push Notifications, Live WebSocket Sync, and Multi-Home Dashboard Selector
-- `ec3403c` (2026-08-20) feat(ai): Enforce persistent Context-Per-Home AI threads across Web and Mobile
-- `e0e34aa` (2026-08-20) chore: complete phases 1-11, finalize automations and admin OTA updates
-- `d51c3cf` (2026-08-20) feat(mobile): Complete Phase 8 Mobile SDK 54 MVP
-- `eef9f3d` (2026-08-20) fix(api): rebuild dist bundle to include serial delete routes
 <!-- AUTO:RECENT_COMMITS:END -->
 
 - 503 root-cause work: DB probe retry loop so the app self-heals, `nodeProcessCountPerApplication=1`,
