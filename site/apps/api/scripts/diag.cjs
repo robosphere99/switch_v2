@@ -20,6 +20,9 @@ try { fs.writeFileSync('_probe.txt', 'ok'); console.log('WRITE=OK'); fs.unlinkSy
 try { console.log('deploy.json =', fs.readFileSync('../logs/deploy.json', 'utf8').slice(0, 300)); } catch (e) { console.log('deploy.json ERR', e.code); }
 try { console.log('node_modules aedes =', fs.existsSync('node_modules/aedes') ? 'yes' : 'no'); } catch (e) { }
 
+console.log('\n--- WEB CONFIG ---');
+try { console.log(fs.readFileSync('web.config', 'utf8')); } catch (e) { console.log('NO WEB.CONFIG FOUND'); }
+
 console.log('\n--- BOOT TEST ---');
 try {
   const out = cp.spawnSync(process.execPath, ['dist/index.mjs'], { cwd, encoding: 'utf8', timeout: 3000, env: process.env });
