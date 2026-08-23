@@ -4,9 +4,11 @@ import { Zap, Clock, ShieldAlert, Cpu, CheckCheck, XCircle, X, BellRing, Setting
 import { api } from '../api/client';
 import { useTheme } from '../theme/ThemeContext';
 import * as Haptics from 'expo-haptics';
+import { useThemedAlert } from './ThemedAlert';
 
 export function NotificationCenterScreen({ onClose }: { onClose?: () => void }) {
     const { theme } = useTheme();
+    const { showAlert, AlertComponent } = useThemedAlert();
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [notifications, setNotifications] = useState<any[]>([]);
@@ -44,7 +46,14 @@ export function NotificationCenterScreen({ onClose }: { onClose?: () => void }) 
             const feedRes = await api.get('/notifications', {
                 params: { category, type, unread: unreadOnly ? '1' : '0' }
             });
-            setNotifications(feedRes.data.data.items || []);
+
+            const fetchedItems = feedRes.data.data.items || [];
+            setNotifications(fetchedItems);
+
+            // Background Auto-Read: if there are any unread notifications on screen, mark all read silently
+            if (fetchedItems.some((n: any) => !n.readAt && n.status === 'unread' || !n.readAt)) {
+                api.post('/notifications/read-all').catch(() => { });
+            }
         } catch (e) {
             console.log('Failed to fetch notifications', e);
         } finally {
@@ -65,7 +74,7 @@ export function NotificationCenterScreen({ onClose }: { onClose?: () => void }) 
             setUnreadCount(0);
             setNotifications(prev => prev.map(n => ({ ...n, status: 'read' })));
         } catch (e) {
-            Alert.alert('Error', 'Failed to mark as read');
+            showAlert('Error', 'Failed to mark as read');
         }
     };
 
@@ -91,7 +100,7 @@ export function NotificationCenterScreen({ onClose }: { onClose?: () => void }) 
 
     const deleteAll = async () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => { });
-        Alert.alert(
+        showAlert(
             "Clear Everything",
             "Are you sure you want to permanently delete all notifications?",
             [
@@ -158,7 +167,7 @@ export function NotificationCenterScreen({ onClose }: { onClose?: () => void }) 
                     <View style={{ flexDirection: 'row', gap: 8 }}>
                         <TouchableOpacity onPress={markAllRead} style={[styles.markAllBtn, { borderColor: theme.border, backgroundColor: theme.card }]}>
                             <CheckCheck size={15} color={theme.primary} />
-                            <Text style={{ color: theme.primary, fontWeight: '600', fontSize: 13, marginLeft: 4 }}>Read UI</Text>
+                            <Text style={{ color: theme.primary, fontWeight: '600', fontSize: 13, marginLeft: 4 }}>Read All</Text>
                         </TouchableOpacity>
                         <TouchableOpacity onPress={deleteAll} style={[styles.markAllBtn, { borderColor: '#ef444450', backgroundColor: '#ef444410' }]}>
                             <Trash2 size={15} color="#ef4444" />
@@ -278,6 +287,7 @@ export function NotificationCenterScreen({ onClose }: { onClose?: () => void }) 
                     </View>
                 )}
             </ScrollView>
+            {AlertComponent}
         </View>
     );
 }

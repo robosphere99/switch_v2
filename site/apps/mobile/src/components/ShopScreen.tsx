@@ -1,14 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Image, ActivityIndicator, Alert, StyleSheet, Modal, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Image, ActivityIndicator, Alert, StyleSheet, Modal, TextInput, KeyboardAvoidingView, Platform, PermissionsAndroid } from 'react-native';
 import { ShoppingCart, Package, CreditCard, Check, X, Truck, Wifi } from 'lucide-react-native';
-import { getProducts, Product, createOrder } from '../api/shop';
+import { getProducts, Product, createOrder, initiatePayment, verifyPayment, demoPay, cancelOrder, getCurrentWifiSsid } from '../api/shop';
+import RazorpayCheckout from 'react-native-razorpay';
 import { useTheme } from '../theme/ThemeContext';
 import * as Haptics from 'expo-haptics';
 import { OrdersScreen } from './OrdersScreen';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useThemedAlert } from './ThemedAlert';
 
 export function ShopScreen() {
     const { theme } = useTheme();
+    const { showAlert, AlertComponent } = useThemedAlert();
     const [loading, setLoading] = useState(true);
     const [products, setProducts] = useState<Product[]>([]);
 
@@ -25,6 +28,9 @@ export function ShopScreen() {
     const [wifiConfig, setWifiConfig] = useState({ ssid: '', password: '' });
     const [savedWifis, setSavedWifis] = useState<{ ssid: string, password: string }[]>([]);
 
+    // WiFi Connection State
+    const [fetchingWifi, setFetchingWifi] = useState(false);
+
     useEffect(() => {
         loadDocs();
         loadSavedWifis();
@@ -33,9 +39,8 @@ export function ShopScreen() {
     const loadSavedWifis = async () => {
         try {
             const data = await AsyncStorage.getItem('@switchnest_wifis');
-            if (data) {
-                setSavedWifis(JSON.parse(data));
-            }
+            const parsed = data ? JSON.parse(data) : [];
+            setSavedWifis(parsed);
         } catch (e) {
             console.error(e);
         }
@@ -55,6 +60,52 @@ export function ShopScreen() {
             await AsyncStorage.setItem('@switchnest_wifis', JSON.stringify(newWifis));
             setSavedWifis(newWifis);
         } catch (e) { }
+    };
+
+    const handleAutofillConnectedWifi = async () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        setFetchingWifi(true);
+
+        try {
+            let activeSsid = '';
+
+            // 1. Fall back to host machine's active network directly
+            if (!activeSsid) {
+                try {
+                    const serverSsid = await getCurrentWifiSsid();
+                    if (serverSsid) {
+                        activeSsid = serverSsid;
+                    }
+                } catch (serverErr) {
+                    console.warn("Failed to get SSID from server:", serverErr);
+                }
+            }
+
+            if (!activeSsid) {
+                showAlert('Autofill Failed', 'Unable to detect active WiFi network automatically. Please enter it manually.');
+                return;
+            }
+
+            const matched = savedWifis.find(w => w.ssid === activeSsid);
+
+            setWifiConfig({
+                ssid: activeSsid,
+                password: matched ? matched.password : ''
+            });
+
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+            if (matched) {
+                showAlert('Autofill Successful', `Connected to "${activeSsid}". Restored saved password.`);
+            } else {
+                showAlert('Connected to WiFi', `Connected to "${activeSsid}". Enter password to save.`);
+            }
+        } catch (e: any) {
+            console.warn(e);
+            showAlert('Autofill Failed', 'Unable to detect active WiFi connections.');
+        } finally {
+            setFetchingWifi(false);
+        }
     };
 
     const loadDocs = async () => {
@@ -89,7 +140,7 @@ export function ShopScreen() {
 
     const doCheckout = async () => {
         if (!shipping.name || !shipping.phone || !shipping.address) {
-            Alert.alert("Incomplete", "Please completely fill the shipping address.");
+            showAlert("Incomplete", "Please completely fill the shipping address.");
             return;
         }
 
@@ -100,6 +151,7 @@ export function ShopScreen() {
                 await saveWifiNetwork(wifiConfig); // Locally cache it
             }
 
+            // Create order (state will be pending/unpaid if online)
             const created = await createOrder({
                 items: cart.map(c => ({ productId: c.product.id, quantity: c.qty })),
                 shipping,
@@ -107,12 +159,119 @@ export function ShopScreen() {
                 paymentMethod: paymentMethod
             });
 
+            // Trigger payment flow immediately for UPI/Razorpay during checkout
+            if (paymentMethod === 'upi') {
+                try {
+                    const intent = await initiatePayment(created.id);
+                    if (intent.mode === 'demo') {
+                        // Confirm demo mode payment in sandbox/Expo Go
+                        await new Promise<void>((resolve, reject) => {
+                            showAlert(
+                                'Demo Mode Payment',
+                                `Confirm online payment of ₹${intent.amount.toLocaleString('en-IN')} via Demo UPI.`,
+                                [
+                                    {
+                                        text: 'Cancel Payment',
+                                        style: 'cancel',
+                                        onPress: () => reject(new Error('PAYMENT_CANCELLED'))
+                                    },
+                                    {
+                                        text: 'Mock Pay (Success)',
+                                        style: 'default',
+                                        onPress: async () => {
+                                            try {
+                                                await demoPay(created.id);
+                                                resolve();
+                                            } catch (e: any) {
+                                                reject(new Error(e.message || 'Mock payment failed.'));
+                                            }
+                                        }
+                                    }
+                                ],
+                                'confirm'
+                            );
+                        });
+                    } else {
+                        const isRazorpayAvailable = !!RazorpayCheckout && typeof RazorpayCheckout.open === 'function';
+
+                        if (!isRazorpayAvailable) {
+                            await new Promise<void>((resolve, reject) => {
+                                showAlert(
+                                    'Razorpay (Expo Go)',
+                                    'Native Razorpay is not supported in the Expo Go sandbox. Would you like to use Demo Mode to mock this payment?',
+                                    [
+                                        {
+                                            text: 'Cancel Payment',
+                                            style: 'cancel',
+                                            onPress: () => reject(new Error('PAYMENT_CANCELLED'))
+                                        },
+                                        {
+                                            text: 'Mock Pay (Success)',
+                                            style: 'default',
+                                            onPress: async () => {
+                                                try {
+                                                    await demoPay(created.id);
+                                                    resolve();
+                                                } catch (e: any) {
+                                                    reject(new Error(e.message || 'Mock payment failed.'));
+                                                }
+                                            }
+                                        }
+                                    ],
+                                    'confirm'
+                                );
+                            });
+                        } else {
+                            const options = {
+                                description: `Order #${created.id}`,
+                                currency: 'INR',
+                                key: intent.keyId,
+                                amount: intent.amount * 100, // amount in paise
+                                name: 'SwitchNest',
+                                order_id: intent.razorpayOrderId ?? "",
+                                theme: { color: theme.primary },
+                                prefill: {
+                                    name: "SwitchNest User",
+                                    email: "support@switchnest.com",
+                                    contact: "9999999999"
+                                }
+                            };
+
+                            const response = await RazorpayCheckout.open(options);
+
+                            await verifyPayment(created.id, {
+                                razorpayOrderId: response.razorpay_order_id,
+                                razorpayPaymentId: response.razorpay_payment_id,
+                                razorpaySignature: response.razorpay_signature,
+                            });
+                        }
+                    }
+                } catch (payError: any) {
+                    console.warn("Payment failed/cancelled, auto-cancelling order ID:", created.id, payError);
+                    try {
+                        await cancelOrder(created.id);
+                    } catch (cancelErr) {
+                        console.error("Failed to auto-cancel order:", cancelErr);
+                    }
+                    const isCancelled = payError.message === 'PAYMENT_CANCELLED' || payError.description === 'Payment cancelled by user';
+                    const errorMsg = isCancelled ? 'Payment was cancelled. Order has been cancelled.' : `Payment failed: ${payError.message}`;
+
+                    setCart([]);
+                    setCartVisible(false);
+                    setOrdersVisible(true);
+                    showAlert("Payment Failed", errorMsg);
+                    return;
+                }
+            }
+
+            // Success feedback
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             setCart([]);
             setCartVisible(false);
             setSuccessDisplay(true);
         } catch (e: any) {
-            Alert.alert("Checkout Failed", e.response?.data?.error || e.message);
+            console.error(e);
+            showAlert('Checkout Failed', e.message || "Order fail ho gaya — dobara try karo");
         } finally {
             setProcessing(false);
         }
@@ -255,6 +414,36 @@ export function ShopScreen() {
                                 </ScrollView>
                             )}
 
+                            {/* Connected WiFi Autofill */}
+                            <View style={{ marginBottom: 16 }}>
+                                <TouchableOpacity
+                                    onPress={handleAutofillConnectedWifi}
+                                    disabled={fetchingWifi}
+                                    style={{
+                                        flexDirection: 'row',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        backgroundColor: theme.border,
+                                        paddingVertical: 10,
+                                        borderRadius: 12,
+                                        borderWidth: 1,
+                                        borderColor: theme.border
+                                    }}
+                                >
+                                    {fetchingWifi ? (
+                                        <>
+                                            <ActivityIndicator size="small" color={theme.primary} style={{ marginRight: 8 }} />
+                                            <Text style={{ color: theme.text, fontSize: 13, fontWeight: '600' }}>Fetching connected network details...</Text>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Wifi color={theme.text} size={14} style={{ marginRight: 8 }} />
+                                            <Text style={{ color: theme.text, fontSize: 13, fontWeight: '600' }}>Use Currently Connected WiFi</Text>
+                                        </>
+                                    )}
+                                </TouchableOpacity>
+                            </View>
+
                             <TextInput
                                 placeholder="WiFi SSID (Network Name)" placeholderTextColor={theme.textSecondary}
                                 autoCapitalize="none" autoCorrect={false}
@@ -322,20 +511,19 @@ export function ShopScreen() {
                     <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: theme.primary, justifyContent: 'center', alignItems: 'center', marginBottom: 24 }}>
                         <Check color="#000" size={40} />
                     </View>
-                    <Text style={{ color: '#fff', fontSize: 28, fontWeight: 'bold', marginBottom: 8 }}>Order Placed!</Text>
-                    <Text style={{ color: '#aaa', fontSize: 16, textAlign: 'center', paddingHorizontal: 40, marginBottom: 32 }}>Check the Orders tab to track status {paymentMethod === 'upi' && 'or complete your payment'}.</Text>
+                    <Text style={{ color: '#fff', fontSize: 28, fontWeight: 'bold', marginBottom: 8 }}>{paymentMethod === 'upi' ? 'Order Placed & Paid!' : 'Order Placed!'}</Text>
+                    <Text style={{ color: '#aaa', fontSize: 16, textAlign: 'center', paddingHorizontal: 40, marginBottom: 32 }}>Check the Orders tab to track status.</Text>
                     <TouchableOpacity onPress={() => {
                         setSuccessDisplay(false);
-                        if (paymentMethod === 'upi') {
-                            setOrdersVisible(true);
-                        }
+                        setOrdersVisible(true);
                     }} style={{ paddingVertical: 14, paddingHorizontal: 32, borderRadius: 24, backgroundColor: '#333' }}>
-                        <Text style={{ color: '#fff', fontWeight: 'bold' }}>{paymentMethod === 'upi' ? 'Go to Orders (Pay Now)' : 'Return to Store'}</Text>
+                        <Text style={{ color: '#fff', fontWeight: 'bold' }}>Go to Orders</Text>
                     </TouchableOpacity>
                 </View>
             )}
 
             <OrdersScreen visible={ordersVisible} onClose={() => setOrdersVisible(false)} />
+            {AlertComponent}
         </View>
     )
 }

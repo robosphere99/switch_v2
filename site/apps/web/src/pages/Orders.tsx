@@ -104,6 +104,7 @@ export function Orders() {
   const [loading, setLoading] = useState(true);
   const [params] = useSearchParams();
   const placed = params.get("placed");
+  const failed = params.get("failed");
   const [openId, setOpenId] = useState<number | null>(null);
   const [payIntent, setPayIntent] = useState<PayIntent | null>(null);
   const [payingFor, setPayingFor] = useState<number | null>(null);
@@ -116,6 +117,13 @@ export function Orders() {
     getMyOrders()
       .then(setOrders)
       .finally(() => setLoading(false));
+
+    // Poll for fresh order records every 8 seconds silently
+    const interval = setInterval(() => {
+      getMyOrders().then(setOrders);
+    }, 8000);
+
+    return () => clearInterval(interval);
   }, []);
 
   const openPay = async (orderId: number) => {
@@ -169,11 +177,16 @@ export function Orders() {
         });
         rzp.open();
       }
-    } catch (e) {
-      setPayMsg(String((e as Error).message ?? e));
+    } catch (err: any) {
+      setPayMsg(err?.response?.data?.error?.message ?? err?.message ?? String(err));
     } finally {
       setPayBusy(false);
     }
+  };
+
+  const closePay = async () => {
+    setPayIntent(null);
+    setPayingFor(null);
   };
 
   const confirmDemoPay = async (orderId: number) => {
@@ -206,6 +219,12 @@ export function Orders() {
         <div className="mb-6 rounded-lg border border-green-500/40 bg-green-900/30 p-4 text-sm text-green-700">
           ✅ Order <span className="font-bold">{placed}</span> placed! Delivery hone ke baad box pe serial code se{" "}
           <Link to="/activate" className="underline">device activate</Link> karo.
+        </div>
+      )}
+
+      {failed && (
+        <div className="mb-6 rounded-lg border border-red-500/40 bg-red-900/30 p-4 text-sm text-red-500">
+          ❌ Payment failed or was cancelled. The pending order has been cancelled automatically.
         </div>
       )}
 
@@ -310,7 +329,7 @@ export function Orders() {
       )}
 
       {payIntent && payingFor && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setPayIntent(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={closePay}>
           <div className="w-full max-w-md rounded-xl border border-brand/30 bg-night-800 p-6" onClick={(e) => e.stopPropagation()}>
             <h3 className="mb-3 text-lg font-bold">💳 Pay ₹{payIntent.amount.toLocaleString("en-IN")}</h3>
             {payIntent.mode === "demo" && (
@@ -330,7 +349,7 @@ export function Orders() {
                 </button>
               </>
             )}
-            <button onClick={() => setPayIntent(null)} className="mt-3 w-full text-center text-xs text-gray-500 hover:text-gray-600">
+            <button onClick={closePay} className="mt-3 w-full text-center text-xs text-gray-500 hover:text-gray-600">
               Cancel
             </button>
           </div>

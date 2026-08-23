@@ -52,6 +52,11 @@ Authenticate with a **home-scoped API key** (`POST /api/api-keys` with `homeId`,
 - **Device** — belongs to a **Home** (not a person), has serial number for pairing
 - **Invitation** — join a home via email link or invite code
 - **Schedule / DeviceCommand / DeviceLog** — timers, command queue, audit
+  - *Note:* Device logs and telemetry are captured comprehensively to build historical datasets for upcoming **Machine Learning models** (Automatic On/Off and Smart Automation Suggestions).
+
+## Data Retention & Storage  (Scalability)
+To manage infinite scale and massive user data load, the system enforces dynamic data retention policies for uploaded media and logs (configurable via the Admin Panel). 
+Avatars and support media attachments are instantly downscaled and compressed via `sharp` and React Native image optimizers to drastically cut bandwidth & storage costs. 
 
 See `../ROADMAP.md` for the full plan.
 

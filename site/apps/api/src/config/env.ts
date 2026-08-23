@@ -53,6 +53,8 @@ const envSchema = z.object({
   AI_API_KEY: z.string().default(""),
   AI_BASE_URL: z.string().default(""), // empty → provider default
   AI_MODEL: z.string().default(""),
+  // MQTT IoT broker port (ESP32 devices connect here)
+  MQTT_PORT: z.coerce.number().default(1883),
 });
 
 const parsed = envSchema.safeParse(process.env);

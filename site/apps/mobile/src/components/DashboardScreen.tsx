@@ -8,25 +8,65 @@ import { AssistantModal } from './AssistantModal';
 import { NotificationCenterScreen } from './NotificationCenterScreen';
 import { MembersScreen } from './MembersScreen';
 import { usePushNotifications } from '../hooks/usePushNotifications';
+import { useThemedAlert } from './ThemedAlert';
 
-import { api } from '../api/client';
+import { api, API_URL } from '../api/client';
 
-const DeviceCard = ({ device, onToggle, onLongPress }: { device: any, onToggle: (id: number, status: string) => void, onLongPress: (device: any) => void }) => {
+const API_BASE = API_URL.replace(/\/api$/, '');
+
+const DEVICE_EMOJIS: Record<string, string> = {
+    bulb: '💡',
+    fan: '🌀',
+    tv: '📺',
+    ac: '❄️',
+    plug: '🔌',
+    custom: '⚙️'
+};
+
+const GLOW_COLORS: Record<string, string> = {
+    bulb: '#facc15', // yellow-400
+    tv: '#f472b6',   // pink-400
+    fan: '#38bdf8',  // sky-400
+    ac: '#a78bfa',   // violet-400
+    plug: '#34d399', // emerald-400
+    custom: '#fb923c' // orange-400
+};
+
+const DeviceCard = ({
+    device,
+    isBlocked,
+    canManage,
+    onToggle,
+    onEdit,
+    onDelete,
+    onLongPress
+}: {
+    device: any,
+    isBlocked?: boolean,
+    canManage?: boolean,
+    onToggle: (id: number, status: string) => void,
+    onEdit?: (device: any) => void,
+    onDelete?: (device: any) => void,
+    onLongPress: (device: any) => void
+}) => {
     const { theme } = useTheme();
     const isON = device.status === 'on';
+    const typeKey = device.type?.toLowerCase() || 'custom';
+    const activeColor = GLOW_COLORS[typeKey] || theme.primary;
 
     // Animation References
     const animScale = useRef(new Animated.Value(1)).current;
-    const animGlow = useRef(new Animated.Value(isON ? 1 : 0)).current;
 
+    // Smooth interpolate for background and border glow
+    const animGlow = useRef(new Animated.Value(isON ? 1 : 0)).current;
     useEffect(() => {
-        Animated.timing(animGlow, { toValue: isON ? 1 : 0, duration: 300, useNativeDriver: false }).start();
+        Animated.timing(animGlow, { toValue: isON ? 1 : 0, duration: 400, useNativeDriver: false }).start();
     }, [isON]);
 
     const handlePress = () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => { });
         Animated.sequence([
-            Animated.timing(animScale, { toValue: 0.92, duration: 100, useNativeDriver: true }),
+            Animated.timing(animScale, { toValue: 0.94, duration: 100, useNativeDriver: true }),
             Animated.timing(animScale, { toValue: 1, duration: 150, useNativeDriver: true }),
         ]).start();
         onToggle(device.id, device.status);
@@ -34,39 +74,123 @@ const DeviceCard = ({ device, onToggle, onLongPress }: { device: any, onToggle: 
 
     const bgColor = animGlow.interpolate({
         inputRange: [0, 1],
-        outputRange: [theme.card, theme.card] // Keep card dark, let text/icons glow
+        outputRange: [theme.card, 'rgba(21, 23, 26, 0.95)']
     });
 
     const borderColor = animGlow.interpolate({
         inputRange: [0, 1],
-        outputRange: [theme.border, theme.primary]
+        outputRange: [theme.border, activeColor]
     });
 
     return (
-        <Animated.View style={[styles.cardWrapper, { transform: [{ scale: animScale }] }]}>
-            <TouchableOpacity activeOpacity={0.85} onPress={handlePress} delayPressIn={100} onLongPress={() => onLongPress(device)}>
+        <Animated.View style={[
+            { width: '48%', marginBottom: 16, height: 215 },
+            { transform: [{ scale: animScale }], opacity: isBlocked ? 0.7 : 1 }
+        ]}>
+            <TouchableOpacity
+                style={{ flex: 1 }}
+                activeOpacity={0.9}
+                disabled={isBlocked}
+                onPress={handlePress}
+                delayPressIn={100}
+                onLongPress={() => onLongPress(device)}
+            >
                 <Animated.View style={[
-                    styles.cardContent,
-                    { backgroundColor: bgColor, borderColor: borderColor }
+                    {
+                        flex: 1,
+                        borderRadius: 20,
+                        borderWidth: 2,
+                        padding: 12,
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        overflow: 'hidden'
+                    },
+                    { backgroundColor: bgColor, borderColor: borderColor },
+                    isON && { shadowColor: activeColor, shadowOpacity: 0.4, shadowRadius: 15, elevation: 10 }
                 ]}>
-                    <View style={styles.cardHeader}>
-                        <View style={[
-                            styles.iconBox,
-                            isON ? { backgroundColor: theme.primary, shadowColor: theme.primaryGlow, shadowOpacity: 0.8, shadowRadius: 8, elevation: 10 } : { backgroundColor: theme.border }
-                        ]}>
-                            <Zap color={isON ? '#000000' : theme.textSecondary} fill={isON ? '#000000' : 'transparent'} size={20} />
+
+                    {/* Admin Actions (Top Right) */}
+                    {canManage && (
+                        <View style={{ position: 'absolute', top: 10, right: 10, flexDirection: 'row', gap: 6, zIndex: 10 }}>
+                            {onDelete && (
+                                <TouchableOpacity
+                                    onPress={(e) => { e.stopPropagation(); onDelete(device); }}
+                                    style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: '#ef4444', justifyContent: 'center', alignItems: 'center' }}
+                                >
+                                    <Trash2 color="#ffffff" size={14} />
+                                </TouchableOpacity>
+                            )}
+                            {onEdit && (
+                                <TouchableOpacity
+                                    onPress={(e) => { e.stopPropagation(); onEdit(device); }}
+                                    style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: '#3b82f6', justifyContent: 'center', alignItems: 'center' }}
+                                >
+                                    <Edit3 color="#ffffff" size={14} />
+                                </TouchableOpacity>
+                            )}
                         </View>
-                        <View style={[styles.pillToggle, { backgroundColor: isON ? theme.primary : theme.border }]}>
-                            <View style={[styles.pillNub, { transform: [{ translateX: isON ? 12 : 2 }] }]} />
-                        </View>
+                    )}
+
+                    {/* Central 3D Glowing Emoji */}
+                    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 10 }}>
+                        <Text style={{
+                            fontSize: 55,
+                            opacity: isON ? 1 : 0.35,
+                            textShadowColor: isON ? activeColor : 'transparent',
+                            textShadowOffset: { width: 0, height: 0 },
+                            textShadowRadius: isON ? 25 : 0
+                        }}>
+                            {DEVICE_EMOJIS[typeKey] || '⚙️'}
+                        </Text>
                     </View>
 
-                    <View style={{ marginTop: 12 }}>
-                        <Text style={[styles.deviceName, { color: isON ? theme.primary : theme.text }]} numberOfLines={1}>{device.name}</Text>
-                        <Text style={[styles.deviceSub, { color: theme.textSecondary }]} numberOfLines={1}>
+                    {/* Meta Section */}
+                    <View style={{ alignItems: 'center', width: '100%', marginTop: 4 }}>
+                        <Text style={{
+                            fontSize: 15,
+                            fontWeight: 'bold',
+                            color: '#ffffff',
+                            textAlign: 'center',
+                            marginBottom: 6
+                        }} numberOfLines={1}>
+                            {device.name}
+                        </Text>
+
+                        {/* ON/OFF Pill */}
+                        <View style={{
+                            backgroundColor: isON ? '#10b981' : '#4b5563',
+                            paddingHorizontal: 16,
+                            paddingVertical: 5,
+                            borderRadius: 16,
+                            shadowColor: isON ? '#10b981' : 'transparent',
+                            shadowOpacity: 0.6,
+                            shadowRadius: 8,
+                            elevation: isON ? 5 : 0,
+                            marginBottom: 8
+                        }}>
+                            <Text style={{ color: '#ffffff', fontWeight: 'bold', fontSize: 13, letterSpacing: 1 }}>
+                                {isON ? 'ON' : 'OFF'}
+                            </Text>
+                        </View>
+
+                        <Text style={{ fontSize: 10, color: theme.textSecondary, fontWeight: 'bold', textTransform: 'uppercase' }}>
                             {device.room?.name || 'Home'}
                         </Text>
                     </View>
+
+                    {/* Dim Overlay when blocked */}
+                    {isBlocked && (
+                        <View style={{
+                            position: 'absolute',
+                            top: 0, left: 0, right: 0, bottom: 0,
+                            backgroundColor: 'rgba(0,0,0,0.5)',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            zIndex: 20
+                        }}>
+                            <Text style={{ fontSize: 40 }}>🔒</Text>
+                        </View>
+                    )}
                 </Animated.View>
             </TouchableOpacity>
         </Animated.View>
@@ -75,9 +199,11 @@ const DeviceCard = ({ device, onToggle, onLongPress }: { device: any, onToggle: 
 
 export function DashboardScreen({ user, onLogout }: { user: any, onLogout: () => void }) {
     const { theme } = useTheme();
+    const { showAlert, AlertComponent } = useThemedAlert();
     const [loading, setLoading] = useState(true);
     const [homes, setHomes] = useState<any[]>([]);
     const [devices, setDevices] = useState<any[]>([]);
+    const [blockedDevices, setBlockedDevices] = useState<{ [deviceId: number]: boolean }>({});
     const [selectedHomeId, setSelectedHomeId] = useState<number | null>(null);
     const [activeCategory, setActiveCategory] = useState<string>('All');
     const [aiVisible, setAiVisible] = useState(false);
@@ -177,10 +303,23 @@ export function DashboardScreen({ user, onLogout }: { user: any, onLogout: () =>
         try {
             await toggleDevice(selectedHomeId, deviceId, newStatus);
         } catch (e: any) {
-            Alert.alert('Control Error', e.message || 'Failed to toggle device. Connection issues.');
             // Revert if API fails
             setDevices(prev => prev.map(d => d.id === deviceId ? { ...d, status: currentStatus } : d));
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => { });
+
+            if (e.status === 429 || (e.message && e.message.toLowerCase().includes('minute'))) {
+                setBlockedDevices(prev => ({ ...prev, [deviceId]: true }));
+                setTimeout(() => {
+                    setBlockedDevices(prev => {
+                        const next = { ...prev };
+                        delete next[deviceId];
+                        return next;
+                    });
+                }, 60000);
+                showAlert('Safety Lock Engaged', e.message);
+            } else {
+                showAlert('Control Error', e.message || 'Failed to toggle device. Connection issues.');
+            }
         }
     };
 
@@ -227,7 +366,7 @@ export function DashboardScreen({ user, onLogout }: { user: any, onLogout: () =>
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
             }
         } catch (e: any) {
-            Alert.alert('Room Creation Failed', e.message);
+            showAlert('Room Creation Failed', e.message);
         } finally {
             setCreatingRoom(false);
         }
@@ -248,7 +387,7 @@ export function DashboardScreen({ user, onLogout }: { user: any, onLogout: () =>
                         setCreateData({ ...createData, roomId: null });
                     }
                 } catch (e: any) {
-                    Alert.alert('Cannot delete room', e.message);
+                    showAlert('Cannot delete room', e.message);
                 }
             }
         });
@@ -260,7 +399,7 @@ export function DashboardScreen({ user, onLogout }: { user: any, onLogout: () =>
         try {
             if (createData.id) {
                 await updateDeviceApi(selectedHomeId, createData.id, createData);
-                Alert.alert("Success", "Device updated successfully.");
+                showAlert("Success", "Device updated successfully.");
             } else {
                 await createDevice(selectedHomeId, createData);
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
@@ -268,7 +407,7 @@ export function DashboardScreen({ user, onLogout }: { user: any, onLogout: () =>
             setCreateVisible(false);
             loadData();
         } catch (e: any) {
-            Alert.alert(createData.id ? 'Update Failed' : 'Creation Failed', e.message);
+            showAlert(createData.id ? 'Update Failed' : 'Creation Failed', e.message);
         } finally {
             setCreateBusy(false);
         }
@@ -286,7 +425,7 @@ export function DashboardScreen({ user, onLogout }: { user: any, onLogout: () =>
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => { });
                     loadData();
                 } catch (e: any) {
-                    Alert.alert("Delete Failed", e.message);
+                    showAlert("Delete Failed", e.message);
                 }
             }
         });
@@ -307,6 +446,9 @@ export function DashboardScreen({ user, onLogout }: { user: any, onLogout: () =>
 
     const capitalize = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
 
+    const currentHome = homes.find(h => (h.homeId || h.id) === selectedHomeId);
+    const canManage = currentHome && (currentHome.role === 'owner' || currentHome.role === 'admin');
+
     return (
         <View style={[styles.container, { backgroundColor: theme.background }]}>
             <View style={[styles.header, { backgroundColor: theme.background }]}>
@@ -317,11 +459,15 @@ export function DashboardScreen({ user, onLogout }: { user: any, onLogout: () =>
                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
                             setMembersVisible(true);
                         }}
-                        style={[styles.avatarBtn, { backgroundColor: theme.primary + '25', borderColor: theme.primary + '60' }]}
+                        style={[styles.avatarBtn, { backgroundColor: theme.primary + '25', borderColor: theme.primary + '60', overflow: 'hidden' }]}
                     >
-                        <Text style={{ color: theme.primary, fontWeight: '900', fontSize: 16 }}>
-                            {(user?.username || 'U').slice(0, 2).toUpperCase()}
-                        </Text>
+                        {user?.avatarUrl ? (
+                            <Image source={{ uri: user.avatarUrl.startsWith('http') ? user.avatarUrl : API_BASE + user.avatarUrl }} style={{ width: '100%', height: '100%' }} />
+                        ) : (
+                            <Text style={{ color: theme.primary, fontWeight: '900', fontSize: 16 }}>
+                                {(user?.username || 'U').slice(0, 2).toUpperCase()}
+                            </Text>
+                        )}
                     </TouchableOpacity>
                     <View>
                         <Text style={[styles.userName, { color: theme.text }]}>Hello, {capitalize(user?.username) || 'Commander'}!</Text>
@@ -403,7 +549,16 @@ export function DashboardScreen({ user, onLogout }: { user: any, onLogout: () =>
                         </View>
                     ) : filteredDevices.length > 0 ? (
                         filteredDevices.map((device) => (
-                            <DeviceCard key={device.id} device={device} onToggle={handleToggle} onLongPress={handleOpenEdit} />
+                            <DeviceCard
+                                key={device.id}
+                                device={device}
+                                isBlocked={!!blockedDevices[device.id]}
+                                canManage={canManage}
+                                onToggle={handleToggle}
+                                onEdit={handleOpenEdit}
+                                onDelete={handleDeleteDevice}
+                                onLongPress={handleOpenEdit}
+                            />
                         ))
                     ) : (
                         <View style={[styles.emptyBox, { backgroundColor: theme.card, borderColor: theme.border, width: '100%' }]}>
@@ -443,7 +598,7 @@ export function DashboardScreen({ user, onLogout }: { user: any, onLogout: () =>
             />
 
             <TouchableOpacity
-                style={[styles.fab, { backgroundColor: theme.accent || theme.primary, shadowColor: theme.accentGlow || theme.primaryGlow }]}
+                style={[styles.fab, { backgroundColor: theme.primary, shadowColor: theme.primaryGlow }]}
                 onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => { });
                     setAiVisible(true);
@@ -456,7 +611,7 @@ export function DashboardScreen({ user, onLogout }: { user: any, onLogout: () =>
             <Modal visible={createVisible} transparent animationType="slide" onRequestClose={() => setCreateVisible(false)}>
                 <KeyboardAvoidingView
                     style={{ flex: 1 }}
-                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                    behavior={Platform.OS === 'ios' ? 'padding' : undefined}
                 >
                     <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}>
                         <View style={{ backgroundColor: theme.background, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, borderColor: theme.border, borderWidth: 1 }}>
@@ -577,7 +732,7 @@ export function DashboardScreen({ user, onLogout }: { user: any, onLogout: () =>
                     </View>
                 </View>
             </Modal>
-
+            {AlertComponent}
         </View>
     );
 }

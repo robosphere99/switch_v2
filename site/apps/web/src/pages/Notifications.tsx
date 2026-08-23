@@ -61,6 +61,11 @@ export function Notifications() {
         category,
         type: typeFilter !== "all" ? typeFilter : undefined,
         unread: unreadOnly || undefined,
+      }).then(res => {
+        if (res.success && res.data?.items?.some((x: Notification) => !x.readAt)) {
+          markAllRead().catch(() => { });
+        }
+        return res;
       }),
     // Dropdown jaisa live — naye notifications khud aa jayein
     refetchInterval: 30_000,
@@ -148,7 +153,7 @@ export function Notifications() {
               onClick={() => readAll.mutate()}
               className="rounded-lg border border-gray-200 bg-night-800 px-4 py-2 text-sm text-brand transition hover:border-brand hover:bg-night-700"
             >
-              ✓ Read UI
+              ✓ Read All
             </button>
           )}
           {data && data.total > 0 && (

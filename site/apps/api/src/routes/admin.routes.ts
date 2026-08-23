@@ -174,6 +174,9 @@ const settingsSchema = z
     aiApiKey: z.string().max(200).optional(), // blank = purana rakho
     aiBaseUrl: z.string().max(200).optional().or(z.literal("")),
     aiModel: z.string().max(100).optional(),
+    supportTicketMediaRetentionDays: z.number().int().min(1).max(3650).optional(),
+    chatHistoryRetentionDays: z.number().int().min(1).max(3650).optional(),
+    deviceTelemetryRetentionDays: z.number().int().min(1).max(3650).optional(),
   })
   .refine((d) => Object.keys(d).length > 0, { message: "At least one field to update" });
 

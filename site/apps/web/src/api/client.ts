@@ -40,13 +40,13 @@ api.interceptors.response.use(
  * JSON error ko HTML page se replace kar deta hai — tab fallback message dekar
  * raw HTML ko UI me dikhne se rokta hai.
  */
-export function extractApiError(err: unknown): { status: number; message: string; code: string } {
+export function extractApiError(err: unknown): { status: number; message: string; code: string; details?: any } {
   const e = err as { response?: { status?: number; data?: unknown } };
   const status = e.response?.status ?? 0;
   const data = e.response?.data;
   if (data && typeof data === "object" && (data as { success?: boolean }).success === false) {
-    const apiErr = (data as { error?: { code?: string; message?: string } }).error;
-    if (apiErr?.message) return { status, message: apiErr.message, code: apiErr.code ?? "ERROR" };
+    const apiErr = (data as { error?: { code?: string; message?: string; details?: any } }).error;
+    if (apiErr?.message) return { status, message: apiErr.message, code: apiErr.code ?? "ERROR", details: apiErr.details };
   }
   if (status >= 400) {
     // App ka JSON error nahi mila (HTML/proxy page) — generic friendly message

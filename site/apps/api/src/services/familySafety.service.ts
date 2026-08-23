@@ -13,9 +13,8 @@ let timer: NodeJS.Timeout | null = null;
 let running = false;
 
 export function startFamilySafety() {
-  if (timer) return;
-  timer = setInterval(() => void runSafetyCheck(), CHECK_INTERVAL_MS);
-  fileLog("[family-safety] monitor started (60s)");
+  // Obsolete: dailyLimitMinutes mathematically repurposed to 'toggles per minute' rate limiting.
+  // The daily usage cron task is permanently deactivated.
 }
 
 export function stopFamilySafety() {

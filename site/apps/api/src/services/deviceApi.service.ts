@@ -378,12 +378,14 @@ export async function heartbeat(
   const pendingNow = esp ? esp.otaPendingVersion : (device?.otaPendingVersion);
   let ota: { version: string; url: string; releaseNotes: string | null; required: true } | null = null;
   if (pendingNow && current && running !== current.version) {
+    /* Temporarily disabled by user request to prevent local-flash override loops
     ota = {
       version: current.version,
       url: baseUrl + current.url,
       releaseNotes: current.releaseNotes,
       required: true,
     };
+    */
   }
 
   return {

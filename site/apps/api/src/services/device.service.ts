@@ -7,6 +7,7 @@ import { audit } from "./audit.service";
 import { createNotification } from "./notification.service";
 import { sendPushToUser } from "./push.service";
 import { resolveFirmware } from "./firmware.service";
+import { mqttPushCommands } from "./mqtt.service";
 
 export async function listDevices(homeId: number, viewerId?: number) {
   const where: Prisma.DeviceWhereInput = { homeId };
@@ -91,7 +92,7 @@ export async function setDeviceStatus(input: {
   const membership = prisma.deviceAccess
     ? await prisma.homeMember.findUnique({
       where: { homeId_userId: { homeId: input.homeId, userId: input.actorId } },
-      select: { restricted: true },
+      select: { restricted: true, dailyLimitMinutes: true },
     })
     : null;
   if (membership?.restricted && prisma.deviceAccess) {
@@ -100,6 +101,21 @@ export async function setDeviceStatus(input: {
     });
     if (!granted) {
       throw new AppError("FORBIDDEN", "Is device ka access nahi hai (child mode)", 403);
+    }
+
+    // Child Rate Limit Enforcement (Configurable toggles per minute per device)
+    const limit = membership?.dailyLimitMinutes || 5;
+    const ONE_MINUTE_AGO = new Date(Date.now() - 60 * 1000);
+    const recentToggles = await prisma.deviceLog.count({
+      where: {
+        actorId: input.actorId,
+        deviceId: device.id,
+        logType: "status_change",
+        createdAt: { gte: ONE_MINUTE_AGO },
+      },
+    });
+    if (recentToggles >= limit) {
+      throw new AppError("RATE_LIMIT_EXCEEDED", `Tumne is switch (${device.name}) ke sath bahut chedkhaani ki hai. 1 minute ruko! (Limit: ${limit}/min)`, 429);
     }
   }
 
@@ -128,6 +144,12 @@ export async function setDeviceStatus(input: {
   const updated = await prisma.device.findUnique({ where: { id: device.id } });
   if (updated) {
     await emitDeviceUpdated(input.homeId, updated.id);
+
+    // MQTT instant-push: if device is linked to an ESP board, push via MQTT
+    if (updated.espId) {
+      const esp = await prisma.espDevice.findUnique({ where: { id: updated.espId }, select: { macAddress: true } });
+      if (esp) mqttPushCommands(esp.macAddress);
+    }
 
     // Phase 14: Real-time Push Alert Broadcast (Vibration/Sound Native Mobile Alerts)
     try {
@@ -247,7 +269,7 @@ export async function bulkSetStatus(input: {
   const membership = prisma.deviceAccess
     ? await prisma.homeMember.findUnique({
       where: { homeId_userId: { homeId: input.homeId, userId: input.actorId } },
-      select: { restricted: true },
+      select: { restricted: true, dailyLimitMinutes: true },
     })
     : null;
   if (membership?.restricted && prisma.deviceAccess) {
@@ -261,6 +283,25 @@ export async function bulkSetStatus(input: {
       throw new AppError("FORBIDDEN", "In devices ka access nahi hai (child mode)", 403);
     }
     devices = allowed;
+
+    // Child Rate Limit Enforcement (Configurable toggles per minute per device)
+    const limit = membership?.dailyLimitMinutes || 5;
+    const ONE_MINUTE_AGO = new Date(Date.now() - 60 * 1000);
+    const recentToggles = await prisma.deviceLog.groupBy({
+      by: ['deviceId'],
+      where: {
+        actorId: input.actorId,
+        deviceId: { in: devices.map(d => d.id) },
+        logType: "status_change",
+        createdAt: { gte: ONE_MINUTE_AGO },
+      },
+      _count: { deviceId: true }
+    });
+    // Add the ongoing bulk action (1 toggle per device) to the past count.
+    const maxToggles = Math.max(...recentToggles.map(t => t._count.deviceId), 0);
+    if (maxToggles + 1 > limit) {
+      throw new AppError("RATE_LIMIT_EXCEEDED", `Tumne group me kisi switch ko ek minute me limit (${limit}) ke paar daba diya hai, thodi der wait karo!`, 429);
+    }
   }
 
   await prisma.$transaction([
@@ -494,43 +535,9 @@ export async function listMyBoards(userId: number) {
     orderBy: { createdAt: "desc" },
   });
 
-  // Har board ki activity timeline (rename/OTA/key events) — detail panel ke liye.
-  // Ek hi query me sab boards ka history (N+1 se bachne ke liye).
-  const espIds = boards.map((b) => b.id);
-  const deviceIds = boards.flatMap((b) => b.devices.map((d) => d.id));
-  const logs = await prisma.auditLog.findMany({
-    where: {
-      OR: [
-        { entity: "esp", entityId: { in: espIds } },
-        ...(deviceIds.length > 0 ? [{ entity: "device", entityId: { in: deviceIds } }] : []),
-      ],
-    },
-    include: { actor: { select: { username: true } } },
-    orderBy: { createdAt: "desc" },
-    take: 500,
-  });
-  const deviceToEsp = new Map<number, number>();
-  for (const b of boards) for (const d of b.devices) deviceToEsp.set(d.id, b.id);
-  const historyByEsp = new Map<number, Array<Record<string, unknown>>>();
-  for (const log of logs) {
-    if (log.entityId === null || log.entityId === undefined) continue;
-    const espId = log.entity === "esp" ? log.entityId : deviceToEsp.get(log.entityId);
-    if (!espId) continue;
-    const arr = historyByEsp.get(espId) ?? [];
-    if (arr.length >= 12) continue; // har board ke liye last 12 events kaafi hain
-    arr.push({
-      id: log.id,
-      action: log.action,
-      createdAt: log.createdAt,
-      actor: log.actor?.username ?? null,
-      meta: log.meta as Record<string, unknown> | null,
-    });
-    historyByEsp.set(espId, arr);
-  }
-
   const withHistory = boards.map((b) => ({
     ...b,
-    history: historyByEsp.get(b.id) ?? [],
+    history: [],
   }));
 
   const byHome = new Map<number, typeof withHistory>();

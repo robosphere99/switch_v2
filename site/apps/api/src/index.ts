@@ -12,6 +12,8 @@ import { startHealthMonitor } from "./lib/healthMonitor";
 import { startLeakMonitor } from "./lib/leakMonitor";
 import { setDbReady } from "./lib/dbState";
 import { loadRequestTracker, startRequestFlush } from "./lib/requestTracker";
+import { startArchivalService } from "./services/archival.service";
+import { startMqttBroker } from "./services/mqtt.service";
 
 // Tables exist ya nahi — information_schema se check (empty DB pe crash
 // nahi karta). Bas DB reachable hona kaafi nahi: tables nahi hain to
@@ -371,6 +373,14 @@ async function main() {
   initSocket(server);
   boot("socket init done");
 
+  // MQTT IoT Broker (Aedes) — ESP32 devices connect here instead of HTTP polling.
+  try {
+    startMqttBroker();
+    boot("mqtt broker started");
+  } catch (err) {
+    boot("mqtt broker start failed (non-fatal):", err instanceof Error ? err.message : String(err));
+  }
+
   // Plesk/iisnode app ko process.env.PORT pe expect karta hai. IMPORTANT:
   // Windows iisnode PORT me ya to TCP number deta hai, ya NAMED PIPE path
   // (\.\pipe\...). Pipe path ho to usi pe listen karna hota hai — TCP
@@ -524,6 +534,11 @@ async function initDatabase(): Promise<void> {
       startOfflineWatcher();
     } catch (err) {
       logger.warn("Offline watcher start skipped/failed", err instanceof Error ? err.message : String(err));
+    }
+    try {
+      startArchivalService();
+    } catch (err) {
+      logger.warn("Archival service start skipped/failed", err instanceof Error ? err.message : String(err));
     }
     // Request traffic tracker — AppMeta se load + periodic flush
     try {

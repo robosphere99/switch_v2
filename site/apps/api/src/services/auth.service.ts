@@ -10,6 +10,7 @@ import { logger } from "../lib/logger";
 import { persistEnvKey } from "../lib/envPersist";
 import { getSiteSettings } from "./siteSettings.service";
 import { sendPasswordResetEmail } from "../lib/email.service";
+import { emitToUser, emitToSession } from "../lib/socket";
 
 function toAuthUser(user: User): AuthUser {
   return {
@@ -31,7 +32,7 @@ function hashToken(token: string): string {
 }
 
 // jti (random nonce) guarantees unique tokens even when issued in the same second.
-function signAccessToken(user: User): string {
+function signAccessToken(user: User, sessionId?: number): string {
   return jwt.sign(
     {
       sub: user.id,
@@ -40,6 +41,7 @@ function signAccessToken(user: User): string {
       role: user.role,
       ver: user.tokenVersion,
       jti: crypto.randomUUID(),
+      sid: sessionId,
     },
     env.JWT_ACCESS_SECRET,
     { expiresIn: env.JWT_ACCESS_EXPIRES as SignOptions["expiresIn"] },
@@ -198,8 +200,24 @@ export async function updateThemePref(userId: number, theme: string): Promise<Au
   return toAuthUser(updated);
 }
 
+export async function checkAvailability(username?: string, email?: string) {
+  const result = { usernameAvailable: true, emailAvailable: true };
+
+  if (username) {
+    const existing = await prisma.user.findUnique({ where: { username } });
+    if (existing) result.usernameAvailable = false;
+  }
+
+  if (email) {
+    const existing = await prisma.user.findUnique({ where: { email } });
+    if (existing) result.emailAvailable = false;
+  }
+
+  return result;
+}
+
 /** Login with username OR email + password. */
-export async function login(usernameEmail: string, password: string, deviceInfo?: string, ipAddress?: string): Promise<LoginResponse> {
+export async function login(usernameEmail: string, password: string, deviceInfo?: string, ipAddress?: string, revokeOtherSessions?: boolean): Promise<LoginResponse> {
   const user = await prisma.user.findFirst({
     where: { OR: [{ username: usernameEmail }, { email: usernameEmail }] },
   });
@@ -211,6 +229,20 @@ export async function login(usernameEmail: string, password: string, deviceInfo?
   if (user.status !== "active") {
     throw new AppError("ACCOUNT_SUSPENDED", "Account is suspended", 403);
   }
+
+  let enrichDevice = deviceInfo || "Unknown Device";
+  if (ipAddress && ipAddress !== "::1" && ipAddress !== "127.0.0.1" && !ipAddress.startsWith("192.168.") && !ipAddress.startsWith("10.")) {
+    try {
+      const resp = await fetch(`http://ip-api.com/json/${ipAddress}?fields=city,region`);
+      const loc = await resp.json() as any;
+      if (loc && loc.city) {
+        enrichDevice = `${enrichDevice} • ${loc.city}, ${loc.region}`;
+      }
+    } catch { } // ignore
+  } else if (ipAddress?.startsWith("192.168.") || ipAddress?.startsWith("10.") || ipAddress === "::1" || ipAddress === "127.0.0.1") {
+    enrichDevice = `${enrichDevice} • Local Network`;
+  }
+
 
   // Best-effort: loginCount/lastLoginAt columns may not exist yet on older DBs.
   try {
@@ -229,13 +261,38 @@ export async function login(usernameEmail: string, password: string, deviceInfo?
       // lastLoginAt also missing — just skip stats update.
     }
   }
-  return issueTokens(user, deviceInfo, ipAddress);
+  return issueTokens(user, enrichDevice, ipAddress, revokeOtherSessions);
 }
 
+const MAX_ACTIVE_SESSIONS = 3;
+
 /** Issue a fresh access + refresh token pair, persisting the refresh token hash. */
-async function issueTokens(user: User, deviceInfo?: string, ipAddress?: string): Promise<LoginResponse> {
+async function issueTokens(user: User, deviceInfo?: string, ipAddress?: string, revokeOtherSessions?: boolean): Promise<LoginResponse> {
+  if (revokeOtherSessions) {
+    await prisma.refreshToken.updateMany({
+      where: { userId: user.id, revokedAt: null },
+      data: { revokedAt: new Date() }
+    });
+    emitToUser(user.id, "auth:force_logout", { message: "Sessions revoked from new login request." });
+  } else if (deviceInfo && ipAddress) {
+    // Heuristically coalesce/auto-revoke identical sessions from the same exact device and network
+    await prisma.refreshToken.updateMany({
+      where: { userId: user.id, deviceInfo, ipAddress, revokedAt: null },
+      data: { revokedAt: new Date() }
+    });
+  }
+
+  const activeSessions = await prisma.refreshToken.findMany({
+    where: { userId: user.id, revokedAt: null },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  if (activeSessions.length >= MAX_ACTIVE_SESSIONS) {
+    throw new AppError("SESSION_LIMIT_REACHED", "Maximum device logins reached", 403, activeSessions);
+  }
+
   const refreshToken = signRefreshToken(user);
-  await prisma.refreshToken.create({
+  const session = await prisma.refreshToken.create({
     data: {
       userId: user.id,
       tokenHash: hashToken(refreshToken),
@@ -245,10 +302,14 @@ async function issueTokens(user: User, deviceInfo?: string, ipAddress?: string):
     },
   });
 
+  emitToUser(user.id, "auth:sessions_changed", {});
+  emitToSession(session.id, "auth:session_created", { sessionId: session.id });
+
   return {
-    accessToken: signAccessToken(user),
+    accessToken: signAccessToken(user, session.id),
     refreshToken,
     user: toAuthUser(user),
+    sessionId: session.id,
   };
 }
 
@@ -421,15 +482,69 @@ export async function listSessions(userId: number) {
 }
 
 export async function revokeAllSessions(userId: number) {
-  await prisma.refreshToken.updateMany({
-    where: { userId, revokedAt: null },
+  const t = await prisma.$transaction([
+    prisma.refreshToken.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() }
+    }),
+    prisma.user.update({
+      where: { id: userId },
+      data: { tokenVersion: { increment: 1 } }
+    })
+  ]);
+
+  emitToUser(userId, "auth:force_logout", { message: "Your sessions have been globally revoked." });
+  emitToUser(userId, "auth:sessions_changed", {});
+}
+
+export async function revokeOtherSessions(userId: number, currentSessionId: number) {
+  const otherSessions = await prisma.refreshToken.findMany({
+    where: { userId, revokedAt: null, id: { not: currentSessionId } },
+  });
+
+  if (otherSessions.length === 0) return { count: 0 };
+
+  const result = await prisma.refreshToken.updateMany({
+    where: { userId, revokedAt: null, id: { not: currentSessionId } },
     data: { revokedAt: new Date() }
   });
+
+  for (const session of otherSessions) {
+    emitToSession(session.id, "auth:force_logout", { message: "Session revoked from main device." });
+  }
+  emitToUser(userId, "auth:sessions_changed", {});
+  return { count: result.count };
 }
 
 export async function revokeSession(userId: number, sessionId: number) {
   await prisma.refreshToken.updateMany({
     where: { id: sessionId, userId, revokedAt: null },
     data: { revokedAt: new Date() }
+  });
+  emitToSession(sessionId, "auth:force_logout", { message: "Your session was manually revoked." });
+  emitToUser(userId, "auth:sessions_changed", {});
+}
+
+/** Pre-auth session management */
+export async function revokeUnauthSession(usernameEmail: string, password: string, sessionId: number) {
+  const user = await prisma.user.findFirst({
+    where: { OR: [{ username: usernameEmail }, { email: usernameEmail }] },
+  });
+
+  if (!user || !(await bcrypt.compare(password, user.password))) {
+    throw new AppError("INVALID_CREDENTIALS", "Invalid credentials", 401);
+  }
+
+  await prisma.refreshToken.updateMany({
+    where: { id: sessionId, userId: user.id },
+    data: { revokedAt: new Date() }
+  });
+
+  emitToSession(sessionId, "auth:force_logout", { message: "Your session was terminated from another device." });
+  emitToUser(user.id, "auth:sessions_changed", {});
+
+  return prisma.refreshToken.findMany({
+    where: { userId: user.id, revokedAt: null },
+    orderBy: { createdAt: 'desc' },
   });
 }

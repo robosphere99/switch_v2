@@ -7,7 +7,7 @@
 > Repo location (this machine): `C:\Users\robos\OneDrive\Documents\SwitchNest`
 >
 <!-- AUTO:STAMP:START -->
-> _Auto-updated: 2026-08-22 08:42 UTC · branch `main` · tree clean · 258 commits_
+> _Auto-updated: 2026-08-22 10:07 UTC · branch `main` · tree clean · 260 commits_
 <!-- AUTO:STAMP:END -->
 
 ---
@@ -112,6 +112,8 @@ that also serves real ESP32 hardware).
 <!-- AUTO:RECENT_COMMITS:START -->
 Sabse naye 20 commits:
 
+- `b5a65dd` (2026-08-22) fix(mobile): babel syntax error with template literals in profile view
+- `d4a63d6` (2026-08-22) feat(profile): User profile expansion with avatar, dob, mobile app edit modal
 - `0813bb0` (2026-08-22) feat: Mobile device management, room creation, edit device and custom popup modals via in-app UI
 - `e7415c8` (2026-08-22) feat(commerce): integrate Razorpay checkout for Web and Mobile
 - `a3f7330` (2026-08-21) fix(frontend): remove unused imports causing typecheck failures in Settings and VoiceAssistants
@@ -130,8 +132,6 @@ Sabse naye 20 commits:
 - `e0e34aa` (2026-08-20) chore: complete phases 1-11, finalize automations and admin OTA updates
 - `d51c3cf` (2026-08-20) feat(mobile): Complete Phase 8 Mobile SDK 54 MVP
 - `eef9f3d` (2026-08-20) fix(api): rebuild dist bundle to include serial delete routes
-- `92562d5` (2026-08-19) chore: rebuild production assets with latest admin features
-- `1528aa8` (2026-08-19) feat: pagination for serials table — prev/next + page size selector
 <!-- AUTO:RECENT_COMMITS:END -->
 
 - 503 root-cause work: DB probe retry loop so the app self-heals, `nodeProcessCountPerApplication=1`,

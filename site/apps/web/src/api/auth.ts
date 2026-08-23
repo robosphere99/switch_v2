@@ -16,8 +16,18 @@ export async function signup(input: SignupInput): Promise<ApiResponse<LoginRespo
 export async function login(input: {
   usernameEmail: string;
   password: string;
+  revokeOtherSessions?: boolean;
 }): Promise<ApiResponse<LoginResponse>> {
   const { data } = await api.post<ApiResponse<LoginResponse>>("/auth/login", input);
+  return data;
+}
+
+export async function revokeUnauth(input: {
+  usernameEmail: string;
+  password: string;
+  sessionId: number;
+}): Promise<ApiResponse<any[]>> {
+  const { data } = await api.post<ApiResponse<any[]>>("/auth/revoke-unauth", input);
   return data;
 }
 

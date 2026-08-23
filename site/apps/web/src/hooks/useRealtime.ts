@@ -38,9 +38,9 @@ export function useRealtime() {
       const prev = handlers[event];
       handlers[event] = prev
         ? () => {
-            prev();
-            applyRemovals(queryClient, event);
-          }
+          prev();
+          applyRemovals(queryClient, event);
+        }
         : () => applyRemovals(queryClient, event);
     }
 
@@ -56,11 +56,17 @@ export function useRealtime() {
     };
     socket.io.on("reconnect", onReconnect);
 
+    const onForceLogout = () => {
+      useAuthStore.getState().logout();
+    };
+    socket.on("auth:force_logout", onForceLogout);
+
     return () => {
       for (const [event, handler] of Object.entries(handlers)) {
         socket.off(event, handler);
       }
       socket.io.off("reconnect", onReconnect);
+      socket.off("auth:force_logout", onForceLogout);
     };
   }, [accessToken, queryClient]);
 }

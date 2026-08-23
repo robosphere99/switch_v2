@@ -19,7 +19,7 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [mode, setModeState] = useState<ThemeMode>('auto');
-    const [activeThemeId, setActiveThemeId] = useState<string>('defaultDark');
+    const [activeThemeId, setActiveThemeId] = useState<string>('glassOcean');
     const [activeUserId, setActiveUserId] = useState<string | null>(null);
     const [isLoaded, setIsLoaded] = useState(false);
 
@@ -40,7 +40,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 } else if (currentMode === 'light') {
                     setActiveThemeId('defaultLight');
                 } else if (currentMode === 'dark') {
-                    setActiveThemeId('defaultDark');
+                    setActiveThemeId('glassOcean');
                 }
             } catch (e) {
                 console.log('Failed to load settings', e);
@@ -57,10 +57,10 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     useEffect(() => {
         if (!isLoaded) return;
         if (mode === 'auto') {
-            const autoTheme = systemColorScheme === 'dark' ? 'defaultDark' : 'defaultLight';
+            const autoTheme = systemColorScheme === 'dark' ? 'glassOcean' : 'defaultLight';
             if (activeThemeId !== autoTheme) {
                 // Only override standard defaults so they track OS, ignore if they explicitly tapped a custom premium theme previously
-                if (activeThemeId === 'defaultDark' || activeThemeId === 'defaultLight') {
+                if (activeThemeId === 'glassOcean' || activeThemeId === 'defaultLight' || activeThemeId === 'defaultDark') {
                     setActiveThemeId(autoTheme);
                 }
             }
@@ -88,7 +88,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         } else if (newMode === 'dark') {
             await changeTheme('defaultDark');
         } else if (newMode === 'auto') {
-            const autoTheme = systemColorScheme === 'dark' ? 'defaultDark' : 'defaultLight';
+            const autoTheme = systemColorScheme === 'dark' ? 'glassOcean' : 'defaultLight';
             await changeTheme(autoTheme);
         }
     };
@@ -106,7 +106,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     if (!isLoaded) return null; // Wait for memory check
 
-    const currentTheme = AppThemes[activeThemeId] || AppThemes['defaultDark'];
+    const currentTheme = AppThemes[activeThemeId] || AppThemes['glassOcean'];
     const isLight = currentTheme.background.toLowerCase() === '#f8fafc' || currentTheme.background.toLowerCase() === '#ffffff';
 
     return (

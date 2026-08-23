@@ -1,8 +1,5 @@
-import { useState } from "react";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { Edit2, Trash2 } from "lucide-react";
 import type { Device, DeviceType } from "@robosphere/shared";
-import { isNewerVersion } from "../api/devices";
-import { Switch } from "./Switch";
 
 const ICONS: Record<DeviceType, string> = {
   bulb: "💡",
@@ -13,25 +10,21 @@ const ICONS: Record<DeviceType, string> = {
   custom: "⚙️",
 };
 
-/**
- * Online = server marked it online (offline watcher) AND it reported within
- * the last 90 seconds. The backend flips `offline` on stale lastSeen.
- */
+const GLOW_COLORS: Record<string, string> = {
+  bulb: "rgba(253, 224, 71, 0.85)", // Yellow
+  tv: "rgba(244, 114, 182, 0.85)",  // Pink
+  fan: "rgba(56, 189, 248, 0.85)",  // Sky
+  ac: "rgba(167, 139, 250, 0.85)",  // Violet
+  plug: "rgba(52, 211, 153, 0.85)", // Emerald
+  custom: "rgba(251, 146, 60, 0.85)", // Orange
+};
+
+
+
 export function isOnline(device: Device): boolean {
   if (device.offline) return false;
   if (!device.lastSeen) return false;
   return Date.now() - new Date(device.lastSeen).getTime() < 90_000;
-}
-
-/** Human-friendly "last seen" — normal users ke liye, raw timestamps nahi. */
-export function formatLastSeen(iso: string | null | undefined): string {
-  if (!iso) return "Last seen: kabhi nahi";
-  const sec = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
-  if (sec < 0) return "Last seen: abhi abhi";
-  if (sec < 60) return "Last seen: abhi abhi";
-  if (sec < 3600) return `Last seen: ${Math.floor(sec / 60)} min ago`;
-  if (sec < 86400) return `Last seen: ${Math.floor(sec / 3600)} hr ago`;
-  return `Last seen: ${new Date(iso).toLocaleDateString()}`;
 }
 
 export function DeviceCard({
@@ -42,11 +35,9 @@ export function DeviceCard({
   onEdit,
   onDelete,
   onLogs,
-  onRenameBoard,
-  onOta,
-  latestVersion,
   pending,
   disabled,
+  isBlocked,
 }: {
   device: Device;
   roomName?: string | null;
@@ -56,299 +47,103 @@ export function DeviceCard({
   onDelete: (device: Device) => void;
   onLogs: (device: Device) => void;
   onRenameBoard?: (esp: NonNullable<Device["esp"]>) => void;
-  /** Is device ke board ka model ka latest published firmware (update badge ke liye). */
   latestVersion?: string | null;
   onOta?: (device: Device) => void;
-  /** True = command in-flight (optimistic UI). */
   pending?: boolean;
   disabled?: boolean;
+  isBlocked?: boolean;
 }) {
   const on = device.status === "on";
   const online = isOnline(device);
-  const [expanded, setExpanded] = useState(false);
+  const typeKey = device.type || "custom";
 
-  /* ── Mobile compact row (default on small screens) ──────── */
-  const compactRow = (
-    <div
-      className={`flex items-center gap-3 rounded-xl border px-3 py-3 transition sm:hidden ${
-        on
-          ? "border-brand bg-brand/10 shadow-lg shadow-brand/20"
-          : "border-gray-200 bg-night-800"
-      } ${!online ? "opacity-80" : ""}`}
-    >
-      {/* Icon */}
-      <span className="shrink-0 text-2xl">{ICONS[device.type]}</span>
-
-      {/* Name + status */}
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <h3 className="truncate text-sm font-semibold">{device.name}</h3>
-          <span
-            className={`h-2 w-2 shrink-0 rounded-full ${
-              online ? "bg-emerald-400" : "bg-red-400"
-            }`}
-          />
-        </div>
-        <p
-          className={`mt-0.5 text-[11px] ${
-            online ? "text-emerald-400/80" : "text-red-400/90"
-          }`}
-        >
-          {online ? "Connected" : formatLastSeen(device.lastSeen)}
-        </p>
-      </div>
-
-      {/* Toggle */}
-      <div className="shrink-0">
-        {!online ? (
-          <span className="text-[10px] font-semibold text-red-400/80">
-            Offline
-          </span>
-        ) : (
-          <Switch
-            checked={on}
-            onChange={() => onToggle(device)}
-            disabled={disabled}
-            pending={pending}
-            label={`${device.name} ${on ? "band karo" : "chalu karo"}`}
-          />
-        )}
-      </div>
-
-      {/* Expand arrow */}
-      {canManage && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            setExpanded((v) => !v);
-          }}
-          className="shrink-0 rounded-lg border border-gray-300/20 p-1.5 text-gray-400 transition hover:border-brand/40 hover:bg-brand/10 hover:text-brand dark:border-night-500 dark:text-gray-400 dark:hover:text-brand"
-          aria-label={expanded ? "Collapse details" : "Expand details"}
-        >
-          {expanded ? (
-            <ChevronUp className="h-4 w-4" />
-          ) : (
-            <ChevronDown className="h-4 w-4" />
-          )}
-        </button>
-      )}
-    </div>
-  );
-
-  /* ── Mobile expanded details (slides open below compact row) ── */
-  const expandedDetails = (
-    <div className="space-y-2 border-t border-gray-200 bg-gray-50/50 px-3 py-3 sm:hidden dark:border-night-600 dark:bg-night-700/50">
-      {/* Room name */}
-      {roomName && (
-        <p className="text-[11px] text-gray-500">📍 {roomName}</p>
-      )}
-
-      {/* Board info */}
-      {device.esp &&
-        (canManage ||
-          isNewerVersion(latestVersion, device.esp.firmwareVersion)) && (
-          <p className="flex min-w-0 items-center gap-1.5 text-[11px] text-gray-500">
-            <span className="truncate">
-              🛰️ {device.esp.name ?? "ESP Board"}
-            </span>
-            {isNewerVersion(
-              latestVersion,
-              device.esp.firmwareVersion,
-            ) && (
-              <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 font-bold text-amber-600">
-                ⬆ v{latestVersion}
-                {canManage && onOta && (
-                  <button
-                    onClick={() => onOta(device)}
-                    className="ml-0.5 rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-bold text-amber-600 hover:bg-amber-500/30"
-                    title="Board ka firmware update karo (OTA)"
-                  >
-                    Update
-                  </button>
-                )}
-              </span>
-            )}
-            {canManage && onRenameBoard && (
-              <button
-                onClick={() => onRenameBoard(device.esp!)}
-                className="rounded px-1 text-gray-500 transition hover:bg-night-700 hover:text-brand"
-                title="Board ka naam badlo"
-              >
-                ✏️
-              </button>
-            )}
-          </p>
-        )}
-
-      {/* Action buttons */}
-      {canManage && (
-        <div className="flex gap-2 text-xs">
-          <button
-            onClick={() => onEdit(device)}
-            className="flex flex-1 items-center justify-center gap-1 rounded bg-gray-200/60 py-2 text-gray-600 hover:bg-gray-200 dark:bg-night-600 dark:text-gray-300 dark:hover:bg-night-500"
-          >
-            Edit
-          </button>
-          <button
-            onClick={() => onLogs(device)}
-            className="flex flex-1 items-center justify-center gap-1 rounded bg-gray-200/60 py-2 text-gray-600 hover:bg-gray-200 dark:bg-night-600 dark:text-gray-300 dark:hover:bg-night-500"
-          >
-            Activity
-          </button>
-          <button
-            onClick={() => onDelete(device)}
-            className="flex flex-1 items-center justify-center gap-1 rounded bg-red-900/40 py-2 text-red-400 hover:bg-red-900/60"
-          >
-            Delete
-          </button>
-        </div>
-      )}
-    </div>
-  );
-
-  /* ── Desktop full card (unchanged) ──────────────────────── */
-  const fullCard = (
-    <div
-      className={`hidden flex-col gap-3 overflow-hidden rounded-xl border p-4 sm:flex sm:p-5 transition ${
-        on
-          ? "border-brand bg-brand/10 shadow-lg shadow-brand/20"
-          : "border-gray-200 bg-night-800"
-      } ${!online ? "opacity-80" : ""}`}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <span className="shrink-0 text-3xl">{ICONS[device.type]}</span>
-        <div className="flex shrink-0 flex-col items-end gap-1">
-          <span
-            className={`flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
-              online
-                ? "bg-emerald-500/20 text-emerald-400"
-                : "bg-red-500/20 text-red-400"
-            }`}
-          >
-            <span
-              className={`h-1.5 w-1.5 rounded-full ${
-                online ? "bg-emerald-400" : "bg-red-400"
-              }`}
-            />
-            {online ? "online" : "offline"}
-          </span>
-          {roomName && (
-            <span className="max-w-[120px] truncate text-[10px] text-gray-500">
-              📍 {roomName}
-            </span>
-          )}
-        </div>
-      </div>
-
-      <div>
-        <h3 className="font-semibold">{device.name}</h3>
-        {!online ? (
-          <p className="mt-0.5 text-[11px] text-red-400/90">
-            {formatLastSeen(device.lastSeen)}
-          </p>
-        ) : (
-          <p className="mt-0.5 text-[11px] text-emerald-400/80">
-            Connected just now
-          </p>
-        )}
-        {device.esp &&
-          (canManage ||
-            isNewerVersion(latestVersion, device.esp.firmwareVersion)) && (
-            <p className="mt-1 flex min-w-0 items-center gap-1.5 text-[11px] text-gray-500">
-              <span className="truncate">
-                🛰️ {device.esp.name ?? "ESP Board"}
-              </span>
-              {isNewerVersion(latestVersion, device.esp.firmwareVersion) && (
-                <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 font-bold text-amber-600">
-                  ⬆ v{latestVersion}
-                  {canManage && onOta && (
-                    <button
-                      onClick={() => onOta(device)}
-                      className="ml-0.5 rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-bold text-amber-600 hover:bg-amber-500/30"
-                      title="Board ka firmware update karo (OTA)"
-                    >
-                      Update
-                    </button>
-                  )}
-                </span>
-              )}
-              {canManage && onRenameBoard && (
-                <button
-                  onClick={() => onRenameBoard(device.esp!)}
-                  className="rounded px-1 text-gray-500 transition hover:bg-night-700 hover:text-brand"
-                  title="Board ka naam badlo"
-                >
-                  ✏️
-                </button>
-              )}
-            </p>
-          )}
-      </div>
-
-      <div className="flex items-center justify-between gap-2 rounded-lg border border-gray-200 bg-night-900/60 px-4 py-3 dark:border-night-600">
-        <div className="flex shrink-0 items-center gap-2">
-          <span
-            className={`h-2 w-2 rounded-full transition-colors ${
-              pending
-                ? "animate-pulse bg-amber-400"
-                : on
-                  ? "bg-brand"
-                  : "bg-gray-400 dark:bg-night-500"
-            }`}
-          />
-          <span className="text-sm font-bold text-gray-700 dark:text-night-950">
-            {pending ? "PENDING" : on ? "ON" : "OFF"}
-          </span>
-        </div>
-        {!online ? (
-          <span className="text-[10px] font-semibold text-red-400/80">
-            Offline — control band
-          </span>
-        ) : (
-          <Switch
-            checked={on}
-            onChange={() => onToggle(device)}
-            disabled={disabled}
-            pending={pending}
-            label={`${device.name} ${on ? "band karo" : "chalu karo"}`}
-          />
-        )}
-      </div>
-
-      {canManage && (
-        <div className="flex min-w-0 gap-2 overflow-hidden text-xs">
-          <button
-            onClick={() => onEdit(device)}
-            className="flex min-w-0 flex-1 items-center justify-center gap-1 truncate rounded bg-gray-100/60 py-2.5 text-gray-600 hover:bg-gray-200"
-          >
-            <span className="hidden sm:inline">✏️</span> Edit
-          </button>
-          <button
-            onClick={() => onLogs(device)}
-            className="flex min-w-0 flex-1 items-center justify-center gap-1 truncate rounded bg-gray-100/60 py-2.5 text-gray-600 hover:bg-gray-200"
-          >
-            <span className="hidden sm:inline">📜</span> Activity
-          </button>
-          <button
-            onClick={() => onDelete(device)}
-            className="flex min-w-0 flex-1 items-center justify-center gap-1 truncate rounded bg-red-900/40 py-2.5 text-red-400 hover:bg-red-900/60"
-          >
-            <span className="hidden sm:inline">🗑️</span> Delete
-          </button>
-        </div>
-      )}
-    </div>
-  );
-
-  /* ── Render: compact on mobile, full on desktop ────────── */
   return (
-    <div>
-      {/* Mobile: compact row */}
-      {compactRow}
-      {/* Mobile: expanded details (conditional) */}
-      {expanded && expandedDetails}
-      {/* Desktop: full card */}
-      {fullCard}
+    <div
+      className={`relative flex h-[280px] flex-col items-center justify-between overflow-hidden rounded-3xl border-2 p-5 transition-all duration-500
+        ${on ? "border-slate-600 bg-slate-800" : "border-slate-800 bg-slate-900"} 
+        ${on ? "" : "opacity-95"}
+        ${isBlocked ? "pointer-events-none opacity-50 grayscale" : ""}
+      `}
+    >
+      {/* Admin Actions (Top Right) */}
+      {canManage && (
+        <div className="absolute right-4 top-4 z-10 flex gap-2">
+          {onLogs && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onLogs(device); }}
+              className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-600 shadow-md transition-colors hover:bg-slate-500"
+              title="Activity Logs"
+            >
+              <span className="text-[10px] font-bold text-white">📜</span>
+            </button>
+          )}
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(device); }}
+            className="flex h-7 w-7 items-center justify-center rounded-full bg-[#ef4444] opacity-80 shadow-md transition-transform hover:scale-110 hover:opacity-100"
+            title="Delete Device"
+          >
+            <Trash2 className="h-3.5 w-3.5 text-white" />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onEdit(device); }}
+            className="flex h-7 w-7 items-center justify-center rounded-full bg-[#3b82f6] opacity-80 shadow-md transition-transform hover:scale-110 hover:opacity-100"
+            title="Edit Device"
+          >
+            <Edit2 className="h-3.5 w-3.5 text-white" />
+          </button>
+        </div>
+      )}
+
+      {/* Center 3D Glowing Emoji */}
+      <div
+        className="mt-4 flex flex-1 items-center justify-center cursor-pointer transition-transform duration-300 hover:scale-105"
+        onClick={() => { if (!disabled && !isBlocked) onToggle(device); }}
+      >
+        <span
+          className="text-[75px] transition-all duration-500 ease-out"
+          style={{
+            textShadow: on ? `0 0 30px ${GLOW_COLORS[typeKey]}, 0 0 60px ${GLOW_COLORS[typeKey]}, 0 0 90px ${GLOW_COLORS[typeKey]}` : "none",
+            opacity: on ? 1 : 0.25,
+            transform: on ? "scale(1.15)" : "scale(1)",
+          }}
+        >
+          {ICONS[typeKey]}
+        </span>
+      </div>
+
+      {/* Device Name */}
+      <div className="w-full px-2 text-center" onClick={() => { if (!disabled && !isBlocked) onToggle(device); }}>
+        <h3 className="truncate text-xl font-bold tracking-wide text-white drop-shadow-md">
+          {device.name}
+        </h3>
+      </div>
+
+      {/* Status Pill Button */}
+      <div className="mt-3 flex w-full flex-col items-center gap-1.5 pb-2">
+        <button
+          onClick={() => onToggle(device)}
+          disabled={disabled || isBlocked}
+          className={`rounded-full px-6 py-1 text-sm font-bold tracking-widest text-white transition-all duration-300 ${pending ? "animate-pulse" : ""
+            } ${on
+              ? "bg-[#10b981] shadow-[0_0_15px_rgba(16,185,129,0.5)]"
+              : "bg-[#4b5563]"
+            } ${disabled || isBlocked ? "cursor-not-allowed opacity-50" : "hover:scale-105 active:scale-95"}`}
+        >
+          {pending ? "..." : on ? "ON" : "OFF"}
+        </button>
+
+        {/* Subtitle - Room Name */}
+        <span className={`text-[11px] font-bold tracking-wider uppercase text-gray-500`}>
+          {roomName || "Home"} {!online && <span className="text-red-500 normal-case ml-1">- Offline</span>}
+        </span>
+      </div>
+
+      {/* Dim Overlay when blocked */}
+      {isBlocked && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 rounded-[22px]">
+          <span className="text-3xl">🔒</span>
+        </div>
+      )}
     </div>
   );
 }

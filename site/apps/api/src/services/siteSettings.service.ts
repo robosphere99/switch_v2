@@ -32,6 +32,10 @@ export interface SiteSettings {
   aiApiKey: string; // encrypted at rest
   aiBaseUrl: string; // empty → provider default
   aiModel: string;
+  // Data Retention Settings
+  supportTicketMediaRetentionDays: number;
+  chatHistoryRetentionDays: number;
+  deviceTelemetryRetentionDays: number;
 }
 
 export const DEFAULT_SITE_SETTINGS: SiteSettings = {
@@ -54,6 +58,9 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   aiApiKey: "",
   aiBaseUrl: "",
   aiModel: "",
+  supportTicketMediaRetentionDays: 90, // Defaults to 3 months
+  chatHistoryRetentionDays: 90,
+  deviceTelemetryRetentionDays: 180, // Defaults to 6 months for ML analysis (Hot Storage)
 };
 
 const KEY = "site_settings";

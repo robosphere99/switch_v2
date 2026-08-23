@@ -37,10 +37,36 @@ import { Support } from "./pages/Support";
 import { Install } from "./pages/Install";
 import { getInstallStatus } from "./api/install";
 import { useSiteStore } from "./stores/site";
+import { api } from "./api/client";
+import { useAuthStore } from "./stores/auth";
 
 export default function App() {
   useRealtime();
   const loadSite = useSiteStore((s) => s.load);
+  const user = useAuthStore((s) => s.user);
+
+  // 1. Cross-tab synchronization
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      // If another tab updates the auth state, force rehydrate our local Zustand store
+      if (e.key === "robosphere-auth" && e.newValue) {
+        useAuthStore.persist.rehydrate();
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, []);
+
+  // 2. Clear stale cache silently on root mount
+  useEffect(() => {
+    if (user) {
+      api.get("/auth/me").then(res => {
+        if (res.data?.success && res.data.data) {
+          useAuthStore.getState().setUser(res.data.data);
+        }
+      }).catch(() => { });
+    }
+  }, []);
 
   // Site-wide settings (brand color, contact info) — login se pehle bhi apply ho jaye
   useEffect(() => {

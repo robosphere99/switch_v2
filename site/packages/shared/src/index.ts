@@ -200,12 +200,14 @@ export interface AccessTokenPayload {
   role: UserRole;
   /** Token version — password change / suspend pe bump hota hai, purane tokens turant invalid. */
   ver: number;
+  sid?: number;
 }
 
 export interface LoginResponse {
   accessToken: string;
   refreshToken: string;
   user: AuthUser;
+  sessionId: number;
 }
 
 // ---------- Realtime (Socket.IO) ----------

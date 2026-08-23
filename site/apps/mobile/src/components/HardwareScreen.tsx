@@ -1,11 +1,12 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Modal, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import React, { useEffect, useState, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Modal, TextInput, KeyboardAvoidingView, Platform, Keyboard } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { Cpu, Wifi, Server, X, PlusCircle, Monitor, Shield, Camera } from 'lucide-react-native';
 import { getHardwareHomes, setEspLed, assignEspChannel } from '../api/hardware';
 import { getClaimHomes, claimDevice } from '../api/shop';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
+import { useThemedAlert } from './ThemedAlert';
 
 const getRelativeTime = (dateString: string) => {
     if (!dateString) return 'Never';
@@ -21,6 +22,7 @@ const getRelativeTime = (dateString: string) => {
 
 export function HardwareScreen() {
     const { theme } = useTheme();
+    const { showAlert, AlertComponent } = useThemedAlert();
     const [loading, setLoading] = useState(true);
     const [homes, setHomes] = useState<any[]>([]);
     const [selectedHomeId, setSelectedHomeId] = useState<number | null>(null);
@@ -36,6 +38,17 @@ export function HardwareScreen() {
     const [claimHomeId, setClaimHomeId] = useState<number | "">("");
     const [claimHomes, setClaimHomes] = useState<any[]>([]);
     const [claimBusy, setClaimBusy] = useState(false);
+
+    const serialInputRef = useRef<TextInput>(null);
+
+    useEffect(() => {
+        const keyboardSub = Keyboard.addListener('keyboardDidHide', () => {
+            serialInputRef.current?.blur();
+        });
+        return () => {
+            keyboardSub.remove();
+        };
+    }, []);
 
     useEffect(() => {
         loadDashboards();
@@ -64,7 +77,7 @@ export function HardwareScreen() {
         if (mode === 'camera' && !permission?.granted) {
             const res = await requestPermission();
             if (!res.granted) {
-                Alert.alert("Permission Refused", "Cannot scan QR without camera permissions.");
+                showAlert("Permission Refused", "Cannot scan QR without camera permissions.");
                 return;
             }
         }
@@ -76,7 +89,7 @@ export function HardwareScreen() {
             setClaimHomes(hs);
             if (hs.length === 1) setClaimHomeId(hs[0].id);
         } catch (e: any) {
-            Alert.alert("Error", e.message || "Could not load homes.");
+            showAlert("Error", e.message || "Could not load homes.");
         } finally {
             setClaimBusy(false);
         }
@@ -118,11 +131,11 @@ export function HardwareScreen() {
         setClaimBusy(true);
         try {
             const res = await claimDevice(serialCodeStr.toUpperCase(), claimHomeId);
-            Alert.alert("Success", `Device ${res.device.name} activated successfully.`);
+            showAlert("Success", `Device ${res.device.name} activated successfully.`);
             setActivateModal({ visible: false, mode: 'manual' });
             loadDashboards();
         } catch (e: any) {
-            Alert.alert("Failed", e.message || "Failed to claim device.");
+            showAlert("Failed", e.message || "Failed to claim device.");
         } finally {
             setClaimBusy(false);
         }
@@ -138,7 +151,7 @@ export function HardwareScreen() {
         try {
             await setEspLed(currentHome.homeId, espId, !currentEnabled);
         } catch (e: any) {
-            Alert.alert("LED Control failed", e.message);
+            showAlert("LED Control failed", e.message);
             loadDashboards(); // revert
         }
     };
@@ -150,7 +163,7 @@ export function HardwareScreen() {
             await assignEspChannel(currentHome.homeId, deviceId, null, null);
             loadDashboards();
         } catch (e: any) {
-            Alert.alert("Unmap failed", e.message);
+            showAlert("Unmap failed", e.message);
         }
     };
 
@@ -162,7 +175,7 @@ export function HardwareScreen() {
             await assignEspChannel(currentHome.homeId, deviceId, mappingModal.espId, mappingModal.channel);
             loadDashboards();
         } catch (e: any) {
-            Alert.alert("Mapping failed", e.message);
+            showAlert("Mapping failed", e.message);
         }
     };
 
@@ -304,8 +317,8 @@ export function HardwareScreen() {
             </ScrollView>
 
             {/* Activation Scanner / Manual Modal */}
-            <Modal visible={activateModal.visible} transparent animationType="slide" onRequestClose={() => setActivateModal({ visible: false, mode: 'manual' })}>
-                <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+            <Modal visible={activateModal.visible} transparent animationType="slide" onRequestClose={() => { if (!claimBusy) setActivateModal({ visible: false, mode: 'manual' }) }}>
+                <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}>
                     <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' }}>
 
                         {activateModal.mode === 'camera' && (
@@ -339,13 +352,17 @@ export function HardwareScreen() {
                                 <ScrollView>
                                     <Text style={{ color: theme.textSecondary, marginBottom: 8 }}>Serial Code</Text>
                                     <TextInput
+                                        ref={serialInputRef}
                                         style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.card }]}
                                         value={serialCodeStr}
                                         onChangeText={handleSerialCodeChange}
-                                        placeholder="RS-XXXXXX"
+                                        placeholder="RS-4CH-XXXXXX"
                                         placeholderTextColor={theme.textSecondary}
                                         autoCapitalize="characters"
                                     />
+                                    <Text style={{ color: theme.textSecondary, fontSize: 11, marginTop: 6, fontStyle: 'italic', opacity: 0.8 }}>
+                                        Type only key characters. Dashes (-) are added automatically.
+                                    </Text>
 
                                     <Text style={{ color: theme.textSecondary, marginBottom: 8, marginTop: 16 }}>Select Home</Text>
                                     <View style={{ gap: 8 }}>
@@ -453,6 +470,7 @@ export function HardwareScreen() {
                     </View>
                 </View>
             </Modal>
+            {AlertComponent}
         </View>
     );
 }

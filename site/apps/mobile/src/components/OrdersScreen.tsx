@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, StyleSheet, Modal, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, StyleSheet, Modal, Alert, DeviceEventEmitter } from 'react-native';
 import { Package, Truck, CheckCircle, ChevronLeft, CalendarClock, Wifi } from 'lucide-react-native';
 import { getMyOrders, Order, initiatePayment, verifyPayment, demoPay } from '../api/shop';
 import RazorpayCheckout from 'react-native-razorpay';
 import { useTheme } from '../theme/ThemeContext';
+import { useThemedAlert } from './ThemedAlert';
 
 interface OrdersScreenProps {
     visible: boolean;
@@ -12,18 +13,37 @@ interface OrdersScreenProps {
 
 export function OrdersScreen({ visible, onClose }: OrdersScreenProps) {
     const { theme } = useTheme();
+    const { showAlert, AlertComponent } = useThemedAlert();
     const [loading, setLoading] = useState(true);
     const [orders, setOrders] = useState<Order[]>([]);
-    const [payBusy, setPayBusy] = useState(false);
+    const [payingOrderId, setPayingOrderId] = useState<number | null>(null);
 
     useEffect(() => {
+        let interval: any;
+        let sub: any;
+
         if (visible) {
-            fetchOrders();
+            fetchOrders(true);
+
+            // Poll for fresh order records every 8 seconds silently
+            interval = setInterval(() => {
+                fetchOrders(false);
+            }, 8000);
+
+            // Listen to WebSocket notification sync triggers
+            sub = DeviceEventEmitter.addListener('notification_sync', () => {
+                fetchOrders(false);
+            });
         }
+
+        return () => {
+            if (interval) clearInterval(interval);
+            if (sub) sub.remove();
+        };
     }, [visible]);
 
-    const fetchOrders = async () => {
-        setLoading(true);
+    const fetchOrders = async (showLoading = true) => {
+        if (showLoading) setLoading(true);
         try {
             const data = await getMyOrders();
             // Sort by latest created
@@ -31,19 +51,55 @@ export function OrdersScreen({ visible, onClose }: OrdersScreenProps) {
         } catch (e) {
             console.error("Order fetch failed: ", e);
         } finally {
-            setLoading(false);
+            if (showLoading) setLoading(false);
         }
     };
 
     const handlePay = async (orderId: number) => {
-        setPayBusy(true);
+        setPayingOrderId(orderId);
         try {
+            console.log(`[PAYMENT DEBUG] handlePay triggered for orderId: ${orderId}`);
             const intent = await initiatePayment(orderId);
             if (intent.mode === 'demo') {
                 await demoPay(orderId);
-                Alert.alert('Demo Mode Test', 'Payment was successful via demo mode.');
+                showAlert('Demo Mode Test', 'Payment was successful via demo mode.');
                 await fetchOrders();
             } else {
+                const isRazorpayAvailable = !!RazorpayCheckout && typeof RazorpayCheckout.open === 'function';
+
+                if (!isRazorpayAvailable) {
+                    showAlert(
+                        'Razorpay (Expo Go)',
+                        'Native Razorpay is not supported in the Expo Go sandbox. Would you like to use Demo Mode to mock this payment?',
+                        [
+                            {
+                                text: 'Cancel',
+                                style: 'cancel',
+                                onPress: () => { }
+                            },
+                            {
+                                text: 'Mock Pay (Success)',
+                                style: 'default',
+                                onPress: async () => {
+                                    setPayingOrderId(orderId);
+                                    try {
+                                        await demoPay(orderId);
+                                        showAlert('Mock Payment', 'Demo test payment completed successfully.');
+                                        await fetchOrders();
+                                    } catch (e: any) {
+                                        showAlert('Error', e.message || 'Mock payment failed.');
+                                    } finally {
+                                        setPayingOrderId(null);
+                                    }
+                                }
+                            }
+                        ],
+                        'confirm'
+                    );
+                    setPayingOrderId(null);
+                    return;
+                }
+
                 const options = {
                     description: `Order #${orderId}`,
                     currency: 'INR',
@@ -69,7 +125,7 @@ export function OrdersScreen({ visible, onClose }: OrdersScreenProps) {
                     razorpaySignature: response.razorpay_signature,
                 });
 
-                Alert.alert('Payment Success', 'Your payment was verified!');
+                showAlert('Payment Success', 'Your payment was verified!');
                 await fetchOrders();
             }
         } catch (error: any) {
@@ -101,9 +157,9 @@ export function OrdersScreen({ visible, onClose }: OrdersScreenProps) {
                 parsedMsg = "Payment failed or cancelled";
             }
 
-            Alert.alert('Payment Failed', String(parsedMsg));
+            showAlert('Payment Failed', String(parsedMsg));
         } finally {
-            setPayBusy(false);
+            setPayingOrderId(null);
         }
     };
 
@@ -180,13 +236,13 @@ export function OrdersScreen({ visible, onClose }: OrdersScreenProps) {
                                             )}
                                             <TouchableOpacity
                                                 onPress={() => handlePay(order.id)}
-                                                disabled={payBusy}
+                                                disabled={payingOrderId !== null}
                                                 style={[
                                                     styles.payButton,
-                                                    { backgroundColor: order.paymentStatus === 'failed' ? '#ef4444' : theme.primary, opacity: payBusy ? 0.7 : 1 }
+                                                    { backgroundColor: order.paymentStatus === 'failed' ? '#ef4444' : theme.primary, opacity: payingOrderId === order.id ? 0.7 : 1 }
                                                 ]}
                                             >
-                                                {payBusy ? (
+                                                {payingOrderId === order.id ? (
                                                     <ActivityIndicator size="small" color="#fff" />
                                                 ) : (
                                                     <Text style={styles.payButtonText}>{order.paymentStatus === 'failed' ? '⚠️ Retry Payment' : '💳 Pay Now'}</Text>
@@ -218,6 +274,7 @@ export function OrdersScreen({ visible, onClose }: OrdersScreenProps) {
                         <View style={{ height: 40 }} />
                     </ScrollView>
                 )}
+                {AlertComponent}
             </View>
         </Modal>
     );

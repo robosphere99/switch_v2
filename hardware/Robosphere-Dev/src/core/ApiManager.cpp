@@ -3,6 +3,7 @@
 #include "core/BoardManager.h"
 #include "core/DimmerManager.h"
 #include "core/LedManager.h"
+#include "core/MqttManager.h"
 #include "core/RelayManager.h"
 #include "preferences/PreferencesManager.h"
 #include <Arduino.h>
@@ -10,6 +11,7 @@
 #include <HTTPClient.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
+
 
 namespace ApiManager {
 
@@ -132,6 +134,17 @@ bool queueDeviceUpdate(int deviceId, bool state) {
     pendingState[idx] = state;
     pendingValid[idx] = true;
     pendingCount++;
+  }
+
+  // MQTT Fast-path: if MQTT is connected, publish the state immediately
+  // without waiting for the HTTP debounce loop.
+  if (MqttManager::isConnected()) {
+    MqttManager::publishState();
+    // Keep it in pending queue so the next HTTP flush can clear it or ignore
+    // it, but actually we could just clear it here to save memory/cycles.
+    pendingValid[idx] = false;
+    pendingCount--;
+    return true;
   }
 
   // Debounce window — sirf tab set karo jab koi flush scheduled nahi hai.
@@ -290,6 +303,11 @@ bool updateDevice(int deviceId, bool state) {
   if (inBackoff())
     return false;
 
+  // If MQTT is connected, we don't need to do HTTP POSTs
+  if (MqttManager::isConnected()) {
+    return true; // Pretend it succeeded so flush clears it
+  }
+
   // WiFi down hai toh HTTP attempt hi mat karo — otherwise ARP/connect
   // stall seconds tak loop block karta hai. Pending queue mein update
   // rehta hai, WiFi wapas aate hi flush ho jayega.
@@ -345,6 +363,11 @@ bool downloadCommands() {
     return false;
 
   if (WiFi.status() != WL_CONNECTED)
+    return false;
+
+  // If MQTT is connected, it receives commands asynchronously. Disable HTTP
+  // long-poll.
+  if (MqttManager::isConnected())
     return false;
 
   String serverURL = PreferencesManager::getServerURL();

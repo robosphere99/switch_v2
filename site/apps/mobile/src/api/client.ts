@@ -5,6 +5,7 @@ import { DeviceEventEmitter } from 'react-native';
 // Using EXPO_PUBLIC_ variables allows you to change the IP for physical device testing.
 // Defaulting to 10.0.2.2 for Android emulators if no env is set.
 export const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:4000/api';
+console.log('[DEBUG] API_URL Initialized as:', API_URL);
 
 export const api = axios.create({
     baseURL: API_URL,
@@ -62,6 +63,9 @@ api.interceptors.response.use(
                     await SecureStore.setItemAsync('accessToken', data.data.accessToken);
                     if (data.data.refreshToken) {
                         await SecureStore.setItemAsync('refreshToken', data.data.refreshToken);
+                    }
+                    if (data.data.sessionId) {
+                        await SecureStore.setItemAsync('sessionId', String(data.data.sessionId));
                     }
 
                     api.defaults.headers.common['Authorization'] = 'Bearer ' + data.data.accessToken;

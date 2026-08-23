@@ -150,7 +150,7 @@ export function Profile() {
         <label className="mb-1 block text-xs font-semibold uppercase text-gray-500">Profile Photo</label>
         <div className="flex items-center gap-4 mb-4">
           <img
-            src={avatarUrl ? (avatarUrl.startsWith('http') ? avatarUrl : (import.meta.env.VITE_API_BASE_URL || '') + avatarUrl) : `https://api.dicebear.com/9.x/avataaars/svg?seed=${username}`}
+            src={avatarUrl ? avatarUrl : `https://api.dicebear.com/9.x/avataaars/svg?seed=${username}`}
             className="w-16 h-16 rounded-full border border-brand/20 bg-night-900 object-cover"
             alt="Avatar"
           />
