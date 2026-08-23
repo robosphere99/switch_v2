@@ -63,14 +63,16 @@ function patch(content) {
     return null; // valid config nahi — mat chhedo
   }
 
-  // --- 1.5) Bypass Plesk .bootstrap.cjs ESM Crash ---
-  // Plesk jab module load karta hai, CJS wrapper use karta hai jo .mjs par fat jata hai.
+  // --- 1.5) Bypass Plesk IISNode extension crashing on .mjs / .cjs ---
+  // PROOF: IISNode C++ binary explicitly rejects non-traditional extensions like .mjs
+  // It completely fails to spawn the node.exe child process if the path is dist/index.mjs.
+  // We MUST route all IIS traffic into our standard `app.js` alias to succeed.
   let forcedChanges = false;
-  if (out.includes('.bootstrap.cjs') || out.includes('app.js') || out.includes('index.js')) {
-    out = out.split('.bootstrap.cjs').join('dist/index.mjs');
-    out = out.split('app.js').join('dist/index.mjs');
-    // Plesk GUI usually maps to index.js if people forget to set it
-    out = out.split('index.js').join('dist/index.mjs');
+
+  if (out.includes('.bootstrap.cjs') || out.includes('dist/index.mjs') || out.includes('index.js')) {
+    out = out.split('.bootstrap.cjs').join('app.js');
+    out = out.split('dist/index.mjs').join('app.js');
+    out = out.split('index.js').join('app.js');
 
     // Safety check just to prevent "patch karne ki zaroorat nahi" false negative block
     forcedChanges = true;
