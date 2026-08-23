@@ -19,6 +19,18 @@ try { fs.accessSync('dist/index.mjs', fs.constants.W_OK); console.log('W_OK=true
 try { fs.writeFileSync('_probe.txt', 'ok'); console.log('WRITE=OK'); fs.unlinkSync('_probe.txt'); } catch (e) { console.log('WRITE=FAIL', e.code); }
 try { console.log('deploy.json =', fs.readFileSync('../logs/deploy.json', 'utf8').slice(0, 300)); } catch (e) { console.log('deploy.json ERR', e.code); }
 try { console.log('node_modules aedes =', fs.existsSync('node_modules/aedes') ? 'yes' : 'no'); } catch (e) { }
+
+console.log('\n--- BOOT TEST ---');
+try {
+  const out = cp.spawnSync(process.execPath, ['dist/index.mjs'], { cwd, encoding: 'utf8', timeout: 3000, env: process.env });
+  console.log('BOOT EXIT CODE:', out.status);
+  if (out.stdout) console.log('STDOUT:', out.stdout.slice(-1000));
+  if (out.stderr) console.log('STDERR:', out.stderr.slice(-1000));
+  if (out.error) console.log('ERR:', out.error.message);
+} catch (e) {
+  console.log('Boot test failed to run:', e.message);
+}
+
 try {
   let logs = [];
   const findLogs = (dir) => {
