@@ -18,6 +18,7 @@ export interface ToggleOptions {
   setPending: (fn: (p: Record<number, "on" | "off">) => Record<number, "on" | "off">) => void;
   setError: (msg: string) => void;
   invalidate: () => void;
+  onSecurityLock?: (deviceId: number) => void;
 }
 
 /**
@@ -34,6 +35,7 @@ export function createToggleOptions({
   setPending,
   setError,
   invalidate,
+  onSecurityLock,
 }: ToggleOptions) {
   return {
     mutationFn: ({ device, status }: ToggleVars) =>
@@ -66,10 +68,12 @@ export function createToggleOptions({
         delete n[vars.device.id];
         return n;
       });
-      setError(
-        (e as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ??
-          "Kuch galat ho gaya",
-      );
+      const resErr = e as any;
+      const errMsg = resErr?.response?.data?.error?.message;
+      if (resErr?.response?.status === 429 || (errMsg && errMsg.toLowerCase().includes('minute'))) {
+        if (onSecurityLock) onSecurityLock(vars.device.id);
+      }
+      setError(errMsg ?? "Kuch galat ho gaya");
     },
 
     onSettled: () => invalidate(),

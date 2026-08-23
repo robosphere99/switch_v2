@@ -6,16 +6,61 @@ import { rateLimit } from "../middleware/rateLimit";
 import { validateBody } from "../middleware/validate";
 import multer from "multer";
 import path from "node:path";
+import fs from "node:fs";
 import { uploadsDir } from "../lib/paths";
+import { prisma } from "../lib/prisma";
 
+const avatarsDir = path.join(uploadsDir, "avatars");
+fs.mkdirSync(avatarsDir, { recursive: true });
+
+/**
+ * Deterministic avatar storage: {username}.{ext}
+ * Old avatar archived into uploads/avatars/{username}/{username}_N.{ext}
+ */
 const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, uploadsDir);
+  destination: function (_req, _file, cb) {
+    cb(null, avatarsDir);
   },
   filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, "user-" + (req.user?.sub || "any") + "-" + uniqueSuffix + path.extname(file.originalname));
-  }
+    const ext = path.extname(file.originalname).toLowerCase() || ".jpg";
+    // username lookup happens before multer writes (req.user.sub is set by requireAuth)
+    prisma.user
+      .findUnique({ where: { id: req.user!.sub }, select: { username: true } })
+      .then((u) => {
+        if (!u) return cb(new Error("User not found"), "");
+        const username = u.username;
+        const canonicalName = `${username}${ext}`;
+
+        // Archive any existing avatar with this username (any extension)
+        try {
+          const existing = fs.readdirSync(avatarsDir).filter(
+            (f) => f.startsWith(`${username}.`) && !fs.statSync(path.join(avatarsDir, f)).isDirectory()
+          );
+          if (existing.length > 0) {
+            const archiveDir = path.join(avatarsDir, username);
+            fs.mkdirSync(archiveDir, { recursive: true });
+            // Find next archive number
+            const archived = fs.readdirSync(archiveDir);
+            let maxNum = 0;
+            for (const a of archived) {
+              const match = a.match(new RegExp(`^${username}_(\\d+)`));
+              if (match) maxNum = Math.max(maxNum, Number(match[1]));
+            }
+            for (const oldFile of existing) {
+              maxNum++;
+              const oldExt = path.extname(oldFile);
+              fs.renameSync(
+                path.join(avatarsDir, oldFile),
+                path.join(archiveDir, `${username}_${maxNum}${oldExt}`)
+              );
+            }
+          }
+        } catch { /* first upload — no existing file */ }
+
+        cb(null, canonicalName);
+      })
+      .catch((err) => cb(err, ""));
+  },
 });
 const upload = multer({ storage });
 
@@ -64,6 +109,13 @@ const signupSchema = z.object({
 const loginSchema = z.object({
   usernameEmail: z.string().min(1).max(100),
   password: z.string().min(1).max(255),
+  revokeOtherSessions: z.boolean().optional(),
+});
+
+const revokeUnauthSchema = z.object({
+  usernameEmail: z.string().min(1).max(100),
+  password: z.string().min(1).max(255),
+  sessionId: z.number()
 });
 
 const refreshSchema = z.object({
@@ -94,7 +146,7 @@ const profileSchema = z
     newPassword: z.string().min(6).max(255).optional(),
     pushDeviceToggles: z.boolean().optional(),
     pushSystemAlerts: z.boolean().optional(),
-    avatarUrl: z.string().url().max(500).optional().nullable(),
+    avatarUrl: z.string().max(500).optional().nullable(),
     dob: z.string().refine((val) => !isNaN(Date.parse(val)), { message: "Invalid date format" }).optional().nullable(),
     gender: z.string().max(20).optional().nullable(),
     phone: z.string().max(20).optional().nullable(),
@@ -113,6 +165,7 @@ const resetPasswordSchema = z.object({
 
 authRouter.post("/signup", signupLimiter, validateBody(signupSchema), authController.signup);
 authRouter.post("/login", loginLimiter, validateBody(loginSchema), authController.login);
+authRouter.post("/revoke-unauth", loginLimiter, validateBody(revokeUnauthSchema), authController.revokeUnauth);
 authRouter.post("/refresh", refreshLimiter, validateBody(refreshSchema), authController.refresh);
 authRouter.post("/logout", validateBody(logoutSchema), authController.logout);
 authRouter.post("/forgot-password", forgotLimiter, validateBody(forgotPasswordSchema), authController.forgotPassword);
@@ -122,7 +175,9 @@ authRouter.patch("/me", requireAuth, validateBody(profileSchema), authController
 authRouter.post("/me/avatar", requireAuth, upload.single("avatar"), authController.uploadAvatar);
 authRouter.put("/theme", requireAuth, validateBody(themeSchema), authController.updateTheme);
 
+authRouter.get("/check", authController.checkAvailability);
 authRouter.get("/sessions", requireAuth, authController.listSessions);
+authRouter.delete("/sessions/other", requireAuth, authController.revokeOtherSessions);
 authRouter.delete("/sessions/all", requireAuth, authController.revokeAllSessions);
 authRouter.delete("/sessions/:id", requireAuth, authController.revokeSession);
 

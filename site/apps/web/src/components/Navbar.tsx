@@ -162,9 +162,13 @@ export function Navbar() {
                 <span className="shrink-0"><NotificationBell /></span>
                 <Link
                   to="/profile"
-                  className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-gray-600 transition hover:text-brand"
+                  className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap text-gray-600 transition hover:text-brand"
                 >
-                  <User className="h-4 w-4 shrink-0" />
+                  {user.avatarUrl ? (
+                    <img src={user.avatarUrl.startsWith('http') ? user.avatarUrl : user.avatarUrl} className="h-6 w-6 rounded-full object-cover border border-gray-200" alt="Avatar" />
+                  ) : (
+                    <User className="h-4 w-4 shrink-0" />
+                  )}
                   <span>
                     Hi, <span className="font-semibold text-night-950">{user.username}</span>
                   </span>
@@ -262,9 +266,13 @@ export function Navbar() {
                   <div className="mx-auto max-w-7xl px-4 py-3 pb-2">
                     {/* ── User info card ── */}
                     <div className="mb-3 flex items-center gap-3 rounded-xl bg-gray-50 px-3 py-3 dark:bg-night-700">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand/10 text-brand">
-                        <User className="h-5 w-5" />
-                      </div>
+                      {user.avatarUrl ? (
+                        <img src={user.avatarUrl.startsWith('http') ? user.avatarUrl : user.avatarUrl} className="h-10 w-10 shrink-0 rounded-full object-cover border border-gray-200" alt="Avatar" />
+                      ) : (
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand/10 text-brand">
+                          <User className="h-5 w-5" />
+                        </div>
+                      )}
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold text-night-950 dark:text-white">
                           {user.username}

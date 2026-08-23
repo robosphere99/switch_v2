@@ -98,3 +98,8 @@ export async function claimDevice(serialCode: string, homeId: number): Promise<{
         throw extractApiError(e);
     }
 }
+
+export async function getCurrentWifiSsid(): Promise<string | null> {
+    const { data } = await api.get('/shop/wifi/current');
+    return data.data.ssid;
+}

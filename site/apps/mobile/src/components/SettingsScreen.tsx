@@ -1,15 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Switch, ScrollView, Modal, TextInput, KeyboardAvoidingView, Platform, Alert, ActivityIndicator, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Switch, ScrollView, Modal, TextInput, KeyboardAvoidingView, Platform, Alert, ActivityIndicator, Image, DeviceEventEmitter } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { ActivityScreen } from './ActivityScreen';
 import { SupportScreen } from './SupportScreen';
-import { Activity, User, Monitor, Sun, Moon, Bot, Shield, Bell, Zap, Headset } from 'lucide-react-native';
+import { Activity, User, Monitor, Sun, Moon, Bot, Shield, Bell, Zap, Headset, X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import * as SecureStore from 'expo-secure-store';
 import * as ImagePicker from 'expo-image-picker';
+import { useThemedAlert } from './ThemedAlert';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { APP_VERSION } from '../../App';
+import { API_URL } from '../api/client';
 
-const API_BASE = "http://192.168.1.36:4000"; // fallback for native rendering
+const API_BASE = API_URL.replace(/\/api$/, '');
 
 export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () => void }) {
     const { theme, mode, setMode, themeId, setThemeId, availableThemes } = useTheme();
@@ -30,6 +33,7 @@ export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () =>
     // Sessions States
     const [sessions, setSessions] = useState<any[]>([]);
     const [loadingSessions, setLoadingSessions] = useState(false);
+    const [currentSessionId, setCurrentSessionId] = useState<number | null>(null);
 
     // Edit Profile States
     const [editProfileVisible, setEditProfileVisible] = useState(false);
@@ -43,10 +47,30 @@ export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () =>
     const [editAddrLandmark, setEditAddrLandmark] = useState('');
     const [editAddrStreet, setEditAddrStreet] = useState('');
     const [editingProfile, setEditingProfile] = useState(false);
+    const [showDatePicker, setShowDatePicker] = useState(false);
+    const [fullscreenAvatarVisible, setFullscreenAvatarVisible] = useState(false);
+
+    useEffect(() => {
+        if (editAddrPin.length === 6) {
+            fetch(`https://api.postalpincode.in/pincode/${editAddrPin}`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data && data[0] && data[0].Status === "Success") {
+                        const po = data[0].PostOffice[0];
+                        if (po) {
+                            setEditAddrDistrict(po.District);
+                            setEditAddrState(po.State);
+                        }
+                    }
+                })
+                .catch(console.error);
+        }
+    }, [editAddrPin]);
 
     // Notification Prefs
     const [pushDeviceToggles, setPushDeviceToggles] = useState(user?.pushDeviceToggles ?? true);
     const [pushSystemAlerts, setPushSystemAlerts] = useState(user?.pushSystemAlerts ?? true);
+    const { showAlert, AlertComponent } = useThemedAlert();
 
     useEffect(() => {
         if (view === 'PROFILE') {
@@ -54,13 +78,47 @@ export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () =>
         }
     }, [view]);
 
+    useEffect(() => {
+        const sub = DeviceEventEmitter.addListener('sessions_changed', () => {
+            if (view === 'PROFILE') loadSessions();
+        });
+        return () => sub.remove();
+    }, [view]);
+
     const loadSessions = async () => {
-        setLoadingSessions(true);
+        if (sessions.length === 0) setLoadingSessions(true);
         try {
+            let userSessionId = currentSessionId;
+            if (!userSessionId) {
+                const storedId = await SecureStore.getItemAsync('sessionId');
+                if (storedId) {
+                    userSessionId = Number(storedId);
+                    setCurrentSessionId(userSessionId);
+                }
+            }
+
             const { api: apiInstance } = await import('../api/client');
             const res = await apiInstance.get('/auth/sessions');
             if (res.data?.success) {
-                setSessions(res.data.data);
+                const sessionList = res.data.data;
+
+                if (sessionList.length === 0) {
+                    onLogout();
+                    return;
+                }
+
+                // Discard stale session IDs from SecureStore if they don't actually exist
+                if (userSessionId && !sessionList.find((s: any) => s.id === userSessionId)) {
+                    userSessionId = null;
+                    setCurrentSessionId(null);
+                }
+
+                sessionList.sort((a: any, b: any) => {
+                    if (a.id === userSessionId) return -1;
+                    if (b.id === userSessionId) return 1;
+                    return new Date(b.lastActive).getTime() - new Date(a.lastActive).getTime();
+                });
+                setSessions(sessionList);
             }
         } catch (e) {
             console.warn("Failed to load sessions", e);
@@ -69,24 +127,59 @@ export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () =>
         }
     };
 
-    const handleRevokeAll = async () => {
-        Alert.alert("Log out all devices?", "This will immediately sign out all active sessions including this one.", [
+    const handleRevokeOther = async () => {
+        showAlert("Log out other sessions?", "This will immediately sign out all other active sessions.", [
             { text: "Cancel", style: "cancel" },
             {
-                text: "Logout All",
+                text: "Logout Others",
                 style: "destructive",
                 onPress: async () => {
                     try {
                         const { api: apiInstance } = await import('../api/client');
-                        await apiInstance.delete('/auth/sessions/all');
-                        Alert.alert("Success", "All remote sessions have been revoked.");
-                        onLogout();
-                    } catch (e) {
-                        Alert.alert("Error", "Failed to revoke sessions.");
+                        const res = await apiInstance.delete('/auth/sessions/other' + (currentSessionId ? `?currentSessionId=${currentSessionId}` : ''));
+
+                        if (!res) {
+                            showAlert("Fatal Client Error", "The network request returned absolutely nothing.");
+                            return;
+                        }
+
+                        // Debug dump the actual msg response so we know for sure what backend sent
+                        const backendMsg = res.data?.data?.message || "Successfully revoked other sessions.";
+
+                        if (res.data?.data?.currentSessionId) {
+                            setCurrentSessionId(res.data.data.currentSessionId);
+                            await SecureStore.setItemAsync('sessionId', String(res.data.data.currentSessionId));
+                        }
+
+                        showAlert("Success", backendMsg);
+
+                        loadSessions();
+                    } catch (e: any) {
+                        const msg = e.response?.data?.error?.message;
+                        if (msg === "Please log out and log back in to use this feature.") {
+                            showAlert("Session Upgrade Required", "Your session is using an older security format. We'll sign you out now so you can log back in securely.", [
+                                { text: "OK", onPress: onLogout }
+                            ]);
+                        } else {
+                            showAlert("Fatal Catch Error", "Caught an explicit error: " + (msg || e.message || "Unknown Network Catch"));
+                        }
                     }
                 }
             }
         ]);
+    };
+
+    const handleRevokeOne = async (sessionId: number) => {
+        try {
+            const { api: apiInstance } = await import('../api/client');
+            await apiInstance.delete(`/auth/sessions/${sessionId}`);
+            // Optimistically remove from list for immediate snappy UI
+            setSessions(prev => prev.filter(s => s.id !== sessionId));
+            showAlert("Success", "Device session revoked.");
+            loadSessions();
+        } catch (e) {
+            showAlert("Error", "Failed to revoke session.");
+        }
     };
 
     const handleSaveProfile = async () => {
@@ -102,12 +195,16 @@ export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () =>
 
             const res = await apiInstance.patch('/auth/me', payload);
             if (res.data?.success) {
-                setLocalUser({ ...localUser, ...res.data.data });
+                const updatedUser = { ...localUser, ...res.data.data };
+                setLocalUser(updatedUser);
                 setEditProfileVisible(false);
+                // Sync to root App so Dashboard/Members get fresh profile
+                await SecureStore.setItemAsync('user', JSON.stringify(updatedUser));
+                DeviceEventEmitter.emit('profile_sync', updatedUser);
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
             }
         } catch (e: any) {
-            Alert.alert("Error", e.response?.data?.error?.message || "Could not update profile.");
+            showAlert("Error", e.response?.data?.error?.message || "Could not update profile.");
         } finally {
             setEditingProfile(false);
         }
@@ -115,7 +212,7 @@ export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () =>
 
     const changePassword = async () => {
         if (!currentPassword || newPassword.length < 6) {
-            Alert.alert("Invalid Input", "New password must be at least 6 characters.");
+            showAlert("Invalid Input", "New password must be at least 6 characters.");
             return;
         }
         setPwLoading(true);
@@ -127,15 +224,15 @@ export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () =>
                 newPassword
             });
             if (res.data?.success) {
-                Alert.alert("Success", "Password updated securely.");
+                showAlert("Success", "Password updated securely.");
                 setPwModalVisible(false);
                 setCurrentPassword('');
                 setNewPassword('');
             } else {
-                Alert.alert("Failed", res.data?.error?.message || "Could not update password.");
+                showAlert("Failed", res.data?.error?.message || "Could not update password.");
             }
         } catch (e: any) {
-            Alert.alert("Error", e.response?.data?.error?.message || "An error occurred.");
+            showAlert("Error", e.response?.data?.error?.message || "An error occurred.");
         } finally {
             setPwLoading(false);
         }
@@ -153,10 +250,10 @@ export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () =>
 
     const pickImage = async () => {
         let result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            mediaTypes: ['images'],
             allowsEditing: true,
             aspect: [1, 1],
-            quality: 0.5,
+            quality: 0.2, // Aggressive Edge-side Compression (reduces 10MB to ~30KB)
         });
         if (!result.canceled) {
             uploadAvatarFile(result.assets[0].uri, result.assets[0].mimeType || 'image/jpeg');
@@ -172,12 +269,16 @@ export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () =>
                 headers: { 'Content-Type': 'multipart/form-data' },
             });
             if (res.data?.success) {
+                const updatedUser = { ...localUser, ...res.data.data };
                 setEditAvatarUrl(res.data.data.avatarUrl);
-                setLocalUser({ ...localUser, ...res.data.data });
-                Alert.alert("Success", "Avatar uploaded successfully.");
+                setLocalUser(updatedUser);
+                // Sync to root App so Dashboard/Members get the fresh avatar
+                await SecureStore.setItemAsync('user', JSON.stringify(updatedUser));
+                DeviceEventEmitter.emit('profile_sync', updatedUser);
+                showAlert("Success", "Avatar uploaded successfully.");
             }
         } catch (e: any) {
-            Alert.alert("Error", e.response?.data?.error?.message || "Failed to upload avatar");
+            showAlert("Error", e.response?.data?.error?.message || "Failed to upload avatar");
         }
     };
 
@@ -193,7 +294,11 @@ export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () =>
                 const { api: apiInstance } = await import('../api/client');
                 const res = await apiInstance.get('/auth/me');
                 if (res.data?.success && res.data?.data) {
-                    // Ignored 1:1 user push settings fetching; preferring SecureStore token defaults instead
+                    const freshUser = res.data.data;
+                    setLocalUser(freshUser);
+                    // Keep SecureStore + App.tsx root state in sync
+                    await SecureStore.setItemAsync('user', JSON.stringify(freshUser));
+                    DeviceEventEmitter.emit('profile_sync', freshUser);
                 }
             } catch (e) { }
         }
@@ -437,15 +542,19 @@ export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () =>
 
                 <ScrollView showsVerticalScrollIndicator={false}>
                     <View style={{ alignItems: 'center', marginBottom: 30 }}>
-                        <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: theme.primary + '15', borderWidth: 3, borderColor: theme.primary, alignItems: 'center', justifyContent: 'center', marginBottom: 16, overflow: 'hidden' }}>
+                        <TouchableOpacity
+                            style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: theme.primary + '15', borderWidth: 3, borderColor: theme.primary, alignItems: 'center', justifyContent: 'center', marginBottom: 16, overflow: 'hidden' }}
+                            onPress={() => {
+                                if (localUser?.avatarUrl) setFullscreenAvatarVisible(true);
+                            }}
+                        >
                             {localUser?.avatarUrl ? (
                                 <Image source={{ uri: localUser.avatarUrl.startsWith('http') ? localUser.avatarUrl : API_BASE + localUser.avatarUrl }} style={{ width: '100%', height: '100%' }} />
                             ) : (
                                 <Image source={{ uri: `https://api.dicebear.com/9.x/avataaars/png?seed=${localUser?.username || 'User'}` }} style={{ width: '100%', height: '100%' }} />
                             )}
-                        </View>
+                        </TouchableOpacity>
                         <Text style={{ fontSize: 24, fontWeight: '800', color: theme.text }}>{localUser?.username || 'Commander'}</Text>
-                        <Text style={{ fontSize: 13, color: theme.textSecondary, marginTop: 6, fontWeight: '500' }}>IDENTIFIER: #{localUser?.id || '----'}</Text>
                     </View>
 
                     <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>ACCOUNT DETAILS</Text>
@@ -468,7 +577,23 @@ export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () =>
                         <View style={{ height: 1, backgroundColor: theme.border, width: '100%', marginVertical: 16 }} />
 
                         <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '700' }}>ADDRESS</Text>
-                        <Text style={{ color: theme.text, fontSize: 16, marginTop: 4, fontWeight: '500' }}>{localUser?.address || 'Not Location Set'}</Text>
+                        <Text style={{ color: theme.text, fontSize: 16, marginTop: 4, fontWeight: '500' }}>
+                            {(() => {
+                                if (!localUser?.address) return 'No Location Set';
+                                try {
+                                    const parsed = JSON.parse(localUser.address);
+                                    let fragments = [];
+                                    if (parsed.street) fragments.push(parsed.street);
+                                    if (parsed.landmark) fragments.push(parsed.landmark);
+                                    if (parsed.district) fragments.push(parsed.district);
+                                    if (parsed.state) fragments.push(parsed.state);
+                                    if (parsed.pin) fragments.push(parsed.pin);
+                                    return fragments.join(", ") || localUser.address;
+                                } catch (e) {
+                                    return localUser.address;
+                                }
+                            })()}
+                        </Text>
 
                         <View style={{ height: 1, backgroundColor: theme.border, width: '100%', marginVertical: 16 }} />
 
@@ -497,25 +622,45 @@ export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () =>
                         <ActivityIndicator size="small" color={theme.primary} style={{ marginTop: 16, marginBottom: 30 }} />
                     ) : (
                         <View style={{ marginBottom: 30 }}>
-                            {sessions.map(sess => (
-                                <View key={sess.id} style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border, marginBottom: 12, flexDirection: 'column', alignItems: 'flex-start', padding: 14 }]}>
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
-                                        <Monitor color={theme.textSecondary} size={16} style={{ marginRight: 8 }} />
-                                        <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600' }} numberOfLines={1}>
-                                            {sess.deviceInfo || 'Unknown Device'}
-                                        </Text>
+                            {sessions.map(sess => {
+                                const isCurrent = sess.id === currentSessionId;
+                                return (
+                                    <View key={sess.id} style={[styles.card, { backgroundColor: isCurrent ? theme.primary + '11' : theme.card, borderColor: isCurrent ? theme.primary : theme.border, marginBottom: 12, flexDirection: 'column', alignItems: 'flex-start', padding: 14 }]}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6, width: '100%', justifyContent: 'space-between' }}>
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                                                <Monitor color={isCurrent ? theme.primary : theme.textSecondary} size={16} style={{ marginRight: 8 }} />
+                                                <Text style={{ color: isCurrent ? theme.primary : theme.text, fontSize: 14, fontWeight: '600', flex: 1 }} numberOfLines={1}>
+                                                    {sess.deviceInfo || 'Unknown Device'}
+                                                </Text>
+                                            </View>
+                                            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                                                {isCurrent ? (
+                                                    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#10b98115', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 }}>
+                                                        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#10b981', marginRight: 4 }} />
+                                                        <Text style={{ color: '#10b981', fontSize: 10, fontWeight: 'bold', textTransform: 'uppercase' }}>This session</Text>
+                                                    </View>
+                                                ) : (
+                                                    <TouchableOpacity
+                                                        onPress={() => handleRevokeOne(sess.id)}
+                                                        style={{ backgroundColor: theme.danger + '20', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}
+                                                    >
+                                                        <Text style={{ color: theme.danger, fontSize: 10, fontWeight: 'bold' }}>Remove</Text>
+                                                    </TouchableOpacity>
+                                                )}
+                                            </View>
+                                        </View>
+                                        <Text style={{ color: theme.textSecondary, fontSize: 12, marginLeft: 24 }}>IP: {sess.ipAddress || 'Unknown Location'}</Text>
+                                        <Text style={{ color: theme.textSecondary, fontSize: 10, marginTop: 4, marginLeft: 24 }}>Started: {new Date(sess.createdAt).toLocaleString()}</Text>
                                     </View>
-                                    <Text style={{ color: theme.textSecondary, fontSize: 12, marginLeft: 24 }}>IP: {sess.ipAddress || 'Unknown Location'}</Text>
-                                    <Text style={{ color: theme.textSecondary, fontSize: 10, marginTop: 4, marginLeft: 24 }}>Started: {new Date(sess.createdAt).toLocaleString()}</Text>
-                                </View>
-                            ))}
+                                );
+                            })}
 
-                            {sessions.length > 0 && (
+                            {sessions.length > 1 && (
                                 <TouchableOpacity
-                                    onPress={handleRevokeAll}
+                                    onPress={handleRevokeOther}
                                     style={[styles.card, { backgroundColor: 'transparent', borderColor: '#ef4444', borderWidth: 1, justifyContent: 'center', marginTop: 8 }]}
                                 >
-                                    <Text style={{ color: '#ef4444', fontWeight: 'bold' }}>Log out of all devices</Text>
+                                    <Text style={{ color: '#ef4444', fontWeight: 'bold' }}>Log out all other sessions</Text>
                                 </TouchableOpacity>
                             )}
                         </View>
@@ -524,124 +669,154 @@ export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () =>
 
                 {/* Password Change Overlay Modal */}
                 <Modal visible={pwModalVisible} animationType="slide" transparent={true} onRequestClose={() => setPwModalVisible(false)}>
-                    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' }}>
-                        <View style={{ backgroundColor: theme.background, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40, borderTopWidth: 1, borderColor: theme.border }}>
-                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-                                <Text style={{ fontSize: 20, fontWeight: 'bold', color: theme.text }}>Update Password</Text>
-                                <TouchableOpacity onPress={() => setPwModalVisible(false)}>
-                                    <Text style={{ color: theme.primary, fontWeight: '700' }}>Cancel</Text>
+                    <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' }}>
+                        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, justifyContent: 'flex-end' }}>
+                            <View style={{ backgroundColor: theme.background, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40, borderTopWidth: 1, borderColor: theme.border }}>
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+                                    <Text style={{ fontSize: 20, fontWeight: 'bold', color: theme.text }}>Update Password</Text>
+                                    <TouchableOpacity onPress={() => setPwModalVisible(false)}>
+                                        <Text style={{ color: theme.primary, fontWeight: '700' }}>Cancel</Text>
+                                    </TouchableOpacity>
+                                </View>
+
+                                <Text style={{ color: theme.textSecondary, marginBottom: 8, fontSize: 12, fontWeight: '700' }}>CURRENT PASSWORD</Text>
+                                <TextInput
+                                    style={[{ backgroundColor: theme.card, color: theme.text, padding: 16, borderRadius: 12, borderWidth: 1, borderColor: theme.border, marginBottom: 16 }]}
+                                    secureTextEntry
+                                    placeholder="Enter current password"
+                                    placeholderTextColor={theme.textSecondary}
+                                    value={currentPassword}
+                                    onChangeText={setCurrentPassword}
+                                />
+
+                                <Text style={{ color: theme.textSecondary, marginBottom: 8, fontSize: 12, fontWeight: '700' }}>NEW PASSWORD</Text>
+                                <TextInput
+                                    style={[{ backgroundColor: theme.card, color: theme.text, padding: 16, borderRadius: 12, borderWidth: 1, borderColor: theme.border, marginBottom: 24 }]}
+                                    secureTextEntry
+                                    placeholder="Enter new password (min 6 chars)"
+                                    placeholderTextColor={theme.textSecondary}
+                                    value={newPassword}
+                                    onChangeText={setNewPassword}
+                                />
+
+                                <TouchableOpacity
+                                    onPress={changePassword}
+                                    disabled={pwLoading}
+                                    style={{ backgroundColor: theme.primary, padding: 16, borderRadius: 12, alignItems: 'center' }}
+                                >
+                                    {pwLoading ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}>Save Changes</Text>}
                                 </TouchableOpacity>
                             </View>
-
-                            <Text style={{ color: theme.textSecondary, marginBottom: 8, fontSize: 12, fontWeight: '700' }}>CURRENT PASSWORD</Text>
-                            <TextInput
-                                style={[{ backgroundColor: theme.card, color: theme.text, padding: 16, borderRadius: 12, borderWidth: 1, borderColor: theme.border, marginBottom: 16 }]}
-                                secureTextEntry
-                                placeholder="Enter current password"
-                                placeholderTextColor={theme.textSecondary}
-                                value={currentPassword}
-                                onChangeText={setCurrentPassword}
-                            />
-
-                            <Text style={{ color: theme.textSecondary, marginBottom: 8, fontSize: 12, fontWeight: '700' }}>NEW PASSWORD</Text>
-                            <TextInput
-                                style={[{ backgroundColor: theme.card, color: theme.text, padding: 16, borderRadius: 12, borderWidth: 1, borderColor: theme.border, marginBottom: 24 }]}
-                                secureTextEntry
-                                placeholder="Enter new password (min 6 chars)"
-                                placeholderTextColor={theme.textSecondary}
-                                value={newPassword}
-                                onChangeText={setNewPassword}
-                            />
-
-                            <TouchableOpacity
-                                onPress={changePassword}
-                                disabled={pwLoading}
-                                style={{ backgroundColor: theme.primary, padding: 16, borderRadius: 12, alignItems: 'center' }}
-                            >
-                                {pwLoading ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}>Save Changes</Text>}
-                            </TouchableOpacity>
-                        </View>
-                    </KeyboardAvoidingView>
-                </Modal>
+                        </KeyboardAvoidingView>
+                    </View>
+                </Modal >
 
                 {/* Edit Profile Modal */}
-                <Modal visible={editProfileVisible} animationType="slide" presentationStyle="formSheet" onRequestClose={() => setEditProfileVisible(false)}>
-                    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, backgroundColor: theme.background }}>
-                        <View style={[styles.header, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 24, borderBottomWidth: 1, borderColor: theme.border, marginBottom: 0 }]}>
-                            <Text style={{ fontSize: 22, fontWeight: 'bold', color: theme.text }}>Edit Profile</Text>
-                            <TouchableOpacity onPress={() => setEditProfileVisible(false)}>
-                                <Text style={{ color: theme.textSecondary, fontWeight: '700', fontSize: 16 }}>Close</Text>
-                            </TouchableOpacity>
-                        </View>
-                        <ScrollView contentContainerStyle={{ padding: 24 }}>
-                            <Text style={{ color: theme.textSecondary, marginBottom: 8, fontSize: 12, fontWeight: '700' }}>PROFILE PHOTO</Text>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
-                                <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border, marginRight: 16, overflow: 'hidden' }}>
-                                    <Image
-                                        source={{ uri: editAvatarUrl ? (editAvatarUrl.startsWith('http') ? editAvatarUrl : API_BASE + editAvatarUrl) : `https://api.dicebear.com/9.x/avataaars/png?seed=${localUser?.username || 'User'}` }}
-                                        style={{ width: '100%', height: '100%' }}
-                                    />
-                                </View>
-                                <TouchableOpacity onPress={pickImage} style={{ backgroundColor: theme.primary + '20', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 }}>
-                                    <Text style={{ color: theme.primary, fontWeight: 'bold' }}>Upload Photo</Text>
+                < Modal visible={editProfileVisible} animationType="slide" presentationStyle="formSheet" onRequestClose={() => setEditProfileVisible(false)}>
+                    <View style={{ flex: 1, backgroundColor: theme.background }}>
+                        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
+                            <View style={[styles.header, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 24, borderBottomWidth: 1, borderColor: theme.border, marginBottom: 0 }]}>
+                                <Text style={{ fontSize: 22, fontWeight: 'bold', color: theme.text }}>Edit Profile</Text>
+                                <TouchableOpacity onPress={() => setEditProfileVisible(false)}>
+                                    <Text style={{ color: theme.textSecondary, fontWeight: '700', fontSize: 16 }}>Close</Text>
                                 </TouchableOpacity>
                             </View>
-
-                            <Text style={{ color: theme.textSecondary, marginBottom: 8, fontSize: 12, fontWeight: '700' }}>DATE OF BIRTH (YYYY-MM-DD)</Text>
-                            <TextInput
-                                style={[{ backgroundColor: theme.card, color: theme.text, padding: 16, borderRadius: 12, borderWidth: 1, borderColor: theme.border, marginBottom: 16 }]}
-                                placeholder="e.g. 1995-12-25"
-                                placeholderTextColor={theme.textSecondary}
-                                value={editDob}
-                                onChangeText={setEditDob}
-                            />
-
-                            <Text style={{ color: theme.textSecondary, marginBottom: 8, fontSize: 12, fontWeight: '700' }}>GENDER</Text>
-                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 }}>
-                                {['Male', 'Female', 'Prefer not to say'].map((g) => (
-                                    <TouchableOpacity
-                                        key={g}
-                                        onPress={() => setEditGender(g)}
-                                        style={{ flex: 1, padding: 12, borderWidth: 1, borderColor: editGender === g ? theme.primary : theme.border, borderRadius: 12, marginRight: g === 'Prefer not to say' ? 0 : 8, backgroundColor: editGender === g ? theme.primary + '20' : theme.card, alignItems: 'center' }}
-                                    >
-                                        <Text style={{ color: editGender === g ? theme.primary : theme.text, fontSize: 11, fontWeight: '600', textAlign: 'center' }}>{g}</Text>
+                            <ScrollView contentContainerStyle={{ padding: 24 }}>
+                                <Text style={{ color: theme.textSecondary, marginBottom: 8, fontSize: 12, fontWeight: '700' }}>PROFILE PHOTO</Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+                                    <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border, marginRight: 16, overflow: 'hidden' }}>
+                                        <Image
+                                            source={{ uri: editAvatarUrl ? (editAvatarUrl.startsWith('http') ? editAvatarUrl : API_BASE + editAvatarUrl) : `https://api.dicebear.com/9.x/avataaars/png?seed=${localUser?.username || 'User'}` }}
+                                            style={{ width: '100%', height: '100%' }}
+                                        />
+                                    </View>
+                                    <TouchableOpacity onPress={pickImage} style={{ backgroundColor: theme.primary + '20', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 }}>
+                                        <Text style={{ color: theme.primary, fontWeight: 'bold' }}>Upload Photo</Text>
                                     </TouchableOpacity>
-                                ))}
-                            </View>
+                                </View>
 
-                            <Text style={{ color: theme.textSecondary, marginBottom: 8, fontSize: 12, fontWeight: '700' }}>PHONE NUMBER</Text>
-                            <TextInput
-                                style={[{ backgroundColor: theme.card, color: theme.text, padding: 16, borderRadius: 12, borderWidth: 1, borderColor: theme.border, marginBottom: 16 }]}
-                                placeholder="+91 234 567 890"
-                                placeholderTextColor={theme.textSecondary}
-                                keyboardType="phone-pad"
-                                value={editPhone}
-                                onChangeText={setEditPhone}
-                            />
+                                <Text style={{ color: theme.textSecondary, marginBottom: 8, fontSize: 12, fontWeight: '700' }}>DATE OF BIRTH (YYYY-MM-DD)</Text>
+                                <TouchableOpacity
+                                    onPress={() => setShowDatePicker(true)}
+                                    style={[{ backgroundColor: theme.card, padding: 16, borderRadius: 12, borderWidth: 1, borderColor: theme.border, marginBottom: 16 }]}
+                                >
+                                    <Text style={{ color: editDob ? theme.text : theme.textSecondary }}>{editDob || "Select Date of Birth"}</Text>
+                                </TouchableOpacity>
+                                {showDatePicker && (
+                                    <DateTimePicker
+                                        value={editDob ? new Date(editDob) : new Date()}
+                                        mode="date"
+                                        display="default"
+                                        onChange={(event: any, selectedDate?: Date) => {
+                                            setShowDatePicker(false);
+                                            if (event.type === 'set' && selectedDate) {
+                                                setEditDob(selectedDate.toISOString().split('T')[0]);
+                                            }
+                                        }}
+                                    />
+                                )}
 
-                            <Text style={{ color: theme.textSecondary, marginBottom: 8, fontSize: 12, fontWeight: '700' }}>ADDRESS BREAKDOWN</Text>
-                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 }}>
-                                <TextInput style={[{ flex: 1, backgroundColor: theme.card, color: theme.text, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.border, marginRight: 8 }]} placeholder="State" placeholderTextColor={theme.textSecondary} value={editAddrState} onChangeText={setEditAddrState} />
-                                <TextInput style={[{ flex: 1, backgroundColor: theme.card, color: theme.text, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.border }]} placeholder="District" placeholderTextColor={theme.textSecondary} value={editAddrDistrict} onChangeText={setEditAddrDistrict} />
-                            </View>
-                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 }}>
-                                <TextInput style={[{ flex: 1, backgroundColor: theme.card, color: theme.text, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.border, marginRight: 8 }]} placeholder="PIN Code" placeholderTextColor={theme.textSecondary} value={editAddrPin} onChangeText={setEditAddrPin} />
-                                <TextInput style={[{ flex: 1, backgroundColor: theme.card, color: theme.text, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.border }]} placeholder="Landmark" placeholderTextColor={theme.textSecondary} value={editAddrLandmark} onChangeText={setEditAddrLandmark} />
-                            </View>
-                            <TextInput style={[{ backgroundColor: theme.card, color: theme.text, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.border, marginBottom: 32, minHeight: 80, textAlignVertical: 'top' }]} placeholder="Street Address..." placeholderTextColor={theme.textSecondary} multiline value={editAddrStreet} onChangeText={setEditAddrStreet} />
+                                <Text style={{ color: theme.textSecondary, marginBottom: 8, fontSize: 12, fontWeight: '700' }}>GENDER</Text>
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 }}>
+                                    {['Male', 'Female', 'Prefer not to say'].map((g) => (
+                                        <TouchableOpacity
+                                            key={g}
+                                            onPress={() => setEditGender(g)}
+                                            style={{ flex: 1, padding: 12, borderWidth: 1, borderColor: editGender === g ? theme.primary : theme.border, borderRadius: 12, marginRight: g === 'Prefer not to say' ? 0 : 8, backgroundColor: editGender === g ? theme.primary + '20' : theme.card, alignItems: 'center' }}
+                                        >
+                                            <Text style={{ color: editGender === g ? theme.primary : theme.text, fontSize: 11, fontWeight: '600', textAlign: 'center' }}>{g}</Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                </View>
 
-                            <TouchableOpacity
-                                onPress={handleSaveProfile}
-                                disabled={editingProfile}
-                                style={{ backgroundColor: theme.primary, padding: 16, borderRadius: 12, alignItems: 'center', marginBottom: 60 }}
-                            >
-                                {editingProfile ? <ActivityIndicator color="#000" /> : <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 16 }}>Save Changes</Text>}
-                            </TouchableOpacity>
-                        </ScrollView>
-                    </KeyboardAvoidingView>
-                </Modal>
+                                <Text style={{ color: theme.textSecondary, marginBottom: 8, fontSize: 12, fontWeight: '700' }}>PHONE NUMBER</Text>
+                                <TextInput
+                                    style={[{ backgroundColor: theme.card, color: theme.text, padding: 16, borderRadius: 12, borderWidth: 1, borderColor: theme.border, marginBottom: 16 }]}
+                                    placeholder="+91 234 567 890"
+                                    placeholderTextColor={theme.textSecondary}
+                                    keyboardType="phone-pad"
+                                    value={editPhone}
+                                    onChangeText={setEditPhone}
+                                />
 
-            </View>
+                                <Text style={{ color: theme.textSecondary, marginBottom: 8, fontSize: 12, fontWeight: '700' }}>ADDRESS BREAKDOWN</Text>
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 }}>
+                                    <TextInput style={[{ flex: 1, backgroundColor: theme.card, color: theme.text, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.border, marginRight: 8 }]} placeholder="PIN Code" placeholderTextColor={theme.textSecondary} value={editAddrPin} onChangeText={setEditAddrPin} keyboardType="numeric" maxLength={6} />
+                                    <View style={{ flex: 1 }} />
+                                </View>
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 }}>
+                                    <TextInput style={[{ flex: 1, backgroundColor: theme.card, color: theme.text, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.border, marginRight: 8 }]} placeholder="State" placeholderTextColor={theme.textSecondary} value={editAddrState} onChangeText={setEditAddrState} />
+                                    <TextInput style={[{ flex: 1, backgroundColor: theme.card, color: theme.text, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.border }]} placeholder="District" placeholderTextColor={theme.textSecondary} value={editAddrDistrict} onChangeText={setEditAddrDistrict} />
+                                </View>
+                                <TextInput style={[{ backgroundColor: theme.card, color: theme.text, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.border, marginBottom: 16, minHeight: 60, textAlignVertical: 'top' }]} placeholder="Landmark (e.g., Near City Mall)" placeholderTextColor={theme.textSecondary} multiline value={editAddrLandmark} onChangeText={setEditAddrLandmark} />
+                                <TextInput style={[{ backgroundColor: theme.card, color: theme.text, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.border, marginBottom: 32, minHeight: 80, textAlignVertical: 'top' }]} placeholder="Street Address..." placeholderTextColor={theme.textSecondary} multiline value={editAddrStreet} onChangeText={setEditAddrStreet} />
+
+                                <TouchableOpacity
+                                    onPress={handleSaveProfile}
+                                    disabled={editingProfile}
+                                    style={{ backgroundColor: theme.primary, padding: 16, borderRadius: 12, alignItems: 'center', marginBottom: 60 }}
+                                >
+                                    {editingProfile ? <ActivityIndicator color="#000" /> : <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 16 }}>Save Changes</Text>}
+                                </TouchableOpacity>
+                            </ScrollView>
+                        </KeyboardAvoidingView>
+                    </View>
+                </Modal >
+
+                {/* Fullscreen Avatar Viewer */}
+                < Modal visible={fullscreenAvatarVisible} transparent={true} animationType="fade" onRequestClose={() => setFullscreenAvatarVisible(false)}>
+                    <TouchableOpacity style={{ flex: 1, backgroundColor: '#000000f0', justifyContent: 'center', alignItems: 'center' }} activeOpacity={1} onPress={() => setFullscreenAvatarVisible(false)}>
+                        <Image
+                            source={{ uri: localUser?.avatarUrl ? (localUser.avatarUrl.startsWith('http') ? localUser.avatarUrl : API_BASE + localUser.avatarUrl) : undefined }}
+                            style={{ width: '100%', height: '80%', resizeMode: 'contain' }}
+                        />
+                        <TouchableOpacity style={{ position: 'absolute', top: 50, right: 30 }} onPress={() => setFullscreenAvatarVisible(false)}>
+                            <X color="#ffffff" size={32} />
+                        </TouchableOpacity>
+                    </TouchableOpacity>
+                </Modal >
+                {AlertComponent}
+            </View >
         );
     }
 
@@ -650,8 +825,12 @@ export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () =>
             <View style={[styles.header, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
                 <Text style={[styles.headerTitle, { color: theme.text }]}>Settings</Text>
                 <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => { }); setView('PROFILE'); }}>
-                    <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center' }}>
-                        <User color={theme.textSecondary} size={22} />
+                    <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                        {localUser?.avatarUrl ? (
+                            <Image source={{ uri: localUser.avatarUrl.startsWith('http') ? localUser.avatarUrl : API_BASE + localUser.avatarUrl }} style={{ width: '100%', height: '100%' }} />
+                        ) : (
+                            <User color={theme.textSecondary} size={22} />
+                        )}
                     </View>
                 </TouchableOpacity>
             </View>
@@ -753,6 +932,7 @@ export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () =>
                     <Text style={{ color: theme.textSecondary, fontSize: 11, marginTop: 4 }}>Version {APP_VERSION} (OTA Protocol 2)</Text>
                 </View>
             </ScrollView>
+            {AlertComponent}
         </View>
     );
 }

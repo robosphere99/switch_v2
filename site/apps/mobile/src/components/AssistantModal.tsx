@@ -127,7 +127,7 @@ export function AssistantModal({ isVisible, onClose, homeId }: { isVisible: bool
 
     return (
         <Modal visible={isVisible} animationType="slide" transparent={true} onRequestClose={onClose}>
-            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalBg}>
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalBg}>
                 <View style={[styles.container, { backgroundColor: theme.background, borderColor: theme.border }]}>
 
                     {/* Header */}

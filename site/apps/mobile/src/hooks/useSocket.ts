@@ -46,6 +46,10 @@ export function useSocket(userId: number | null) {
             // Support Hooks
             socket.on('support:new', () => DeviceEventEmitter.emit('support_sync'));
 
+            // Identity Hooks
+            socket.on('auth:force_logout', () => DeviceEventEmitter.emit('auth_unauthorized'));
+            socket.on('auth:sessions_changed', () => DeviceEventEmitter.emit('sessions_changed'));
+
             socketRef.current = socket;
         };
         initSocket();

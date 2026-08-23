@@ -124,14 +124,22 @@ function MainApp() {
     const handleUnauthorized = async () => {
       await SecureStore.deleteItemAsync('accessToken');
       await SecureStore.deleteItemAsync('user');
+      await SecureStore.deleteItemAsync('refreshToken');
+      await SecureStore.deleteItemAsync('sessionId');
       setUser(null);
     };
     const authSub = DeviceEventEmitter.addListener('auth_unauthorized', handleUnauthorized);
+    const forceLogoutSub = DeviceEventEmitter.addListener('auth:force_logout', handleUnauthorized);
+    const profileSub = DeviceEventEmitter.addListener('profile_sync', (updatedUser: any) => {
+      setUser(updatedUser);
+    });
 
     restoreAuth();
 
     return () => {
       authSub.remove();
+      forceLogoutSub.remove();
+      profileSub.remove();
     };
   }, []);
 
@@ -144,6 +152,8 @@ function MainApp() {
           onLogout={async () => {
             await SecureStore.deleteItemAsync('accessToken');
             await SecureStore.deleteItemAsync('user');
+            await SecureStore.deleteItemAsync('refreshToken');
+            await SecureStore.deleteItemAsync('sessionId');
             setUser(null);
             setActiveTab('HOME');
           }}

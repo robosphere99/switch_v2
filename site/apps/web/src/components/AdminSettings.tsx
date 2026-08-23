@@ -54,6 +54,9 @@ export function AdminSettings() {
     aiApiKey: string;
     aiBaseUrl: string;
     aiModel: string;
+    supportTicketMediaRetentionDays: number;
+    chatHistoryRetentionDays: number;
+    deviceTelemetryRetentionDays: number;
   } | null>(null);
   const current = form ?? {
     siteName: s?.siteName ?? "",
@@ -73,6 +76,9 @@ export function AdminSettings() {
     aiApiKey: "",
     aiBaseUrl: s?.aiBaseUrl ?? "",
     aiModel: s?.aiModel ?? "",
+    supportTicketMediaRetentionDays: s?.supportTicketMediaRetentionDays ?? 90,
+    chatHistoryRetentionDays: s?.chatHistoryRetentionDays ?? 90,
+    deviceTelemetryRetentionDays: s?.deviceTelemetryRetentionDays ?? 180,
   };
   const smtpPassSet = s?.smtpPassSet ?? false;
   const aiApiKeySet = s?.aiApiKeySet ?? false;
@@ -102,6 +108,9 @@ export function AdminSettings() {
         ...(current.aiApiKey ? { aiApiKey: current.aiApiKey } : {}),
         aiBaseUrl: current.aiBaseUrl,
         aiModel: current.aiModel,
+        supportTicketMediaRetentionDays: current.supportTicketMediaRetentionDays,
+        chatHistoryRetentionDays: current.chatHistoryRetentionDays,
+        deviceTelemetryRetentionDays: current.deviceTelemetryRetentionDays,
       }),
     onSuccess: (res) => {
       if (res.success) {
@@ -564,6 +573,51 @@ export function AdminSettings() {
           </span>
         </div>
         {aiMsg && <p className={`mt-3 text-sm ${aiMsg.ok ? "text-emerald-600" : "text-red-500"}`}>{aiMsg.text}</p>}
+      </Section>
+
+      {/* Data Retention & Storage Settings */}
+      <Section title="💾 Data Tiering & Logs Retention (ML Archival)">
+        <p className="mb-4 text-sm text-gray-500">
+          Set how long fast logs (Hot Data) stay in the primary live database before being queued for Cold Storage (which ML models will use). Avatars and camera uploads are instantly compressed at the Edge (Mobile App) to save 90% bandwidth.
+        </p>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Device Telemetry (Days)</span>
+            <input
+              type="number"
+              value={current.deviceTelemetryRetentionDays}
+              onChange={(e) => setForm({ ...current, deviceTelemetryRetentionDays: Number(e.target.value) || 180 })}
+              className="w-full rounded-lg border border-gray-300 bg-night-900 px-3 py-2 outline-none focus:border-brand"
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Support Chat (Days)</span>
+            <input
+              type="number"
+              value={current.chatHistoryRetentionDays}
+              onChange={(e) => setForm({ ...current, chatHistoryRetentionDays: Number(e.target.value) || 90 })}
+              className="w-full rounded-lg border border-gray-300 bg-night-900 px-3 py-2 outline-none focus:border-brand"
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Ticket Media (Days)</span>
+            <input
+              type="number"
+              value={current.supportTicketMediaRetentionDays}
+              onChange={(e) => setForm({ ...current, supportTicketMediaRetentionDays: Number(e.target.value) || 90 })}
+              className="w-full rounded-lg border border-gray-300 bg-night-900 px-3 py-2 outline-none focus:border-brand"
+            />
+          </label>
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button
+            onClick={() => saveSettings.mutate()}
+            disabled={saveBusy}
+            className="rounded-lg bg-brand px-5 py-2 text-sm font-semibold text-white transition hover:brightness-110 disabled:opacity-40"
+          >
+            {saveBusy ? "Saving…" : "💾 Save Retention Config"}
+          </button>
+        </div>
       </Section>
 
       {/* Admin account */}

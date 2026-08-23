@@ -5,6 +5,11 @@ import { AppError, ok } from "../lib/response";
 import { audit } from "../services/audit.service";
 import { createOrder, updateOrderStatus } from "../services/shop.service";
 import { createRazorpayOrder, razorpayConfigured, verifyRazorpaySignature } from "../services/payment.service";
+import { exec } from "child_process";
+import { promisify } from "util";
+import os from "os";
+
+const execAsync = promisify(exec);
 
 export const shopRouter = Router();
 
@@ -145,6 +150,7 @@ shopRouter.post("/orders/:id/cancel", requireAuth, async (req, res) => {
 /** Payment initiate — Razorpay configured ho to order banao, warna demo UPI intent. */
 shopRouter.post("/orders/:id/pay", requireAuth, async (req, res) => {
   const id = Number(req.params.id);
+  console.log(`[BACKEND PAYMENT DEBUG] Initiate payment requested for Order ID: ${id}`);
   const order = await prisma.order.findUnique({ where: { id } });
   if (!order || order.userId !== req.user!.sub) {
     throw new AppError("NOT_FOUND", "Order not found");
@@ -222,4 +228,27 @@ shopRouter.post("/orders/:id/pay/demo", requireAuth, async (req, res) => {
 
   await audit(req.user!.sub, "shop.payment.demo", { entity: "order", entityId: id, meta: { ref, total: Number(order.totalAmount) } });
   ok(res, { paid: true, status: "processing", paymentRef: ref });
+});
+
+shopRouter.get("/wifi/current", requireAuth, async (req, res) => {
+  const platform = os.platform();
+  try {
+    let ssid: string | null = null;
+    if (platform === "win32") {
+      const { stdout } = await execAsync("netsh wlan show interfaces");
+      const match = stdout.match(/^\s*SSID\s*:\s*(.+)$/m);
+      ssid = match ? match[1].trim() : null;
+    } else if (platform === "darwin") {
+      const { stdout } = await execAsync("/System/Library/PrivateFrameworks/Apple80211.framework/Resources/airport -I");
+      const match = stdout.match(/^\s*SSID\s*:\s*(.+)$/m);
+      ssid = match ? match[1].trim() : null;
+    } else {
+      const { stdout } = await execAsync("iwgetid -r");
+      ssid = stdout.trim() || null;
+    }
+    ok(res, { ssid });
+  } catch (err) {
+    console.error("Failed to query WiFi interface:", err);
+    ok(res, { ssid: null });
+  }
 });

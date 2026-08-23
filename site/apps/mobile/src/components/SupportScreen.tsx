@@ -144,7 +144,7 @@ export function SupportScreen({ onClose, user }: { onClose: () => void, user?: a
     return (
         <KeyboardAvoidingView
             style={[styles.container, { backgroundColor: theme.background }]}
-            behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
             {/* Header */}
             <View style={[styles.header, { borderColor: theme.border }]}>

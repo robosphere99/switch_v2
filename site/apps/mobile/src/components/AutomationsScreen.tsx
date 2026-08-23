@@ -4,6 +4,7 @@ import { Clock, Trash2, Power, Plus, X } from 'lucide-react-native';
 import { getHomes, getSchedules, deleteSchedule, getDevices, createSchedule } from '../api/hardware';
 import { useTheme } from '../theme/ThemeContext';
 import * as Haptics from 'expo-haptics';
+import { useThemedAlert } from './ThemedAlert';
 
 const Countdown = ({ targetDate, primaryColor }: { targetDate: string, primaryColor: string }) => {
     const [timeLeft, setTimeLeft] = useState('');
@@ -38,6 +39,7 @@ const Countdown = ({ targetDate, primaryColor }: { targetDate: string, primaryCo
 
 export function AutomationsScreen() {
     const { theme } = useTheme();
+    const { showAlert, AlertComponent } = useThemedAlert();
     const [loading, setLoading] = useState(true);
     const [schedules, setSchedules] = useState<any[]>([]);
     const [devices, setDevices] = useState<any[]>([]);
@@ -87,7 +89,7 @@ export function AutomationsScreen() {
     const handleDelete = async (scheduleId: number) => {
         if (!homeId) return;
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => { });
-        Alert.alert("Remove Routine", "Are you sure you want to stop this automation?", [
+        showAlert("Remove Routine", "Are you sure you want to stop this automation?", [
             { text: "Cancel", style: "cancel" },
             {
                 text: "Delete",
@@ -98,7 +100,7 @@ export function AutomationsScreen() {
                         setSchedules(prev => prev.filter(s => s.id !== scheduleId));
                         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
                     } catch (e) {
-                        Alert.alert("Error", "Could not delete this routine.");
+                        showAlert("Error", "Could not delete this routine.");
                     }
                 }
             }
@@ -149,7 +151,7 @@ export function AutomationsScreen() {
 
     const handleSubmit = async () => {
         if (!homeId || !form.deviceId) {
-            Alert.alert("Incomplete", "Please select a device.");
+            showAlert("Incomplete", "Please select a device.");
             return;
         }
 
@@ -171,7 +173,7 @@ export function AutomationsScreen() {
                 applyCustomRunAt();
                 submitRunAt = form.runAt;
             } else if (!form.runAt) {
-                Alert.alert("Incomplete", "Pick a quick timer.");
+                showAlert("Incomplete", "Pick a quick timer.");
                 return;
             }
         }
@@ -183,7 +185,7 @@ export function AutomationsScreen() {
             await loadData();
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
         } catch (e: any) {
-            Alert.alert("Failed", e.message);
+            showAlert("Failed", e.message);
         } finally {
             setLoading(false);
             setForm({ deviceId: null, action: 'on', runAt: '', cronHour: '12', cronMin: '00', cronAmPm: 'PM', schedType: 'daily', customMonth: (new Date().getMonth() + 1).toString().padStart(2, '0'), customDay: (new Date().getDate()).toString().padStart(2, '0') });
@@ -452,6 +454,7 @@ export function AutomationsScreen() {
                     </View>
                 </View>
             </Modal>
+            {AlertComponent}
         </View>
     );
 }

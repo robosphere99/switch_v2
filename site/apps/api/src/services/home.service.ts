@@ -29,7 +29,7 @@ export async function listHomesForUser(userId: number) {
 export async function getHomeMembers(homeId: number) {
   return prisma.homeMember.findMany({
     where: { homeId },
-    include: { user: { select: { id: true, username: true, email: true } } }
+    include: { user: { select: { id: true, username: true, email: true, avatarUrl: true } } }
   });
 }
 

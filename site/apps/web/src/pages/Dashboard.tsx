@@ -138,6 +138,7 @@ export function Dashboard() {
   const [error, setError] = useState("");
   // Per-device pending — optimistic toggle ke waqt switch pulse dikhata hai
   const [pending, setPending] = useState<Record<number, "on" | "off">>({});
+  const [blockedDevices, setBlockedDevices] = useState<Record<number, boolean>>({});
 
   const homes = useQuery({ queryKey: ["homes"], queryFn: listHomes, refetchInterval: 30_000 });
 
@@ -205,6 +206,16 @@ export function Dashboard() {
       setPending,
       setError,
       invalidate,
+      onSecurityLock: (deviceId) => {
+        setBlockedDevices(p => ({ ...p, [deviceId]: true }));
+        setTimeout(() => {
+          setBlockedDevices(p => {
+            const next = { ...p };
+            delete next[deviceId];
+            return next;
+          });
+        }, 60000);
+      }
     }),
   );
 
@@ -314,11 +325,10 @@ export function Dashboard() {
             <button
               key={h.id}
               onClick={() => setActiveHomeId(h.id)}
-              className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${
-                h.id === homeId
+              className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${h.id === homeId
                   ? "border-brand bg-brand/20 text-brand"
                   : "border-gray-200 bg-night-800 text-gray-600 hover:border-gray-500 dark:border-night-600"
-              }`}
+                }`}
             >
               🏠 {h.name}
               <span className="ml-1.5 text-gray-500">
@@ -441,17 +451,17 @@ export function Dashboard() {
                 const all = devices.data?.success ? devices.data.data : [];
                 const visible = q
                   ? all.filter((d) => {
-                      const room = roomNameFor(d)?.toLowerCase() ?? "";
-                      const board = d.esp?.name?.toLowerCase() ?? "";
-                      const boardSerial = d.esp?.serialCode?.toLowerCase() ?? "";
-                      return (
-                        d.name.toLowerCase().includes(q) ||
-                        (d.serialNumber?.toLowerCase() ?? "").includes(q) ||
-                        room.includes(q) ||
-                        board.includes(q) ||
-                        boardSerial.includes(q)
-                      );
-                    })
+                    const room = roomNameFor(d)?.toLowerCase() ?? "";
+                    const board = d.esp?.name?.toLowerCase() ?? "";
+                    const boardSerial = d.esp?.serialCode?.toLowerCase() ?? "";
+                    return (
+                      d.name.toLowerCase().includes(q) ||
+                      (d.serialNumber?.toLowerCase() ?? "").includes(q) ||
+                      room.includes(q) ||
+                      board.includes(q) ||
+                      boardSerial.includes(q)
+                    );
+                  })
                   : all;
                 if (q && visible.length === 0) {
                   return <p className="text-gray-500">No devices match "{deviceQ}".</p>;
@@ -518,6 +528,7 @@ export function Dashboard() {
                               canManage={canManage}
                               pending={pending[device.id] !== undefined}
                               disabled={toggle.isPending && pending[device.id] === undefined}
+                              isBlocked={!!blockedDevices[device.id]}
                               onToggle={(d) =>
                                 toggle.mutate({
                                   device: d,
@@ -557,12 +568,12 @@ export function Dashboard() {
               })()}
 
               <div className="mt-8">
-              <ScheduleSection
-                homeId={homeId!}
-                devices={devices.data?.success ? devices.data.data : []}
-                canManage={canManage}
-              />
-            </div>
+                <ScheduleSection
+                  homeId={homeId!}
+                  devices={devices.data?.success ? devices.data.data : []}
+                  canManage={canManage}
+                />
+              </div>
             </div>
 
             {/* Right sidebar: Add device, rooms, boards, members */}
@@ -681,9 +692,8 @@ export function Dashboard() {
                             className="flex items-center gap-2.5 rounded-lg border border-gray-200 bg-night-900/60 px-3 py-2 dark:border-night-600"
                           >
                             <span
-                              className={`h-2 w-2 shrink-0 rounded-full ${
-                                online ? "bg-emerald-400" : "bg-red-400"
-                              }`}
+                              className={`h-2 w-2 shrink-0 rounded-full ${online ? "bg-emerald-400" : "bg-red-400"
+                                }`}
                             />
                             <div className="min-w-0 flex-1">
                               <p className="truncate text-xs font-semibold text-night-950">
@@ -694,9 +704,8 @@ export function Dashboard() {
                               </p>
                             </div>
                             <span
-                              className={`text-[10px] font-bold uppercase ${
-                                online ? "text-emerald-400" : "text-red-400"
-                              }`}
+                              className={`text-[10px] font-bold uppercase ${online ? "text-emerald-400" : "text-red-400"
+                                }`}
                             >
                               {online ? "online" : "offline"}
                             </span>
@@ -779,11 +788,10 @@ export function Dashboard() {
               <button
                 key={d}
                 onClick={() => setAnalyticsDays(d)}
-                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-                  analyticsDays === d
+                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${analyticsDays === d
                     ? "bg-brand text-white"
                     : "border border-gray-300 text-gray-600 hover:bg-night-700 dark:border-night-600"
-                }`}
+                  }`}
               >
                 {d}d
               </button>

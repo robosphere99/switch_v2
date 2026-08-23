@@ -18,8 +18,11 @@ export function initSocket(server: HttpServer): Server {
     try {
       const token = socket.handshake.auth?.token as string | undefined;
       if (!token) throw new Error("missing token");
-      const payload = jwt.verify(token, env.JWT_ACCESS_SECRET) as unknown as { sub: number };
+      const payload = jwt.verify(token, env.JWT_ACCESS_SECRET) as unknown as { sub: number, sid?: number };
       socket.data.userId = payload.sub;
+      if (payload.sid) {
+        socket.data.sessionId = payload.sid;
+      }
       next();
     } catch {
       next(new Error("unauthorized"));
@@ -28,7 +31,13 @@ export function initSocket(server: HttpServer): Server {
 
   io.on("connection", async (socket) => {
     const userId = socket.data.userId as number;
+    const sessionId = socket.data.sessionId as number | undefined;
+
     socket.join(`user:${userId}`);
+    if (sessionId) {
+      socket.join(`session:${sessionId}`);
+    }
+
     let joined = 0;
     try {
       const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
@@ -54,6 +63,11 @@ export function initSocket(server: HttpServer): Server {
 /** Emit an event to a single user's room (notifications, assistant replies). */
 export function emitToUser(userId: number, event: string, payload: unknown): void {
   io?.to(`user:${userId}`).emit(event, payload);
+}
+
+/** Emit an event to a single authenticated session (force logout specific device). */
+export function emitToSession(sessionId: number, event: string, payload: unknown): void {
+  io?.to(`session:${sessionId}`).emit(event, payload);
 }
 
 /** Emit an event to everyone who is a member of a home (device updates). */
