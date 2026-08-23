@@ -65,19 +65,21 @@ function patch(content) {
 
   // --- 1.5) Bypass Plesk .bootstrap.cjs ESM Crash ---
   // Plesk jab module load karta hai, CJS wrapper use karta hai jo .mjs par fat jata hai.
-  // Isliye IIS path + rewrite URL dono direct index.mjs par redirect kardo.
-  if (out.includes('.bootstrap.cjs') || out.includes('app.js')) {
-    const next1 = out.replace(/path="\.bootstrap\.cjs"/gi, 'path="dist/index.mjs"');
-    const next2 = next1.replace(/url="\.bootstrap\.cjs"/gi, 'url="dist/index.mjs"');
-    // Agar manually app.js pe mapped hai
-    const next3 = next2.replace(/path="app\.js"/gi, 'path="dist/index.mjs"');
-    const next4 = next3.replace(/url="app\.js"/gi, 'url="dist/index.mjs"');
+  let forcedChanges = false;
+  if (out.includes('.bootstrap.cjs') || out.includes('app.js') || out.includes('index.js')) {
+    out = out.split('.bootstrap.cjs').join('dist/index.mjs');
+    out = out.split('app.js').join('dist/index.mjs');
+    // Plesk GUI usually maps to index.js if people forget to set it
+    out = out.split('index.js').join('dist/index.mjs');
 
-    if (next4 !== out) {
-      changed = true;
-      out = next4;
-    }
+    // Safety check just to prevent "patch karne ki zaroorat nahi" false negative block
+    forcedChanges = true;
   }
+
+  if (forcedChanges) {
+    changed = true;
+  }
+
 
   // --- 2) iisnode: nodeProcessCountPerApplication -> "1" ---
   if (/<iisnode\b/i.test(out)) {
