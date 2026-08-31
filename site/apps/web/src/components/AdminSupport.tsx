@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ArrowLeft, Bell, BellOff, CheckCheck, Copy, Inbox, MailOpen, MessageCircle, Pin, PinOff, Search, Send, Trash2, UserRound, X, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Bell, BellOff, CheckCheck, Copy, Inbox, MailOpen, MessageCircle, Pin, PinOff, Search, Send, Trash2, UserRound, X, Video, Phone, type LucideIcon } from "lucide-react";
+import { WebRTCCallModal } from "./WebRTCCallModal";
 import {
   clearSupportConversation,
   deleteSupportMessage,
@@ -447,6 +448,21 @@ export function AdminSupport({
                 {/* Pin + Mute + Clear — WhatsApp-style chat actions */}
                 <div className="flex shrink-0 items-center gap-1">
                   <button
+                    onClick={() => document.dispatchEvent(new CustomEvent('open-webrtc', { detail: { userId: selectedUserId, callType: 'audio' } }))}
+                    className="rounded-lg p-1.5 text-brand bg-brand/10 transition hover:bg-brand hover:text-night-950 flex items-center gap-1.5 mr-1"
+                    title="Start Audio Call"
+                  >
+                    <Phone className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => document.dispatchEvent(new CustomEvent('open-webrtc', { detail: { userId: selectedUserId, callType: 'video' } }))}
+                    className="rounded-lg p-1.5 text-brand bg-brand/10 transition hover:bg-brand hover:text-night-950 flex items-center gap-1.5 mr-2"
+                    title="Start Video Call"
+                  >
+                    <Video className="h-4 w-4" />
+                    <span className="text-xs font-semibold hidden md:inline">Call</span>
+                  </button>
+                  <button
                     onClick={() => setSettings.mutate({ peerUserId: selectedUserId, pinned: !set?.pinnedAt })}
                     className={`rounded-lg p-1.5 transition ${set?.pinnedAt ? "bg-brand/15 text-brand" : "text-gray-500 hover:bg-night-700 hover:text-brand"
                       }`}
@@ -713,6 +729,7 @@ export function AdminSupport({
           </>
         )}
       </div>
+      <WebRTCCallModal />
     </div>
   );
 }

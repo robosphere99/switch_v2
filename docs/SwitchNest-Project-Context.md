@@ -7,7 +7,7 @@
 > Repo location (this machine): `C:\Users\robos\OneDrive\Documents\SwitchNest`
 >
 <!-- AUTO:STAMP:START -->
-> _Auto-updated: 2026-08-23 21:14 UTC · branch `main` · tree dirty (12 changes) · 273 commits_
+> _Auto-updated: 2026-08-24 21:43 UTC · branch `main` · tree dirty (44 changes) · 277 commits_
 <!-- AUTO:STAMP:END -->
 
 ---
@@ -112,6 +112,10 @@ that also serves real ESP32 hardware).
 <!-- AUTO:RECENT_COMMITS:START -->
 Sabse naye 20 commits:
 
+- `22cb8e2` (2026-08-25) docs: overhaul static docs generator, add Light theme and Portfolio route
+- `d4973eb` (2026-08-24) fix(api): drop type module to appease iisnode legacy parsing limits
+- `14ed77c` (2026-08-24) fix(api): use cjs extension for IISProxy alias via dynamic import
+- `5c17b88` (2026-08-24) chore: save final state
 - `19e8fbd` (2026-08-24) fix(ci): disable tests and update openapi to unblock critical production hotfix
 - `591d28a` (2026-08-24) fix(api): force iisnode route to app.js Alias to bypass mjs binary crash
 - `c493fe3` (2026-08-24) fix(api): brutal string replace bypass for plesk ESM bootstrap collision
@@ -128,10 +132,6 @@ Sabse naye 20 commits:
 - `b5a65dd` (2026-08-22) fix(mobile): babel syntax error with template literals in profile view
 - `d4a63d6` (2026-08-22) feat(profile): User profile expansion with avatar, dob, mobile app edit modal
 - `0813bb0` (2026-08-22) feat: Mobile device management, room creation, edit device and custom popup modals via in-app UI
-- `e7415c8` (2026-08-22) feat(commerce): integrate Razorpay checkout for Web and Mobile
-- `a3f7330` (2026-08-21) fix(frontend): remove unused imports causing typecheck failures in Settings and VoiceAssistants
-- `c0a9132` (2026-08-21) feat(support): Full Native Support Platform Integration with WebSocket Multi-device Sync
-- `2844d8f` (2026-08-21) chore: sync firmware changes and project context documentation
 <!-- AUTO:RECENT_COMMITS:END -->
 
 - 503 root-cause work: DB probe retry loop so the app self-heals, `nodeProcessCountPerApplication=1`,

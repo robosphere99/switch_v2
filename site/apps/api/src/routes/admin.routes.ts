@@ -2126,6 +2126,32 @@ adminRouter.get("/devices/:id/support", async (req, res) => {
   const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
   ok(res, { ...device, online: device.lastSeen !== null && device.lastSeen.getTime() > dayAgo.getTime() });
 });
+/** Rotate console password for an ESP board (sends MQTT payload and updates DB). */
+adminRouter.post("/esp/:id/rotate-console-password", async (req, res) => {
+  const id = Number(req.params.id);
+  const crypto = await import("node:crypto");
+  const newPass = crypto.randomBytes(4).toString("hex");
+
+  const esp = await prisma.espDevice.findUnique({ where: { id } });
+  if (!esp) throw new AppError("NOT_FOUND", "ESP not found", 404);
+
+  await prisma.espDevice.update({
+    where: { id },
+    data: { consolePassword: newPass },
+  });
+
+  // Dynamic import since it's used only here to avoid circular dep issues
+  const { mqttPushRotatePassword } = await import("../services/mqtt.service");
+  mqttPushRotatePassword(esp.macAddress, newPass);
+
+  await audit(req.user!.sub, "admin.esp.rotate_password", {
+    entity: "esp",
+    entityId: id,
+    meta: { macAddress: esp.macAddress, newPass },
+  });
+
+  ok(res, { id, newPass });
+});
 
 /** Fix: stuck pending commands ko clear karo (device fir se responsive ho jayega). */
 adminRouter.post("/devices/:id/clear-commands", async (req, res) => {
@@ -2296,13 +2322,13 @@ adminRouter.get("/esp/:id/probe", async (req, res) => {
 adminRouter.get("/products", async (_req, res) => {
   const products = await prisma.product.findMany({
     orderBy: { id: "asc" },
-    include: { _count: { select: { serials: true } } },
+    include: { _count: { select: { serials: true } }, media: { where: { reviewId: null }, orderBy: { id: "asc" } } },
   });
   ok(res, products);
 });
 
 adminRouter.post("/products", async (req, res) => {
-  const { name, modelCode, relayCount, price, description, features, imageUrl } = req.body ?? {};
+  const { name, modelCode, relayCount, price, description, features, imageUrl, stockCount } = req.body ?? {};
   if (!name || !modelCode || price == null) {
     throw new AppError("BAD_REQUEST", "name, modelCode and price are required");
   }
@@ -2315,6 +2341,7 @@ adminRouter.post("/products", async (req, res) => {
       description: description ? String(description) : undefined,
       features: features ? (typeof features === "string" ? JSON.parse(features) : features) : undefined,
       imageUrl: imageUrl ? String(imageUrl).slice(0, 255) : undefined,
+      stockCount: stockCount != null ? Number(stockCount) : 0,
     },
   });
   await audit(req.user!.sub, "admin.product.create", { entity: "product", entityId: product.id, meta: { modelCode } });
@@ -2323,7 +2350,7 @@ adminRouter.post("/products", async (req, res) => {
 
 adminRouter.patch("/products/:id", async (req, res) => {
   const id = Number(req.params.id);
-  const { name, price, description, features, imageUrl, active } = req.body ?? {};
+  const { name, price, description, features, imageUrl, active, stockCount } = req.body ?? {};
   const product = await prisma.product.update({
     where: { id },
     data: {
@@ -2332,6 +2359,7 @@ adminRouter.patch("/products/:id", async (req, res) => {
       description: description != null ? String(description) : undefined,
       features: features ? (typeof features === "string" ? JSON.parse(features) : features) : undefined,
       imageUrl: imageUrl != null ? String(imageUrl).slice(0, 255) : undefined,
+      stockCount: stockCount != null ? Number(stockCount) : undefined,
       active: active != null ? Boolean(active) : undefined,
     },
   });
@@ -2343,6 +2371,51 @@ adminRouter.delete("/products/:id", async (req, res) => {
   const id = Number(req.params.id);
   await prisma.product.delete({ where: { id } });
   await audit(req.user!.sub, "admin.product.delete", { entity: "product", entityId: id });
+  ok(res, { deleted: true });
+});
+
+// Product media upload (photos, PDFs, datasheets, diagrams)
+const productMediaUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => {
+      const dir = path.join(process.cwd(), "uploads/product-media");
+      fs.mkdirSync(dir, { recursive: true });
+      cb(null, dir);
+    },
+    filename: (_req, file, cb) => {
+      const ext = path.extname(file.originalname);
+      cb(null, `pm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`);
+    },
+  }),
+  limits: { fileSize: 20 * 1024 * 1024 },
+});
+
+adminRouter.post("/products/:id/media", productMediaUpload.single("file"), async (req, res) => {
+  const productId = Number(req.params.id);
+  if (!req.file) throw new AppError("BAD_REQUEST", "No file uploaded");
+  const product = await prisma.product.findUnique({ where: { id: productId } });
+  if (!product) throw new AppError("NOT_FOUND", "Product not found");
+  const fileUrl = `/uploads/product-media/${req.file.filename}`;
+  const ext = path.extname(req.file.originalname).toLowerCase();
+  const type = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"].includes(ext) ? "image"
+    : [".mp4", ".webm", ".mov"].includes(ext) ? "video"
+    : "document";
+  const media = await prisma.productMedia.create({
+    data: { productId, url: fileUrl, type },
+  });
+  await audit(req.user!.sub, "admin.product.media.add", { entity: "product", entityId: productId, meta: { mediaId: media.id } });
+  ok(res, media, 201);
+});
+
+
+adminRouter.delete("/products/media/:mediaId", async (req, res) => {
+  const mediaId = Number(req.params.mediaId);
+  const media = await prisma.productMedia.findUnique({ where: { id: mediaId } });
+  if (!media) throw new AppError("NOT_FOUND", "Media not found");
+  const filePath = path.join(process.cwd(), media.url.replace(/^\/+/, ""));
+  try { fs.unlinkSync(filePath); } catch { /* file may not exist */ }
+  await prisma.productMedia.delete({ where: { id: mediaId } });
+  await audit(req.user!.sub, "admin.product.media.delete", { entity: "product", entityId: media.productId, meta: { mediaId } });
   ok(res, { deleted: true });
 });
 
@@ -2694,16 +2767,22 @@ adminRouter.get("/orders/:id/provision", async (req, res) => {
 /** Flasher: serial ko factory-tested mark karo (relay self-test pass hone ke baad). */
 adminRouter.post("/serials/:code/mark-tested", async (req, res) => {
   const code = String(req.params.code).trim().toUpperCase();
+  const { consolePassword } = req.body ?? {};
+
   const serial = await prisma.serialRegistry.findUnique({ where: { serialCode: code } });
   if (!serial) throw new AppError("NOT_FOUND", "Serial not found");
+
   const updated = await prisma.serialRegistry.update({
     where: { id: serial.id },
-    data: { testedAt: new Date() },
+    data: {
+      testedAt: new Date(),
+      consolePassword: consolePassword ? String(consolePassword) : undefined
+    },
   });
   await audit(req.user!.sub, "admin.serial.tested", {
     entity: "serial",
     entityId: serial.id,
-    meta: { serialCode: code },
+    meta: { serialCode: code, hasConsolePassword: !!consolePassword },
   });
 
   // Serial order se linked hai to user ko notify — "tested, ab pack hone chala".

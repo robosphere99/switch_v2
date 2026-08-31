@@ -38,9 +38,13 @@ static void commandPollTask(void *param) {
     if (WiFi.status() == WL_CONNECTED &&
         !PreferencesManager::getServerURL().isEmpty() &&
         !PreferencesManager::getApiKey().isEmpty()) {
-      // Long-poll (~20s max hold) — command aate hi return, apply + ack.
-      // Task hai isliye blocking se loop freeze nahi hota.
-      ApiManager::downloadCommands();
+      // Delay HTTP polling for the first 15 seconds of boot so MQTT has time to
+      // connect
+      if (millis() > 15000) {
+        // Long-poll (~20s max hold) — command aate hi return, apply + ack.
+        // Task hai isliye blocking se loop freeze nahi hota.
+        ApiManager::downloadCommands();
+      }
     }
     vTaskDelay(pdMS_TO_TICKS(200));
   }

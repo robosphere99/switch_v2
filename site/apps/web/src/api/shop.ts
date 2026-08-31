@@ -2,6 +2,14 @@ import { api } from "./client";
 
 // ---------- Types ----------
 
+export interface ProductMediaItem {
+  id: number;
+  productId: number | null;
+  url: string;
+  type: string;
+  createdAt: string;
+}
+
 export interface Product {
   id: number;
   name: string;
@@ -13,6 +21,7 @@ export interface Product {
   imageUrl: string | null;
   active: boolean;
   createdAt: string;
+  media?: ProductMediaItem[];
 }
 
 export interface OrderItem {
@@ -155,6 +164,18 @@ export async function deleteAdminProduct(id: number): Promise<void> {
   await api.delete(`/admin/products/${id}`);
 }
 
+export async function uploadProductMedia(productId: number, file: File): Promise<ProductMediaItem> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const { data } = await api.post(`/admin/products/${productId}/media`, formData);
+  return data.data;
+}
+
+export async function deleteProductMedia(mediaId: number): Promise<void> {
+  await api.delete(`/admin/products/media/${mediaId}`);
+}
+
+
 export async function getAdminOrders(): Promise<Order[]> {
   const { data } = await api.get("/admin/orders");
   return data.data;
@@ -280,4 +301,8 @@ export async function getAdminWarranty(): Promise<WarrantyClaimRow[]> {
 export async function updateWarrantyStatus(id: number, status: string): Promise<{ id: number; status: string }> {
   const { data } = await api.patch(`/admin/warranty/${id}/status`, { status });
   return data.data;
+}
+
+export async function addProductReview(productId: number, payload: { rating: number, comment?: string }): Promise<void> {
+  await api.post(`/shop/products/${productId}/reviews`, payload);
 }

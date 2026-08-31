@@ -60,7 +60,16 @@ export async function createNotification(userId: number, input: CreateNotificati
       const p = JSON.parse(plaintext);
       if (p.t) plaintext = p.t;
     } catch { /* parse ignore */ }
-    sendPushToUser(userId, input.title, plaintext, undefined, "system");
+    let pushCat: "device" | "system" | "support" | "power" | "order" | "promo" | "security" = "system";
+    const c = (input.category as string) ?? "system";
+    if (c === "auth" || c === "security") pushCat = "security";
+    else if (c === "shop" || c === "order") pushCat = "order";
+    else if (c === "hardware" || c === "offline") pushCat = "power";
+    else if (c === "support") pushCat = "support";
+    else if (c === "promo") pushCat = "promo";
+    else if (c === "device") pushCat = "device";
+    
+    sendPushToUser(userId, input.title, plaintext, undefined, pushCat);
   }).catch(console.error);
 
   return notification;

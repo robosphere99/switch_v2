@@ -152,6 +152,7 @@ model User {
   oauthTokens     OAuthToken[]
   integrations    IntegrationConnection[]
   pushSubscriptions PushSubscription[]
+  productReviews  ProductReview[]
 
   @@map("users")
 }
@@ -345,6 +346,7 @@ model EspDevice {
   ssid               String?   @db.VarChar(64)
   serialCode         String?   @unique @db.VarChar(32) @map("serial_code")
   modelCode          String?   @db.VarChar(16) @map("model_code")
+  consolePassword    String?   @db.VarChar(64) @map("console_password")
   ipAddress          String?   @db.VarChar(45) @map("ip_address")
   firmwareVersion    String?   @db.VarChar(32) @map("firmware_version")
   lastSeen           DateTime? @map("last_seen")
@@ -539,10 +541,15 @@ model Product {
   features   Json?
   imageUrl   String?  @db.VarChar(255)
   active     Boolean  @default(true)
+  stockCount Int      @default(0) @map("stock_count")
+  rating     Decimal  @default(0.0) @db.Decimal(3, 2)
+  totalReviews Int    @default(0) @map("total_reviews")
   createdAt  DateTime @default(now()) @map("created_at")
 
   orderItems OrderItem[]
   serials    SerialRegistry[]
+  reviews    ProductReview[]
+  media      ProductMedia[]
 
   @@map("products")
 }
@@ -597,6 +604,7 @@ model SerialRegistry {
   orderId    Int?
   userId     Int?
   homeId     Int?
+  consolePassword String? @db.VarChar(64) @map("console_password")
   status     SerialStatus @default(available)
   createdAt  DateTime     @default(now()) @map("created_at")
   claimedAt  DateTime?    @map("claimed_at")
@@ -778,4 +786,37 @@ model PushSubscription {
   updatedAt         DateTime @updatedAt @map("updated_at")
 
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+model ProductReview {
+  id         Int      @id @default(autoincrement())
+  productId  Int
+  userId     Int
+  rating     Decimal  @db.Decimal(3, 2)
+  comment    String?  @db.Text
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  media   ProductMedia[]
+
+  @@index([productId])
+  @@index([userId])
+  @@map("product_reviews")
+}
+
+model ProductMedia {
+  id         Int      @id @default(autoincrement())
+  productId  Int?
+  reviewId   Int?
+  url        String   @db.VarChar(500)
+  type       String   @default("image") @db.VarChar(20) // image, video
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  product       Product?       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productReview ProductReview? @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@index([reviewId])
+  @@map("product_media")
 }

@@ -2,23 +2,26 @@
 
 #include "BoardProfile.h"
 
-namespace BoardManager
-{
-    bool begin();
+namespace BoardManager {
+bool begin();
 
-    void setBoard(BoardType type);
+void setRelayName(uint8_t index, const String &name);
 
-    const BoardProfile* getBoard();
+String getRelayName(uint8_t index);
 
-    uint8_t getRelayCount();
+void setBoard(BoardType type);
 
-    uint8_t getRelayPin(uint8_t channel);
+const BoardProfile *getBoard();
 
-    uint8_t getSwitchPin(uint8_t channel);
+uint8_t getRelayCount();
 
-    String getModelCode();
+uint8_t getRelayPin(uint8_t channel);
 
-    bool isDimmer();
+uint8_t getSwitchPin(uint8_t channel);
 
-    uint8_t getDimmerSteps();
-}
+String getModelCode();
+
+bool isDimmer();
+
+uint8_t getDimmerSteps();
+} // namespace BoardManager

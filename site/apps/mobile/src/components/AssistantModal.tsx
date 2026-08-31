@@ -1,11 +1,43 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Modal, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
-import { X, Send, CheckCircle, Bot, Home as HomeIcon } from 'lucide-react-native';
+import { View, Text, TextInput, TouchableOpacity, Modal, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, ActivityIndicator, PanResponder, Animated } from 'react-native';
+import { X, Send, CheckCircle, Bot, Home as HomeIcon, Reply } from 'lucide-react-native';
 import * as assistantApi from '../api/assistant';
 import { getHomes } from '../api/hardware';
 import { useTheme } from '../theme/ThemeContext';
 import * as Haptics from 'expo-haptics';
 import * as SecureStore from 'expo-secure-store';
+
+const SwipeableMessage = ({ children, onSwipeRight }: { children: React.ReactNode, onSwipeRight: () => void }) => {
+    const pan = useRef(new Animated.ValueXY()).current;
+    const panResponder = useRef(
+        PanResponder.create({
+            onMoveShouldSetPanResponder: (evt, gestureState) => {
+                return Math.abs(gestureState.dx) > Math.abs(gestureState.dy) && Math.abs(gestureState.dx) > 10 && gestureState.dx > 0;
+            },
+            onPanResponderMove: Animated.event(
+                [null, { dx: pan.x }],
+                { useNativeDriver: false }
+            ),
+            onPanResponderRelease: (evt, gestureState) => {
+                if (gestureState.dx > 60) {
+                    onSwipeRight();
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+                }
+                Animated.spring(pan, {
+                    toValue: { x: 0, y: 0 },
+                    useNativeDriver: false,
+                    bounciness: 10
+                }).start();
+            }
+        })
+    ).current;
+
+    return (
+        <Animated.View style={{ transform: [{ translateX: pan.x }] }} {...panResponder.panHandlers}>
+            {children}
+        </Animated.View>
+    );
+};
 
 export function AssistantModal({ isVisible, onClose, homeId }: { isVisible: boolean; onClose: () => void; homeId: number | null }) {
     const { theme } = useTheme();
@@ -20,6 +52,7 @@ export function AssistantModal({ isVisible, onClose, homeId }: { isVisible: bool
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
     const [showSuggestions, setShowSuggestions] = useState(true);
+    const [replyingTo, setReplyingTo] = useState<assistantApi.AssistantMessage | null>(null);
     const scrollViewRef = useRef<ScrollView>(null);
 
     useEffect(() => {
@@ -30,6 +63,7 @@ export function AssistantModal({ isVisible, onClose, homeId }: { isVisible: bool
             // Memory cleanup on close
             setMessages([]);
             setInput('');
+            setReplyingTo(null);
         }
     }, [isVisible, homeId]);
 
@@ -85,6 +119,8 @@ export function AssistantModal({ isVisible, onClose, homeId }: { isVisible: bool
 
         setInput('');
         setLoading(true);
+        const replyMsgId = replyingTo?.id;
+        setReplyingTo(null);
 
         // Optimistic UX
         const tempMsg: assistantApi.AssistantMessage = {
@@ -94,7 +130,7 @@ export function AssistantModal({ isVisible, onClose, homeId }: { isVisible: bool
         setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
 
         try {
-            const res = await assistantApi.sendMessage(activeChatId, textToProcess);
+            const res = await assistantApi.sendMessage(activeChatId, textToProcess, replyMsgId);
             if (res.success) {
                 setMessages(prev => {
                     const filtered = prev.filter(m => m.id !== tempMsg.id);
@@ -127,7 +163,7 @@ export function AssistantModal({ isVisible, onClose, homeId }: { isVisible: bool
 
     return (
         <Modal visible={isVisible} animationType="slide" transparent={true} onRequestClose={onClose}>
-            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalBg}>
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalBg}>
                 <View style={[styles.container, { backgroundColor: theme.background, borderColor: theme.border }]}>
 
                     {/* Header */}
@@ -173,7 +209,13 @@ export function AssistantModal({ isVisible, onClose, homeId }: { isVisible: bool
                     )}
 
                     {/* Chat Area */}
-                    <ScrollView ref={scrollViewRef} style={styles.chatArea} contentContainerStyle={{ padding: 20 }}>
+                    <ScrollView 
+                        ref={scrollViewRef} 
+                        style={styles.chatArea} 
+                        contentContainerStyle={{ padding: 20 }}
+                        onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
+                        onLayout={() => scrollViewRef.current?.scrollToEnd({ animated: false })}
+                    >
                         {loading && messages.length === 0 && (
                             <ActivityIndicator color={theme.primary} style={{ marginTop: 40 }} />
                         )}
@@ -188,35 +230,45 @@ export function AssistantModal({ isVisible, onClose, homeId }: { isVisible: bool
                             const isUser = msg.role === 'user';
                             return (
                                 <View key={msg.id || idx} style={[styles.messageRow, { justifyContent: isUser ? 'flex-end' : 'flex-start' }]}>
-                                    <View style={[
-                                        styles.bubble,
-                                        isUser ?
-                                            { backgroundColor: theme.primary, borderBottomRightRadius: 4 } :
-                                            { backgroundColor: theme.card, borderColor: theme.border, borderWidth: 1, borderBottomLeftRadius: 4 }
-                                    ]}>
-                                        <Text style={[styles.messageText, { color: isUser ? '#ffffff' : theme.text }]}>{msg.content}</Text>
-
-                                        {!isUser && msg.proposal && msg.proposal.length > 0 && (
-                                            <View style={styles.proposalBox}>
-                                                {msg.proposal.map((p, i) => (
-                                                    <View key={i} style={styles.proposalItem}>
-                                                        <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>{p.deviceName}</Text>
-                                                        <Text style={{ color: p.action === 'on' ? '#4ade80' : '#f87171', fontWeight: 'bold' }}>
-                                                            {p.action.toUpperCase()}
-                                                        </Text>
-                                                    </View>
-                                                ))}
-                                                <TouchableOpacity
-                                                    style={[styles.confirmBtn, { backgroundColor: theme.accent }]}
-                                                    disabled={loading}
-                                                    onPress={() => handleConfirm(msg.id)}
-                                                >
-                                                    <CheckCircle color="#fff" size={16} />
-                                                    <Text style={styles.confirmText}>Confirm & Execute</Text>
+                                    <SwipeableMessage onSwipeRight={() => setReplyingTo(msg)}>
+                                        <View style={[
+                                            styles.bubble,
+                                            isUser ?
+                                                { backgroundColor: theme.primary, borderBottomRightRadius: 4 } :
+                                                { backgroundColor: theme.card, borderColor: theme.border, borderWidth: 1, borderBottomLeftRadius: 4 }
+                                        ]}>
+                                            <View>
+                                                <Text style={[styles.messageText, { color: isUser ? '#ffffff' : theme.text }]}>
+                                                    {msg.content}
+                                                    <Text>{"    "}</Text>
+                                                </Text>
+                                                <TouchableOpacity onPress={() => setReplyingTo(msg)} style={{ position: 'absolute', right: -4, bottom: -4, padding: 4, opacity: 0.6 }}>
+                                                    <Reply color={isUser ? '#ffffff' : theme.textSecondary} size={14} />
                                                 </TouchableOpacity>
                                             </View>
-                                        )}
-                                    </View>
+
+                                            {!isUser && msg.proposal && msg.proposal.length > 0 && (
+                                                <View style={styles.proposalBox}>
+                                                    {msg.proposal.map((p, i) => (
+                                                        <View key={i} style={styles.proposalItem}>
+                                                            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>{p.deviceName}</Text>
+                                                            <Text style={{ color: p.action === 'on' ? '#4ade80' : '#f87171', fontWeight: 'bold' }}>
+                                                                {p.action.toUpperCase()}
+                                                            </Text>
+                                                        </View>
+                                                    ))}
+                                                    <TouchableOpacity
+                                                        style={[styles.confirmBtn, { backgroundColor: theme.accent }]}
+                                                        disabled={loading}
+                                                        onPress={() => handleConfirm(msg.id)}
+                                                    >
+                                                        <CheckCircle color="#fff" size={16} />
+                                                        <Text style={styles.confirmText}>Confirm & Execute</Text>
+                                                    </TouchableOpacity>
+                                                </View>
+                                            )}
+                                        </View>
+                                    </SwipeableMessage>
                                 </View>
                             )
                         })}
@@ -250,18 +302,33 @@ export function AssistantModal({ isVisible, onClose, homeId }: { isVisible: bool
                     )}
 
                     {/* Input Editor */}
-                    <View style={[styles.inputRow, { backgroundColor: theme.card, borderTopColor: showSuggestions ? 'transparent' : theme.border }]}>
-                        <TextInput
-                            style={[styles.input, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
-                            placeholder=" saare lights off karo..."
-                            placeholderTextColor={theme.textSecondary}
-                            value={input}
-                            onChangeText={setInput}
-                            onSubmitEditing={() => handleSend()}
-                        />
-                        <TouchableOpacity style={[styles.sendBtn, { backgroundColor: input.trim() ? theme.accent : theme.border }]} disabled={!input.trim() || loading} onPress={() => handleSend()}>
-                            <Send color="#ffffff" size={18} style={input.trim() ? { transform: [{ translateX: 2 }, { translateY: -2 }] } : {}} />
-                        </TouchableOpacity>
+                    <View style={[{ backgroundColor: theme.card, borderTopColor: showSuggestions ? 'transparent' : theme.border, borderTopWidth: 1 }]}>
+                        {replyingTo && (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', marginHorizontal: 16, marginTop: 12, padding: 10, backgroundColor: theme.background, borderRadius: 8, borderWidth: 1, borderColor: theme.border, borderLeftWidth: 4, borderLeftColor: theme.primary }}>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={{ color: theme.primary, fontSize: 12, fontWeight: 'bold', marginBottom: 4 }}>
+                                        Replying to {replyingTo.role === 'user' ? 'yourself' : 'AI Assistant'}
+                                    </Text>
+                                    <Text numberOfLines={1} style={{ color: theme.textSecondary, fontSize: 13 }}>{replyingTo.content}</Text>
+                                </View>
+                                <TouchableOpacity onPress={() => setReplyingTo(null)} style={{ padding: 4 }}>
+                                    <X color={theme.textSecondary} size={16} />
+                                </TouchableOpacity>
+                            </View>
+                        )}
+                        <View style={[styles.inputRow, { borderTopWidth: 0 }]}>
+                            <TextInput
+                                style={[styles.input, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
+                                placeholder=" saare lights off karo..."
+                                placeholderTextColor={theme.textSecondary}
+                                value={input}
+                                onChangeText={setInput}
+                                onSubmitEditing={() => handleSend()}
+                            />
+                            <TouchableOpacity style={[styles.sendBtn, { backgroundColor: input.trim() ? theme.accent : theme.border }]} disabled={!input.trim() || loading} onPress={() => handleSend()}>
+                                <Send color="#ffffff" size={18} style={input.trim() ? { transform: [{ translateX: 2 }, { translateY: -2 }] } : {}} />
+                            </TouchableOpacity>
+                        </View>
                     </View>
 
                 </View>

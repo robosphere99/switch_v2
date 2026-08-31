@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Modal, TextInput, KeyboardAvoidingView, Platform, Keyboard } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
-import { Cpu, Wifi, Server, X, PlusCircle, Monitor, Shield, Camera } from 'lucide-react-native';
-import { getHardwareHomes, setEspLed, assignEspChannel } from '../api/hardware';
+import { Cpu, Wifi, Server, X, Plus, PlusCircle, Monitor, Shield, Camera, Lightbulb, Fan, Zap, Edit2 } from 'lucide-react-native';
+import { getHardwareHomes, setEspLed, assignEspChannel, createDevice, createRoom, getRooms, renameEsp } from '../api/hardware';
 import { getClaimHomes, claimDevice } from '../api/shop';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
@@ -38,6 +38,16 @@ export function HardwareScreen() {
     const [claimHomeId, setClaimHomeId] = useState<number | "">("");
     const [claimHomes, setClaimHomes] = useState<any[]>([]);
     const [claimBusy, setClaimBusy] = useState(false);
+
+    // Quick create device modal
+    const [quickCreateModal, setQuickCreateModal] = useState(false);
+    const [createName, setCreateName] = useState('');
+    const [editEspModal, setEditEspModal] = useState<{ visible: boolean, espId: number | null, name: string }>({ visible: false, espId: null, name: '' });
+    const [createType, setCreateType] = useState('bulb');
+    const [createRoomId, setCreateRoomId] = useState<number | 'new' | null>(null);
+    const [createNewRoomName, setCreateNewRoomName] = useState('');
+    const [availableRooms, setAvailableRooms] = useState<any[]>([]);
+    const [quickCreateBusy, setQuickCreateBusy] = useState(false);
 
     const serialInputRef = useRef<TextInput>(null);
 
@@ -179,6 +189,65 @@ export function HardwareScreen() {
         }
     };
 
+
+    
+    const handleSimpleCreate = async () => {
+        if (!currentHome || !createName.trim()) return;
+        setQuickCreateBusy(true);
+        try {
+            let finalRoomId = createRoomId;
+            if (createRoomId === 'new' && createNewRoomName.trim()) {
+                const roomRes = await createRoom(currentHome.homeId, createNewRoomName.trim());
+                if(roomRes.success) {
+                    finalRoomId = roomRes.data.id;
+                }
+            } else if (createRoomId === 'new') {
+                finalRoomId = null;
+            }
+
+            await createDevice(currentHome.homeId, {
+                name: createName.trim(),
+                type: createType,
+                roomId: finalRoomId !== 'new' ? finalRoomId : null
+            });
+            
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+            setQuickCreateModal(false);
+            
+            // Re-open mapping modal so they can see the newly created device in the list!
+            setMappingModal(prev => ({ ...prev, visible: true }));
+            
+            setCreateName('');
+            setCreateType('bulb');
+            setCreateRoomId(null);
+            setCreateNewRoomName('');
+            
+            await loadDashboards();
+            showAlert("Success", "Device created! Now you can select it from the unassigned list.");
+        } catch (e: any) {
+            console.error("Create device error", e);
+            showAlert("Error", e.message || "Failed to create device");
+        } finally {
+            setQuickCreateBusy(false);
+        }
+    };
+
+
+    // Load rooms when quick create modal opens
+    useEffect(() => {
+        if (quickCreateModal && currentHome) {
+            getRooms(currentHome.homeId)
+                .then(res => {
+                    if (res && res.success) {
+                        setAvailableRooms(res.data || []);
+                    } else {
+                        setAvailableRooms([]);
+                    }
+                })
+                .catch(() => setAvailableRooms([]));
+        }
+    }, [quickCreateModal, currentHome]);
+
     if (loading && homes.length === 0) {
         return (
             <View style={[styles.container, { backgroundColor: theme.background, justifyContent: 'center', alignItems: 'center' }]}>
@@ -258,10 +327,13 @@ export function HardwareScreen() {
                                         <View style={{ flexShrink: 1 }}>
                                             <Text style={{ color: theme.text, fontWeight: '700', fontSize: 16 }}>{b.name || b.serialCode}</Text>
                                             <Text style={{ color: b.offline ? '#ef4444' : theme.success || theme.primary, fontSize: 11, fontWeight: 'bold', marginTop: 2 }}>
-                                                {b.offline ? `OFFLINE · ${getRelativeTime(b.lastSeen)}` : 'ONLINE'}
+                                                {b.offline ? `OFFLINE • ${getRelativeTime(b.lastSeen)}` : 'ONLINE'}
                                             </Text>
                                         </View>
                                     </View>
+                                    <TouchableOpacity onPress={() => setEditEspModal({ visible: true, espId: b.id, name: b.name || '' })} style={{ padding: 8, backgroundColor: theme.primary + '15', borderRadius: 8 }}>
+                                        <Edit2 color={theme.primary} size={16} />
+                                    </TouchableOpacity>
                                 </View>
                                 <View style={{ flexDirection: 'row', justifyContent: 'flex-start', marginBottom: 16, gap: 10 }}>
                                     <TouchableOpacity
@@ -317,7 +389,8 @@ export function HardwareScreen() {
             </ScrollView>
 
             {/* Activation Scanner / Manual Modal */}
-            <Modal visible={activateModal.visible} transparent animationType="slide" onRequestClose={() => { if (!claimBusy) setActivateModal({ visible: false, mode: 'manual' }) }}>
+            {activateModal.visible && (
+        <View style={[StyleSheet.absoluteFill, { zIndex: 9999, elevation: 9999 }]}>
                 <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}>
                     <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' }}>
 
@@ -341,7 +414,7 @@ export function HardwareScreen() {
                         )}
 
                         {activateModal.mode === 'manual' && (
-                            <View style={{ backgroundColor: theme.background, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, minHeight: 300, borderColor: theme.border, borderWidth: 1 }}>
+                            <View style={{ backgroundColor: theme.background, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, minHeight: 300, maxHeight: '80%', borderColor: theme.border, borderWidth: 1 }}>
                                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 }}>
                                     <Text style={{ color: theme.text, fontSize: 18, fontWeight: 'bold' }}>Activate Hardware</Text>
                                     <TouchableOpacity onPress={() => setActivateModal({ visible: false, mode: 'manual' })}>
@@ -392,17 +465,23 @@ export function HardwareScreen() {
                         )}
                     </View>
                 </KeyboardAvoidingView>
-            </Modal>
+            </View>)}
 
             {/* Modal picker for Unassigned Devices */}
-            <Modal visible={mappingModal.visible} transparent animationType="slide" onRequestClose={() => setMappingModal({ visible: false, espId: null, channel: null })}>
+            {mappingModal.visible && (
+        <View style={[StyleSheet.absoluteFill, { zIndex: 9999, elevation: 9999 }]}>
                 <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}>
-                    <View style={{ backgroundColor: theme.background, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, minHeight: 300, borderColor: theme.border, borderWidth: 1 }}>
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 }}>
+                    <View style={{ backgroundColor: theme.background, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, minHeight: 300, maxHeight: '80%', borderColor: theme.border, borderWidth: 1 }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
                             <Text style={{ color: theme.text, fontSize: 18, fontWeight: 'bold' }}>Select Device for CH {mappingModal.channel}</Text>
-                            <TouchableOpacity onPress={() => setMappingModal({ visible: false, espId: null, channel: null })}>
-                                <X color={theme.textSecondary} size={24} />
-                            </TouchableOpacity>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+                                <TouchableOpacity onPress={() => { setMappingModal({ visible: false, espId: null, channel: null }); setTimeout(() => setQuickCreateModal(true), 300); }}>
+                                    <Plus color={theme.primary} size={24} />
+                                </TouchableOpacity>
+                                <TouchableOpacity onPress={() => setMappingModal({ visible: false, espId: null, channel: null })}>
+                                    <X color={theme.textSecondary} size={24} />
+                                </TouchableOpacity>
+                            </View>
                         </View>
 
                         {currentHome?.unassignedDevices?.length === 0 ? (
@@ -426,12 +505,148 @@ export function HardwareScreen() {
                         )}
                     </View>
                 </View>
-            </Modal>
+            </View>)}
+
+
+
+            {/* Edit ESP Name Modal */}
+            {editEspModal.visible && (
+        <View style={[StyleSheet.absoluteFill, { zIndex: 9999, elevation: 9999 }]}>
+                <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+                    <KeyboardAvoidingView style={{ width: '100%', alignItems: 'center' }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+                        <View style={{ backgroundColor: theme.card, borderRadius: 20, padding: 24, width: '100%', borderColor: theme.border, borderWidth: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 10 }}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 }}>
+                                <Text style={{ color: theme.text, fontSize: 18, fontWeight: 'bold' }}>Rename Board</Text>
+                                <TouchableOpacity onPress={() => setEditEspModal({ visible: false, espId: null, name: '' })}>
+                                    <X color={theme.textSecondary} size={24} />
+                                </TouchableOpacity>
+                            </View>
+                            <TextInput
+                                style={[styles.input, { borderColor: theme.border, color: theme.text, marginBottom: 24 }]}
+                                value={editEspModal.name}
+                                onChangeText={t => setEditEspModal(prev => ({ ...prev, name: t }))}
+                                placeholder="e.g. Master Bedroom Hub"
+                                placeholderTextColor={theme.textSecondary}
+                                autoFocus
+                            />
+                            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12 }}>
+                                <TouchableOpacity
+                                    style={{ padding: 12 }}
+                                    onPress={() => setEditEspModal({ visible: false, espId: null, name: '' })}
+                                >
+                                    <Text style={{ color: theme.textSecondary, fontWeight: 'bold' }}>Cancel</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={{ backgroundColor: theme.primary, paddingVertical: 12, paddingHorizontal: 20, borderRadius: 12 }}
+                                    onPress={async () => {
+                                        if (!currentHome || !editEspModal.espId || !editEspModal.name.trim()) return;
+                                        try {
+                                            await renameEsp(currentHome.homeId, editEspModal.espId, editEspModal.name.trim());
+                                            setEditEspModal({ visible: false, espId: null, name: '' });
+                                            loadDashboards();
+                                        } catch (e: any) {
+                                            showAlert("Error", e.message || "Failed to rename board.");
+                                        }
+                                    }}
+                                >
+                                    <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}>Save Changes</Text>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                    </KeyboardAvoidingView>
+                </View>
+            </View>)}
+
+            {/* Quick Create Device Modal */}
+            {quickCreateModal && (
+        <View style={[StyleSheet.absoluteFill, { zIndex: 9999, elevation: 9999 }]}>
+                <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+                    <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' }}>
+                        <View style={{ backgroundColor: theme.background, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, minHeight: 400, borderColor: theme.border, borderWidth: 1 }}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 }}>
+                                <Text style={{ color: theme.text, fontSize: 18, fontWeight: 'bold' }}>Create New Device</Text>
+                                <TouchableOpacity onPress={() => setQuickCreateModal(false)}>
+                                    <X color={theme.textSecondary} size={24} />
+                                </TouchableOpacity>
+                            </View>
+
+                            <ScrollView showsVerticalScrollIndicator={false}>
+                                <Text style={{ color: theme.textSecondary, marginBottom: 8, fontSize: 12, fontWeight: 'bold' }}>DEVICE NAME</Text>
+                                <TextInput
+                                    style={[{ color: theme.text, borderColor: theme.border, backgroundColor: theme.card, marginBottom: 20, borderWidth: 1, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16 }]}
+                                    value={createName}
+                                    onChangeText={setCreateName}
+                                    placeholder="e.g. Master Bedroom Fan"
+                                    placeholderTextColor={theme.textSecondary}
+                                />
+
+                                <Text style={{ color: theme.textSecondary, marginBottom: 8, fontSize: 12, fontWeight: 'bold' }}>DEVICE TYPE</Text>
+                                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}>
+                                {['bulb', 'fan', 'ac', 'tv', 'plug', 'dimmer', 'custom'].map(t => (
+                                    <TouchableOpacity
+                                        key={t}
+                                        style={[styles.filterChip, { marginBottom: 12, backgroundColor: createType === t ? theme.primary + '20' : theme.card, borderColor: createType === t ? theme.primary : theme.border }]}
+                                        onPress={() => setCreateType(t)}
+                                    >
+                                        <Text style={{ color: createType === t ? theme.primary : theme.textSecondary, textTransform: 'capitalize', fontWeight: 'bold' }}>{t}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </ScrollView>
+
+                                <Text style={{ color: theme.textSecondary, marginBottom: 8, fontSize: 12, fontWeight: 'bold' }}>ROOM (OPTIONAL)</Text>
+                                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 12 }}>
+                                    {availableRooms.map(r => (
+                                        <TouchableOpacity
+                                            key={r.id}
+                                            style={[
+                                                { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, borderWidth: 1 },
+                                                { backgroundColor: createRoomId === r.id ? theme.primary + '20' : theme.card, borderColor: createRoomId === r.id ? theme.primary : theme.border }
+                                            ]}
+                                            onPress={() => { setCreateRoomId(r.id); setCreateNewRoomName(''); }}
+                                        >
+                                            <Text style={{ color: createRoomId === r.id ? theme.primary : theme.text }}>{r.name}</Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                    <TouchableOpacity
+                                        style={[
+                                            { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, borderWidth: 1 },
+                                            { backgroundColor: createRoomId === 'new' ? theme.primary + '20' : theme.card, borderColor: createRoomId === 'new' ? theme.primary : theme.border }
+                                        ]}
+                                        onPress={() => setCreateRoomId('new')}
+                                    >
+                                        <Plus color={createRoomId === 'new' ? theme.primary : theme.textSecondary} size={16} />
+                                        <Text style={{ color: createRoomId === 'new' ? theme.primary : theme.textSecondary, marginLeft: 4 }}>New Room</Text>
+                                    </TouchableOpacity>
+                                </View>
+
+                                {createRoomId === 'new' && (
+                                    <TextInput
+                                        style={[{ color: theme.text, borderColor: theme.border, backgroundColor: theme.card, marginBottom: 20, borderWidth: 1, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16 }]}
+                                        value={createNewRoomName}
+                                        onChangeText={setCreateNewRoomName}
+                                        placeholder="e.g. Living Room"
+                                        placeholderTextColor={theme.textSecondary}
+                                    />
+                                )}
+
+                                <TouchableOpacity
+                                    style={[{ backgroundColor: theme.primary, marginTop: 10, marginBottom: 40, opacity: !createName.trim() || quickCreateBusy ? 0.5 : 1, padding: 16, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }]}
+                                    disabled={!createName.trim() || quickCreateBusy}
+                                    onPress={handleSimpleCreate}
+                                >
+                                    {quickCreateBusy ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}>Create Device</Text>}
+                                </TouchableOpacity>
+                            </ScrollView>
+                        </View>
+                    </View>
+                </KeyboardAvoidingView>
+            </View>)}
 
             {/* Modal picker for Details */}
-            <Modal visible={!!detailsModal} transparent animationType="slide" onRequestClose={() => setDetailsModal(null)}>
+            {!!detailsModal && (
+        <View style={[StyleSheet.absoluteFill, { zIndex: 9999, elevation: 9999 }]}>
                 <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}>
-                    <View style={{ backgroundColor: theme.background, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, minHeight: 300, borderColor: theme.border, borderWidth: 1 }}>
+                    <View style={{ backgroundColor: theme.background, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, minHeight: 300, maxHeight: '80%', borderColor: theme.border, borderWidth: 1 }}>
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 }}>
                             <Text style={{ color: theme.text, fontSize: 18, fontWeight: 'bold' }}>Board Details</Text>
                             <TouchableOpacity onPress={() => setDetailsModal(null)}>
@@ -469,7 +684,7 @@ export function HardwareScreen() {
                         )}
                     </View>
                 </View>
-            </Modal>
+            </View>)}
             {AlertComponent}
         </View>
     );

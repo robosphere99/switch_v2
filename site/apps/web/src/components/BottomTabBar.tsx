@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { Bell, Clock, LayoutDashboard, Settings, User, Users } from "lucide-react";
+import { Bell, Clock, LayoutDashboard, Settings, User, Users, ShoppingCart } from "lucide-react";
 import { useAuthStore } from "../stores/auth";
 
 /**
@@ -8,9 +8,9 @@ import { useAuthStore } from "../stores/auth";
  */
 const TABS = [
   { to: "/dashboard", label: "Overview", icon: LayoutDashboard },
+  { to: "/shop", label: "Shop", icon: ShoppingCart },
   { to: "/automations", label: "Routines", icon: Clock },
   { to: "/members", label: "Family", icon: Users },
-  { to: "/notifications", label: "Alerts", icon: Bell },
   { to: "/profile", label: "Profile", icon: User },
 ];
 

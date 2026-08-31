@@ -21,7 +21,6 @@ vi.mock("../services/siteSettings.service", () => ({
     siteName: "Test", supportEmail: "", supportPhone: "", supportAddress: "", supportHours: "",
     brandColor: "#2563eb", siteUrl: "", smtpHost: "", smtpPort: 0, smtpUser: "", smtpPass: "",
     smtpFrom: "", smtpSecure: false, aiProvider: "", aiApiKey: "", aiBaseUrl: "", aiModel: "",
-    deviceTelemetryRetentionDays: 0, supportTicketMediaRetentionDays: 0, chatHistoryRetentionDays: 0,
   }),
   updateSiteSettings: vi.fn(),
   getPublicSiteSettings: vi.fn(),
@@ -51,7 +50,7 @@ describe("getAiConfig / aiConfigured", () => {
       brandColor: "#2563eb", siteUrl: "", smtpHost: "", smtpPort: 0, smtpUser: "", smtpPass: "",
       smtpFrom: "", smtpSecure: false,
       aiProvider: "gemini", aiApiKey: "sk-db-plain", aiBaseUrl: "", aiModel: "gemini-2.0-flash",
-      deviceTelemetryRetentionDays: 0, supportTicketMediaRetentionDays: 0, chatHistoryRetentionDays: 0,
+      supportTicketMediaRetentionDays: 30, chatHistoryRetentionDays: 30, deviceTelemetryRetentionDays: 30
     });
     const c = await getAiConfig();
     expect(c.provider).toBe("gemini"); // env openai tha, DB gemini
@@ -66,7 +65,7 @@ describe("getAiConfig / aiConfigured", () => {
       siteName: "Test", supportEmail: "", supportPhone: "", supportAddress: "", supportHours: "",
       brandColor: "#2563eb", siteUrl: "", smtpHost: "", smtpPort: 0, smtpUser: "", smtpPass: "",
       smtpFrom: "", smtpSecure: false, aiProvider: "", aiApiKey: "", aiBaseUrl: "", aiModel: "",
-      deviceTelemetryRetentionDays: 0, supportTicketMediaRetentionDays: 0, chatHistoryRetentionDays: 0,
+      supportTicketMediaRetentionDays: 30, chatHistoryRetentionDays: 30, deviceTelemetryRetentionDays: 30
     });
     const c = await getAiConfig();
     expect(c.provider).toBe("openai"); // env se

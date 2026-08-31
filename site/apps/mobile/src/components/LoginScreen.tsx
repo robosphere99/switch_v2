@@ -366,10 +366,10 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     content: {
-        flex: 1,
-        justifyContent: 'center',
+        flexGrow: 1,
+        paddingTop: height * 0.12,
         paddingHorizontal: 32,
-        paddingBottom: height * 0.1, // Push up slightly
+        paddingBottom: 40,
     },
     header: {
         marginBottom: 48,

@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { CopyText } from "./CopyText";
 import { deleteContact, getAdminContact, updateContactStatus } from "../api/public";
 import {
@@ -17,9 +17,12 @@ import {
   updateOrderStatus,
   updateOrderPaymentStatus,
   updateWarrantyStatus,
+  uploadProductMedia,
+  deleteProductMedia,
   type WarrantyClaimRow,
   type Order,
   type Product,
+  type ProductMediaItem,
   type SerialRow,
 } from "../api/shop";
 
@@ -41,6 +44,283 @@ const SERIAL_BADGE: Record<string, string> = {
   claimed: "bg-brand/20 text-brand",
 };
 
+// ---------------- Edit Product Modal ----------------
+
+function EditProductModal({ product, onClose, onSaved }: { product: Product; onClose: () => void; onSaved: () => void }) {
+  const [form, setForm] = useState({
+    name: product.name,
+    price: String(product.price),
+    description: product.description || "",
+    imageUrl: product.imageUrl || "",
+  });
+
+  const initialFeatures = product.features && typeof product.features === "object" && !Array.isArray(product.features)
+    ? Object.entries(product.features).map(([k, v]) => ({ id: Math.random(), key: k, value: String(v) }))
+    : [];
+  const [featureList, setFeatureList] = useState(initialFeatures);
+
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [mediaList, setMediaList] = useState<ProductMediaItem[]>(product.media || []);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+  
+  const mediaRef = useRef<HTMLInputElement>(null);
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setMsg(null);
+    try {
+      const parsedFeatures = featureList.reduce((acc, curr) => {
+        if (curr.key.trim()) {
+          let val: any = curr.value.trim();
+          if (val.toLowerCase() === "true") val = true;
+          else if (val.toLowerCase() === "false") val = false;
+          else if (!isNaN(Number(val)) && val !== "") val = Number(val);
+          acc[curr.key.trim()] = val;
+        }
+        return acc;
+      }, {} as Record<string, any>);
+
+      await updateAdminProduct(product.id, {
+        name: form.name,
+        price: Number(form.price),
+        description: form.description,
+        features: Object.keys(parsedFeatures).length > 0 ? (parsedFeatures as any) : undefined,
+        imageUrl: form.imageUrl || undefined,
+      });
+      setMsg("✅ Product updated!");
+      onSaved();
+    } catch {
+      setMsg("❌ Update failed");
+    }
+    setSaving(false);
+  }
+
+  async function handleUploadMedia(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingMedia(true);
+    try {
+      const media = await uploadProductMedia(product.id, file);
+      setMediaList((prev) => [...prev, media]);
+      // If it's an image and we don't have a main image yet, set it automatically
+      if (media.type === "image" && !form.imageUrl) {
+        setForm((f) => ({ ...f, imageUrl: media.url }));
+      }
+      setMsg("✅ Media uploaded");
+    } catch (err) {
+      console.error("Upload error:", err);
+      setMsg("❌ Media upload failed");
+    }
+    setUploadingMedia(false);
+    if (mediaRef.current) mediaRef.current.value = "";
+  }
+
+  async function handleDeleteMedia(mediaId: number) {
+    if (!window.confirm("Delete this media?")) return;
+    try {
+      await deleteProductMedia(mediaId);
+      setMediaList((prev) => {
+        const item = prev.find(m => m.id === mediaId);
+        if (item && item.url === form.imageUrl) {
+          setForm(f => ({ ...f, imageUrl: "" }));
+        }
+        return prev.filter((m) => m.id !== mediaId);
+      });
+    } catch {
+      setMsg("❌ Delete failed");
+    }
+  }
+
+  const MEDIA_ICON: Record<string, string> = { image: "🖼️", video: "🎬", document: "📄" };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-md" onClick={onClose}>
+      <div 
+        className="relative flex max-h-[95vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-night-600 bg-night-800 shadow-2xl" 
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-night-700 bg-night-900 px-6 py-4">
+          <div>
+            <h3 className="text-xl font-bold text-white">Edit Product</h3>
+            <p className="text-xs text-brand-300">{product.modelCode} · ID #{product.id}</p>
+          </div>
+          <button onClick={onClose} className="rounded-full bg-night-700 p-2 text-gray-400 transition-colors hover:bg-night-600 hover:text-white">
+            ✕
+          </button>
+        </div>
+
+        {/* Scrollable Body */}
+        <div className="flex-1 overflow-y-auto p-6">
+          {msg && (
+            <div className={`mb-6 rounded-lg border p-3 text-sm font-medium ${msg.includes("✅") ? "border-green-500/20 bg-green-500/10 text-green-400" : "border-red-500/20 bg-red-500/10 text-red-400"}`}>
+              {msg}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
+            
+            {/* Left Column: Product Details & Features */}
+            <div className="space-y-6">
+              <div>
+                <h4 className="mb-4 text-sm font-bold uppercase tracking-wider text-brand-400">Product Details</h4>
+                <form id="edit-product-form" onSubmit={handleSave} className="grid gap-4 sm:grid-cols-2">
+                  <div className="sm:col-span-2">
+                    <label className="mb-1 block text-xs font-semibold text-gray-400">Name</label>
+                    <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full rounded-xl border border-night-600 bg-night-900 px-4 py-2.5 text-sm text-white focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand" />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="mb-1 block text-xs font-semibold text-gray-400">Price (₹)</label>
+                    <input type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className="w-full rounded-xl border border-night-600 bg-night-900 px-4 py-2.5 text-sm text-white focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand" />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="mb-1 block text-xs font-semibold text-gray-400">Description</label>
+                    <textarea rows={4} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="w-full resize-none rounded-xl border border-night-600 bg-night-900 px-4 py-2.5 text-sm text-white focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand" />
+                  </div>
+                </form>
+              </div>
+
+              {/* Features Builder */}
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <h4 className="text-sm font-bold uppercase tracking-wider text-brand-400">Features Builder</h4>
+                  <button 
+                    type="button"
+                    onClick={() => setFeatureList([...featureList, { id: Math.random(), key: "", value: "" }])}
+                    className="rounded text-xs font-bold text-brand hover:text-brand-300"
+                  >
+                    + Add Feature
+                  </button>
+                </div>
+                <div className="space-y-2 rounded-xl border border-night-700 bg-night-800/50 p-4">
+                  {featureList.length === 0 ? (
+                    <div className="py-2 text-center text-xs text-gray-500">No features added.</div>
+                  ) : (
+                    featureList.map((feat, index) => (
+                      <div key={feat.id} className="flex items-center gap-2">
+                        <input 
+                          placeholder="Key (e.g. wifi)" 
+                          value={feat.key}
+                          onChange={(e) => {
+                            const newList = [...featureList];
+                            newList[index].key = e.target.value;
+                            setFeatureList(newList);
+                          }}
+                          className="w-1/3 rounded-lg border border-night-600 bg-night-900 px-3 py-1.5 text-xs text-white focus:border-brand focus:outline-none"
+                        />
+                        <input 
+                          placeholder="Value (e.g. true, 10A)" 
+                          value={feat.value}
+                          onChange={(e) => {
+                            const newList = [...featureList];
+                            newList[index].value = e.target.value;
+                            setFeatureList(newList);
+                          }}
+                          className="flex-1 rounded-lg border border-night-600 bg-night-900 px-3 py-1.5 text-xs text-white focus:border-brand focus:outline-none"
+                        />
+                        <button 
+                          onClick={() => setFeatureList(featureList.filter((_, i) => i !== index))}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20"
+                        >✕</button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Right Column: Media Gallery */}
+            <div>
+              <div className="mb-4 flex items-center justify-between">
+                <h4 className="text-sm font-bold uppercase tracking-wider text-brand-400">Media Gallery</h4>
+                <button 
+                  onClick={() => mediaRef.current?.click()}
+                  disabled={uploadingMedia}
+                  className="flex items-center gap-1 rounded-lg bg-brand px-4 py-2 text-xs font-bold text-white shadow-lg transition-all hover:bg-brand-500 disabled:opacity-50"
+                >
+                  {uploadingMedia ? "Uploading..." : "+ Upload File"}
+                </button>
+                <input ref={mediaRef} type="file" className="hidden" onChange={handleUploadMedia} accept="image/*,video/*,.pdf,.doc,.docx" />
+              </div>
+              
+              {/* Cover Image Preview */}
+              <div className="mb-6 rounded-xl border border-night-700 bg-night-900 p-4 shadow-inner">
+                <div className="mb-2 text-xs font-semibold text-gray-400">Cover Image Preview</div>
+                <div className="flex h-40 w-full items-center justify-center rounded-lg bg-night-950/50">
+                  {form.imageUrl ? (
+                    <img src={form.imageUrl} alt="Cover" className="h-full w-full object-contain p-2" />
+                  ) : (
+                    <span className="text-sm text-gray-600">No cover image selected</span>
+                  )}
+                </div>
+              </div>
+
+              {/* All Media Grid */}
+              <div className="rounded-xl border border-night-700 bg-night-800/50 p-4">
+                <h5 className="mb-3 text-xs font-semibold text-gray-400">Uploaded Files (Photos, PDFs, Videos)</h5>
+                {mediaList.length === 0 ? (
+                  <div className="flex h-24 items-center justify-center rounded-lg border border-dashed border-night-600 text-xs text-gray-500">
+                    No files uploaded yet.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    {mediaList.map((m) => (
+                      <div key={m.id} className="group relative overflow-hidden rounded-xl border border-night-600 bg-night-900 transition-colors hover:border-brand-500/50">
+                        {m.type === "image" ? (
+                          <img src={m.url} alt="" className="h-24 w-full object-cover opacity-80 transition-opacity group-hover:opacity-100" />
+                        ) : (
+                          <div className="flex h-24 items-center justify-center bg-night-950 text-3xl">{MEDIA_ICON[m.type] || "📎"}</div>
+                        )}
+                        <div className="truncate bg-night-950 px-2 py-1.5 text-[10px] text-gray-400">
+                          {m.url.split("/").pop()}
+                        </div>
+                        
+                        {/* Hover Overlay Buttons */}
+                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/60 opacity-0 backdrop-blur-[2px] transition-opacity group-hover:opacity-100">
+                          {m.type === "image" && m.url !== form.imageUrl && (
+                            <button 
+                              onClick={() => setForm({ ...form, imageUrl: m.url })}
+                              className="rounded bg-brand px-3 py-1 text-[10px] font-bold text-white shadow-lg hover:bg-brand-400"
+                            >
+                              ★ Set as Cover
+                            </button>
+                          )}
+                          {m.url === form.imageUrl && (
+                            <span className="rounded bg-green-500/80 px-3 py-1 text-[10px] font-bold text-white shadow-lg">Current Cover</span>
+                          )}
+                          <button
+                            onClick={() => handleDeleteMedia(m.id)}
+                            className="rounded bg-red-600/90 px-3 py-1 text-[10px] font-bold text-white shadow-lg hover:bg-red-500"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-end gap-3 border-t border-night-700 bg-night-900 px-6 py-4">
+          <button onClick={onClose} className="rounded-xl px-6 py-2.5 text-sm font-semibold text-gray-400 transition-colors hover:bg-night-800 hover:text-white">
+            Cancel
+          </button>
+          <button type="submit" form="edit-product-form" disabled={saving} className="rounded-xl bg-brand px-8 py-2.5 text-sm font-bold text-white shadow-lg shadow-brand/20 transition-all hover:bg-brand-500 hover:shadow-brand/40 disabled:opacity-50">
+            {saving ? "Saving..." : "Save Product"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ---------------- Products ----------------
 
 function ProductsSection() {
@@ -50,8 +330,9 @@ function ProductsSection() {
     queryFn: getAdminProducts,
   });
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ name: "", modelCode: "", relayCount: "4", price: "", description: "", features: "" });
+  const [form, setForm] = useState({ name: "", modelCode: "", relayCount: "4", price: "", description: "", features: "", stockCount: "0" });
   const [msg, setMsg] = useState<string | null>(null);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -64,9 +345,10 @@ function ProductsSection() {
         price: Number(form.price),
         description: form.description || undefined,
         features: form.features || undefined,
-      });
+        stockCount: Number(form.stockCount)
+      } as any);
       setShowForm(false);
-      setForm({ name: "", modelCode: "", relayCount: "4", price: "", description: "", features: "" });
+      setForm({ name: "", modelCode: "", relayCount: "4", price: "", description: "", features: "", stockCount: "0" });
       queryClient.invalidateQueries({ queryKey: ["admin-products"] });
       setMsg("✅ Product add ho gaya");
     } catch {
@@ -107,6 +389,7 @@ function ProductsSection() {
           <input required placeholder="Model code * (e.g. 4CH, DIM-4S)" value={form.modelCode} onChange={(e) => setForm({ ...form, modelCode: e.target.value.toUpperCase() })} className="rounded border border-night-600 bg-night-900 px-3 py-2 text-sm" />
           <input required placeholder="Relay count *" type="number" min={1} value={form.relayCount} onChange={(e) => setForm({ ...form, relayCount: e.target.value })} className="rounded border border-night-600 bg-night-900 px-3 py-2 text-sm" />
           <input required placeholder="Price ₹ *" type="number" min={1} value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className="rounded border border-night-600 bg-night-900 px-3 py-2 text-sm" />
+          <input required placeholder="Stock Count *" type="number" min={0} value={form.stockCount} onChange={(e) => setForm({ ...form, stockCount: e.target.value })} className="rounded border border-night-600 bg-night-900 px-3 py-2 text-sm sm:col-span-2" />
           <input placeholder="Description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="rounded border border-night-600 bg-night-900 px-3 py-2 text-sm sm:col-span-2" />
           <input placeholder='Features JSON (optional) e.g. {"channels":4,"ir":true}' value={form.features} onChange={(e) => setForm({ ...form, features: e.target.value })} className="rounded border border-night-600 bg-night-900 px-3 py-2 text-sm sm:col-span-2" />
           <button type="submit" className="rounded-lg bg-brand px-4 py-2 font-semibold text-white sm:col-span-2">
@@ -123,11 +406,24 @@ function ProductsSection() {
               <span className="rounded bg-brand/20 px-2 py-0.5 text-xs font-bold text-brand">{p.modelCode}</span>
             </div>
             <div className="mb-2 text-sm text-gray-500">
-              {p.relayCount} CH · ₹{Number(p.price).toLocaleString("en-IN")} · {p._count.serials} serials
+              {p.relayCount} CH · ₹{Number(p.price).toLocaleString("en-IN")} · Stock: {(p as any).stockCount || 0} · {p._count.serials} serials
             </div>
+            {p.description && <p className="mb-2 text-xs text-gray-600 line-clamp-2">{p.description}</p>}
+            {(p.media?.length ?? 0) > 0 && <p className="mb-2 text-xs text-gray-600">📎 {p.media!.length} media file(s)</p>}
             <div className="flex gap-2 text-xs">
+              <button onClick={() => setEditingProduct(p)} className="rounded bg-brand/20 px-2 py-1 text-brand hover:bg-brand/40">
+                ✏️ Edit
+              </button>
               <button onClick={() => toggleActive(p)} className="rounded bg-night-700 px-2 py-1 hover:bg-night-600">
                 {p.active ? "Disable" : "Enable"}
+              </button>
+              <button onClick={async () => {
+                 const amt = prompt('Kitna stock add karna hai?', '10');
+                 if(!amt || isNaN(Number(amt))) return;
+                 await updateAdminProduct(p.id, { stockCount: ((p as any).stockCount || 0) + Number(amt) } as any);
+                 queryClient.invalidateQueries({ queryKey: ['admin-products'] });
+              }} className="rounded bg-brand/20 px-2 py-1 text-brand hover:bg-brand/40">
+                + Stock
               </button>
               <button onClick={() => handleDelete(p.id)} className="rounded bg-red-900/40 px-2 py-1 text-red-600 hover:bg-red-900/60">
                 Delete
@@ -136,6 +432,14 @@ function ProductsSection() {
           </div>
         ))}
       </div>
+
+      {editingProduct && (
+        <EditProductModal
+          product={editingProduct}
+          onClose={() => setEditingProduct(null)}
+          onSaved={() => queryClient.invalidateQueries({ queryKey: ["admin-products"] })}
+        />
+      )}
     </div>
   );
 }

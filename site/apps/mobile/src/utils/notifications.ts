@@ -48,8 +48,11 @@ export async function registerForPushNotificationsAsync() {
                 projectId,
             });
             token = tokenData.data;
-        } catch (e: unknown) {
-            console.log("Error fetching push token:", e);
+        } catch (e: any) {
+            const errStr = String(e);
+            if (!errStr.includes("FirebaseApp is not initialized")) {
+                console.log("Error fetching push token:", e);
+            }
         }
 
     } else {

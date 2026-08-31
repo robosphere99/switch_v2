@@ -63,26 +63,6 @@ function patch(content) {
     return null; // valid config nahi — mat chhedo
   }
 
-  // --- 1.5) Bypass Plesk IISNode extension crashing on .mjs / .cjs ---
-  // PROOF: IISNode C++ binary explicitly rejects non-traditional extensions like .mjs
-  // It completely fails to spawn the node.exe child process if the path is dist/index.mjs.
-  // We MUST route all IIS traffic into our standard `app.js` alias to succeed.
-  let forcedChanges = false;
-
-  if (out.includes('.bootstrap.cjs') || out.includes('dist/index.mjs') || out.includes('index.js')) {
-    out = out.split('.bootstrap.cjs').join('app.js');
-    out = out.split('dist/index.mjs').join('app.js');
-    out = out.split('index.js').join('app.js');
-
-    // Safety check just to prevent "patch karne ki zaroorat nahi" false negative block
-    forcedChanges = true;
-  }
-
-  if (forcedChanges) {
-    changed = true;
-  }
-
-
   // --- 2) iisnode: nodeProcessCountPerApplication -> "1" ---
   if (/<iisnode\b/i.test(out)) {
     const next = out.replace(/nodeProcessCountPerApplication\s*=\s*"[^"]*"/gi, 'nodeProcessCountPerApplication="1"');

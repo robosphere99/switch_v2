@@ -25,7 +25,9 @@ jobs:
         working-directory: site
         run: npm run typecheck
 
-
+      - name: Tests
+        working-directory: site
+        run: npm run test
 
       - name: OpenAPI docs in sync
         working-directory: site

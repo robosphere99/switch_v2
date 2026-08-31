@@ -37,7 +37,7 @@ const createSchema = z.object({
   title: z.string().max(100).optional(),
 });
 
-const messageSchema = z.object({ content: z.string().min(1).max(2000) });
+const messageSchema = z.object({ content: z.string().min(1).max(2000), replyToMessageId: z.number().int().positive().optional() });
 
 const confirmSchema = z.object({ messageId: z.number().int().positive() });
 
@@ -71,7 +71,7 @@ assistantRouter.post(
   validateParams(chatParams),
   validateBody(messageSchema),
   async (req, res) => {
-    const result = await assistantService.sendMessage(req.user!.sub, Number(req.params.chatId), req.body.content);
+    const result = await assistantService.sendMessage(req.user!.sub, Number(req.params.chatId), req.body.content, req.body.replyToMessageId);
     const member = await membership(req.user!.sub, result.chat.homeId);
     if (!member) {
       return res.status(403).json({ success: false, error: { code: "FORBIDDEN", message: "Not a member of this home" } });

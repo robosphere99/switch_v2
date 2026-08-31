@@ -69,6 +69,9 @@ export async function createOrder(input: CreateOrderInput) {
     if (!Number.isInteger(it.quantity) || it.quantity < 1) {
       throw new AppError("BAD_REQUEST", `Invalid quantity for ${prod.name}`);
     }
+    if (prod.stockCount < it.quantity) {
+      throw new AppError("BAD_REQUEST", `Insufficient stock for ${prod.name}. Only ${prod.stockCount} left.`);
+    }
     total += Number(prod.price) * it.quantity;
   }
 
@@ -92,6 +95,10 @@ export async function createOrder(input: CreateOrderInput) {
     for (const it of input.items) {
       const prod = productMap.get(it.productId)!;
       const serials = await reserveSerials(tx, created.id, prod.id, it.quantity);
+      await tx.product.update({
+        where: { id: prod.id },
+        data: { stockCount: { decrement: it.quantity } }
+      });
       await tx.orderItem.create({
         data: {
           orderId: created.id,
@@ -184,6 +191,13 @@ export async function updateOrderStatus(orderId: number, status: string) {
         where: { orderId: order.id },
         data: { status: "available", orderId: null },
       });
+      // Return stock
+      for (const item of order.items) {
+        await tx.product.update({
+          where: { id: item.productId },
+          data: { stockCount: { increment: item.quantity } },
+        });
+      }
     } else if (status === "processing") {
       // Make sure every item has a serial — top up from available stock (which we just guaranteed exists above)
       for (const item of order.items) {

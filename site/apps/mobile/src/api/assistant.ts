@@ -28,8 +28,8 @@ export const createChat = async (homeId: number, title?: string) => {
     return data;
 };
 
-export const sendMessage = async (chatId: number, content: string) => {
-    const { data } = await api.post(`/assistant/chats/${chatId}/messages`, { content });
+export const sendMessage = async (chatId: number, content: string, replyToMessageId?: number) => {
+    const { data } = await api.post(`/assistant/chats/${chatId}/messages`, { content, replyToMessageId });
     return data;
 };
 

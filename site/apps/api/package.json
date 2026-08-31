@@ -2,6 +2,7 @@
   "name": "@robosphere/api",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "npm run db:generate && tsx watch src/index.ts",
     "start": "tsx src/index.ts",
@@ -13,9 +14,8 @@
     "db:migrate": "dotenv -e ../../.env -- prisma migrate dev",
     "db:push": "dotenv -e ../../.env -- prisma db push",
     "db:seed": "dotenv -e ../../.env -- tsx prisma/seed.ts",
-    "build:prod": "node scripts/write-build-commit.mjs && esbuild src/index.ts --bundle --platform=node --format=esm --external:@prisma/client --external:bcryptjs --external:cors --external:dotenv --external:express --external:helmet --external:jsonwebtoken --external:multer --external:sharp --external:mysql2 --external:socket.io --external:zod --banner:js=\"import { createRequire } from 'module'; const require = createRequire(import.meta.url);\" --outfile=dist/index.mjs",
+    "build:prod": "node scripts/write-build-commit.mjs && esbuild src/index.ts --bundle --platform=node --format=esm --external:@prisma/client --external:bcryptjs --external:cors --external:dotenv --external:express --external:helmet --external:jsonwebtoken --external:multer --external:sharp --external:mysql2 --external:socket.io --external:zod --outfile=dist/index.mjs",
     "diag": "node scripts/diag.cjs",
-    "patch": "node scripts/patch-webconfig.mjs",
     "docs:generate": "tsx scripts/gen-openapi.ts",
     "docs:check": "tsx scripts/check-openapi.ts"
   },

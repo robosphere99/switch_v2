@@ -173,8 +173,14 @@ class FlasherApp:
 
     def _build_ui(self):
         # ---- Dark theme (clam — full color control) ----
-        BG, PANEL, BORDER = "#0d1117", "#161b22", "#30363d"
-        FG, MUT, BLUE, GREEN = "#e6edf3", "#8b949e", "#1f6feb", "#238636"
+        BG = "#0f172a"      # slate-900 (deep blue)
+        PANEL = "#1e293b"   # slate-800
+        BORDER = "#334155"  # slate-700
+        FG = "#f8fafc"      # slate-50
+        MUT = "#94a3b8"     # slate-400
+        BLUE = "#3b82f6"    # blue-500
+        GREEN = "#10b981"   # emerald-500
+        
         style = ttk.Style()
         style.theme_use("clam")
         style.configure(".", background=BG, foreground=FG, fieldbackground=PANEL,
@@ -187,19 +193,25 @@ class FlasherApp:
                         lightcolor=BORDER, darkcolor=BORDER)
         style.configure("TLabelframe.Label", background=BG, foreground=BLUE,
                         font=("Segoe UI", 10, "bold"))
-        style.configure("TEntry", fieldbackground="#010409", foreground=FG, insertcolor=FG,
+        style.configure("TEntry", fieldbackground="#0f172a", foreground=FG, insertcolor=FG,
                         bordercolor=BORDER, padding=5)
-        style.configure("TCombobox", fieldbackground="#010409", foreground=FG, background=PANEL,
+        style.configure("TCombobox", fieldbackground="#0f172a", foreground=FG, background=PANEL,
                         arrowcolor=FG, bordercolor=BORDER, padding=5)
-        style.map("TCombobox", fieldbackground=[("readonly", "#010409")],
+        style.map("TCombobox", fieldbackground=[("readonly", "#0f172a")],
                   foreground=[("readonly", FG)], background=[("readonly", PANEL)])
+        
+        # Notebook Tab Style (Vibrant Blue when selected)
+        style.configure("TNotebook", background=BG, borderwidth=0)
+        style.configure("TNotebook.Tab", background=PANEL, foreground=MUT, padding=(12, 6), font=("Segoe UI", 10), borderwidth=0)
+        style.map("TNotebook.Tab", background=[("selected", BLUE)], foreground=[("selected", "#ffffff")])
+
         style.configure("TButton", background=PANEL, foreground=FG, bordercolor=BORDER,
                         padding=(12, 6))
-        style.map("TButton", background=[("active", BLUE), ("disabled", "#21262d")],
+        style.map("TButton", background=[("active", BLUE), ("disabled", "#1e293b")],
                   foreground=[("disabled", MUT)])
         style.configure("Primary.TButton", background=GREEN, foreground="#ffffff",
                         padding=(14, 7), font=("Segoe UI", 9, "bold"))
-        style.map("Primary.TButton", background=[("active", "#2ea043"), ("disabled", "#21262d")])
+        style.map("Primary.TButton", background=[("active", "#059669"), ("disabled", "#1e293b")])
 
         pad = {"padx": 6, "pady": 4}
 
@@ -251,8 +263,6 @@ class FlasherApp:
         self.cb_mode.set("Live site")
         self.cb_mode.grid(row=1, column=1, padx=4, pady=(6, 0), sticky="w")
         self.cb_mode.bind("<<ComboboxSelected>>", self.on_server_mode)
-        ttk.Button(row, text="Guide", command=self.open_guide)\
-            .grid(row=1, column=2, padx=(8, 4), pady=(6, 0))
         # ESP Server URL — sirf Localhost mode me dikhta hai;
         # Live site pe auto-set hota hai (board seedha production server use karega).
         self.lan_ip = detect_lan_ip()
@@ -334,31 +344,21 @@ class FlasherApp:
         self.l_prog = ttk.Label(row, text="Idle", foreground="orange")
         self.l_prog.grid(row=0, column=9, padx=8)
 
-        # Row 3b — serial monitor (inline, toggle se show/hide — alag window nahi)
-        self.mon_frame = ttk.LabelFrame(f, text=" Serial Monitor ", padding=8)
-        self.mon_out = scrolledtext.ScrolledText(self.mon_frame, height=8, bg="#010409", fg="#e6edf3",
-                                                 insertbackground="#e6edf3", relief="flat",
-                                                 font=("Consolas", 10))
-        self.mon_out.pack(fill="both", expand=True)
-        self.mon_out.tag_configure("ok", foreground="#7ee787")
-        self.mon_out.tag_configure("err", foreground="#ff7b72")
-        mbar = ttk.Frame(self.mon_frame)
-        mbar.pack(fill="x", pady=(6, 0))
-        self.l_mon_state = ttk.Label(mbar, text="", style="Muted.TLabel")
-        self.l_mon_state.pack(side="left")
-        self.mon_cmd = ttk.Entry(mbar)
-        self.mon_cmd.pack(side="left", fill="x", expand=True, padx=8)
-        self.mon_cmd.bind("<Return>", lambda e: self.mon_send())
-        ttk.Button(mbar, text="Send", command=self.mon_send).pack(side="left", padx=2)
-        ttk.Button(mbar, text="Clear", command=self.mon_clear).pack(side="left", padx=2)
-        self.mon_frame.grid(row=3, column=0, sticky="nsew", **pad)
-        self.mon_frame.grid_remove()
+        # Row 3b/4 — Notebook for Log and Serial Monitor
+        self.nb = ttk.Notebook(f, padding=4)
+        self.nb.grid(row=3, column=0, sticky="nsew", **pad)
+        f.rowconfigure(3, weight=1)
 
-        # Row 4 — log (resize pe expand)
-        row = ttk.LabelFrame(f, text=" Log ", padding=8)
-        row.grid(row=4, column=0, sticky="nsew", **pad)
-        f.rowconfigure(4, weight=1)
-        self.log = scrolledtext.ScrolledText(row, height=12, bg="#010409", fg="#e6edf3",
+        # Tab 1: Log
+        tab_log = ttk.Frame(self.nb)
+        self.nb.add(tab_log, text=" Flasher Log ")
+        
+        lbar = ttk.Frame(tab_log)
+        lbar.pack(fill="x", pady=2)
+        ttk.Button(lbar, text="Clear Log", command=self.do_clear_log).pack(side="right", padx=2)
+        ttk.Button(lbar, text="Copy Text", command=self.do_copy_log).pack(side="right", padx=2)
+
+        self.log = scrolledtext.ScrolledText(tab_log, height=12, bg="#010409", fg="#e6edf3",
                                              insertbackground="#e6edf3", relief="flat",
                                              font=("Consolas", 10))
         self.log.pack(fill="both", expand=True)
@@ -367,8 +367,47 @@ class FlasherApp:
         self.log.tag_configure("warn", foreground="#d29922")
         self.log.tag_configure("info", foreground="#58a6ff")
 
-        ttk.Label(f, text="Flow: 1) Flash  →  2) Provision + Relay test  →  3) Mark tested  →  Next board",
-                  style="Muted.TLabel").grid(row=5, column=0, sticky="w", padx=8, pady=(0, 2))
+        # Tab 2: Serial Monitor
+        self.mon_frame = ttk.Frame(self.nb)
+        self.nb.add(self.mon_frame, text=" Serial Monitor ")
+
+        mtop = ttk.Frame(self.mon_frame)
+        mtop.pack(fill="x", pady=2)
+        self.l_mon_state = ttk.Label(mtop, text="Not connected", style="Muted.TLabel")
+        self.l_mon_state.pack(side="left")
+        
+        self.var_autoscroll = tk.BooleanVar(value=True)
+        self.var_timestamp = tk.BooleanVar(value=False)
+        ttk.Checkbutton(mtop, text="Autoscroll", variable=self.var_autoscroll).pack(side="left", padx=10)
+        
+        def toggle_ts():
+            self.mon_out.tag_configure("ts", elide=not self.var_timestamp.get())
+            
+        ttk.Checkbutton(mtop, text="Show Timestamp", variable=self.var_timestamp, command=toggle_ts).pack(side="left", padx=10)
+        
+        ttk.Button(mtop, text="Clear Output", command=self.mon_clear).pack(side="right", padx=2)
+        ttk.Button(mtop, text="Copy Output", command=self.do_copy_mon).pack(side="right", padx=2)
+
+        self.mon_out = scrolledtext.ScrolledText(self.mon_frame, height=12, bg="#010409", fg="#e6edf3",
+                                                 insertbackground="#e6edf3", relief="flat",
+                                                 font=("Consolas", 10))
+        self.mon_out.pack(fill="both", expand=True)
+        self.mon_out.tag_configure("ok", foreground="#7ee787")
+        self.mon_out.tag_configure("err", foreground="#ff7b72")
+        self.mon_out.tag_configure("ts", foreground="#8b949e", elide=True)
+
+        mbar = ttk.Frame(self.mon_frame)
+        mbar.pack(fill="x", pady=(6, 0))
+        self.mon_cmd = ttk.Entry(mbar)
+        self.mon_cmd.pack(side="left", fill="x", expand=True, padx=8)
+        self.mon_cmd.bind("<Return>", lambda e: self.mon_send())
+        ttk.Button(mbar, text="Send", command=self.mon_send).pack(side="left", padx=2)
+
+        b_frame = ttk.Frame(f)
+        b_frame.grid(row=5, column=0, sticky="ew", padx=8, pady=(0, 2))
+        ttk.Label(b_frame, text="Flow: 1) Flash  →  2) Provision + Relay test  →  3) Mark tested  →  Next board",
+                  style="Muted.TLabel").pack(side="left")
+        ttk.Button(b_frame, text="📖 Guide", command=self.open_guide).pack(side="right")
 
     # ---------------- helpers ----------------
 
@@ -817,7 +856,7 @@ class FlasherApp:
         model_confirm = self.cb_model.get().strip()
         serial_now = self.e_serial.get().strip()
         apikey_now = self.e_apikey.get().strip()
-        order_no = self.cur_order_no or self.e_order.get().strip()
+        order_no = getattr(self, 'cur_order_no', None) or self.e_order.get().strip()
         if not messagebox.askyesno(
             "Confirm Board — Flash",
             f"Are you sure yeh {model_confirm} board hai?\n\n"
@@ -833,6 +872,13 @@ class FlasherApp:
         def work():
             nonlocal serial_now, apikey_now
             try:
+                self._log("Flashing firmware.bin …", "info")
+                try:
+                    fw_stat = os.stat("firmware.bin")
+                    fw_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(fw_stat.st_mtime))
+                    self._log(f"Firmware Build Time: {fw_time}", "info")
+                except Exception:
+                    pass
                 # Permanent bind — serial + API key order ke user se (confirm ke baad)
                 if not serial_now and self.cur_order_id:
                     self._log("Serial khali — server se generate + order se bind ho raha hai…", "info")
@@ -1135,6 +1181,9 @@ class FlasherApp:
                     )
                 self._log("Board detected ✓", "ok")
 
+                # Zero-Trust Unlock for Fresh firmware
+                self._send_cmd("unlock robosphere_admin_99", echo=False)
+
                 r = self._send_cmd(f"setwifi {ssid} {wpass}")
                 self._check_ok(r, "setwifi")
                 r = self._send_cmd(f"setserver {esp_url} {apikey}")
@@ -1176,6 +1225,12 @@ class FlasherApp:
                 r = self._send_cmd(f"setmodel {model}")
                 self._check_ok(r, "setmodel")
 
+                import secrets
+                self.cur_console_pass = secrets.token_hex(4)
+                self._log(f"Generated console password (zero-trust): {self.cur_console_pass}", "info")
+                r = self._send_cmd(f"setconsolepass {self.cur_console_pass}")
+                self._check_ok(r, "setconsolepass")
+
                 # Factory quality check: board ka saved hotspot sticker se match
                 # (export JSON parse — naam + password dono verify, mismatch = FAIL).
                 self._verify_hotspot(hotspot, serial_code)
@@ -1195,12 +1250,12 @@ class FlasherApp:
                 self._log("Config complete — finishing (reboot)…", "info")
                 self._send_cmd("finish", expect=("Restarting",), timeout=5)
                 self._close_ser()
-                # Quality check: reboot ke baad webserver AP/LAN IP pe HTTP-ping
-                web_ok = self._check_webserver()
+                # Web server reachability check removed as it produces inaccurate results
+                # depending on whether the PC can reach the end-user's LAN network.
                 self._log(f"Provisioning OK → {serial_code} ({model}) | WiFi: {ssid} | server: {esp_url}", "ok")
                 self.root.after(0, lambda: self.l_prog.config(
-                    text="Provisioned ✓ · Web OK" if web_ok else "Provisioned ✓ · Web ⚠",
-                    foreground="#7ee787" if web_ok else "#fbbf24"))
+                    text="Provisioned ✓",
+                    foreground="#7ee787"))
             except Exception as e:
                 self._log(f"Provision FAIL: {e}", "err")
                 self._close_ser()
@@ -1211,6 +1266,8 @@ class FlasherApp:
     def _check_ok(self, reply, cmd):
         if "ERR" in reply and "[OK]" not in reply:
             raise RuntimeError(f"{cmd} rejected: {reply.strip()[-200:]}")
+        if "Unknown command" in reply:
+            raise RuntimeError(f"{cmd} Failed! The board is running old firmware without this command. PLEASE CLICK '1 - Flash Firmware' first.")
         self._log(f"{cmd} ✓", "ok")
 
     def do_mark(self):
@@ -1223,8 +1280,9 @@ class FlasherApp:
         self.set_busy(True)
         def work():
             try:
-                data = self.api("POST", f"/api/admin/serials/{code}/mark-tested")
-                self._log(f"Marked tested: {data['serialCode']} (server OK)", "ok")
+                payload = {"consolePassword": getattr(self, "cur_console_pass", None)}
+                data = self.api("POST", f"/api/admin/serials/{code}/mark-tested", json=payload)
+                self._log(f"Marked tested: {data['serialCode']} (server OK with password sync)", "ok")
                 self.root.after(0, lambda: self.l_prog.config(text="Tested ✓", foreground="#7ee787"))
             except Exception as e:
                 self._log(f"Mark FAIL: {e}", "err")
@@ -1263,7 +1321,7 @@ class FlasherApp:
         self.mon_q = queue.Queue()
         self.b_monitor.config(text="⏹ Close Serial Monitor")
         self.l_mon_state.config(text=f"● {port} @ {BAUD} — live", foreground="#7ee787")
-        self.mon_frame.grid()
+        self.nb.select(self.mon_frame)
         self.mon_out.delete("1.0", "end")
         self._mon_write(f"[monitor] {port} @ {BAUD} open — board ka output yahan aayega.\n")
         self._mon_write("[monitor] Board pe RESET dabao (boot logs: AP SSID / AP IP / IP) ya niche command bhejo (e.g. help).\n", "ok")
@@ -1282,20 +1340,32 @@ class FlasherApp:
                 pass
             self.mon_ser = None
         self.b_monitor.config(text="🔍 Serial Monitor")
-        self.l_mon_state.config(text="")
-        self.mon_frame.grid_remove()
+        self.l_mon_state.config(text="Not connected")
         self._log("Serial monitor OFF — port release", "info")
+        self.nb.select(0)
 
     def _mon_write(self, text, tag=None):
-        self.mon_out.insert("end", text, tag or ())
-        self.mon_out.see("end")
+        ts = time.strftime("[%H:%M:%S] ")
+        
+        # When text comes in, we want every newline to also have a timestamp prefix if it's multiple lines.
+        # But _mon_reader is yielding line by line anyway.
+        # However, _mon_write is also used by static string insertions like f"[monitor] ... open".
+        if text.strip('\r\n'):
+            self.mon_out.insert("end", ts, "ts")
+            self.mon_out.insert("end", text, tag or ())
+        else:
+            self.mon_out.insert("end", text, tag or ())
+            
+        if self.var_autoscroll.get():
+            self.mon_out.see("end")
 
     def _mon_reader(self):
         while not self.mon_stop.is_set():
             try:
-                chunk = self.mon_ser.read(256)
-                if chunk:
-                    self.mon_q.put(chunk.decode(errors="replace"))
+                line = self.mon_ser.readline()
+                if line:
+                    line_str = line.decode(errors="replace")
+                    self.mon_q.put(line_str)
             except Exception as e:
                 self.mon_q.put(f"\n[monitor] read error: {e}\n")
                 break
@@ -1319,12 +1389,23 @@ class FlasherApp:
         self.mon_cmd.delete(0, "end")
         try:
             self.mon_ser.write((cmd + "\n").encode())
-            self._mon_write(f"\n> {cmd}\n", "ok")
+            self._mon_write(f"> {cmd}\n", "ok")
         except Exception as e:
-            self._mon_write(f"\n[monitor] send fail: {e}\n", "err")
+            self._mon_write(f"[monitor] send fail: {e}\n", "err")
 
     def mon_clear(self):
         self.mon_out.delete("1.0", "end")
+
+    def do_clear_log(self):
+        self.log.delete("1.0", "end")
+
+    def do_copy_log(self):
+        self.root.clipboard_clear()
+        self.root.clipboard_append(self.log.get("1.0", "end"))
+
+    def do_copy_mon(self):
+        self.root.clipboard_clear()
+        self.root.clipboard_append(self.mon_out.get("1.0", "end"))
 
     def on_close(self):
         """App band karte waqt monitor port bhi release karo (koi zombie nahi)."""

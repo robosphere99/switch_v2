@@ -65,7 +65,10 @@ module.exports = {
     expo: {
         name: "mobile",
         slug: "mobile",
-        version: "1.0.0",
+        version: "1.0.1",
+        runtimeVersion: {
+            policy: "appVersion"
+        },
         orientation: "default",
         icon: "./assets/icon.png",
         userInterfaceStyle: "automatic",
@@ -83,7 +86,11 @@ module.exports = {
                 monochromeImage: "./assets/android-icon-monochrome.png"
             },
             predictiveBackGestureEnabled: false,
-            package: "com.robosphere.mobile"
+            package: "com.robosphere.mobile",
+            permissions: [
+                "android.permission.FOREGROUND_SERVICE",
+                "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"
+            ]
         },
         web: {
             favicon: "./assets/favicon.png"
@@ -92,6 +99,9 @@ module.exports = {
             eas: {
                 projectId: "538b7c36-6d64-4158-a985-a01d5880736d"
             }
+        },
+        updates: {
+            url: "https://u.expo.dev/538b7c36-6d64-4158-a985-a01d5880736d"
         },
         plugins: [
             "@react-native-community/datetimepicker",
@@ -102,7 +112,11 @@ module.exports = {
                         "usesCleartextTraffic": true
                     }
                 }
-            ]
+            ],
+            "expo-updates",
+            "expo-asset",
+            "@novartc/expo-config-plugin-incall-manager",
+            "./plugins/withApkCopier.js"
         ]
     }
 };

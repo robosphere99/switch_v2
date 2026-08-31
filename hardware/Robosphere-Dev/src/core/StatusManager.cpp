@@ -7,7 +7,6 @@
 #include "core/RelayManager.h"
 #include "core/WiFiManager.h"
 
-
 namespace StatusManager {
 
 String getJson() {
@@ -42,6 +41,11 @@ String getJson() {
 
   for (int i = 0; i < BoardManager::getRelayCount(); i++) {
     relays.add(RelayManager::getState(i));
+  }
+
+  JsonArray relayNames = doc["relayNames"].to<JsonArray>();
+  for (int i = 0; i < BoardManager::getRelayCount(); i++) {
+    relayNames.add(BoardManager::getRelayName(i));
   }
 
   String json;

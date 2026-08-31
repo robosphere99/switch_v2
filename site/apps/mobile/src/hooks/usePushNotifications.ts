@@ -77,7 +77,7 @@ export function usePushNotifications() {
                     token = (await Notifications.getExpoPushTokenAsync()).data;
                 } catch (ex: any) {
                     const errStr = String(ex);
-                    if (!errStr.includes("MISSING_INSTANCEID") && !errStr.includes("Play Services")) {
+                    if (!errStr.includes("MISSING_INSTANCEID") && !errStr.includes("Play Services") && !errStr.includes("FirebaseApp is not initialized")) {
                         console.log('Push token generation failure:', ex);
                     }
                 }

@@ -30,7 +30,7 @@ export async function readAll(key: ApiKey, mac?: string) {
 
     const relayCount = esp.modelCode === "sn-r2" ? 2 : esp.modelCode === "sn-r1" ? 1 : 4;
     const states = new Array(relayCount).fill(0);
-    const led = (esp as any).ledEnabled ? 1 : 0;
+    const led = esp.ledEnabled ? 1 : 0;
 
     for (const d of devices) {
       if (d.channel != null && d.channel >= 1 && d.channel <= relayCount) {
@@ -378,14 +378,12 @@ export async function heartbeat(
   const pendingNow = esp ? esp.otaPendingVersion : (device?.otaPendingVersion);
   let ota: { version: string; url: string; releaseNotes: string | null; required: true } | null = null;
   if (pendingNow && current && running !== current.version) {
-    /* Temporarily disabled by user request to prevent local-flash override loops
     ota = {
       version: current.version,
       url: baseUrl + current.url,
       releaseNotes: current.releaseNotes,
       required: true,
     };
-    */
   }
 
   return {
