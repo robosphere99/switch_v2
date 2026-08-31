@@ -7,6 +7,9 @@ Preferences preferences;
 
 namespace PreferencesManager {
 
+static String cachedAdminUser = "";
+static String cachedAdminPass = "";
+
 bool begin() { return preferences.begin(PREF_NAMESPACE, false); }
 
 bool isConfigured() { return preferences.getBool(PREF_CONFIGURED, false); }
@@ -29,16 +32,32 @@ String getWiFiPassword() {
 void saveAdmin(const String &username, const String &password) {
   preferences.putString(PREF_ADMIN_USER, username);
   preferences.putString(PREF_ADMIN_PASSWORD, password);
+  cachedAdminUser = username;
+  cachedAdminPass = password;
 }
 
 String getAdminUsername() {
-  String val = preferences.getString(PREF_ADMIN_USER, "");
-  return val.isEmpty() ? DEFAULT_ADMIN_USER : val;
+  if (cachedAdminUser.isEmpty()) {
+    if (preferences.isKey(PREF_ADMIN_USER)) {
+      String val = preferences.getString(PREF_ADMIN_USER, "");
+      cachedAdminUser = val.isEmpty() ? DEFAULT_ADMIN_USER : val;
+    } else {
+      cachedAdminUser = DEFAULT_ADMIN_USER;
+    }
+  }
+  return cachedAdminUser;
 }
 
 String getAdminPassword() {
-  String val = preferences.getString(PREF_ADMIN_PASSWORD, "");
-  return val.isEmpty() ? DEFAULT_ADMIN_PASSWORD : val;
+  if (cachedAdminPass.isEmpty()) {
+    if (preferences.isKey(PREF_ADMIN_PASSWORD)) {
+      String val = preferences.getString(PREF_ADMIN_PASSWORD, "");
+      cachedAdminPass = val.isEmpty() ? DEFAULT_ADMIN_PASSWORD : val;
+    } else {
+      cachedAdminPass = DEFAULT_ADMIN_PASSWORD;
+    }
+  }
+  return cachedAdminPass;
 }
 
 void saveServer(const String &url, const String &apiKey) {
@@ -74,6 +93,14 @@ String getModelCode() {
   if (!preferences.isKey(PREF_MODEL_CODE))
     return "";
   return preferences.getString(PREF_MODEL_CODE, "");
+}
+
+void saveConsolePassword(const String &password) {
+  preferences.putString("console_pass", password);
+}
+
+String getConsolePassword() {
+  return preferences.getString("console_pass", "");
 }
 
 void saveOTAURL(const String &url) { preferences.putString(PREF_OTA_URL, url); }

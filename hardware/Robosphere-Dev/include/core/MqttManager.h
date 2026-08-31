@@ -11,8 +11,10 @@ void begin();
 // reconnects
 void loop();
 
-// Publishes the current relay states to sn/{mac}/state
-bool publishState();
+bool publishState(bool forceTelemetry = false);
+
+// Publish logs to sn/{mac}/log
+void publishLog(const String& msg);
 
 // Check if MQTT is currently connected
 bool isConnected();

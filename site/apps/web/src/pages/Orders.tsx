@@ -1,11 +1,15 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { CopyText } from "../components/CopyText";
+import { Star } from "lucide-react";
 import {
   demoPay,
   getMyOrders,
   initiatePayment,
   verifyPayment,
+  addProductReview,
+  getClaimHomes,
+  claimDevice,
   type Order,
   type PayIntent,
 } from "../api/shop";
@@ -110,6 +114,10 @@ export function Orders() {
   const [payingFor, setPayingFor] = useState<number | null>(null);
   const [payBusy, setPayBusy] = useState(false);
   const [payMsg, setPayMsg] = useState<string | null>(null);
+  const [reviewItem, setReviewItem] = useState<any>(null);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState('');
+  const [reviewBusy, setReviewBusy] = useState(false);
 
   const refresh = () => getMyOrders().then(setOrders);
 
@@ -125,6 +133,22 @@ export function Orders() {
 
     return () => clearInterval(interval);
   }, []);
+
+  const submitReview = async () => {
+    if (!reviewItem) return;
+    setReviewBusy(true);
+    try {
+      await addProductReview(reviewItem.productId, { rating: reviewRating, comment: reviewComment });
+      alert('Review submitted successfully!');
+      setReviewItem(null);
+      setReviewComment('');
+      setReviewRating(5);
+    } catch (e: any) {
+      alert(e.message || 'Failed to submit review');
+    } finally {
+      setReviewBusy(false);
+    }
+  };
 
   const openPay = async (orderId: number) => {
     setPayBusy(true);
@@ -274,11 +298,18 @@ export function Orders() {
 
                 <div className="mb-4 space-y-1.5 text-sm text-gray-600">
                   {o.items.map((i) => (
-                    <div key={i.id} className="flex justify-between">
-                      <span>
-                        {i.productName} × {i.quantity}
-                      </span>
-                      <span>₹{(Number(i.price) * i.quantity).toLocaleString("en-IN")}</span>
+                    <div key={i.id} className="flex flex-col border-b border-brand/10 pb-2">
+                      <div className="flex justify-between">
+                        <span>
+                          {i.productName} × {i.quantity}
+                        </span>
+                        <span>₹{(Number(i.price) * i.quantity).toLocaleString("en-IN")}</span>
+                      </div>
+                      {o.status === "delivered" && (
+                        <button onClick={() => { setReviewItem(i); setReviewRating(5); setReviewComment(''); }} className="text-left text-xs font-bold text-brand mt-1 hover:underline w-fit">
+                          Write a Review
+                        </button>
+                      )}
                     </div>
                   ))}
                   <div className="flex justify-between border-t border-brand/20 pt-2 font-bold text-night-950">
@@ -299,13 +330,47 @@ export function Orders() {
                         {s}
                       </CopyText>
                     ))}
-                    {o.status === "delivered" && (
-                      <Link
-                        to="/activate"
+                    {o.status === "delivered" && !(o as any).allClaimed && (
+                      <button
+                        onClick={async () => {
+                          try {
+                            const homes = await getClaimHomes();
+                            if (homes.length === 0) {
+                              alert('Please create a Home in your Dashboard first.');
+                              return;
+                            }
+                            let homeId = homes[0].id;
+                            if (homes.length > 1) {
+                              const choice = prompt('Which Home ID do you want to activate these devices in?\\n' + homes.map(h => `${h.id}: ${h.name}`).join('\\n'), String(homes[0].id));
+                              if (!choice) return;
+                              homeId = Number(choice);
+                            }
+                            
+                            let successCount = 0;
+                            for (const s of serials) {
+                               try {
+                                 await claimDevice(s, homeId);
+                                 successCount++;
+                               } catch(err: any) {
+                                 if (err?.response?.data?.error?.message !== 'Already claimed') {
+                                    console.error('Failed for serial', s, err);
+                                 }
+                               }
+                            }
+                            if (successCount > 0) {
+                              alert('Devices activated successfully!');
+                              refresh();
+                            } else {
+                              alert('No new devices could be activated. They may already be activated.');
+                            }
+                          } catch (e: any) {
+                            alert(e.message || 'Failed to activate devices.');
+                          }
+                        }}
                         className="ml-auto rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white"
                       >
                         🔑 Activate Now
-                      </Link>
+                      </button>
                     )}
                   </div>
                 ) : (
@@ -325,6 +390,38 @@ export function Orders() {
           {payMsg.startsWith("✅") && (
             <button onClick={() => setPayMsg(null)} className="ml-3 underline">close</button>
           )}
+        </div>
+      )}
+
+      {reviewItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-sm rounded-xl border border-brand/20 bg-night-900 p-6">
+            <h3 className="mb-2 text-xl font-bold">Rate Product</h3>
+            <p className="mb-6 text-sm text-gray-500">{reviewItem.productName}</p>
+            
+            <div className="mb-6 flex justify-center gap-2">
+              {[1, 2, 3, 4, 5].map(star => (
+                <button key={star} onClick={() => setReviewRating(star)} className="outline-none">
+                  <Star className={star <= reviewRating ? "text-amber-500 fill-amber-500" : "text-gray-600"} size={32} />
+                </button>
+              ))}
+            </div>
+
+            <textarea
+              className="w-full rounded-lg border border-brand/20 bg-night-950 p-3 text-sm text-gray-300 focus:border-brand focus:outline-none"
+              rows={4}
+              placeholder="Write your experience..."
+              value={reviewComment}
+              onChange={(e) => setReviewComment(e.target.value)}
+            />
+
+            <div className="mt-6 flex gap-3">
+              <button onClick={() => setReviewItem(null)} className="flex-1 rounded-lg bg-night-800 px-4 py-2 font-bold text-white hover:bg-night-700">Cancel</button>
+              <button onClick={submitReview} disabled={reviewBusy} className="flex-1 rounded-lg bg-brand px-4 py-2 font-bold text-white disabled:opacity-50 hover:bg-brand/80">
+                {reviewBusy ? "Submitting..." : "Submit"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

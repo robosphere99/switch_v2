@@ -147,9 +147,9 @@ export interface SiteSettingsPayload {
   aiApiKey?: string;
   aiBaseUrl?: string;
   aiModel?: string;
-  deviceTelemetryRetentionDays?: number;
   supportTicketMediaRetentionDays?: number;
   chatHistoryRetentionDays?: number;
+  deviceTelemetryRetentionDays?: number;
 }
 
 export interface AdminSettings extends SiteSettingsPayload {
@@ -500,6 +500,7 @@ export interface AdminDeviceSupport {
     ssid: string | null;
     serialCode: string | null;
     modelCode: string | null;
+    consolePassword: string | null;
     ipAddress: string | null;
     firmwareVersion: string | null;
     lastSeen: string | null;
@@ -521,6 +522,12 @@ export async function getDeviceSupport(id: number): Promise<ApiResponse<AdminDev
 /** Admin se device ON/OFF (support ke liye) — command enqueue karta hai, board next poll pe apply karega. */
 export async function adminSetDeviceStatus(id: number, status: "on" | "off"): Promise<ApiResponse<{ id: number; status: string }>> {
   const { data } = await api.post<ApiResponse<{ id: number; status: string }>>(`/admin/devices/${id}/status`, { status });
+  return data;
+}
+
+/** Admin: rotate console password for an ESP */
+export async function rotateConsolePassword(id: number): Promise<ApiResponse<{ id: number; newPass: string }>> {
+  const { data } = await api.post<ApiResponse<{ id: number; newPass: string }>>(`/admin/esp/${id}/rotate-console-password`);
   return data;
 }
 

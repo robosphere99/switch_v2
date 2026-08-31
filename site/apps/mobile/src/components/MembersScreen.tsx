@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     View, Text, ScrollView, TouchableOpacity, TextInput,
-    ActivityIndicator, Alert, StyleSheet, Modal, Share, Image, Clipboard, Switch
+    ActivityIndicator, Alert, StyleSheet, Modal, Share, Image, Clipboard, Switch, SafeAreaView, Platform, StatusBar
 } from 'react-native';
 import {
     X, UserPlus, Users, Copy, Share2,
@@ -201,7 +201,7 @@ export function MembersScreen({ homeId, myRole, homeList, onClose }: {
     };
 
     return (
-        <View style={[styles.container, { backgroundColor: theme.background }]}>
+        <SafeAreaView style={[styles.container, { backgroundColor: theme.background, paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0 }]}>
             {/* Header */}
             <View style={[styles.header, { borderColor: theme.border }]}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -446,7 +446,7 @@ export function MembersScreen({ homeId, myRole, homeList, onClose }: {
                 </TouchableOpacity>
             </Modal>
             {AlertComponent}
-        </View>
+        </SafeAreaView>
     );
 }
 

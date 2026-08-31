@@ -90,4 +90,8 @@ void saveModelCode(const String &code);
 
 String getModelCode();
 
+void saveConsolePassword(const String &password);
+
+String getConsolePassword();
+
 } // namespace PreferencesManager

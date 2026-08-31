@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { StyleSheet, View, Text, TextInput, TouchableOpacity, ActivityIndicator, Animated, DeviceEventEmitter } from 'react-native';
+import { StyleSheet, View, Text, TextInput, TouchableOpacity, ActivityIndicator, Animated, DeviceEventEmitter, Modal, Dimensions } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { DashboardScreen } from './src/components/DashboardScreen';
@@ -8,13 +8,26 @@ import { LoginScreen } from './src/components/LoginScreen';
 import { SettingsScreen } from './src/components/SettingsScreen';
 import { HardwareScreen } from './src/components/HardwareScreen';
 import { ShopScreen } from './src/components/ShopScreen';
-import { Server, LogOut, Home as HomeIcon, Zap, Shield, Wifi, User, Activity, Bot, ShoppingCart } from 'lucide-react-native';
+const ActiveCallScreen = React.lazy(() => import('./src/components/ActiveCallScreen'));
+import { Server, LogOut, Home as HomeIcon, Zap, Shield, Wifi, User, Activity, Bot, ShoppingCart, Download, RefreshCw, AlertTriangle, CheckCircle } from 'lucide-react-native';
 import { Clock, Settings } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
-import { getSystemVersion } from './src/api/hardware';
 import { useSocket } from './src/hooks/useSocket';
 import { Linking, LogBox } from 'react-native';
+import { useAutoUpdate } from './src/hooks/useAutoUpdate';
+
+import * as Notifications from 'expo-notifications';
+import { Platform } from 'react-native';
+
+if (Platform.OS === 'android') {
+  Notifications.setNotificationChannelAsync('support-calls', {
+    name: 'Support Calls',
+    importance: Notifications.AndroidImportance.MAX,
+    vibrationPattern: [0, 500, 500, 500, 500, 500],
+    lightColor: '#00e5ff',
+  }).catch((err) => console.warn('Failed to set notification channel:', err));
+}
 
 // Suppress known development warnings that pollute the Expo Go screen
 LogBox.ignoreLogs([
@@ -24,22 +37,36 @@ LogBox.ignoreLogs([
 ]);
 
 // Physical App Hardcoded Manifest Version (Increment this for new APK generation!)
-export const APP_VERSION = '1.0.0';
+export const APP_VERSION = '1.0.1';
 
-const compareSemver = (v1: string, v2: string) => {
-  const p1 = v1.split('.').map(Number);
-  const p2 = v2.split('.').map(Number);
-  for (let i = 0; i < 3; i++) {
-    if ((p1[i] || 0) < (p2[i] || 0)) return -1;
-    if ((p1[i] || 0) > (p2[i] || 0)) return 1;
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+class WebRTCErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
   }
-  return 0;
-};
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(error: any) {
+    console.warn("WebRTC Error Boundary caught an error (likely missing native modules):", error);
+  }
+  render() {
+    if (this.state.hasError) return null;
+    return this.props.children;
+  }
+}
 
 function MainApp() {
   const { theme, bindUser } = useTheme();
   const [user, setUser] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<'HOME' | 'HARDWARE' | 'AUTOMATIONS' | 'SETTINGS' | 'SHOP'>('HOME');
+  const [settingsInitialView, setSettingsInitialView] = useState<'MAIN' | 'TIMELINE' | 'APPEARANCE' | 'PROFILE' | 'NOTIFICATIONS' | 'SUPPORT'>('MAIN');
+  const [supportDraft, setSupportDraft] = useState('');
+
+  // Auto-Update Engine (JS OTA + Native APK)
+  const [updateState, updateActions] = useAutoUpdate();
   const [isRestoring, setIsRestoring] = useState(true);
   const [biometricFailed, setBiometricFailed] = useState(false);
 
@@ -55,9 +82,7 @@ function MainApp() {
     }
   }, [user]);
 
-  // Update Guard States
-  const [updateRequired, setUpdateRequired] = useState(false);
-  const [updateOptions, setUpdateOptions] = useState<any>(null);
+  // Legacy update guard states removed — handled by useAutoUpdate hook
 
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
@@ -104,19 +129,7 @@ function MainApp() {
         }
       } catch (e) { }
 
-      // Parallel Version Verification
-      try {
-        const sysVersion = await getSystemVersion();
-        if (sysVersion?.data?.mobileAppOptions) {
-          const opts = sysVersion.data.mobileAppOptions;
-          if (opts.minRequiredVersion && compareSemver(APP_VERSION, opts.minRequiredVersion) < 0) {
-            setUpdateOptions(opts);
-            setUpdateRequired(true);
-          }
-        }
-      } catch (err) {
-        console.log('Update check failed (safe bypass):', err);
-      }
+      // Version check now handled by useAutoUpdate hook
 
       setIsRestoring(false);
     };
@@ -133,6 +146,11 @@ function MainApp() {
     const profileSub = DeviceEventEmitter.addListener('profile_sync', (updatedUser: any) => {
       setUser(updatedUser);
     });
+    const navSupportSub = DeviceEventEmitter.addListener('navigate_support', (data) => {
+      setSettingsInitialView('SUPPORT');
+      if (data?.draft) setSupportDraft(data.draft);
+      setActiveTab('SETTINGS');
+    });
 
     restoreAuth();
 
@@ -140,6 +158,7 @@ function MainApp() {
       authSub.remove();
       forceLogoutSub.remove();
       profileSub.remove();
+      navSupportSub.remove();
     };
   }, []);
 
@@ -173,6 +192,10 @@ function MainApp() {
       return (
         <SettingsScreen
           user={user}
+          initialView={settingsInitialView}
+          initialSupportDraft={supportDraft}
+          updateState={updateState}
+          updateActions={updateActions}
           onLogout={async () => {
             await SecureStore.deleteItemAsync('accessToken');
             await SecureStore.deleteItemAsync('user');
@@ -209,6 +232,127 @@ function MainApp() {
       <View style={{ flex: 1, backgroundColor: theme.background }}>
         <Animated.View style={{ flex: 1, opacity: fadeAnim }}>{renderTab()}</Animated.View>
 
+        {/* ── JS OTA Update Banner (subtle bottom toast) ── */}
+        {updateState.jsUpdateReady && (
+          <TouchableOpacity
+            onPress={updateActions.reloadWithJsUpdate}
+            activeOpacity={0.85}
+            style={[styles.otaBanner, { backgroundColor: theme.primary }]}
+          >
+            <CheckCircle color="#000" size={18} style={{ marginRight: 8 }} />
+            <Text style={styles.otaBannerText}>Update ready — tap to restart</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* ── Native APK Update Modal ── */}
+        <Modal
+          visible={!!updateState.nativeUpdate}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => updateActions.dismissNativeUpdate()}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.updateModal, { backgroundColor: theme.background, borderColor: theme.border }]}>
+              {/* Header */}
+              <View style={{ alignItems: 'center', marginBottom: 20 }}>
+                <View style={[styles.updateIconWrap, { backgroundColor: theme.primary + '20' }]}>
+                  {updateState.nativeError ? (
+                    <AlertTriangle color="#ef4444" size={32} />
+                  ) : updateState.nativeDownloading ? (
+                    <Download color={theme.primary} size={32} />
+                  ) : (
+                    <Zap color={theme.primary} size={32} />
+                  )}
+                </View>
+                <Text style={[styles.updateTitle, { color: theme.text }]}>
+                  {updateState.nativeError ? 'Update Failed' : updateState.nativeDownloading ? 'Downloading...' : `Update Available`}
+                </Text>
+                {updateState.nativeUpdate && !updateState.nativeError && !updateState.nativeDownloading && (
+                  <Text style={{ color: theme.textSecondary, fontSize: 13, marginTop: 4 }}>
+                    v{APP_VERSION}  →  v{updateState.nativeUpdate.latestVersion}
+                  </Text>
+                )}
+              </View>
+
+              {/* Release Notes */}
+              {updateState.nativeUpdate?.releaseNotes && !updateState.nativeError && !updateState.nativeDownloading && (
+                <View style={[styles.releaseNotesBox, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                  <Text style={{ color: theme.textSecondary, fontSize: 11, fontWeight: '700', marginBottom: 6 }}>WHAT'S NEW</Text>
+                  <Text style={{ color: theme.text, fontSize: 13, lineHeight: 20 }}>{updateState.nativeUpdate.releaseNotes}</Text>
+                </View>
+              )}
+
+              {/* Error message */}
+              {updateState.nativeError && (
+                <View style={[styles.releaseNotesBox, { backgroundColor: '#ef444415', borderColor: '#ef444440' }]}>
+                  <Text style={{ color: '#ef4444', fontSize: 13, lineHeight: 20 }}>{updateState.nativeError}</Text>
+                </View>
+              )}
+
+              {/* Download Progress */}
+              {updateState.nativeDownloading && (
+                <View style={{ marginBottom: 20 }}>
+                  <View style={[styles.progressTrack, { backgroundColor: theme.border }]}>
+                    <View style={[styles.progressBar, { width: `${updateState.nativeProgress * 100}%`, backgroundColor: theme.primary }]} />
+                  </View>
+                  <Text style={{ color: theme.textSecondary, fontSize: 12, textAlign: 'center', marginTop: 8 }}>
+                    {Math.round(updateState.nativeProgress * 100)}% downloaded
+                  </Text>
+                </View>
+              )}
+
+              {/* Action Buttons */}
+              <View style={{ width: '100%' }}>
+                {updateState.nativeError ? (
+                  /* Error state: Retry + Dismiss */
+                  <>
+                    <TouchableOpacity
+                      onPress={updateActions.retryNativeDownload}
+                      style={[styles.updateBtn, { backgroundColor: theme.primary }]}
+                    >
+                      <RefreshCw color="#000" size={18} style={{ marginRight: 8 }} />
+                      <Text style={styles.updateBtnText}>Retry Download</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={updateActions.dismissNativeUpdate}
+                      style={[styles.updateBtnSecondary, { borderColor: theme.border }]}
+                    >
+                      <Text style={[styles.updateBtnSecondaryText, { color: theme.text }]}>Dismiss</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : updateState.nativeDownloading ? (
+                  /* Downloading state: just show spinner */
+                  <ActivityIndicator color={theme.primary} style={{ marginVertical: 8 }} />
+                ) : (
+                  /* Ready state: Update Now + Later */
+                  <>
+                    <TouchableOpacity
+                      onPress={updateActions.downloadAndInstallNative}
+                      style={[styles.updateBtn, { backgroundColor: theme.primary }]}
+                    >
+                      <Download color="#000" size={18} style={{ marginRight: 8 }} />
+                      <Text style={styles.updateBtnText}>Update Now</Text>
+                    </TouchableOpacity>
+                    {!updateState.nativeUpdate?.isMandatory && (
+                      <TouchableOpacity
+                        onPress={updateActions.dismissNativeUpdate}
+                        style={[styles.updateBtnSecondary, { borderColor: theme.border }]}
+                      >
+                        <Text style={[styles.updateBtnSecondaryText, { color: theme.text }]}>Later</Text>
+                      </TouchableOpacity>
+                    )}
+                    {updateState.nativeUpdate?.isMandatory && (
+                      <Text style={{ color: theme.textSecondary, fontSize: 11, textAlign: 'center', marginTop: 12 }}>
+                        This update is mandatory to continue using the app.
+                      </Text>
+                    )}
+                  </>
+                )}
+              </View>
+            </View>
+          </View>
+        </Modal>
+
         {/* Premium Bottom Navbar */}
         <View style={[styles.bottomNav, { backgroundColor: theme.tabBar, borderColor: theme.border }]}>
           <TouchableOpacity style={styles.navItem} onPress={() => setNav('HOME')}>
@@ -231,7 +375,10 @@ function MainApp() {
             <Text style={[styles.navText, { color: activeTab === 'SHOP' ? theme.primary : theme.textSecondary }]}>Store</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.navItem} onPress={() => setNav('SETTINGS')}>
+          <TouchableOpacity style={styles.navItem} onPress={() => {
+            setSettingsInitialView('MAIN');
+            setNav('SETTINGS');
+          }}>
             <Settings color={activeTab === 'SETTINGS' ? theme.primary : theme.textSecondary} size={24} />
             <Text style={[styles.navText, { color: activeTab === 'SETTINGS' ? theme.primary : theme.textSecondary }]}>Settings</Text>
           </TouchableOpacity>
@@ -240,29 +387,7 @@ function MainApp() {
     );
   }
 
-  if (updateRequired && updateOptions) {
-    return (
-      <View style={[styles.container, { backgroundColor: theme.background }]}>
-        <Activity color={theme.accent || theme.primary} size={64} style={{ marginBottom: 20 }} />
-        <Text style={[styles.title, { color: theme.text, textAlign: 'center' }]}>Update {"\n"}Required</Text>
-        <Text style={[styles.subtitle, { color: theme.textSecondary, textAlign: 'center', marginTop: 10 }]}>
-          {updateOptions.updateMessage || 'A mandatory update is required to continue using this application.'}
-        </Text>
-        <Text style={{ color: theme.textSecondary, marginBottom: 40 }}>
-          Installed: v{APP_VERSION}  •  Required: v{updateOptions.minRequiredVersion}
-        </Text>
-
-        <TouchableOpacity
-          style={[styles.button, { backgroundColor: theme.accent || theme.primary }]}
-          onPress={() => Linking.openURL(updateOptions.downloadUrl)}
-        >
-          <Text style={styles.buttonText}>Download Latest Version</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
-  if (isRestoring || updateRequired) {
+  if (isRestoring) {
     return (
       <View style={[styles.container, { flex: 1, backgroundColor: theme.background }]}>
         <ActivityIndicator size="large" color={theme.primary} />
@@ -284,6 +409,11 @@ export default function App() {
   return (
     <ThemeProvider>
       <MainApp />
+        <React.Suspense fallback={null}>
+          <WebRTCErrorBoundary>
+            <ActiveCallScreen />
+          </WebRTCErrorBoundary>
+        </React.Suspense>
     </ThemeProvider>
   );
 }
@@ -361,4 +491,99 @@ const styles = StyleSheet.create({
   },
   navItem: { alignItems: 'center', flex: 1 },
   navText: { fontSize: 13, marginTop: 6, fontWeight: '700' },
+
+  /* ── OTA Banner ── */
+  otaBanner: {
+    position: 'absolute',
+    bottom: 100,
+    left: 20,
+    right: 20,
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  otaBannerText: {
+    color: '#000',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+
+  /* ── Native Update Modal ── */
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: '#000000cc',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  updateModal: {
+    width: SCREEN_WIDTH - 48,
+    maxWidth: 380,
+    borderRadius: 24,
+    padding: 28,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  updateIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  updateTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+  },
+  releaseNotesBox: {
+    width: '100%',
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 14,
+    marginBottom: 20,
+  },
+  progressTrack: {
+    width: '100%',
+    height: 6,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  progressBar: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  updateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 14,
+    width: '100%',
+  },
+  updateBtnText: {
+    color: '#000',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  updateBtnSecondary: {
+    paddingVertical: 12,
+    borderRadius: 14,
+    width: '100%',
+    alignItems: 'center',
+    borderWidth: 1,
+    marginTop: 10,
+  },
+  updateBtnSecondaryText: {
+    fontWeight: '600',
+    fontSize: 15,
+  },
 });

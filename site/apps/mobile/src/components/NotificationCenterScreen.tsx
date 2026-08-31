@@ -18,7 +18,7 @@ export function NotificationCenterScreen({ onClose }: { onClose?: () => void }) 
         if (!body) return { text: '' };
         try {
             const parsed = typeof body === 'string' ? JSON.parse(body) : body;
-            return { text: parsed.t || String(body) };
+            return { text: typeof parsed.t === 'string' ? (parsed.t || 'Attachment') : String(body) };
         } catch {
             return { text: String(body) };
         }
@@ -273,7 +273,11 @@ export function NotificationCenterScreen({ onClose }: { onClose?: () => void }) 
                                 <Text style={{ fontSize: 11, color: theme.textSecondary + '80', fontWeight: '500' }}>
                                     {new Date(item.createdAt).toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                                 </Text>
-                                <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 10 }}>
+                                <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 10 }} onPress={() => {
+                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+                                    if (onClose) onClose();
+                                    setTimeout(() => DeviceEventEmitter.emit('navigate_support', { draft: `[Ref: ${item.title}]\n\nHello Support, I received this alert and need some help.` }), 100);
+                                }}>
                                     <CornerDownRight size={12} color={theme.primary} style={{ marginRight: 4 }} />
                                     <Text style={{ color: theme.primary, fontSize: 11, fontWeight: '700' }}>support kholo — draft ready</Text>
                                 </TouchableOpacity>

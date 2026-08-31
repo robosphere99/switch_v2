@@ -4,16 +4,29 @@ import { prisma } from "../lib/prisma";
 // Global Expo SDK Client singleton
 const expo = new Expo({ accessToken: process.env.EXPO_ACCESS_TOKEN }); // accessToken is optional but provides higher limits
 
+type PushCategory = "device" | "system" | "support" | "power" | "order" | "promo" | "security";
+
 /**
  * Dispatch a guaranteed high-priority real-time push notification to a Specific User.
  * Bypasses polling delays by leveraging native Apple APNs and Firebase FCM pipelines.
  */
-export async function sendPushToUser(userId: number, title: string, body: string, payload?: any, category: "device" | "system" = "system") {
+export async function sendPushToUser(userId: number, title: string, body: string, payload?: any, category: PushCategory = "system") {
     try {
+        let pushCondition = {};
+        switch (category) {
+            case "device": pushCondition = { pushDeviceToggles: true }; break;
+            case "support": pushCondition = { pushSupportUpdates: true }; break;
+            case "power": pushCondition = { pushPowerAlerts: true }; break;
+            case "order": pushCondition = { pushOrderUpdates: true }; break;
+            case "promo": pushCondition = { pushPromotional: true }; break;
+            case "security": pushCondition = { pushSecurityAlerts: true }; break;
+            default: pushCondition = { pushSystemAlerts: true }; break; // "system"
+        }
+
         const subscriptions = await prisma.pushSubscription.findMany({
             where: {
                 userId,
-                ...(category === "device" ? { pushDeviceToggles: true } : { pushSystemAlerts: true })
+                ...pushCondition
             },
             select: { token: true }
         });
@@ -36,6 +49,8 @@ export async function sendPushToUser(userId: number, title: string, body: string
                 title,
                 body,
                 data: payload || {},
+                categoryId: category,
+                channelId: 'support-calls',
             });
         }
 

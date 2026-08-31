@@ -17,7 +17,7 @@ import Aedes from "aedes";
 import { createServer as createNetServer, type Server as NetServer } from "net";
 import crypto from "node:crypto";
 import { prisma } from "../lib/prisma";
-import { emitDeviceUpdated, emitToHome } from "../lib/socket";
+import { emitDeviceUpdated, emitToHome, emitToBoardLogs } from "../lib/socket";
 import { logger } from "../lib/logger";
 
 // ---------- config ----------
@@ -87,10 +87,12 @@ export function startMqttBroker(): void {
             }
 
             // Stash metadata on the client for use in publish/subscribe handlers
+            // Hardware uses colon-less MAC for topics (e.g. sn/aabbcc.../state)
+            // MUST be lowercase to match C++ toLowerCase()!
             connectedDevices.set(client.id, {
                 homeId: key.homeId,
                 espId: esp.id,
-                mac: esp.macAddress,
+                mac: esp.macAddress.replace(/:/g, "").toLowerCase(),
                 serial,
             });
 
@@ -138,6 +140,19 @@ export function startMqttBroker(): void {
 
         const topic = packet.topic;
 
+        // ---- Terminal Log Sync: sn/{mac}/log ----
+        if (topic === `sn/${meta.mac}/log`) {
+            try {
+                const payloadStr = packet.payload.toString();
+                // Avoid logging raw ping/help output entirely to keep backend console clean, or log it as debug.
+                // logger.debug(`[mqtt] term_log < ${meta.mac}: ${payloadStr}`);
+                emitToBoardLogs(meta.espId, payloadStr);
+            } catch (err) {
+                logger.warn(`[mqtt] log parse error from ${meta.serial}`, err instanceof Error ? err.message : String(err));
+            }
+            return;
+        }
+
         // ---- State Sync: sn/{mac}/state ----
         if (topic === `sn/${meta.mac}/state`) {
             try {
@@ -167,6 +182,8 @@ export function startMqttBroker(): void {
 
         // Push any pending commands immediately on connect
         await pushPendingCommands(meta);
+        // Also push the device names mapping (for local ESP dash)
+        await pushDeviceNames(meta);
     });
 
     // ---- Client disconnected ----
@@ -313,19 +330,68 @@ async function pushPendingCommands(meta: ConnectedDevice): Promise<void> {
 }
 
 /**
+ * Pushes the mapped device names for each channel (0-indexed array) to the ESP32.
+ * The ESP will hold this in RAM to display human-friendly names on its local HTTP dashboard.
+ */
+async function pushDeviceNames(meta: ConnectedDevice): Promise<void> {
+    if (!broker) return;
+    const { homeId, espId, mac } = meta;
+
+    const devices = await prisma.device.findMany({
+        where: { espId, homeId },
+        select: { channel: true, name: true },
+    });
+
+    const chCount = devices.reduce((m, d) => Math.max(m, d.channel ?? 0), 4);
+    const names = new Array(chCount).fill("");
+    for (const d of devices) {
+        if (d.channel != null && d.channel >= 1) {
+            names[d.channel - 1] = d.name;
+        }
+    }
+
+    const topic = `sn/${mac}/cmd`;
+    const payload = JSON.stringify({ names });
+    broker.publish(
+        { cmd: "publish", topic, payload: Buffer.from(payload), qos: 1, retain: false, dup: false },
+        () => { }
+    );
+}
+
+/**
  * Public helper: push commands to a specific device via MQTT.
  * Called from device.service.ts when web/mobile toggles a switch.
  * Falls back silently if device is not connected via MQTT (HTTP poll will pick it up).
  */
 export function mqttPushCommands(mac: string): void {
+    const cleanMac = mac.replace(/:/g, "").toLowerCase();
+    const metaMac = mac.toLowerCase();
+
     // Find connected client by mac
     for (const [, meta] of connectedDevices) {
-        if (meta.mac === mac) {
+        if (meta.mac === cleanMac || meta.mac === metaMac) {
             void pushPendingCommands(meta);
             return;
         }
     }
     // Device not on MQTT — HTTP long-poll will handle it
+}
+
+/**
+ * Public helper: push rotate_console_pass command to a specific device via MQTT.
+ */
+export function mqttPushRotatePassword(mac: string, newPass: string): void {
+    if (!broker) return;
+    const topic = `sn/${mac}/cmd`;
+    const payload = JSON.stringify({
+        commands: [{ id: Math.floor(Math.random() * 100000), action: "rotate_console_pass", newPass }]
+    });
+    broker.publish(
+        { cmd: "publish", topic, payload: Buffer.from(payload), qos: 1, retain: false, dup: false },
+        () => {
+            logger.info(`[mqtt] → ${mac} pushed rotate_console_pass`);
+        }
+    );
 }
 
 /**
@@ -348,4 +414,21 @@ export function mqttConnectedCount(): number {
 /** List connected device serials (diagnostics). */
 export function mqttConnectedDevices(): string[] {
     return Array.from(connectedDevices.values()).map((m) => m.serial);
+}
+
+
+export function publishTermCommand(mac: string, cmd: string) {
+    if (!broker) return;
+    const cleanMac = mac.replace(/:/g, "").toLowerCase();
+    const topic = `sn/${cleanMac}/term_cmd`;
+    broker.publish({
+        topic,
+        payload: Buffer.from(cmd),
+        qos: 1,
+        retain: false,
+        cmd: "publish",
+        dup: false
+    }, (err) => {
+        if (err) logger.error(`[mqtt] Failed to push terminal command to ${mac}`);
+    });
 }

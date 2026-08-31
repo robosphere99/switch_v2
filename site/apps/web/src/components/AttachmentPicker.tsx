@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { ImagePlus, X } from "lucide-react";
 import type { SupportAttachment } from "../api/admin";
 
-const MAX_BYTES = 2 * 1024 * 1024;
+const MAX_BYTES = 50 * 1024 * 1024;
 
 const EXT_TYPES: Record<string, string> = {
   png: "image/png",
@@ -12,6 +12,8 @@ const EXT_TYPES: Record<string, string> = {
   webp: "image/webp",
   heic: "image/heic",
   pdf: "application/pdf",
+  mp4: "video/mp4",
+  mov: "video/quicktime",
   txt: "text/plain",
 };
 
@@ -60,7 +62,7 @@ export function AttachmentPicker({
       <input
         ref={inputRef}
         type="file"
-        accept="image/*,.pdf,.txt"
+        accept="image/*,video/*,.pdf,.txt"
         className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0];

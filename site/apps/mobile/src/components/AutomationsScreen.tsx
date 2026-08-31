@@ -107,15 +107,15 @@ export function AutomationsScreen() {
         ])
     };
 
-    const handleQuickTime = (minutesToAdd?: number, setTimeHour?: number) => {
+    const handleQuickTime = (minutesToAdd?: number | 'custom', setTimeHour?: number) => {
         setCustomTimer(false);
-        if (minutesToAdd === -1) {
+        if (minutesToAdd === 'custom') {
             setCustomTimer(true);
             return;
         }
 
-        let date = new Date();
-        if (minutesToAdd) {
+        let date = (form.runAt && typeof minutesToAdd === 'number') ? new Date(form.runAt) : new Date();
+        if (typeof minutesToAdd === 'number') {
             date = new Date(date.getTime() + minutesToAdd * 60000);
         } else if (setTimeHour !== undefined) {
             if (date.getHours() >= setTimeHour) {
@@ -123,6 +123,8 @@ export function AutomationsScreen() {
             }
             date.setHours(setTimeHour, 0, 0, 0);
         }
+        
+        date.setSeconds(0, 0);
         setForm(prev => ({ ...prev, runAt: date.toISOString() }));
     };
 
@@ -340,9 +342,11 @@ export function AutomationsScreen() {
                                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
                                     <TouchableOpacity onPress={() => handleQuickTime(5)} style={[styles.pill, { borderColor: theme.border, backgroundColor: theme.card }]}><Text style={{ color: theme.text, fontSize: 13 }}>⏱ +5 min</Text></TouchableOpacity>
                                     <TouchableOpacity onPress={() => handleQuickTime(60)} style={[styles.pill, { borderColor: theme.border, backgroundColor: theme.card }]}><Text style={{ color: theme.text, fontSize: 13 }}>⏱ +1 hour</Text></TouchableOpacity>
+                                    <TouchableOpacity onPress={() => handleQuickTime(-5)} style={[styles.pill, { borderColor: theme.border, backgroundColor: theme.card }]}><Text style={{ color: theme.text, fontSize: 13 }}>⏱ -5 min</Text></TouchableOpacity>
+                                    <TouchableOpacity onPress={() => handleQuickTime(-1)} style={[styles.pill, { borderColor: theme.border, backgroundColor: theme.card }]}><Text style={{ color: theme.text, fontSize: 13 }}>⏱ -1 min</Text></TouchableOpacity>
                                     <TouchableOpacity onPress={() => handleQuickTime(undefined, 21)} style={[styles.pill, { borderColor: theme.border, backgroundColor: theme.card }]}><Text style={{ color: theme.text, fontSize: 13 }}>🌙 Tonight 9 PM</Text></TouchableOpacity>
                                     <TouchableOpacity onPress={() => handleQuickTime(undefined, 9)} style={[styles.pill, { borderColor: theme.border, backgroundColor: theme.card }]}><Text style={{ color: theme.text, fontSize: 13 }}>🌅 Tomorrow 9 AM</Text></TouchableOpacity>
-                                    <TouchableOpacity onPress={() => handleQuickTime(-1)} style={[styles.pill, { borderColor: theme.border, backgroundColor: customTimer ? theme.primary : theme.card }]}><Text style={{ color: customTimer ? '#000' : theme.text, fontSize: 13 }}>🎯 Custom...</Text></TouchableOpacity>
+                                    <TouchableOpacity onPress={() => handleQuickTime('custom')} style={[styles.pill, { borderColor: theme.border, backgroundColor: customTimer ? theme.primary : theme.card }]}><Text style={{ color: customTimer ? '#000' : theme.text, fontSize: 13 }}>🎯 Custom...</Text></TouchableOpacity>
                                 </View>
 
                                 {customTimer && (
@@ -379,7 +383,7 @@ export function AutomationsScreen() {
 
                                 {!customTimer && form.runAt !== '' && (
                                     <Text style={{ color: theme.primary, marginBottom: 16, textAlign: 'center', fontSize: 12, fontWeight: 'bold' }}>
-                                        ✔ Will run at: {new Date(form.runAt).toLocaleString()}
+                                        ✔ Will run at: {new Date(form.runAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} on {new Date(form.runAt).toLocaleDateString()}
                                     </Text>
                                 )}
                             </>

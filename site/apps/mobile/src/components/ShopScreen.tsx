@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Image, ActivityIndicator, Alert, StyleSheet, Modal, TextInput, KeyboardAvoidingView, Platform, PermissionsAndroid } from 'react-native';
-import { ShoppingCart, Package, CreditCard, Check, X, Truck, Wifi } from 'lucide-react-native';
+import { View, Text, ScrollView, TouchableOpacity, Image, ActivityIndicator, Alert, StyleSheet, Modal, TextInput, KeyboardAvoidingView, Platform, PermissionsAndroid, Animated, Easing } from 'react-native';
+import { Star, MessageCircle, Plus, Minus } from 'lucide-react-native';
+import { ShoppingCart, Package, CreditCard, Check, X, Truck, Wifi, Eye, EyeOff } from 'lucide-react-native';
 import { getProducts, Product, createOrder, initiatePayment, verifyPayment, demoPay, cancelOrder, getCurrentWifiSsid } from '../api/shop';
 import RazorpayCheckout from 'react-native-razorpay';
 import { useTheme } from '../theme/ThemeContext';
@@ -9,11 +10,49 @@ import { OrdersScreen } from './OrdersScreen';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useThemedAlert } from './ThemedAlert';
 
+
+const FlyingItem = ({ uri, startX, startY, onComplete }: { uri: string, startX: number, startY: number, onComplete: () => void }) => {
+    const animX = React.useRef(new Animated.Value(startX)).current;
+    const animY = React.useRef(new Animated.Value(startY)).current;
+    const scale = React.useRef(new Animated.Value(1)).current;
+    const opacity = React.useRef(new Animated.Value(1)).current;
+
+    React.useEffect(() => {
+        // Approximate cart position (top right)
+        const targetX = 350;
+        const targetY = 60;
+
+        Animated.parallel([
+            Animated.timing(animX, { toValue: targetX, duration: 600, easing: Easing.bezier(0.25, 0.1, 0.25, 1), useNativeDriver: true }),
+            Animated.timing(animY, { toValue: targetY, duration: 600, easing: Easing.bezier(0.25, 0.1, 0.25, 1), useNativeDriver: true }),
+            Animated.timing(scale, { toValue: 0.2, duration: 600, useNativeDriver: true }),
+            Animated.timing(opacity, { toValue: 0, duration: 600, delay: 400, useNativeDriver: true }),
+        ]).start(() => {
+            onComplete();
+        });
+    }, []);
+
+    return (
+        <Animated.Image 
+            source={{ uri }} 
+            style={{ 
+                position: 'absolute', zIndex: 1000, 
+                width: 60, height: 60, borderRadius: 30,
+                transform: [{ translateX: animX }, { translateY: animY }, { scale }],
+                opacity
+            }} 
+        />
+    );
+};
+
 export function ShopScreen() {
     const { theme } = useTheme();
     const { showAlert, AlertComponent } = useThemedAlert();
     const [loading, setLoading] = useState(true);
     const [products, setProducts] = useState<Product[]>([]);
+    const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+    const [flyingItems, setFlyingItems] = useState<{id: string, uri: string, x: number, y: number}[]>([]);
+    const cartScale = React.useRef(new Animated.Value(1)).current;
 
     // Local Cart State
     const [cart, setCart] = useState<{ product: Product, qty: number }[]>([]);
@@ -23,6 +62,7 @@ export function ShopScreen() {
     // Checkout State
     const [processing, setProcessing] = useState(false);
     const [successDisplay, setSuccessDisplay] = useState(false);
+    const [showWifiPassword, setShowWifiPassword] = useState(false);
     const [shipping, setShipping] = useState({ name: '', phone: '', address: '' });
     const [paymentMethod, setPaymentMethod] = useState<'cod' | 'upi'>('cod');
     const [wifiConfig, setWifiConfig] = useState({ ssid: '', password: '' });
@@ -119,7 +159,15 @@ export function ShopScreen() {
         }
     };
 
-    const addToCart = (product: Product) => {
+    const addToCart = (product: Product, event?: any) => {
+        if (event && product.imageUrl) {
+            const { pageX, pageY } = event.nativeEvent;
+            const newId = Math.random().toString();
+            setFlyingItems(prev => [...prev, { id: newId, uri: product.imageUrl!, x: pageX - 30, y: pageY - 30 }]);
+            setTimeout(() => {
+                setFlyingItems(prev => prev.filter(f => f.id !== newId));
+            }, 800);
+        }
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         setCart(prev => {
             const existing = prev.find(p => p.product.id === product.id);
@@ -130,6 +178,17 @@ export function ShopScreen() {
         });
     };
 
+    const decreaseQty = (product: Product) => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        setCart(prev => {
+            const existing = prev.find(p => p.product.id === product.id);
+            if (existing && existing.qty > 1) {
+                return prev.map(p => p.product.id === product.id ? { ...p, qty: p.qty - 1 } : p);
+            }
+            return prev.filter(p => p.product.id !== product.id);
+        });
+    };
+    
     const removeFromCart = (productId: number) => {
         setCart(prev => prev.filter(p => p.product.id !== productId));
     };
@@ -313,7 +372,7 @@ export function ShopScreen() {
                 ) : products.length > 0 ? (
                     <View style={styles.grid}>
                         {products.map((prod) => (
-                            <View key={prod.id} style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                            <TouchableOpacity key={prod.id} style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]} onPress={() => setSelectedProduct(prod)}>
                                 {prod.imageUrl ? (
                                     <Image source={{ uri: prod.imageUrl }} style={styles.img} resizeMode="contain" />
                                 ) : (
@@ -324,15 +383,48 @@ export function ShopScreen() {
                                 <View style={{ padding: 16 }}>
                                     <Text style={[styles.prodName, { color: theme.text }]} numberOfLines={1}>{prod.name}</Text>
                                     <Text style={[styles.prodModel, { color: theme.textSecondary }]}>{prod.modelCode}</Text>
+                                    
+                                    {/* Ratings & Stock */}
+                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8, alignItems: 'center' }}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                            <Star color="#f59e0b" size={14} fill="#f59e0b" />
+                                            <Text style={{ color: theme.textSecondary, fontSize: 12, marginLeft: 4 }}>{Number(prod.rating || 0).toFixed(1)} ({prod.totalReviews || 0})</Text>
+                                        </View>
+                                        <Text style={{ color: (prod.stockCount || 0) > 0 ? '#10b981' : '#ef4444', fontSize: 10, fontWeight: 'bold' }}>
+                                            {(prod.stockCount || 0) > 0 ? `${prod.stockCount} in stock` : 'OUT OF STOCK'}
+                                        </Text>
+                                    </View>
 
                                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
                                         <Text style={[styles.priceTag, { color: theme.primary }]}>₹{parseFloat(prod.price).toLocaleString('en-IN')}</Text>
-                                        <TouchableOpacity onPress={() => addToCart(prod)} style={[styles.addBtn, { backgroundColor: theme.border }]}>
-                                            <Text style={{ color: theme.text, fontWeight: 'bold', fontSize: 12 }}>Add to Cart</Text>
-                                        </TouchableOpacity>
+                                        
+                                        {/* Blinkit Style Add Button */}
+                                        {(() => {
+                                            const inCart = cart.find(c => c.product.id === prod.id);
+                                            if (inCart) {
+                                                return (
+                                                    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.primary, borderRadius: 8, overflow: 'hidden' }}>
+                                                        <TouchableOpacity onPress={() => decreaseQty(prod)} style={{ padding: 8, backgroundColor: 'rgba(0,0,0,0.1)' }}>
+                                                            <Minus color="#000" size={14} />
+                                                        </TouchableOpacity>
+                                                        <Text style={{ color: '#000', fontWeight: 'bold', paddingHorizontal: 12 }}>{inCart.qty}</Text>
+                                                        <TouchableOpacity onPress={(e) => addToCart(prod, e)} style={{ padding: 8, backgroundColor: 'rgba(0,0,0,0.1)' }}>
+                                                            <Plus color="#000" size={14} />
+                                                        </TouchableOpacity>
+                                                    </View>
+                                                );
+                                            }
+                                            return (
+                                                <TouchableOpacity onPress={(e) => addToCart(prod, e)} disabled={(prod.stockCount || 0) <= 0} style={[styles.addBtn, { backgroundColor: (prod.stockCount || 0) > 0 ? theme.border : theme.background }]}>
+                                                    <Text style={{ color: (prod.stockCount || 0) > 0 ? theme.text : theme.textSecondary, fontWeight: 'bold', fontSize: 12 }}>
+                                                        {(prod.stockCount || 0) > 0 ? 'ADD' : 'SOLD OUT'}
+                                                    </Text>
+                                                </TouchableOpacity>
+                                            );
+                                        })()}
                                     </View>
                                 </View>
-                            </View>
+                            </TouchableOpacity>
                         ))}
                     </View>
                 ) : (
@@ -343,6 +435,30 @@ export function ShopScreen() {
                 )}
                 <View style={{ height: 100 }} />
             </ScrollView>
+
+            
+            {cartCount > 0 && (
+                <View style={{ position: 'absolute', bottom: 30, left: 24, right: 24, zIndex: 10 }}>
+                    <TouchableOpacity
+                        onPress={() => setCartVisible(true)}
+                        style={{ backgroundColor: theme.primary, borderRadius: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 8 }}
+                    >
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <ShoppingCart color="#000" size={24} style={{ marginRight: 12 }} />
+                            <View>
+                                <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 16 }}>{cartCount} ITEM{cartCount > 1 ? 'S' : ''}</Text>
+                                <Text style={{ color: 'rgba(0,0,0,0.7)', fontSize: 12 }}>View Cart</Text>
+                            </View>
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 18, marginRight: 8 }}>₹{getTotal().toLocaleString('en-IN')}</Text>
+                            <View style={{ backgroundColor: '#000', padding: 8, borderRadius: 12 }}>
+                                <Text style={{ color: theme.primary, fontWeight: 'bold', fontSize: 12 }}>CHECKOUT</Text>
+                            </View>
+                        </View>
+                    </TouchableOpacity>
+                </View>
+            )}
 
             <Modal visible={cartVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setCartVisible(false)}>
                 <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={[styles.modalBg, { backgroundColor: theme.background }]}>
@@ -522,6 +638,49 @@ export function ShopScreen() {
                 </View>
             )}
 
+            {/* Product Detail Modal */}
+            <Modal visible={!!selectedProduct} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setSelectedProduct(null)}>
+                <View style={[styles.modalBg, { backgroundColor: theme.background }]}>
+                    <View style={styles.modalHeader}>
+                        <Text style={[styles.modalTitle, { color: theme.text }]}>Product Details</Text>
+                        <TouchableOpacity onPress={() => setSelectedProduct(null)} style={{ padding: 8 }}>
+                            <X color={theme.text} size={24} />
+                        </TouchableOpacity>
+                    </View>
+                    {selectedProduct && (
+                        <ScrollView style={{ flex: 1 }}>
+                            <Image source={{ uri: selectedProduct.imageUrl || 'https://via.placeholder.com/400' }} style={{ width: '100%', height: 250 }} resizeMode="contain" />
+                            <View style={{ padding: 24 }}>
+                                <Text style={{ fontSize: 24, fontWeight: 'bold', color: theme.text }}>{selectedProduct.name}</Text>
+                                <Text style={{ fontSize: 14, color: theme.textSecondary, marginBottom: 16 }}>{selectedProduct.modelCode}</Text>
+                                <Text style={{ fontSize: 28, fontWeight: 'bold', color: theme.primary, marginBottom: 24 }}>₹{parseFloat(selectedProduct.price).toLocaleString('en-IN')}</Text>
+                                
+                                <Text style={{ fontSize: 18, fontWeight: 'bold', color: theme.text, marginBottom: 8 }}>Description</Text>
+                                <Text style={{ fontSize: 14, color: theme.textSecondary, lineHeight: 22, marginBottom: 24 }}>
+                                    {selectedProduct.description || "Official SwitchNest Smart Hardware."}
+                                </Text>
+
+                                <Text style={{ fontSize: 18, fontWeight: 'bold', color: theme.text, marginBottom: 16 }}>Reviews & Ratings</Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
+                                    <Star color="#f59e0b" size={32} fill="#f59e0b" />
+                                    <View style={{ marginLeft: 12 }}>
+                                        <Text style={{ fontSize: 24, fontWeight: 'bold', color: theme.text }}>{Number(selectedProduct.rating || 0).toFixed(1)} <Text style={{ fontSize: 14, color: theme.textSecondary, fontWeight: 'normal' }}>out of 5</Text></Text>
+                                        <Text style={{ color: theme.textSecondary }}>Based on {selectedProduct.totalReviews || 0} reviews</Text>
+                                    </View>
+                                </View>
+                                
+                                {/* Placeholder for actual reviews fetched from API */}
+                                <View style={{ padding: 16, backgroundColor: theme.card, borderRadius: 12, borderWidth: 1, borderColor: theme.border, alignItems: 'center' }}>
+                                    <MessageCircle color={theme.textSecondary} size={32} style={{ marginBottom: 8 }} />
+                                    <Text style={{ color: theme.textSecondary }}>Reviews are loaded dynamically.</Text>
+                                </View>
+                                <View style={{ height: 100 }} />
+                            </View>
+                        </ScrollView>
+                    )}
+                </View>
+            </Modal>
+            
             <OrdersScreen visible={ordersVisible} onClose={() => setOrdersVisible(false)} />
             {AlertComponent}
         </View>

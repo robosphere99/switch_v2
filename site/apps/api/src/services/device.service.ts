@@ -394,7 +394,7 @@ export async function setEspLed(args: {
 
   const esp = await prisma.espDevice.update({
     where: { id: espId, homeId },
-    data: { ledEnabled: enabled } as any,
+    data: { ledEnabled: enabled },
   });
 
   await prisma.auditLog.create({

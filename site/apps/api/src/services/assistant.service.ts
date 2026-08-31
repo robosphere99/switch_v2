@@ -71,15 +71,19 @@ function matchedTypes(text: string): string[] {
  * Parse a natural-language command against the home's devices.
  * Returns matched devices + the requested action (on/off), or null if unclear.
  */
-export function parseIntent(text: string, rawDevices: { id: number; name: string; type: string; room?: { name: string } | null }[]): {
+export function parseIntent(
+  enhancedText: string,
+  currentText: string,
+  rawDevices: { id: number; name: string; type: string; room?: { name: string } | null }[]
+): {
   action: DeviceStatus | null;
   actions: ParsedAction[];
   matchedBy: string;
 } {
-  const action = detectAction(text);
-  const lower = text.toLowerCase();
-  const all = isAllRequest(text);
-  const types = matchedTypes(text);
+  const action = detectAction(currentText);
+  const lower = enhancedText.toLowerCase();
+  const all = isAllRequest(enhancedText);
+  const types = matchedTypes(enhancedText);
 
   // Extract Mentioned Room (Zero-Cost Context Engine)
   const roomNames = new Set(rawDevices.map((d) => d.room?.name).filter(Boolean) as string[]);
@@ -377,6 +381,7 @@ export function parseLlmActions(
 async function tryLlmReply(
   content: string,
   devices: DeviceBrief[],
+  products: any[]
 ): Promise<LlmReply | null> {
   if (!(await aiConfigured())) return null;
   try {
@@ -409,7 +414,7 @@ async function tryLlmReply(
 // Message flow: user message -> LLM (agar configured) / rule parse -> reply
 // ---------------------------------------------------------------------------
 
-export async function sendMessage(userId: number, chatId: number, content: string) {
+export async function sendMessage(userId: number, chatId: number, content: string, replyToMessageId?: number) {
   const chat = await getChat(userId, chatId);
   if (!chat) throw new AppError("NOT_FOUND", "Chat not found", 404);
 
@@ -433,14 +438,22 @@ export async function sendMessage(userId: number, chatId: number, content: strin
     },
   });
 
-  // Status / troubleshooting questions pehle — command flow me nahi jaane dena.
-  // (Rule-based deterministic hai — LLM se bhi pehle, taaki status hamesha sahi)
-  const queryType = detectQueryType(content);
+  const products = await prisma.product.findMany({ where: { active: true }, select: { id: true, name: true, modelCode: true, relayCount: true, price: true, stockCount: true } });
+  
+  let enhancedContent = content;
+  if (replyToMessageId) {
+    const repliedMsg = await prisma.assistantMessage.findUnique({ where: { id: replyToMessageId } });
+    if (repliedMsg) {
+      enhancedContent = `(Context: The user is replying to a previous message: "${repliedMsg.content}")\nUser says: ${content}`;
+    }
+  }
+
+  const queryType = detectQueryType(enhancedContent);
   if (queryType) {
     const replyText =
       queryType === "troubleshoot"
-        ? buildTroubleshootReply(devices, content)
-        : buildStatusReply(devices, content);
+        ? buildTroubleshootReply(devices, enhancedContent)
+        : buildStatusReply(devices, enhancedContent);
     const assistantMessage = await prisma.assistantMessage.create({
       data: { chatId, role: "assistant", content: encodeAssistantContent(replyText, null) },
     });
@@ -454,7 +467,7 @@ export async function sendMessage(userId: number, chatId: number, content: strin
   }
 
   // Phase 7: LLM configured → try karo (conversational + control dono)
-  const llm = await tryLlmReply(content, devices);
+  const llm = await tryLlmReply(enhancedContent, devices, products);
   if (llm) {
     const assistantMessage = await prisma.assistantMessage.create({
       data: { chatId, role: "assistant", content: encodeAssistantContent(llm.content, llm.proposal) },
@@ -473,7 +486,7 @@ export async function sendMessage(userId: number, chatId: number, content: strin
   }
 
   // Rule-based fallback (LLM off / fail / invalid)
-  const parsed = parseIntent(content, devices);
+  const parsed = parseIntent(enhancedContent, content, devices);
   let replyText: string;
   let proposal: ParsedAction[] | null = null;
 

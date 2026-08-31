@@ -8,6 +8,9 @@ import { prisma } from "./prisma";
 
 let io: Server | null = null;
 
+// Track pending WebRTC calls for users who are currently offline or backgrounded
+const activeCalls = new Map<number, { adminId: number, callType: string, timestamp: number }>();
+
 /** Attach Socket.IO to the HTTP server. Call once at startup. */
 export function initSocket(server: HttpServer): Server {
   io = new Server(server, {
@@ -39,9 +42,10 @@ export function initSocket(server: HttpServer): Server {
     }
 
     let joined = 0;
+    let isAdmin = false;
     try {
       const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
-      const isAdmin = user?.role === "system_admin";
+      isAdmin = user?.role === "system_admin";
       const homes = isAdmin
         ? await prisma.home.findMany({ select: { id: true } })
         : await prisma.homeMember.findMany({ where: { userId }, select: { homeId: true } });
@@ -55,6 +59,90 @@ export function initSocket(server: HttpServer): Server {
     // Connection ack — web ko "live" indicator ke liye (rooms count ke saath).
     socket.emit(REALTIME_EVENTS.socketReady, { homes: joined });
     console.log(`[socket] user ${userId} connected (${joined} homes)`);
+
+    // Sync any pending WebRTC calls if the user was offline/backgrounded
+    const pendingCall = activeCalls.get(userId);
+    if (pendingCall && (Date.now() - pendingCall.timestamp < 60000)) {
+      socket.emit('webrtc:signal', {
+        senderId: pendingCall.adminId,
+        type: 'call-request',
+        payload: { callType: pendingCall.callType }
+      });
+    }
+
+    // WebRTC Generic Signaling
+    socket.on('webrtc:signal', (data) => {
+      const { targetId, type, payload } = data || {};
+      if (targetId) {
+        const roomName = `user:${targetId}`;
+        const room = io?.sockets.adapter.rooms.get(roomName);
+
+        if (type === 'call-request') {
+          activeCalls.set(targetId, { adminId: userId, callType: payload?.callType || 'video', timestamp: Date.now() });
+          setTimeout(() => activeCalls.delete(targetId), 60000);
+
+          if (!room || room.size === 0) {
+            // User is offline or backgrounded -> Wake them up with a Push Notification!
+            import("../services/push.service").then(({ sendPushToUser }) => {
+              sendPushToUser(
+                targetId,
+                "Incoming Support Call",
+                "Admin is calling you for support. Tap to answer.",
+                { type: 'webrtc-call', callType: payload?.callType || 'video', adminId: userId },
+                "support"
+              ).catch(console.error);
+            });
+            
+            // Inform the admin UI that we are waking the user up
+            socket.emit('webrtc:signal', {
+              senderId: targetId,
+              type: 'call-offline-push-sent'
+            });
+          }
+        } else if (type === 'call-end' || type === 'call-reject' || type === 'call-accept') {
+          activeCalls.delete(targetId);
+          activeCalls.delete(userId);
+        }
+
+        socket.to(roomName).emit('webrtc:signal', {
+          senderId: userId,
+          type,
+          payload
+        });
+      }
+    });
+
+    // Terminal Logging & Commands for Admins
+    socket.on('admin:subscribe-logs', (data) => {
+      if (!isAdmin) return;
+      const { espId } = data || {};
+      if (espId) {
+        socket.join(`board-logs-${espId}`);
+        socket.emit('admin:board-log', `[Server] Subscribed to terminal logs for board #${espId}`);
+      }
+    });
+    
+    socket.on('admin:unsubscribe-logs', (data) => {
+      const { espId } = data || {};
+      if (espId) socket.leave(`board-logs-${espId}`);
+    });
+
+    socket.on('admin:send-cmd', async (data) => {
+      if (!isAdmin) return;
+      const { espId, cmd } = data || {};
+      if (espId && cmd) {
+        try {
+          const esp = await prisma.espDevice.findUnique({ where: { id: espId }, select: { macAddress: true }});
+          if (esp) {
+            import("../services/mqtt.service").then(({ publishTermCommand }) => {
+              publishTermCommand(esp.macAddress, cmd);
+            });
+          }
+        } catch (e) {
+          console.error("[socket] Failed to send terminal command", e);
+        }
+      }
+    });
   });
 
   return io;
@@ -127,4 +215,8 @@ export async function leaveHomeRoom(userId: number, homeId: number): Promise<voi
     // lookup failure shouldn't break membership ops
   }
   emitToUser(userId, REALTIME_EVENTS.homeAccessRevoked, { homeId });
+}
+
+export function emitToBoardLogs(espId: number, logMsg: string): void {
+  io?.to(`board-logs-${espId}`).emit("admin:board-log", logMsg);
 }

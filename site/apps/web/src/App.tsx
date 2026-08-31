@@ -32,6 +32,7 @@ import { PrintSerials } from "./pages/PrintSerials";
 import { PrintBill } from "./pages/PrintBill";
 import { VerifyBill } from "./pages/VerifyBill";
 import { AdminFlasherGuide } from "./components/AdminFlasherGuide";
+import { UserWebRTCCallModal } from "./components/UserWebRTCCallModal";
 import { Warranty } from "./pages/Warranty";
 import { Support } from "./pages/Support";
 import { Install } from "./pages/Install";
@@ -112,6 +113,7 @@ export default function App() {
     <div className="min-h-screen overflow-x-clip">
       <Navbar />
       <ChatWidget />
+      <UserWebRTCCallModal />
       <main className="pb-24 md:pb-0">
         <Routes>
           <Route path="/" element={<Landing />} />

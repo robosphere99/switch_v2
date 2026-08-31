@@ -12,7 +12,6 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 
-
 namespace ApiManager {
 
 // ==================================================
@@ -300,13 +299,16 @@ bool downloadDevices() {
   return true;
 }
 bool updateDevice(int deviceId, bool state) {
-  if (inBackoff())
-    return false;
-
   // If MQTT is connected, we don't need to do HTTP POSTs
+  // This MUST be checked before inBackoff(), otherwise a temporarily
+  // unreachable HTTP server will completely block MQTT state synchronization.
   if (MqttManager::isConnected()) {
+    MqttManager::publishState();
     return true; // Pretend it succeeded so flush clears it
   }
+
+  if (inBackoff())
+    return false;
 
   // WiFi down hai toh HTTP attempt hi mat karo — otherwise ARP/connect
   // stall seconds tak loop block karta hai. Pending queue mein update

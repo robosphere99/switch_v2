@@ -1,4 +1,6 @@
 import { Router } from "express";
+import multer from 'multer';
+import path from 'path';
 import { requireAuth } from "../middleware/auth";
 import { prisma } from "../lib/prisma";
 import { AppError, ok } from "../lib/response";
@@ -13,14 +15,77 @@ const execAsync = promisify(exec);
 
 export const shopRouter = Router();
 
+const storage = multer.diskStorage({
+  destination: 'uploads/',
+  filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_'))
+});
+const upload = multer({ storage, limits: { fileSize: 50 * 1024 * 1024 } }); // 50MB
+
+
 // ---------- Public: products ----------
 
 shopRouter.get("/products", async (_req, res) => {
   const products = await prisma.product.findMany({
     where: { active: true },
+    include: { media: true },
     orderBy: { id: "asc" },
   });
   ok(res, products);
+});
+
+
+// ---------- Media Upload ----------
+shopRouter.post('/upload', requireAuth, upload.single('file'), (req, res) => {
+  if (!req.file) throw new AppError('BAD_REQUEST', 'No file uploaded');
+  ok(res, { url: `/uploads/${req.file.filename}` });
+});
+
+// ---------- Product Reviews ----------
+shopRouter.get('/products/:id/reviews', async (req, res) => {
+  const reviews = await prisma.productReview.findMany({
+    where: { productId: Number(req.params.id) },
+    include: { user: { select: { username: true, avatarUrl: true } }, media: true },
+    orderBy: { createdAt: 'desc' }
+  });
+  ok(res, reviews);
+});
+
+shopRouter.post('/products/:id/reviews', requireAuth, async (req, res) => {
+  const productId = Number(req.params.id);
+  const { rating, comment, mediaUrls } = req.body;
+  if (!rating || rating < 1 || rating > 5) throw new AppError('BAD_REQUEST', 'Valid rating (1-5) required');
+  
+  const product = await prisma.product.findUnique({ where: { id: productId } });
+  if (!product) throw new AppError('NOT_FOUND', 'Product not found');
+
+  const review = await prisma.$transaction(async (tx) => {
+    const rev = await tx.productReview.create({
+      data: {
+        productId,
+        userId: req.user!.sub,
+        rating,
+        comment,
+        media: {
+          create: (mediaUrls || []).map((url: string) => ({ url, type: url.match(/\.(mp4|mov|webm)$/i) ? 'video' : 'image' }))
+        }
+      },
+      include: { media: true, user: { select: { username: true } } }
+    });
+
+    // Update aggregate rating
+    const all = await tx.productReview.findMany({ where: { productId }, select: { rating: true } });
+    const total = all.length;
+    const avg = all.reduce((sum, r) => sum + Number(r.rating), 0) / total;
+    
+    await tx.product.update({
+      where: { id: productId },
+      data: { rating: avg, totalReviews: total }
+    });
+    
+    return rev;
+  });
+  
+  ok(res, review, 201);
 });
 
 // ---------- Auth: orders ----------
@@ -134,13 +199,7 @@ shopRouter.post("/orders/:id/cancel", requireAuth, async (req, res) => {
   if (order.status !== "pending") {
     throw new AppError("BAD_REQUEST", "Only pending orders can be cancelled");
   }
-  await prisma.$transaction([
-    prisma.serialRegistry.updateMany({
-      where: { orderId: id },
-      data: { status: "available", orderId: null },
-    }),
-    prisma.order.update({ where: { id }, data: { status: "cancelled" } }),
-  ]);
+  await updateOrderStatus(id, "cancelled");
   await audit(req.user!.sub, "shop.order.cancel", { entity: "order", entityId: id });
   ok(res, { cancelled: true });
 });

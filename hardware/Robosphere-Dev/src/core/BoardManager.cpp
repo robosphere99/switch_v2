@@ -3,7 +3,6 @@
 #include "core/BoardProfiles.h"
 #include "preferences/PreferencesManager.h"
 
-
 static const BoardProfile *currentBoard = nullptr;
 
 namespace BoardManager {
@@ -48,6 +47,23 @@ void setBoard(BoardType type) {
     currentBoard = &board4R;
     break;
   }
+}
+
+static bool _boardInit = false;
+
+static String _relayNames[8] = {"", "", "", "", "", "", "", ""};
+
+void setRelayName(uint8_t index, const String &name) {
+  if (index < 8) {
+    _relayNames[index] = name;
+  }
+}
+
+String getRelayName(uint8_t index) {
+  if (index < 8) {
+    return _relayNames[index];
+  }
+  return "";
 }
 
 const BoardProfile *getBoard() { return currentBoard; }

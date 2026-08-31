@@ -1,0 +1,1 @@
+const fs = require('fs'); const content = fs.readFileSync('app.config.js', 'utf8'); fs.writeFileSync('app.config.js', content.replace('"expo-updates",', '"expo-updates",\n            "expo-asset",'));

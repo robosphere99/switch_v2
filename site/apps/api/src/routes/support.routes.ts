@@ -12,8 +12,30 @@ import { saveAttachment, readAttachmentFile, deleteAttachmentFile } from "../lib
 import { sendSupportReplyEmail } from "../lib/email.service";
 import { env } from "../config/env";
 import type { AccessTokenPayload } from "@robosphere/shared";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
+import { attachmentDir } from "../lib/paths";
 
 export const supportRouter = Router();
+
+if (!fs.existsSync(attachmentDir)) {
+  fs.mkdirSync(attachmentDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: attachmentDir,
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname) || '';
+    const safeName = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9_-]/g, '');
+    cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}-${safeName}${ext}`);
+  }
+});
+
+const upload = multer({ 
+  storage, 
+  limits: { fileSize: 50 * 1024 * 1024 } // 50MB
+});
 
 // Support chat spam / flood se bachao — message send per IP.
 const userSendLimiter = rateLimit({
@@ -312,6 +334,93 @@ supportRouter.post("/messages", requireAuth, userSendLimiter, validateBody(userS
 
   // Sender (User) ko bhi emit karo taaki uske web/mobile dono devices sync ho jayen
   emitToUser(userId, "support:new", { senderRole: "user", message: created });
+
+  ok(res, created, 201);
+});
+
+// New media upload endpoint for USER
+supportRouter.post("/messages/media", requireAuth, userSendLimiter, upload.single('file'), async (req, res) => {
+  const userId = req.user!.sub;
+  const message = req.body.message || '';
+
+  if (!req.file && !message) {
+    throw new AppError("VALIDATION_ERROR", "Message or file required", 400);
+  }
+
+  const created = await supportModel().create({
+    data: {
+      userId,
+      senderRole: "user",
+      senderName: req.user!.username,
+      message: message,
+      attachmentName: req.file?.originalname ?? null,
+      attachmentType: req.file?.mimetype ?? null,
+      attachmentData: null,
+      attachmentPath: req.file?.filename ?? null, 
+      readByUser: true,
+      readByAdmin: false,
+    },
+  });
+
+  const admin = await prisma.user.findFirst({
+    where: { role: "system_admin" },
+    select: { id: true },
+    orderBy: { id: "asc" },
+  });
+  if (admin) {
+    if (!(await isMuted(admin.id, req.user!.sub))) {
+      await createNotification(admin.id, {
+        category: "support",
+        type: "info",
+        title: "📲 User ne support me media bheja",
+        body: JSON.stringify({ u: req.user!.sub, t: "Media file uploaded" }),
+      });
+    }
+    emitToUser(admin.id, "support:new", { senderRole: "user", message: created });
+  }
+  emitToUser(userId, "support:new", { senderRole: "user", message: created });
+
+  ok(res, created, 201);
+});
+
+// New media upload endpoint for ADMIN
+supportRouter.post("/admin/messages/media", requireAuth, adminSendLimiter, upload.single('file'), async (req, res) => {
+  if (req.user!.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
+  const userId = Number(req.body.userId);
+  const message = req.body.message || '';
+
+  if (!Number.isInteger(userId) || userId <= 0) throw new AppError("VALIDATION_ERROR", "Valid userId required", 400);
+  if (!req.file && !message) throw new AppError("VALIDATION_ERROR", "Message or file required", 400);
+
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, username: true, email: true } });
+  if (!user) throw new AppError("NOT_FOUND", "User not found", 404);
+
+  const created = await supportModel().create({
+    data: {
+      userId,
+      senderRole: "admin",
+      senderName: req.user!.username,
+      message: message,
+      attachmentName: req.file?.originalname ?? null,
+      attachmentType: req.file?.mimetype ?? null,
+      attachmentData: null,
+      attachmentPath: req.file?.filename ?? null,
+      readByUser: false,
+      readByAdmin: true,
+    },
+  });
+
+  if (!(await isMuted(userId, req.user!.sub))) {
+    await createNotification(userId, {
+      category: "support",
+      type: "info",
+      title: "🎧 Support ne media bheja",
+      body: JSON.stringify({ u: req.user!.sub, t: "Media file sent" }),
+    });
+  }
+
+  emitToUser(userId, "support:new", { senderRole: "admin", message: created });
+  emitToUser(req.user!.sub, "support:new", { senderRole: "admin", message: created });
 
   ok(res, created, 201);
 });

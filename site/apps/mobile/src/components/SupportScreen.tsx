@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, FlatList, DeviceEventEmitter } from 'react-native';
-import { ArrowLeft, MessageSquare, Ticket, Send, CheckCheck, Trash2, Key } from 'lucide-react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, FlatList, DeviceEventEmitter, Image as RNImage, Modal } from 'react-native';
+import { ArrowLeft, MessageSquare, Ticket, Send, CheckCheck, Trash2, Key, Paperclip, Play, FileText } from 'lucide-react-native';
 import { useTheme } from '../theme/ThemeContext';
 import * as Haptics from 'expo-haptics';
+import * as DocumentPicker from 'expo-document-picker';
+import * as SecureStore from 'expo-secure-store';
+import { api, API_URL } from '../api/client';
 import { getMySupportChat, getMySupportTickets, sendSupportReply, submitSupport, SupportMessage, SupportTicket, deleteMySupportMessage } from '../api/support';
 
 const SUBJECTS = [
@@ -15,15 +18,18 @@ const SUBJECTS = [
     "Other",
 ];
 
-export function SupportScreen({ onClose, user }: { onClose: () => void, user?: any }) {
+export function SupportScreen({ onClose, user, initialDraft = '' }: { onClose: () => void, user?: any, initialDraft?: string }) {
     const { theme } = useTheme();
     const [tab, setTab] = useState<'CHAT' | 'TICKETS'>('CHAT');
 
     // Chat State
     const [messages, setMessages] = useState<SupportMessage[]>([]);
-    const [draft, setDraft] = useState('');
+    const [draft, setDraft] = useState(initialDraft);
+    const [attachment, setAttachment] = useState<DocumentPicker.DocumentPickerAsset | null>(null);
     const [chatLoading, setChatLoading] = useState(true);
     const [chatSending, setChatSending] = useState(false);
+    const [accessToken, setAccessToken] = useState<string | null>(null);
+    const [zoomImageUri, setZoomImageUri] = useState<string | null>(null);
     const flatListRef = useRef<FlatList>(null);
 
     // Tickets State
@@ -47,7 +53,20 @@ export function SupportScreen({ onClose, user }: { onClose: () => void, user?: a
     }, [tab]);
 
     useEffect(() => {
-        const sub = DeviceEventEmitter.addListener('support_sync', () => loadChat(true));
+        SecureStore.getItemAsync('accessToken').then(setAccessToken);
+        const sub = DeviceEventEmitter.addListener('support_sync', (payload) => {
+            console.log('✅ UI RECEIVED support_sync EVENT', payload);
+            if (payload && payload.message) {
+                // Instantly append the new message without refetching!
+                setMessages(prev => {
+                    // Check if it already exists to prevent duplicates
+                    if (prev.find(m => m.id === payload.message.id)) return prev;
+                    return [...prev, payload.message];
+                });
+            } else {
+                loadChat(true);
+            }
+        });
         return () => sub.remove();
     }, []);
 
@@ -70,14 +89,49 @@ export function SupportScreen({ onClose, user }: { onClose: () => void, user?: a
     };
 
     const handleSendChat = async () => {
-        if (!draft.trim() || chatSending) return;
+        if (!draft.trim() && !attachment) return;
+        if (chatSending) return;
         setChatSending(true);
-        const res = await sendSupportReply(draft.trim());
-        if (res.success) {
+        try {
+            if (attachment) {
+                const formData = new FormData();
+                if (draft.trim()) formData.append('message', draft.trim());
+                
+                const uri = Platform.OS === 'android' ? attachment.uri : attachment.uri.replace('file://', '');
+                formData.append('file', {
+                    uri: uri,
+                    name: attachment.name || 'upload.bin',
+                    type: attachment.mimeType || 'application/octet-stream'
+                } as any);
+
+                await api.post('/support/messages/media', formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' }
+                });
+            } else {
+                await sendSupportReply(draft.trim());
+            }
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
             setDraft('');
+            setAttachment(null);
             await loadChat();
+        } catch (error) {
+            console.error("Failed to send media message", error);
         }
         setChatSending(false);
+    };
+
+    const pickAttachment = async () => {
+        try {
+            const result = await DocumentPicker.getDocumentAsync({
+                type: '*/*',
+                copyToCacheDirectory: true,
+            });
+            if (result.canceled === false && result.assets && result.assets.length > 0) {
+                setAttachment(result.assets[0]);
+            }
+        } catch (err) {
+            console.error("Error picking document", err);
+        }
     };
 
     const handleDeleteMsg = async (id: number) => {
@@ -119,9 +173,30 @@ export function SupportScreen({ onClose, user }: { onClose: () => void, user?: a
                     <Text style={{ fontSize: 10, fontWeight: '800', color: isUser ? '#ffffff90' : theme.textSecondary, marginBottom: 4, textTransform: 'uppercase' }}>
                         {isUser ? 'You' : 'Support'}
                     </Text>
-                    <Text style={{ fontSize: 14, color: isUser ? '#fff' : theme.text, lineHeight: 20 }}>
-                        {item.message}
-                    </Text>
+                    {item.attachmentPath && (
+                        <View style={{ marginBottom: item.message ? 8 : 0, borderRadius: 12, overflow: 'hidden' }}>
+                            {item.attachmentType?.startsWith('video/') ? (
+                                <View style={{ width: 200, height: 150, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }}>
+                                    <Play color="#fff" size={40} opacity={0.7} />
+                                    <Text style={{ color: '#fff', fontSize: 10, marginTop: 8 }}>Video Attachment</Text>
+                                </View>
+                            ) : item.attachmentType?.startsWith('image/') && accessToken ? (
+                                <TouchableOpacity onPress={() => setZoomImageUri(`${API_URL}/support/attachment/${item.id}?token=${encodeURIComponent(accessToken)}`)}>
+                                    <RNImage source={{ uri: `${API_URL}/support/attachment/${item.id}?token=${encodeURIComponent(accessToken)}` }} style={{ width: 200, height: 200, borderRadius: 12 }} resizeMode="cover" />
+                                </TouchableOpacity>
+                            ) : (
+                                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isUser ? '#ffffff20' : theme.background, padding: 12, borderRadius: 8 }}>
+                                    <FileText color={isUser ? '#fff' : theme.primary} size={24} />
+                                    <Text style={{ color: isUser ? '#fff' : theme.text, marginLeft: 8, flex: 1, fontSize: 12 }} numberOfLines={1}>{item.attachmentName}</Text>
+                                </View>
+                            )}
+                        </View>
+                    )}
+                    {item.message ? (
+                        <Text style={{ fontSize: 14, color: isUser ? '#fff' : theme.text, lineHeight: 20 }}>
+                            {item.message}
+                        </Text>
+                    ) : null}
 
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 4, gap: 4 }}>
                         <Text style={{ fontSize: 9, color: isUser ? '#ffffff80' : theme.textSecondary }}>
@@ -144,8 +219,19 @@ export function SupportScreen({ onClose, user }: { onClose: () => void, user?: a
     return (
         <KeyboardAvoidingView
             style={[styles.container, { backgroundColor: theme.background }]}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
+            {/* Fullscreen Image Zoom Modal */}
+            <Modal visible={!!zoomImageUri} transparent={true} animationType="fade" onRequestClose={() => setZoomImageUri(null)}>
+                <View style={{ flex: 1, backgroundColor: '#000000e0', justifyContent: 'center', alignItems: 'center' }}>
+                    <TouchableOpacity style={{ position: 'absolute', top: 40, right: 20, zIndex: 10, padding: 8 }} onPress={() => setZoomImageUri(null)}>
+                        <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>Close ✕</Text>
+                    </TouchableOpacity>
+                    {zoomImageUri && (
+                        <RNImage source={{ uri: zoomImageUri }} style={{ width: '100%', height: '80%' }} resizeMode="contain" />
+                    )}
+                </View>
+            </Modal>
             {/* Header */}
             <View style={[styles.header, { borderColor: theme.border }]}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -195,8 +281,27 @@ export function SupportScreen({ onClose, user }: { onClose: () => void, user?: a
                         />
                     )}
 
+                    {/* Attachment Preview */}
+                    {attachment && (
+                        <View style={{ padding: 10, backgroundColor: theme.card, borderColor: theme.border, borderWidth: 1, borderBottomWidth: 0, flexDirection: 'row', alignItems: 'center' }}>
+                            {attachment.mimeType?.startsWith('video/') ? (
+                                <View style={{ width: 40, height: 40, backgroundColor: '#000', borderRadius: 8, justifyContent: 'center', alignItems: 'center' }}><Play color="#fff" size={20} /></View>
+                            ) : attachment.mimeType?.startsWith('image/') ? (
+                                <RNImage source={{ uri: attachment.uri }} style={{ width: 40, height: 40, borderRadius: 8 }} />
+                            ) : (
+                                <View style={{ width: 40, height: 40, backgroundColor: theme.border, borderRadius: 8, justifyContent: 'center', alignItems: 'center' }}><FileText color={theme.textSecondary} size={20} /></View>
+                            )}
+                            <Text style={{ color: theme.text, marginLeft: 10, flex: 1 }} numberOfLines={1}>{attachment.name}</Text>
+                            <TouchableOpacity onPress={() => setAttachment(null)} style={{ padding: 8 }}>
+                                <Text style={{ color: '#ef4444', fontWeight: 'bold' }}>X</Text>
+                            </TouchableOpacity>
+                        </View>
+                    )}
                     {/* Chat Input */}
-                    <View style={[styles.inputBox, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                    <View style={[styles.inputBox, { backgroundColor: theme.card, borderColor: theme.border, borderTopLeftRadius: attachment ? 0 : undefined, borderTopRightRadius: attachment ? 0 : undefined }]}>
+                        <TouchableOpacity onPress={pickAttachment} style={{ padding: 10, marginRight: 4 }}>
+                            <Paperclip color={theme.textSecondary} size={24} />
+                        </TouchableOpacity>
                         <TextInput
                             placeholder="Type your message..."
                             placeholderTextColor={theme.textSecondary}
@@ -206,8 +311,8 @@ export function SupportScreen({ onClose, user }: { onClose: () => void, user?: a
                             multiline
                         />
                         <TouchableOpacity
-                            style={[styles.sendBtn, { backgroundColor: draft.trim() ? theme.primary : theme.border }]}
-                            disabled={!draft.trim() || chatSending}
+                            style={[styles.sendBtn, { backgroundColor: (draft.trim() || attachment) ? theme.primary : theme.border }]}
+                            disabled={(!draft.trim() && !attachment) || chatSending}
                             onPress={handleSendChat}
                         >
                             {chatSending ? <ActivityIndicator size="small" color="#fff" /> : <Send size={18} color="#fff" />}

@@ -39,6 +39,7 @@ export interface SupportMessage {
     message: string;
     attachmentName: string | null;
     attachmentType: string | null;
+    attachmentPath: string | null;
     readByUser: boolean;
     readByAdmin: boolean;
     deletedAt: string | null;

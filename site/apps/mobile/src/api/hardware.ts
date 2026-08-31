@@ -166,3 +166,13 @@ export const deleteDeviceApi = async (homeId: number, deviceId: number) => {
         throw extractApiError(e);
     }
 };
+
+
+export const renameEsp = async (homeId: number, espId: number, name: string) => {
+    try {
+        const { data } = await api.patch(`/homes/${homeId}/esp/${espId}`, { name });
+        return data;
+    } catch (e) {
+        throw extractApiError(e);
+    }
+};

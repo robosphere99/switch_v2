@@ -1,28 +1,45 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Switch, ScrollView, Modal, TextInput, KeyboardAvoidingView, Platform, Alert, ActivityIndicator, Image, DeviceEventEmitter } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Switch, ScrollView, Modal, TextInput, KeyboardAvoidingView, Platform, Alert, ActivityIndicator, Image, DeviceEventEmitter, Share as RNShare, NativeModules } from 'react-native';
+import type { AutoUpdateState, AutoUpdateActions } from '../hooks/useAutoUpdate';
 import { useTheme } from '../theme/ThemeContext';
 import { ActivityScreen } from './ActivityScreen';
 import { SupportScreen } from './SupportScreen';
-import { Activity, User, Monitor, Sun, Moon, Bot, Shield, Bell, Zap, Headset, X } from 'lucide-react-native';
+import { Activity, User, Monitor, Sun, Moon, Bot, Shield, Bell, Zap, Headset, X, Share as ShareIcon, RefreshCw, CheckCircle } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import * as SecureStore from 'expo-secure-store';
 import * as ImagePicker from 'expo-image-picker';
 import { useThemedAlert } from './ThemedAlert';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import QRCode from 'react-native-qrcode-svg';
 import { APP_VERSION } from '../../App';
 import { API_URL } from '../api/client';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+import { getApkPath } from '../../modules/apk-extractor/src';
+import * as Application from 'expo-application';
 
 const API_BASE = API_URL.replace(/\/api$/, '');
 
-export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () => void }) {
+export function SettingsScreen({ user, onLogout, initialView = 'MAIN', initialSupportDraft = '', updateState, updateActions }: { user?: any, onLogout: () => void, initialView?: 'MAIN' | 'TIMELINE' | 'APPEARANCE' | 'PROFILE' | 'NOTIFICATIONS' | 'SUPPORT', initialSupportDraft?: string, updateState?: AutoUpdateState, updateActions?: AutoUpdateActions }) {
     const { theme, mode, setMode, themeId, setThemeId, availableThemes } = useTheme();
     const [localUser, setLocalUser] = useState(user);
     const [aiSuggestions, setAiSuggestions] = useState(true);
+    const [supportDraft, setSupportDraft] = useState(initialSupportDraft);
 
     useEffect(() => {
         setLocalUser(user);
     }, [user]);
-    const [view, setView] = useState<'MAIN' | 'TIMELINE' | 'APPEARANCE' | 'PROFILE' | 'NOTIFICATIONS' | 'SUPPORT'>('MAIN');
+    const [view, setView] = useState<'MAIN' | 'TIMELINE' | 'APPEARANCE' | 'PROFILE' | 'NOTIFICATIONS' | 'SUPPORT'>(initialView);
+
+    useEffect(() => {
+        const sub = DeviceEventEmitter.addListener('navigate_support', (data) => {
+            if (data?.draft) {
+                setSupportDraft(data.draft);
+            }
+            setView('SUPPORT');
+        });
+        return () => sub.remove();
+    }, []);
 
     // Password Update States
     const [pwModalVisible, setPwModalVisible] = useState(false);
@@ -49,6 +66,44 @@ export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () =>
     const [editingProfile, setEditingProfile] = useState(false);
     const [showDatePicker, setShowDatePicker] = useState(false);
     const [fullscreenAvatarVisible, setFullscreenAvatarVisible] = useState(false);
+    const [shareModalVisible, setShareModalVisible] = useState(false);
+    const [downloadingApk, setDownloadingApk] = useState(false);
+    const [installDate, setInstallDate] = useState<string>('Loading...');
+
+    useEffect(() => {
+        const fetchInstallDate = async () => {
+            try {
+                const date = await Application.getLastUpdateTimeAsync();
+                if (date) {
+                    setInstallDate(date.toLocaleString('en-IN', {
+                        day: '2-digit', month: 'short', year: 'numeric',
+                        hour: '2-digit', minute: '2-digit', hour12: true
+                    }));
+                } else {
+                    const instDate = await Application.getInstallationTimeAsync();
+                    if (instDate) {
+                        setInstallDate(instDate.toLocaleString('en-IN', {
+                            day: '2-digit', month: 'short', year: 'numeric',
+                            hour: '2-digit', minute: '2-digit', hour12: true
+                        }));
+                    } else {
+                        setInstallDate('Unknown');
+                    }
+                }
+            } catch (e) {
+                setInstallDate('Unknown');
+            }
+        };
+        fetchInstallDate();
+    }, []);
+
+    const handleManualUpdateCheck = () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+        if (updateActions?.manualCheck) {
+            updateActions.manualCheck();
+            showAlert('Checking...', 'Looking for updates. If a new version is found, you\'ll see a popup automatically.');
+        }
+    };
 
     useEffect(() => {
         if (editAddrPin.length === 6) {
@@ -394,7 +449,7 @@ export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () =>
     }
 
     if (view === 'SUPPORT') {
-        return <SupportScreen onClose={() => setView('MAIN')} user={user} />;
+        return <SupportScreen onClose={() => setView('MAIN')} user={localUser} initialDraft={supportDraft} />;
     }
 
     if (view === 'TIMELINE') {
@@ -815,6 +870,7 @@ export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () =>
                         </TouchableOpacity>
                     </TouchableOpacity>
                 </Modal >
+
                 {AlertComponent}
             </View >
         );
@@ -887,6 +943,49 @@ export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () =>
                     </TouchableOpacity>
                 </View>
 
+                <View style={{ marginBottom: 30 }}>
+                    <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>APP & UPDATES</Text>
+                    <TouchableOpacity
+                        style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border, marginBottom: 16 }]}
+                        onPress={handleManualUpdateCheck}
+                    >
+                        <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: theme.primary + '15', alignItems: 'center', justifyContent: 'center', marginRight: 16 }}>
+                            {updateState?.jsChecking || updateState?.jsDownloading ? (
+                                <ActivityIndicator color={theme.primary} />
+                            ) : updateState?.jsUpdateReady ? (
+                                <CheckCircle color={'#10b981'} size={24} />
+                            ) : (
+                                <RefreshCw color={theme.primary} size={24} />
+                            )}
+                        </View>
+                        <View style={{ flex: 1 }}>
+                            <Text style={[styles.cardTitle, { color: theme.text }]}>
+                                {updateState?.jsChecking ? 'Checking...' : updateState?.jsDownloading ? 'Downloading OTA...' : updateState?.jsUpdateReady ? 'Restart to Apply Update' : 'Check for Updates'}
+                            </Text>
+                            <Text style={[styles.cardSub, { color: theme.textSecondary }]}>
+                                JS updates apply automatically · APK updates show a popup
+                            </Text>
+                        </View>
+                        <Text style={{ color: theme.textSecondary, fontSize: 18, fontWeight: 'bold', marginLeft: 'auto' }}>›</Text>
+                    </TouchableOpacity>
+
+                    <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>SHARE & INVITE</Text>
+                    <TouchableOpacity
+                        style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}
+                        onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
+                            setShareModalVisible(true);
+                        }}
+                    >
+                        <ShareIcon color={theme.primary} size={24} style={{ marginRight: 12 }} />
+                        <View>
+                            <Text style={[styles.cardTitle, { color: theme.text }]}>Share App</Text>
+                            <Text style={[styles.cardSub, { color: theme.textSecondary }]}>QR code and direct link</Text>
+                        </View>
+                        <Text style={{ color: theme.textSecondary, fontSize: 18, fontWeight: 'bold', marginLeft: 'auto' }}>›</Text>
+                    </TouchableOpacity>
+                </View>
+
                 <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>ACCOUNT & DATA</Text>
                 <TouchableOpacity
                     style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}
@@ -930,8 +1029,86 @@ export function SettingsScreen({ user, onLogout }: { user?: any, onLogout: () =>
                 <View style={{ alignItems: 'center', marginTop: 40, marginBottom: 80, opacity: 0.5 }}>
                     <Text style={{ color: theme.textSecondary, fontSize: 13, fontWeight: '700', letterSpacing: 2 }}>SWITCHNEST MOBILE</Text>
                     <Text style={{ color: theme.textSecondary, fontSize: 11, marginTop: 4 }}>Version {APP_VERSION} (OTA Protocol 2)</Text>
+                    <Text style={{ color: theme.textSecondary, fontSize: 10, marginTop: 2 }}>Last Updated: {installDate}</Text>
                 </View>
             </ScrollView>
+
+            {/* Share App Modal */}
+            <Modal visible={shareModalVisible} transparent={true} animationType="slide" onRequestClose={() => setShareModalVisible(false)}>
+                <View style={{ flex: 1, backgroundColor: '#000000e0', justifyContent: 'center', alignItems: 'center' }}>
+                    <View style={{ backgroundColor: theme.background, width: '85%', borderRadius: 24, padding: 30, alignItems: 'center', borderWidth: 1, borderColor: theme.border }}>
+                        <Text style={{ color: theme.text, fontSize: 20, fontWeight: 'bold', marginBottom: 10 }}>Share SwitchNest</Text>
+                        <Text style={{ color: theme.textSecondary, fontSize: 13, textAlign: 'center', marginBottom: 30, lineHeight: 20 }}>Scan this QR code to download the SwitchNest APK on any Android device.</Text>
+                        
+                        <View style={{ backgroundColor: '#fff', padding: 16, borderRadius: 16, marginBottom: 30 }}>
+                            <QRCode
+                                value={API_BASE + '/api/public/apk'}
+                                size={180}
+                                color="black"
+                                backgroundColor="white"
+                            />
+                        </View>
+
+                        <TouchableOpacity
+                            onPress={async () => {
+                                if (downloadingApk) return;
+                                setDownloadingApk(true);
+                                try {
+                                    const sourceApkPath = getApkPath();
+                                    const fileUri = FileSystem.cacheDirectory + 'SwitchNest.apk';
+                                    await FileSystem.copyAsync({ from: 'file://' + sourceApkPath, to: fileUri });
+                                    
+                                    const canShare = await Sharing.isAvailableAsync();
+                                    if (canShare) {
+                                        await Sharing.shareAsync(fileUri, {
+                                            mimeType: 'application/vnd.android.package-archive',
+                                            dialogTitle: 'Share SwitchNest App'
+                                        });
+                                    } else {
+                                        Alert.alert("Not Supported", "Sharing files is not supported on this device.");
+                                    }
+                                } catch (error) {
+                                    console.error(error);
+                                    Alert.alert("Error", "Failed to extract and share the APK. Make sure to rebuild the app.");
+                                } finally {
+                                    setDownloadingApk(false);
+                                }
+                            }}
+                            style={{ backgroundColor: theme.primary, paddingVertical: 14, paddingHorizontal: 24, borderRadius: 12, flexDirection: 'row', alignItems: 'center', width: '100%', justifyContent: 'center', marginBottom: 12 }}
+                        >
+                            {downloadingApk ? <ActivityIndicator color="#000" /> : (
+                                <>
+                                    <ShareIcon color="#000" size={18} style={{ marginRight: 8 }} />
+                                    <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 16 }}>Share APK File</Text>
+                                </>
+                            )}
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            onPress={async () => {
+                                try {
+                                    await RNShare.share({
+                                        message: `Download the SwitchNest App here:\n\n${API_BASE}/api/public/apk`
+                                    });
+                                } catch (error) {
+                                    console.error(error);
+                                }
+                            }}
+                            style={{ backgroundColor: 'transparent', paddingVertical: 14, paddingHorizontal: 24, borderRadius: 12, flexDirection: 'row', alignItems: 'center', width: '100%', justifyContent: 'center', marginBottom: 12, borderWidth: 1, borderColor: theme.border }}
+                        >
+                            <ShareIcon color={theme.text} size={18} style={{ marginRight: 8 }} />
+                            <Text style={{ color: theme.text, fontWeight: 'bold', fontSize: 16 }}>Share URL Link</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            onPress={() => setShareModalVisible(false)}
+                            style={{ paddingVertical: 14, paddingHorizontal: 24, borderRadius: 12, width: '100%', alignItems: 'center', borderWidth: 1, borderColor: theme.border }}
+                        >
+                            <Text style={{ color: theme.text, fontWeight: '600', fontSize: 16 }}>Close</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
             {AlertComponent}
         </View>
     );

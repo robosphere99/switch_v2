@@ -8,7 +8,20 @@ import { audit } from "../services/audit.service";
 import { getPublicSiteSettings } from "../services/siteSettings.service";
 import { verifyBillToken } from "../lib/billVerify";
 
+import path from "path";
+import fs from "fs";
+
 export const publicRouter = Router();
+
+// Serve Android APK
+publicRouter.get("/apk", (req, res) => {
+  const apkPath = path.resolve(process.cwd(), "../mobile/android/app/build/outputs/apk/debug/app-debug.apk");
+  if (fs.existsSync(apkPath)) {
+    res.download(apkPath, "SwitchNest.apk");
+  } else {
+    res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "APK not built yet." } });
+  }
+});
 
 // Public endpoints — spam / flood / abuser se bachao (per IP).
 // Chatbot (rule-based, thoda DB) — har minute max 20.

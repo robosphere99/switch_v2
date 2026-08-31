@@ -54,3 +54,4 @@ __pycache__/
 
 # Runtime data
 *.jsonl
+mobile-app/*.apk

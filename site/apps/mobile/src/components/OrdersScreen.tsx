@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, StyleSheet, Modal, Alert, DeviceEventEmitter } from 'react-native';
-import { Package, Truck, CheckCircle, ChevronLeft, CalendarClock, Wifi } from 'lucide-react-native';
-import { getMyOrders, Order, initiatePayment, verifyPayment, demoPay } from '../api/shop';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, StyleSheet, Modal, Alert, DeviceEventEmitter, TextInput } from 'react-native';
+import { Package, Truck, CheckCircle, ChevronLeft, CalendarClock, Wifi, Star, Search, Filter } from 'lucide-react-native';
+import { getMyOrders, Order, initiatePayment, verifyPayment, demoPay, addProductReview } from '../api/shop';
 import RazorpayCheckout from 'react-native-razorpay';
 import { useTheme } from '../theme/ThemeContext';
 import { useThemedAlert } from './ThemedAlert';
@@ -17,6 +17,11 @@ export function OrdersScreen({ visible, onClose }: OrdersScreenProps) {
     const [loading, setLoading] = useState(true);
     const [orders, setOrders] = useState<Order[]>([]);
     const [payingOrderId, setPayingOrderId] = useState<number | null>(null);
+    const [reviewItem, setReviewItem] = useState<any>(null);
+    const [reviewRating, setReviewRating] = useState(5);
+    const [reviewComment, setReviewComment] = useState('');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [statusFilter, setStatusFilter] = useState('all');
 
     useEffect(() => {
         let interval: any;
@@ -163,6 +168,20 @@ export function OrdersScreen({ visible, onClose }: OrdersScreenProps) {
         }
     };
 
+    
+    const handleReviewSubmit = async () => {
+        if(!reviewItem) return;
+        try {
+            await addProductReview(reviewItem.productId, { rating: reviewRating, comment: reviewComment });
+            showAlert('Success', 'Review submitted successfully!');
+            setReviewItem(null);
+            setReviewComment('');
+            setReviewRating(5);
+        } catch(e: any) {
+            showAlert('Error', e.message || 'Failed to submit review');
+        }
+    };
+
     const StatusBadge = ({ status }: { status: string }) => {
         let color = theme.textSecondary;
         let icon = <CalendarClock color={color} size={14} />;
@@ -207,7 +226,10 @@ export function OrdersScreen({ visible, onClose }: OrdersScreenProps) {
                     </View>
                 ) : (
                     <ScrollView contentContainerStyle={styles.scroll}>
-                        {orders.length === 0 ? (
+                        {orders
+                            .filter(o => statusFilter === 'all' || o.status === statusFilter)
+                            .filter(o => !searchQuery || o.items.some(i => i.productName.toLowerCase().includes(searchQuery.toLowerCase())))
+                            .length === 0 ? (
                             <View style={[styles.center, { marginTop: '50%' }]}>
                                 <Package color={theme.border} size={64} />
                                 <Text style={{ color: theme.textSecondary, marginTop: 16, fontSize: 16 }}>No orders found.</Text>
@@ -253,7 +275,16 @@ export function OrdersScreen({ visible, onClose }: OrdersScreenProps) {
 
                                     {order.items.map((item, idx) => (
                                         <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', marginVertical: 4 }}>
-                                            <Text style={{ color: theme.text, fontSize: 14 }}><Text style={{ color: theme.textSecondary }}>{item.quantity}x </Text>{item.productName}</Text>
+                                            
+                                            <View>
+                                                <Text style={{ color: theme.text, fontSize: 14 }}><Text style={{ color: theme.textSecondary }}>{item.quantity}x </Text>{item.productName}</Text>
+                                                {order.status === 'delivered' && (
+                                                    <TouchableOpacity onPress={() => { setReviewItem(item); setReviewRating(5); setReviewComment(''); }}>
+                                                        <Text style={{ color: theme.primary, fontSize: 12, marginTop: 4, fontWeight: 'bold' }}>Write a Review</Text>
+                                                    </TouchableOpacity>
+                                                )}
+                                            </View>
+
                                             <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600' }}>₹{parseFloat(item.price).toLocaleString('en-IN')}</Text>
                                         </View>
                                     ))}

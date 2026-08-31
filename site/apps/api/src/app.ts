@@ -93,15 +93,22 @@ export function createApp() {
     const requestHost = req.get('host') || '192.168.1.36:4000';
     const protocol = req.protocol || 'http';
 
+    // Bump latestVersion when a new APK is deployed.
+    // Set isMandatory = true or bump minRequiredVersion to force updates.
+    const latestVersion = "1.0.1";
+    const minRequiredVersion = "1.0.0";
+
     res.json({
       success: true,
       data: {
         version: API_VERSION,
         mobileAppOptions: {
-          minRequiredVersion: "1.0.0",
-          latestVersion: "1.0.0",
+          minRequiredVersion,
+          latestVersion,
           downloadUrl: `${protocol}://${requestHost}/mobile-app/SwitchNest_Latest.apk`,
-          updateMessage: "A mandatory server upgrade requires an app update to continue."
+          updateMessage: "A mandatory server upgrade requires an app update to continue.",
+          releaseNotes: "• Performance improvements\n• Bug fixes and stability enhancements",
+          isMandatory: false,
         },
         ts: new Date().toISOString()
       }

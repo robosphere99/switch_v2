@@ -25,7 +25,7 @@ function key(
   };
 }
 
-describe.skip("keyExpiryAction", () => {
+describe("keyExpiryAction", () => {
   it("no expiry date → null (kabhi expire nahi hoga)", () => {
     expect(keyExpiryAction(key({ expiresAt: null }), NOW)).toBeNull();
   });

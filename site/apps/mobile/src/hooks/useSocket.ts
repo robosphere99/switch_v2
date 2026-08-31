@@ -6,6 +6,9 @@ import { API_URL } from '../api/client';
 
 const SOCKET_URL = API_URL.replace('/api', '');
 
+let _globalSocket: Socket | null = null;
+export function getGlobalSocket(): Socket | null { return _globalSocket; }
+
 export function useSocket(userId: number | null) {
     const socketRef = useRef<Socket | null>(null);
 
@@ -44,13 +47,20 @@ export function useSocket(userId: number | null) {
             socket.on('home:access-revoked', (data) => DeviceEventEmitter.emit('access_revoked', data));
 
             // Support Hooks
-            socket.on('support:new', () => DeviceEventEmitter.emit('support_sync'));
+            socket.on('support:new', (payload) => {
+                console.log('✅ SOCKET RECEIVED support:new', payload);
+                DeviceEventEmitter.emit('support_sync', payload);
+            });
+
+            // WebRTC Call Signaling
+            socket.on('webrtc:signal', (data) => DeviceEventEmitter.emit('webrtc_signal', data));
 
             // Identity Hooks
             socket.on('auth:force_logout', () => DeviceEventEmitter.emit('auth_unauthorized'));
             socket.on('auth:sessions_changed', () => DeviceEventEmitter.emit('sessions_changed'));
 
             socketRef.current = socket;
+            _globalSocket = socket;
         };
         initSocket();
 

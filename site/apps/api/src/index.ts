@@ -298,6 +298,19 @@ async function runLightMigrations(): Promise<void> {
         logger.info("✅ Migration: api_keys.revoked_at added");
       }
     });
+    // 8) esp_devices.led_enabled — allow user to disable the blue status LED on ESP32 boards
+    await migration("esp_devices.led_enabled", async () => {
+      const le = await prisma.$queryRaw<{ c: bigint }[]>`
+        SELECT COUNT(*) AS c FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'esp_devices' AND column_name = 'led_enabled'
+      `;
+      if (Number(le[0]?.c ?? 0) === 0) {
+        await prisma.$executeRawUnsafe(
+          "ALTER TABLE \`esp_devices\` ADD COLUMN \`led_enabled\` BOOLEAN NOT NULL DEFAULT TRUE",
+        );
+        logger.info("✅ Migration: esp_devices.led_enabled added");
+      }
+    });
   } catch (err) {
     logger.warn("Light migration (esp serial unique) skip/fail", err instanceof Error ? err.message : String(err));
   }

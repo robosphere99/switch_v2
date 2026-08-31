@@ -4,6 +4,7 @@ import {
   Bell,
   BookOpen,
   Bot,
+  ChevronDown,
   Clock,
   Home,
   KeyRound,
@@ -31,6 +32,8 @@ import { NotificationBell } from "./NotificationBell";
 import { SupportUnreadBadge } from "./SupportUnreadBadge";
 import { Logo } from "./Logo";
 import { BottomTabBar } from "./BottomTabBar";
+import { DownloadAppModal } from "./DownloadAppModal";
+import { Smartphone } from "lucide-react";
 
 /* ── Grouped navigation ────────────────────────────────────── */
 
@@ -53,7 +56,10 @@ type NavGroup = {
 const NAV_GROUPS: NavGroup[] = [
   {
     title: "Overview",
-    items: [{ to: "/dashboard", label: "Dashboard", icon: LayoutDashboard }],
+    items: [
+      { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+      { to: "/shop", label: "Shop", icon: ShoppingCart },
+    ],
   },
   {
     title: "Orders & Devices",
@@ -103,6 +109,7 @@ export function Navbar() {
   const navigate = useNavigate();
   const [dark, setDark] = useState(() => resolvedDark());
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [showDownloadApp, setShowDownloadApp] = useState(false);
 
   // Profile me theme change ho to yahan bhi sync rahe
   useEffect(() => onThemeChange(() => setDark(resolvedDark())), []);
@@ -135,25 +142,45 @@ export function Navbar() {
           {user ? (
             <div className="hidden items-center gap-2 text-[13px] md:flex">
               {/* Left: scrollable nav links */}
-              <nav className="flex min-w-0 shrink items-center gap-x-2 overflow-x-auto scrollbar-none [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-                {activeGroups.map((group, gi) => (
-                  <span key={group.title} className="contents">
-                    {gi > 0 && (
-                      <span className="mx-1 h-4 w-px shrink-0 bg-gray-300 dark:bg-night-600" />
-                    )}
-                    {group.items.map(({ to, label, icon: Icon, title }) => (
+              <nav className="flex min-w-0 flex-1 items-center gap-x-5 pl-4">
+                {activeGroups.map((group) => {
+                  if (group.items.length === 1) {
+                    const item = group.items[0];
+                    return (
                       <Link
-                        key={to}
-                        to={to}
-                        className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-gray-600 transition hover:text-brand"
-                        title={title ?? label}
+                        key={item.to}
+                        to={item.to}
+                        className="inline-flex items-center gap-1.5 whitespace-nowrap text-sm font-semibold text-gray-600 transition hover:text-brand dark:text-gray-300 dark:hover:text-brand"
+                        title={item.title ?? item.label}
                       >
-                        <Icon className="h-4 w-4 shrink-0" />
-                        {label}
+                        <item.icon className="h-4.5 w-4.5 shrink-0" />
+                        {item.label}
                       </Link>
-                    ))}
-                  </span>
-                ))}
+                    );
+                  }
+
+                  return (
+                    <div key={group.title} className="group relative inline-block py-2">
+                      <button className="inline-flex items-center gap-1 text-sm font-semibold text-gray-600 transition hover:text-brand dark:text-gray-300 dark:hover:text-brand">
+                        {group.title}
+                        <ChevronDown className="h-3.5 w-3.5 opacity-70 transition-transform group-hover:rotate-180" />
+                      </button>
+                      <div className="invisible absolute left-0 top-[90%] z-50 mt-1 flex w-48 flex-col rounded-xl border border-gray-100 bg-white p-1.5 opacity-0 shadow-xl transition-all group-hover:visible group-hover:top-full group-hover:opacity-100 dark:border-night-600 dark:bg-night-800">
+                        {group.items.map(({ to, label, icon: Icon, title }) => (
+                          <Link
+                            key={to}
+                            to={to}
+                            className="inline-flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium text-gray-700 transition hover:bg-brand/10 hover:text-brand dark:text-gray-300 dark:hover:bg-night-700 dark:hover:text-brand"
+                            title={title ?? label}
+                          >
+                            <Icon className="h-4 w-4 shrink-0 text-gray-400 group-hover:text-brand" />
+                            {label}
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
               </nav>
 
               {/* Right: always-visible actions (never scrolls away) */}
@@ -185,6 +212,13 @@ export function Navbar() {
                     <SupportUnreadBadge />
                   </span>
                 )}
+                <button
+                  onClick={() => setShowDownloadApp(true)}
+                  className="rounded-lg border border-gray-300 p-1.5 text-gray-600 transition hover:border-brand hover:text-brand"
+                  title="Download App"
+                >
+                  <Smartphone className="h-4 w-4" />
+                </button>
                 <button
                   onClick={() => toggleTheme(setDark)}
                   className="rounded-lg border border-gray-300 p-1.5 text-gray-600 transition hover:border-brand hover:text-brand"
@@ -220,6 +254,13 @@ export function Navbar() {
                 <BookOpen className="h-4 w-4" />
                 API Docs
               </a>
+              <button
+                onClick={() => setShowDownloadApp(true)}
+                className="rounded-lg border border-gray-300 p-1.5 text-gray-600 transition hover:border-brand hover:text-brand"
+                title="Download App"
+              >
+                <Smartphone className="h-4 w-4" />
+              </button>
               <button
                 onClick={() => toggleTheme(setDark)}
                 className="rounded-lg border border-gray-300 p-1.5 text-gray-600 transition hover:border-brand hover:text-brand"
@@ -342,6 +383,16 @@ export function Navbar() {
                       <NotificationBell />
                     </span>
                     <button
+                      onClick={() => {
+                        setMobileOpen(false);
+                        setShowDownloadApp(true);
+                      }}
+                      className="shrink-0 rounded-lg border border-gray-300 p-2.5 text-gray-600 transition hover:border-brand hover:text-brand dark:border-night-600 dark:text-gray-400"
+                      title="Download App"
+                    >
+                      <Smartphone className="h-5 w-5" />
+                    </button>
+                    <button
                       onClick={() => toggleTheme(setDark)}
                       className="shrink-0 rounded-lg border border-gray-300 p-2.5 text-gray-600 transition hover:border-brand hover:text-brand dark:border-night-600 dark:text-gray-400"
                       title={dark ? "Light mode" : "Dark mode"}
@@ -374,6 +425,16 @@ export function Navbar() {
                   <BookOpen className="h-4 w-4 text-brand" />
                   API Docs
                 </a>
+                <button
+                  onClick={() => {
+                    setMobileOpen(false);
+                    setShowDownloadApp(true);
+                  }}
+                  className={mobileLinkCls}
+                >
+                  <Smartphone className="h-4 w-4 text-brand" />
+                  Download App
+                </button>
                 <Link to="/login" className={mobileLinkCls} onClick={() => setMobileOpen(false)}>
                   <User className="h-4 w-4 text-brand" />
                   Login
@@ -391,6 +452,10 @@ export function Navbar() {
           </div>
         )}
       </header>
+
+      {showDownloadApp && (
+        <DownloadAppModal onClose={() => setShowDownloadApp(false)} />
+      )}
 
       {/* Mobile bottom tab bar — header se bahar (fixed positioning sahi rahe) */}
       <BottomTabBar />

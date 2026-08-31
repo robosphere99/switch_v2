@@ -53,41 +53,20 @@ void update() {
         bool trigger = true;
 
         if (trigger) {
-          Serial.println();
-          Serial.println("========== SWITCH ==========");
-
-          Serial.print("Relay : ");
-          Serial.println(i);
-
           if (DimmerManager::isDimmer()) {
-            // Dimmer model: switch step cycle karta hai (off->33->66->100 etc.)
             uint8_t step = DimmerManager::cycle(i);
-            Serial.print("Dimmer Step : ");
-            Serial.println(step);
-            Serial.print("Dimmer Percent : ");
-            Serial.println(DimmerManager::getStepPercent(i));
+            Serial.printf("[SWITCH] Dimmer %d -> Step %d (%d%%)\n", i, step,
+                          DimmerManager::getStepPercent(i));
           } else {
             RelayManager::toggle(i);
           }
 
           bool state = RelayManager::getState(i);
-
-          Serial.print("Relay State : ");
-          Serial.println(state ? "ON" : "OFF");
-
           int channel = i + 1; // 1-indexed channel
 
-          Serial.print("Channel : ");
-          Serial.println(channel);
-
-          // Debounced batch push — short interval ke updates ek saath jaate
-          // hain
           bool ok = ApiManager::queueDeviceUpdate(channel, state);
-
-          Serial.print("API : ");
-          Serial.println(ok ? "QUEUED" : "FAILED");
-
-          Serial.println("============================");
+          Serial.printf("[SWITCH] Channel %d -> %s (API: %s)\n", channel,
+                        state ? "ON" : "OFF", ok ? "QUEUED" : "FAILED");
         }
 
         lastState[i] = currentState;

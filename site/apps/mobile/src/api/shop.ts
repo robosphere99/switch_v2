@@ -10,6 +10,9 @@ export interface Product {
     features: Record<string, unknown> | null;
     imageUrl: string | null;
     active: boolean;
+    stockCount?: number;
+    rating?: number;
+    totalReviews?: number;
 }
 
 export interface OrderItem {
@@ -102,4 +105,8 @@ export async function claimDevice(serialCode: string, homeId: number): Promise<{
 export async function getCurrentWifiSsid(): Promise<string | null> {
     const { data } = await api.get('/shop/wifi/current');
     return data.data.ssid;
+}
+
+export async function addProductReview(productId: number, payload: { rating: number, comment?: string }): Promise<void> {
+    await api.post(`/shop/products/${productId}/reviews`, payload);
 }
