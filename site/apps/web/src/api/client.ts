@@ -26,7 +26,13 @@ export function getAttachmentUrl(msg: {
 
 // On 401, clear the local session (refresh rotation comes in a later phase).
 api.interceptors.response.use(
-  (res) => res,
+  (res) => {
+    // If IIS/iisnode returns an HTML error page with a 200 OK status, reject it!
+    if (typeof res.data === "string" && res.data.trim().startsWith("<")) {
+      return Promise.reject(new Error("API returned HTML instead of JSON. Server might be crashing."));
+    }
+    return res;
+  },
   (error) => {
     if (error.response?.status === 401) {
       useAuthStore.getState().logout();
