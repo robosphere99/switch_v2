@@ -1,4 +1,3 @@
-import { createRequire } from 'module'; const require = createRequire(import.meta.url);
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -77,8 +76,9 @@ var init_env = __esm({
       JWT_REFRESH_SECRET: z.string().default("dev-refresh-secret"),
       JWT_ACCESS_EXPIRES: z.string().default("15m"),
       JWT_REFRESH_EXPIRES: z.string().default("7d"),
-      // Plesk/Paas PORT env var ko respect karta hai (Named Pipe ya Number dono allow karna zaroori hai iisnode IPC ke liye)
-      API_PORT: z.union([z.string(), z.number()]).default(process.env.PORT || 4e3),
+      // Plesk/Paas PORT env var ko respect karta hai (Plesk nginx app ko assigned
+      // port pe proxy karta hai); nahi diya to 4000.
+      API_PORT: z.coerce.number().default(Number(process.env.PORT) || 4e3),
       API_HOST: z.string().default("0.0.0.0"),
       CORS_ORIGINS: z.string().default("http://localhost:5173"),
       LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
@@ -760,166 +760,6 @@ var init_src = __esm({
     init_notificationDraft();
     init_realtime();
     HOME_MEMBER_ROLES = ["owner", "admin", "member", "viewer"];
-  }
-});
-
-// src/lib/socket.ts
-import { Server } from "socket.io";
-import jwt from "jsonwebtoken";
-function initSocket(server) {
-  io = new Server(server, {
-    cors: { origin: corsOrigins, credentials: true }
-  });
-  io.use((socket, next) => {
-    try {
-      const token = socket.handshake.auth?.token;
-      if (!token) throw new Error("missing token");
-      const payload = jwt.verify(token, env.JWT_ACCESS_SECRET);
-      socket.data.userId = payload.sub;
-      if (payload.sid) {
-        socket.data.sessionId = payload.sid;
-      }
-      next();
-    } catch {
-      next(new Error("unauthorized"));
-    }
-  });
-  io.on("connection", async (socket) => {
-    const userId = socket.data.userId;
-    const sessionId = socket.data.sessionId;
-    socket.join(`user:${userId}`);
-    if (sessionId) {
-      socket.join(`session:${sessionId}`);
-    }
-    let joined = 0;
-    try {
-      const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
-      const isAdmin = user?.role === "system_admin";
-      const homes = isAdmin ? await prisma.home.findMany({ select: { id: true } }) : await prisma.homeMember.findMany({ where: { userId }, select: { homeId: true } });
-      for (const h of homes) {
-        socket.join(`home:${"homeId" in h ? h.homeId : h.id}`);
-        joined++;
-      }
-    } catch {
-    }
-    socket.emit(REALTIME_EVENTS.socketReady, { homes: joined });
-    console.log(`[socket] user ${userId} connected (${joined} homes)`);
-  });
-  return io;
-}
-function emitToUser(userId, event, payload) {
-  io?.to(`user:${userId}`).emit(event, payload);
-}
-function emitToSession(sessionId, event, payload) {
-  io?.to(`session:${sessionId}`).emit(event, payload);
-}
-function emitToHome(homeId, event, payload) {
-  io?.to(`home:${homeId}`).emit(event, payload);
-}
-async function emitDeviceUpdated(homeId, deviceId) {
-  if (!io) return;
-  try {
-    const device = await prisma.device.findUnique({
-      where: { id: deviceId },
-      select: {
-        id: true,
-        name: true,
-        status: true,
-        offline: true,
-        lastSeen: true,
-        lastUpdated: true
-      }
-    });
-    if (!device) return;
-    const payload = {
-      id: device.id,
-      homeId,
-      name: device.name,
-      status: device.status,
-      online: !device.offline,
-      offline: device.offline,
-      lastSeen: device.lastSeen ? device.lastSeen.toISOString() : null,
-      updatedAt: device.lastUpdated.toISOString()
-    };
-    io.to(`home:${homeId}`).emit(REALTIME_EVENTS.deviceUpdated, payload);
-  } catch (err) {
-    console.error("[socket] emitDeviceUpdated failed", err);
-  }
-}
-async function leaveHomeRoom(userId, homeId) {
-  if (!io) return;
-  try {
-    const sockets = await io.in(`home:${homeId}`).fetchSockets();
-    for (const s of sockets) {
-      if (s.data.userId === userId) s.leave(`home:${homeId}`);
-    }
-  } catch {
-  }
-  emitToUser(userId, REALTIME_EVENTS.homeAccessRevoked, { homeId });
-}
-var io;
-var init_socket = __esm({
-  "src/lib/socket.ts"() {
-    "use strict";
-    init_src();
-    init_env();
-    init_prisma();
-    io = null;
-  }
-});
-
-// src/services/audit.service.ts
-var audit_service_exports = {};
-__export(audit_service_exports, {
-  audit: () => audit
-});
-async function audit(actorId, action, opts = {}) {
-  try {
-    const data = {
-      actorId,
-      homeId: opts.homeId ?? null,
-      action,
-      entity: opts.entity ?? null,
-      entityId: opts.entityId ?? null
-    };
-    if (opts.meta) data.meta = opts.meta;
-    await prisma.auditLog.create({ data });
-  } catch (err) {
-    console.error("[audit] failed to write audit log:", err);
-  }
-}
-var init_audit_service = __esm({
-  "src/services/audit.service.ts"() {
-    "use strict";
-    init_prisma();
-  }
-});
-
-// src/services/notificationQuery.ts
-function normalizeCategory(category, title) {
-  if (category === "system" && SCHEDULE_TITLE_RE.test(title ?? "")) return "schedule";
-  return category;
-}
-function buildNotificationWhere(userId, args = {}) {
-  const where = { userId };
-  if (args.category && args.category !== "all") {
-    if (args.category === "schedule") {
-      where.OR = [{ category: "schedule" }, { category: "system", title: { contains: "Schedule fired" } }];
-    } else if (args.category === "system") {
-      where.OR = [{ category: "system", NOT: { title: { contains: "Schedule fired" } } }];
-    } else {
-      where.category = args.category;
-    }
-  }
-  if (args.type && args.type !== "all") where.type = args.type;
-  if (args.unread) where.readAt = null;
-  return where;
-}
-var SCHEDULE_TITLE_RE;
-var init_notificationQuery = __esm({
-  "src/services/notificationQuery.ts"() {
-    "use strict";
-    SCHEDULE_TITLE_RE = /Schedule fired/i;
   }
 });
 
@@ -2423,14 +2263,14 @@ var require_util = __commonJS({
         }
         const port = url.port != null ? url.port : url.protocol === "https:" ? 443 : 80;
         let origin = url.origin != null ? url.origin : `${url.protocol || ""}//${url.hostname || ""}:${port}`;
-        let path13 = url.path != null ? url.path : `${url.pathname || ""}${url.search || ""}`;
+        let path15 = url.path != null ? url.path : `${url.pathname || ""}${url.search || ""}`;
         if (origin[origin.length - 1] === "/") {
           origin = origin.slice(0, origin.length - 1);
         }
-        if (path13 && path13[0] !== "/") {
-          path13 = `/${path13}`;
+        if (path15 && path15[0] !== "/") {
+          path15 = `/${path15}`;
         }
-        return new URL(`${origin}${path13}`);
+        return new URL(`${origin}${path15}`);
       }
       if (!isHttpOrHttpsPrefixed(url.origin || url.protocol)) {
         throw new InvalidArgumentError("Invalid URL protocol: the URL must start with `http:` or `https:`.");
@@ -3251,9 +3091,9 @@ var require_diagnostics = __commonJS({
         "undici:client:sendHeaders",
         (evt) => {
           const {
-            request: { method, path: path13, origin }
+            request: { method, path: path15, origin }
           } = evt;
-          debugLog("sending request to %s %s%s", method, origin, path13);
+          debugLog("sending request to %s %s%s", method, origin, path15);
         }
       );
     }
@@ -3271,14 +3111,14 @@ var require_diagnostics = __commonJS({
         "undici:request:headers",
         (evt) => {
           const {
-            request: { method, path: path13, origin },
+            request: { method, path: path15, origin },
             response: { statusCode }
           } = evt;
           debugLog(
             "received response to %s %s%s - HTTP %d",
             method,
             origin,
-            path13,
+            path15,
             statusCode
           );
         }
@@ -3287,23 +3127,23 @@ var require_diagnostics = __commonJS({
         "undici:request:trailers",
         (evt) => {
           const {
-            request: { method, path: path13, origin }
+            request: { method, path: path15, origin }
           } = evt;
-          debugLog("trailers received from %s %s%s", method, origin, path13);
+          debugLog("trailers received from %s %s%s", method, origin, path15);
         }
       );
       diagnosticsChannel.subscribe(
         "undici:request:error",
         (evt) => {
           const {
-            request: { method, path: path13, origin },
+            request: { method, path: path15, origin },
             error
           } = evt;
           debugLog(
             "request to %s %s%s errored - %s",
             method,
             origin,
-            path13,
+            path15,
             error.message
           );
         }
@@ -3418,7 +3258,7 @@ var require_request = __commonJS({
     var kHandler = /* @__PURE__ */ Symbol("handler");
     var Request4 = class {
       constructor(origin, {
-        path: path13,
+        path: path15,
         method,
         body,
         headers,
@@ -3435,11 +3275,11 @@ var require_request = __commonJS({
         maxRedirections,
         typeOfService
       }, handler) {
-        if (typeof path13 !== "string") {
+        if (typeof path15 !== "string") {
           throw new InvalidArgumentError("path must be a string");
-        } else if (path13[0] !== "/" && !(path13.startsWith("http://") || path13.startsWith("https://")) && method !== "CONNECT") {
+        } else if (path15[0] !== "/" && !(path15.startsWith("http://") || path15.startsWith("https://")) && method !== "CONNECT") {
           throw new InvalidArgumentError("path must be an absolute URL or start with a slash");
-        } else if (invalidPathRegex.test(path13)) {
+        } else if (invalidPathRegex.test(path15)) {
           throw new InvalidArgumentError("invalid request path");
         }
         if (typeof method !== "string") {
@@ -3514,7 +3354,7 @@ var require_request = __commonJS({
         this.completed = false;
         this.aborted = false;
         this.upgrade = upgrade || null;
-        this.path = query ? serializePathWithQuery(path13, query) : path13;
+        this.path = query ? serializePathWithQuery(path15, query) : path15;
         this.origin = origin;
         this.protocol = getProtocolFromUrlString(origin);
         this.idempotent = idempotent == null ? method === "HEAD" || method === "GET" : idempotent;
@@ -8697,7 +8537,7 @@ var require_client_h1 = __commonJS({
       return method !== "GET" && method !== "HEAD" && method !== "OPTIONS" && method !== "TRACE" && method !== "CONNECT";
     }
     function writeH1(client, request) {
-      const { method, path: path13, host, upgrade, blocking, reset } = request;
+      const { method, path: path15, host, upgrade, blocking, reset } = request;
       let { body, headers, contentLength } = request;
       const expectsPayload = method === "PUT" || method === "POST" || method === "PATCH" || method === "QUERY" || method === "PROPFIND" || method === "PROPPATCH";
       if (util.isFormDataLike(body)) {
@@ -8775,7 +8615,7 @@ var require_client_h1 = __commonJS({
       if (socket.setTypeOfService) {
         socket.setTypeOfService(request.typeOfService);
       }
-      let header = `${method} ${path13} HTTP/1.1\r
+      let header = `${method} ${path15} HTTP/1.1\r
 `;
       if (typeof host === "string") {
         header += `host: ${host}\r
@@ -9428,7 +9268,7 @@ var require_client_h2 = __commonJS({
     function writeH2(client, request) {
       const requestTimeout = request.bodyTimeout ?? client[kBodyTimeout];
       const session = client[kHTTP2Session];
-      const { method, path: path13, host, upgrade, expectContinue, signal, protocol, headers: reqHeaders } = request;
+      const { method, path: path15, host, upgrade, expectContinue, signal, protocol, headers: reqHeaders } = request;
       let { body } = request;
       if (upgrade != null && upgrade !== "websocket") {
         util.errorRequest(client, request, new InvalidArgumentError(`Custom upgrade "${upgrade}" not supported over HTTP/2`));
@@ -9496,7 +9336,7 @@ var require_client_h2 = __commonJS({
           }
           headers[HTTP2_HEADER_METHOD] = "CONNECT";
           headers[HTTP2_HEADER_PROTOCOL] = "websocket";
-          headers[HTTP2_HEADER_PATH] = path13;
+          headers[HTTP2_HEADER_PATH] = path15;
           if (protocol === "ws:" || protocol === "wss:") {
             headers[HTTP2_HEADER_SCHEME] = protocol === "ws:" ? "http" : "https";
           } else {
@@ -9537,7 +9377,7 @@ var require_client_h2 = __commonJS({
         stream.setTimeout(requestTimeout);
         return true;
       }
-      headers[HTTP2_HEADER_PATH] = path13;
+      headers[HTTP2_HEADER_PATH] = path15;
       headers[HTTP2_HEADER_SCHEME] = protocol === "http:" ? "http" : "https";
       const expectsPayload = method === "PUT" || method === "POST" || method === "PATCH";
       if (body && typeof body.read === "function") {
@@ -11880,10 +11720,10 @@ var require_proxy_agent = __commonJS({
         };
         const {
           origin,
-          path: path13 = "/",
+          path: path15 = "/",
           headers = {}
         } = opts;
-        opts.path = origin + path13;
+        opts.path = origin + path15;
         if (!("host" in headers) && !("Host" in headers)) {
           const { host } = new URL(origin);
           headers.host = host;
@@ -13966,20 +13806,20 @@ var require_mock_utils = __commonJS({
       }
       return normalizedQp;
     }
-    function safeUrl(path13) {
-      if (typeof path13 !== "string") {
-        return path13;
+    function safeUrl(path15) {
+      if (typeof path15 !== "string") {
+        return path15;
       }
-      const pathSegments = path13.split("?", 3);
+      const pathSegments = path15.split("?", 3);
       if (pathSegments.length !== 2) {
-        return path13;
+        return path15;
       }
       const qp = new URLSearchParams(pathSegments.pop());
       qp.sort();
       return [...pathSegments, qp.toString()].join("?");
     }
-    function matchKey(mockDispatch2, { path: path13, method, body, headers }) {
-      const pathMatch = matchValue(mockDispatch2.path, path13);
+    function matchKey(mockDispatch2, { path: path15, method, body, headers }) {
+      const pathMatch = matchValue(mockDispatch2.path, path15);
       const methodMatch = matchValue(mockDispatch2.method, method);
       const bodyMatch = typeof mockDispatch2.body !== "undefined" ? matchValue(mockDispatch2.body, body) : true;
       const headersMatch = matchHeaders(mockDispatch2, headers);
@@ -14004,8 +13844,8 @@ var require_mock_utils = __commonJS({
       const basePath = key.query ? serializePathWithQuery(key.path, key.query) : key.path;
       const resolvedPath = typeof basePath === "string" ? safeUrl(basePath) : basePath;
       const resolvedPathWithoutTrailingSlash = removeTrailingSlash(resolvedPath);
-      let matchedMockDispatches = mockDispatches.filter(({ consumed }) => !consumed).filter(({ path: path13, ignoreTrailingSlash }) => {
-        return ignoreTrailingSlash ? matchValue(removeTrailingSlash(safeUrl(path13)), resolvedPathWithoutTrailingSlash) : matchValue(safeUrl(path13), resolvedPath);
+      let matchedMockDispatches = mockDispatches.filter(({ consumed }) => !consumed).filter(({ path: path15, ignoreTrailingSlash }) => {
+        return ignoreTrailingSlash ? matchValue(removeTrailingSlash(safeUrl(path15)), resolvedPathWithoutTrailingSlash) : matchValue(safeUrl(path15), resolvedPath);
       });
       if (matchedMockDispatches.length === 0) {
         throw new MockNotMatchedError(`Mock dispatch not matched for path '${resolvedPath}'`);
@@ -14044,19 +13884,19 @@ var require_mock_utils = __commonJS({
         mockDispatches.splice(index, 1);
       }
     }
-    function removeTrailingSlash(path13) {
-      while (path13.endsWith("/")) {
-        path13 = path13.slice(0, -1);
+    function removeTrailingSlash(path15) {
+      while (path15.endsWith("/")) {
+        path15 = path15.slice(0, -1);
       }
-      if (path13.length === 0) {
-        path13 = "/";
+      if (path15.length === 0) {
+        path15 = "/";
       }
-      return path13;
+      return path15;
     }
     function buildKey(opts) {
-      const { path: path13, method, body, headers, query } = opts;
+      const { path: path15, method, body, headers, query } = opts;
       return {
-        path: path13,
+        path: path15,
         method,
         body,
         headers,
@@ -14746,10 +14586,10 @@ var require_pending_interceptors_formatter = __commonJS({
       }
       format(pendingInterceptors) {
         const withPrettyHeaders = pendingInterceptors.map(
-          ({ method, path: path13, data: { statusCode }, persist, times, timesInvoked, origin }) => ({
+          ({ method, path: path15, data: { statusCode }, persist, times, timesInvoked, origin }) => ({
             Method: method,
             Origin: origin,
-            Path: path13,
+            Path: path15,
             "Status code": statusCode,
             Persistent: persist ? PERSISTENT : NOT_PERSISTENT,
             Invocations: timesInvoked,
@@ -14831,9 +14671,9 @@ var require_mock_agent = __commonJS({
         const acceptNonStandardSearchParameters = this[kMockAgentAcceptsNonStandardSearchParameters];
         const dispatchOpts = { ...opts };
         if (acceptNonStandardSearchParameters && dispatchOpts.path) {
-          const [path13, searchParams] = dispatchOpts.path.split("?");
+          const [path15, searchParams] = dispatchOpts.path.split("?");
           const normalizedSearchParams = normalizeSearchParams(searchParams, acceptNonStandardSearchParameters);
-          dispatchOpts.path = `${path13}?${normalizedSearchParams}`;
+          dispatchOpts.path = `${path15}?${normalizedSearchParams}`;
         }
         return this[kAgent].dispatch(dispatchOpts, handler);
       }
@@ -15234,12 +15074,12 @@ var require_snapshot_recorder = __commonJS({
        * @return {Promise<void>} - Resolves when snapshots are loaded
        */
       async loadSnapshots(filePath) {
-        const path13 = filePath || this.#snapshotPath;
-        if (!path13) {
+        const path15 = filePath || this.#snapshotPath;
+        if (!path15) {
           throw new InvalidArgumentError("Snapshot path is required");
         }
         try {
-          const data = await readFile(resolve4(path13), "utf8");
+          const data = await readFile(resolve4(path15), "utf8");
           const parsed2 = JSON.parse(data);
           if (Array.isArray(parsed2)) {
             this.#snapshots.clear();
@@ -15253,7 +15093,7 @@ var require_snapshot_recorder = __commonJS({
           if (error.code === "ENOENT") {
             this.#snapshots.clear();
           } else {
-            throw new UndiciError(`Failed to load snapshots from ${path13}`, { cause: error });
+            throw new UndiciError(`Failed to load snapshots from ${path15}`, { cause: error });
           }
         }
       }
@@ -15264,11 +15104,11 @@ var require_snapshot_recorder = __commonJS({
        * @returns {Promise<void>} - Resolves when snapshots are saved
        */
       async saveSnapshots(filePath) {
-        const path13 = filePath || this.#snapshotPath;
-        if (!path13) {
+        const path15 = filePath || this.#snapshotPath;
+        if (!path15) {
           throw new InvalidArgumentError("Snapshot path is required");
         }
-        const resolvedPath = resolve4(path13);
+        const resolvedPath = resolve4(path15);
         await mkdir(dirname4(resolvedPath), { recursive: true });
         const data = Array.from(this.#snapshots.entries()).map(([hash, snapshot]) => ({
           hash,
@@ -15900,15 +15740,15 @@ var require_redirect_handler = __commonJS({
           return;
         }
         const { origin, pathname, search } = util.parseURL(new URL(this.location, this.opts.origin && new URL(this.opts.path, this.opts.origin)));
-        const path13 = search ? `${pathname}${search}` : pathname;
-        const redirectUrlString = `${origin}${path13}`;
+        const path15 = search ? `${pathname}${search}` : pathname;
+        const redirectUrlString = `${origin}${path15}`;
         for (const historyUrl of this.history) {
           if (historyUrl.toString() === redirectUrlString) {
             throw new InvalidArgumentError(`Redirect loop detected. Cannot redirect to ${origin}. This typically happens when using a Client or Pool with cross-origin redirects. Use an Agent for cross-origin redirects.`);
           }
         }
         this.opts.headers = cleanRequestHeaders(this.opts.headers, statusCode === 303, this.opts.origin !== origin);
-        this.opts.path = path13;
+        this.opts.path = path15;
         this.opts.origin = origin;
         this.opts.query = null;
       }
@@ -17677,10 +17517,10 @@ var require_cache_handler = __commonJS({
       }
       return locationUrl.pathname + locationUrl.search;
     }
-    function deleteCachedUri(store2, cacheKey, path13) {
+    function deleteCachedUri(store2, cacheKey, path15) {
       deleteCachedValue(store2, {
         ...cacheKey,
-        path: path13
+        path: path15
       });
       for (let i = 0; i < util.safeHTTPMethods.length; i++) {
         const method = util.safeHTTPMethods[i];
@@ -17688,7 +17528,7 @@ var require_cache_handler = __commonJS({
           deleteCachedValue(store2, {
             ...cacheKey,
             method,
-            path: path13
+            path: path15
           });
         }
       }
@@ -17699,9 +17539,9 @@ var require_cache_handler = __commonJS({
       }
       const values = Array.isArray(headerValue) ? headerValue : [headerValue];
       for (let i = 0; i < values.length; i++) {
-        const path13 = getSameOriginPath(cacheKey, values[i]);
-        if (path13 !== void 0) {
-          deleteCachedUri(store2, cacheKey, path13);
+        const path15 = getSameOriginPath(cacheKey, values[i]);
+        if (path15 !== void 0) {
+          deleteCachedUri(store2, cacheKey, path15);
         }
       }
     }
@@ -22579,11 +22419,11 @@ var require_fetch = __commonJS({
       function dispatch({ body }) {
         const url = requestCurrentURL(request);
         const agent = fetchParams.controller.dispatcher;
-        const path13 = url.pathname + url.search;
+        const path15 = url.pathname + url.search;
         const hasTrailingQuestionMark = url.search.length === 0 && url.href[url.href.length - url.hash.length - 1] === "?";
         return new Promise((resolve4, reject) => agent.dispatch(
           {
-            path: hasTrailingQuestionMark ? `${path13}?` : path13,
+            path: hasTrailingQuestionMark ? `${path15}?` : path15,
             origin: url.origin,
             method: request.method,
             body: agent.isMockActive ? request.body && (request.body.source || request.body.stream) : body,
@@ -23218,8 +23058,8 @@ var require_cache3 = __commonJS({
        */
       #queryCache(requestQuery, options, targetStorage) {
         const resultList = [];
-        const storage2 = targetStorage ?? this.#relevantRequestResponseList;
-        for (const requestResponse of storage2) {
+        const storage4 = targetStorage ?? this.#relevantRequestResponseList;
+        for (const requestResponse of storage4) {
           const [cachedRequest, cachedResponse] = requestResponse;
           if (this.#requestMatchesCachedItem(requestQuery, cachedRequest, cachedResponse, options)) {
             resultList.push(requestResponse);
@@ -23530,9 +23370,9 @@ var require_util4 = __commonJS({
         }
       }
     }
-    function validateCookiePath(path13) {
-      for (let i = 0; i < path13.length; ++i) {
-        const code = path13.charCodeAt(i);
+    function validateCookiePath(path15) {
+      for (let i = 0; i < path15.length; ++i) {
+        const code = path15.charCodeAt(i);
         if (code < 32 || // exclude CTLs (0-31)
         code > 126 || // exclude DEL and non-ascii
         code === 59) {
@@ -26769,11 +26609,11 @@ var require_undici = __commonJS({
           if (typeof opts.path !== "string") {
             throw new InvalidArgumentError("invalid opts.path");
           }
-          let path13 = opts.path;
+          let path15 = opts.path;
           if (!opts.path.startsWith("/")) {
-            path13 = `/${path13}`;
+            path15 = `/${path15}`;
           }
-          url = new URL(util.parseOrigin(url).origin + path13);
+          url = new URL(util.parseOrigin(url).origin + path15);
         } else {
           if (!opts) {
             opts = typeof url === "object" ? url : {};
@@ -27214,10 +27054,34 @@ __export(push_service_exports, {
 });
 async function sendPushToUser(userId, title, body, payload, category = "system") {
   try {
+    let pushCondition = {};
+    switch (category) {
+      case "device":
+        pushCondition = { pushDeviceToggles: true };
+        break;
+      case "support":
+        pushCondition = { pushSupportUpdates: true };
+        break;
+      case "power":
+        pushCondition = { pushPowerAlerts: true };
+        break;
+      case "order":
+        pushCondition = { pushOrderUpdates: true };
+        break;
+      case "promo":
+        pushCondition = { pushPromotional: true };
+        break;
+      case "security":
+        pushCondition = { pushSecurityAlerts: true };
+        break;
+      default:
+        pushCondition = { pushSystemAlerts: true };
+        break;
+    }
     const subscriptions = await prisma.pushSubscription.findMany({
       where: {
         userId,
-        ...category === "device" ? { pushDeviceToggles: true } : { pushSystemAlerts: true }
+        ...pushCondition
       },
       select: { token: true }
     });
@@ -27239,7 +27103,9 @@ async function sendPushToUser(userId, title, body, payload, category = "system")
         // Bypass battery optimization throttling constraints
         title,
         body,
-        data: payload || {}
+        data: payload || {},
+        categoryId: category,
+        channelId: "support-calls"
       });
     }
     if (messages.length === 0) return false;
@@ -27265,163 +27131,6 @@ var init_push_service = __esm({
     init_ExpoClient();
     init_prisma();
     expo = new Expo({ accessToken: process.env.EXPO_ACCESS_TOKEN });
-  }
-});
-
-// src/services/notification.service.ts
-var notification_service_exports = {};
-__export(notification_service_exports, {
-  attachDraftToBody: () => attachDraftToBody,
-  createNotification: () => createNotification,
-  createNotificationWithEmail: () => createNotificationWithEmail,
-  listNotifications: () => listNotifications,
-  markAllRead: () => markAllRead,
-  markRead: () => markRead,
-  remove: () => remove2,
-  removeAll: () => removeAll,
-  unreadCount: () => unreadCount
-});
-function attachDraftToBody(body, title) {
-  const draft = buildNotificationDraft({ category: "", title, body });
-  if (!draft) return body;
-  let parsed2 = {};
-  if (body) {
-    try {
-      const o = JSON.parse(body);
-      if (o && typeof o === "object") parsed2 = o;
-    } catch {
-    }
-  }
-  const t = typeof parsed2.t === "string" ? parsed2.t : body ?? "";
-  return JSON.stringify({
-    t,
-    ...typeof parsed2.u === "number" ? { u: parsed2.u } : {},
-    d: draft
-  });
-}
-async function createNotification(userId, input) {
-  const notification = await prisma.notification.create({
-    data: {
-      userId,
-      category: input.category ?? "system",
-      type: input.type ?? "info",
-      title: input.title,
-      body: attachDraftToBody(input.body ?? null, input.title)
-    }
-  });
-  emitToUser(userId, "notification:new", notification);
-  Promise.resolve().then(() => (init_push_service(), push_service_exports)).then(({ sendPushToUser: sendPushToUser2 }) => {
-    let plaintext = input.body || "";
-    try {
-      const p = JSON.parse(plaintext);
-      if (p.t) plaintext = p.t;
-    } catch {
-    }
-    sendPushToUser2(userId, input.title, plaintext, void 0, "system");
-  }).catch(console.error);
-  return notification;
-}
-async function createNotificationWithEmail(userId, input, opts = {}) {
-  const notification = await createNotification(userId, input);
-  try {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { email: true, username: true }
-    });
-    if (user?.email) {
-      await sendNotificationEmail({
-        to: user.email,
-        userName: user.username,
-        title: opts.emailSubject ?? input.title,
-        body: opts.emailBody ?? input.body ?? input.title,
-        ctaUrl: opts.ctaUrl,
-        ctaLabel: opts.ctaLabel
-      });
-    }
-  } catch (err) {
-    console.error(`[notify+email] email failed for user ${userId}:`, err instanceof Error ? err.message : err);
-  }
-  return notification;
-}
-async function listNotifications(userId, args = {}) {
-  const page = Math.max(1, Math.floor(args.page ?? 1));
-  const pageSize = Math.min(50, Math.max(1, Math.floor(args.pageSize ?? 20)));
-  const where = buildNotificationWhere(userId, args);
-  const [raw, total2] = await Promise.all([
-    prisma.notification.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      skip: (page - 1) * pageSize,
-      take: pageSize
-    }),
-    prisma.notification.count({ where })
-  ]);
-  const items = raw.map((n) => ({ ...n, category: normalizeCategory(n.category, n.title) }));
-  return { items, total: total2, page, pageSize, totalPages: Math.max(1, Math.ceil(total2 / pageSize)) };
-}
-async function remove2(userId, notificationId) {
-  await prisma.notification.deleteMany({ where: { id: notificationId, userId } });
-  emitToUser(userId, "notification:deleted", { id: notificationId });
-  return { ok: true };
-}
-async function removeAll(userId) {
-  await prisma.notification.deleteMany({ where: { userId } });
-  emitToUser(userId, "notification:updated", { all: true });
-  return { ok: true };
-}
-async function unreadCount(userId) {
-  return prisma.notification.count({ where: { userId, readAt: null } });
-}
-async function markRead(userId, notificationId) {
-  await prisma.notification.updateMany({
-    where: { id: notificationId, userId },
-    data: { readAt: /* @__PURE__ */ new Date() }
-  });
-  emitToUser(userId, "notification:updated", { id: notificationId });
-  return { ok: true };
-}
-async function markAllRead(userId) {
-  await prisma.notification.updateMany({
-    where: { userId, readAt: null },
-    data: { readAt: /* @__PURE__ */ new Date() }
-  });
-  emitToUser(userId, "notification:updated", { all: true });
-  return { ok: true };
-}
-var init_notification_service = __esm({
-  "src/services/notification.service.ts"() {
-    "use strict";
-    init_prisma();
-    init_socket();
-    init_email_service();
-    init_src();
-    init_notificationQuery();
-  }
-});
-
-// src/services/firmware.service.ts
-var firmware_service_exports = {};
-__export(firmware_service_exports, {
-  MODEL_CODES: () => MODEL_CODES,
-  resolveFirmware: () => resolveFirmware
-});
-async function resolveFirmware(modelCode) {
-  const model = (modelCode ?? "").trim().toUpperCase();
-  return prisma.firmwareVersion.findFirst({
-    where: {
-      isCurrent: true,
-      OR: model ? [{ modelCode: model }, { modelCode: "" }] : [{ modelCode: "" }]
-    },
-    orderBy: { modelCode: "desc" }
-    // "" sabse chhota -> model-specific wins
-  });
-}
-var MODEL_CODES;
-var init_firmware_service = __esm({
-  "src/services/firmware.service.ts"() {
-    "use strict";
-    init_prisma();
-    MODEL_CODES = ["2CH", "4CH", "5CH", "6CH", "8CH", "4CH-IR", "FAN-DIM", "DIM-3S", "DIM-4S"];
   }
 });
 
@@ -27885,10 +27594,10 @@ var init_stringify = __esm({
 });
 
 // ../../node_modules/aedes/node_modules/uuid/dist/esm-node/rng.js
-import crypto3 from "node:crypto";
+import crypto2 from "node:crypto";
 function rng() {
   if (poolPtr > rnds8Pool.length - 16) {
-    crypto3.randomFillSync(rnds8Pool);
+    crypto2.randomFillSync(rnds8Pool);
     poolPtr = 0;
   }
   return rnds8Pool.slice(poolPtr, poolPtr += 16);
@@ -28047,14 +27756,14 @@ var init_v35 = __esm({
 });
 
 // ../../node_modules/aedes/node_modules/uuid/dist/esm-node/md5.js
-import crypto4 from "node:crypto";
+import crypto3 from "node:crypto";
 function md5(bytes) {
   if (Array.isArray(bytes)) {
     bytes = Buffer.from(bytes);
   } else if (typeof bytes === "string") {
     bytes = Buffer.from(bytes, "utf8");
   }
-  return crypto4.createHash("md5").update(bytes).digest();
+  return crypto3.createHash("md5").update(bytes).digest();
 }
 var md5_default;
 var init_md5 = __esm({
@@ -28075,12 +27784,12 @@ var init_v3 = __esm({
 });
 
 // ../../node_modules/aedes/node_modules/uuid/dist/esm-node/native.js
-import crypto5 from "node:crypto";
+import crypto4 from "node:crypto";
 var native_default;
 var init_native = __esm({
   "../../node_modules/aedes/node_modules/uuid/dist/esm-node/native.js"() {
     native_default = {
-      randomUUID: crypto5.randomUUID
+      randomUUID: crypto4.randomUUID
     };
   }
 });
@@ -28114,14 +27823,14 @@ var init_v4 = __esm({
 });
 
 // ../../node_modules/aedes/node_modules/uuid/dist/esm-node/sha1.js
-import crypto6 from "node:crypto";
+import crypto5 from "node:crypto";
 function sha1(bytes) {
   if (Array.isArray(bytes)) {
     bytes = Buffer.from(bytes);
   } else if (typeof bytes === "string") {
     bytes = Buffer.from(bytes, "utf8");
   }
-  return crypto6.createHash("sha1").update(bytes).digest();
+  return crypto5.createHash("sha1").update(bytes).digest();
 }
 var sha1_default;
 var init_sha1 = __esm({
@@ -28764,18 +28473,18 @@ var require_qlobber = __commonJS({
     };
     Qlobber.prototype.get_restorer = function(options) {
       options = options || {};
-      let sts = [], entry = this._trie, path13 = "";
+      let sts = [], entry = this._trie, path15 = "";
       return (obj) => {
         switch (obj.type) {
           case "entry":
             entry = entry || /* @__PURE__ */ new Map();
-            sts.push([entry, obj.key, path13]);
+            sts.push([entry, obj.key, path15]);
             entry = entry.get(obj.key);
             if (options.cache_adds) {
-              if (path13) {
-                path13 += this._separator;
+              if (path15) {
+                path15 += this._separator;
               }
-              path13 += obj.key;
+              path15 += obj.key;
             }
             break;
           case "value":
@@ -28794,7 +28503,7 @@ var require_qlobber = __commonJS({
             let prev = sts.pop();
             if (prev === void 0) {
               entry = void 0;
-              path13 = "";
+              path15 = "";
             } else {
               let [prev_entry, key, prev_path] = prev;
               if (entry) {
@@ -28804,7 +28513,7 @@ var require_qlobber = __commonJS({
                 prev_entry.set(key, entry);
               }
               entry = prev_entry;
-              path13 = prev_path;
+              path15 = prev_path;
             }
             break;
         }
@@ -29704,18 +29413,18 @@ var require_qlobber3 = __commonJS({
     };
     Qlobber.prototype.get_restorer = function(options) {
       options = options || {};
-      let sts = [], entry = this._trie, path13 = "";
+      let sts = [], entry = this._trie, path15 = "";
       return (obj) => {
         switch (obj.type) {
           case "entry":
             entry = entry || /* @__PURE__ */ new Map();
-            sts.push([entry, obj.key, path13]);
+            sts.push([entry, obj.key, path15]);
             entry = entry.get(obj.key);
             if (options.cache_adds) {
-              if (path13) {
-                path13 += this._separator;
+              if (path15) {
+                path15 += this._separator;
               }
-              path13 += obj.key;
+              path15 += obj.key;
             }
             break;
           case "value":
@@ -29734,7 +29443,7 @@ var require_qlobber3 = __commonJS({
             let prev = sts.pop();
             if (prev === void 0) {
               entry = void 0;
-              path13 = "";
+              path15 = "";
             } else {
               let [prev_entry, key, prev_path] = prev;
               if (entry) {
@@ -29744,7 +29453,7 @@ var require_qlobber3 = __commonJS({
                 prev_entry.set(key, entry);
               }
               entry = prev_entry;
-              path13 = prev_path;
+              path15 = prev_path;
             }
             break;
         }
@@ -40387,10 +40096,10 @@ var require_retimer = __commonJS({
 });
 
 // ../../node_modules/hyperid/node_modules/uuid/dist/esm-node/rng.js
-import crypto7 from "crypto";
+import crypto6 from "crypto";
 function rng2() {
   if (poolPtr2 > rnds8Pool2.length - 16) {
-    crypto7.randomFillSync(rnds8Pool2);
+    crypto6.randomFillSync(rnds8Pool2);
     poolPtr2 = 0;
   }
   return rnds8Pool2.slice(poolPtr2, poolPtr2 += 16);
@@ -40590,14 +40299,14 @@ var init_v352 = __esm({
 });
 
 // ../../node_modules/hyperid/node_modules/uuid/dist/esm-node/md5.js
-import crypto8 from "crypto";
+import crypto7 from "crypto";
 function md52(bytes) {
   if (Array.isArray(bytes)) {
     bytes = Buffer.from(bytes);
   } else if (typeof bytes === "string") {
     bytes = Buffer.from(bytes, "utf8");
   }
-  return crypto8.createHash("md5").update(bytes).digest();
+  return crypto7.createHash("md5").update(bytes).digest();
 }
 var md5_default2;
 var init_md52 = __esm({
@@ -40642,14 +40351,14 @@ var init_v42 = __esm({
 });
 
 // ../../node_modules/hyperid/node_modules/uuid/dist/esm-node/sha1.js
-import crypto9 from "crypto";
+import crypto8 from "crypto";
 function sha12(bytes) {
   if (Array.isArray(bytes)) {
     bytes = Buffer.from(bytes);
   } else if (typeof bytes === "string") {
     bytes = Buffer.from(bytes, "utf8");
   }
-  return crypto9.createHash("sha1").update(bytes).digest();
+  return crypto8.createHash("sha1").update(bytes).digest();
 }
 var sha1_default2;
 var init_sha12 = __esm({
@@ -43685,6 +43394,728 @@ var require_aedes = __commonJS({
   }
 });
 
+// src/services/mqtt.service.ts
+var mqtt_service_exports = {};
+__export(mqtt_service_exports, {
+  mqttConnectedCount: () => mqttConnectedCount,
+  mqttConnectedDevices: () => mqttConnectedDevices,
+  mqttPushCommands: () => mqttPushCommands,
+  mqttPushLedState: () => mqttPushLedState,
+  mqttPushRotatePassword: () => mqttPushRotatePassword,
+  mqttPushToHome: () => mqttPushToHome,
+  publishTermCommand: () => publishTermCommand,
+  startMqttBroker: () => startMqttBroker
+});
+import { createServer as createNetServer } from "net";
+import crypto9 from "node:crypto";
+function hashKey(raw) {
+  return crypto9.createHash("sha256").update(raw).digest("hex");
+}
+function startMqttBroker() {
+  broker = new import_aedes.default();
+  tcpServer = createNetServer(broker.handle);
+  broker.authenticate = async (client, username, password, callback) => {
+    try {
+      if (!username || !password) {
+        return callback(new Error("credentials required"), false);
+      }
+      const serial = username.toString().trim().toUpperCase();
+      const apiKeyPlain = password.toString().trim();
+      const key = await prisma.apiKey.findUnique({
+        where: { keyHash: hashKey(apiKeyPlain) },
+        select: { id: true, homeId: true, revokedAt: true, expiresAt: true }
+      });
+      if (!key || !key.homeId) {
+        return callback(new Error("invalid API key"), false);
+      }
+      if (key.revokedAt) {
+        return callback(new Error("API key revoked"), false);
+      }
+      if (key.expiresAt && key.expiresAt < /* @__PURE__ */ new Date()) {
+        return callback(new Error("API key expired"), false);
+      }
+      const esp = await prisma.espDevice.findFirst({
+        where: { serialCode: serial, homeId: key.homeId },
+        select: { id: true, macAddress: true }
+      });
+      if (!esp) {
+        return callback(new Error("device not registered"), false);
+      }
+      connectedDevices.set(client.id, {
+        homeId: key.homeId,
+        espId: esp.id,
+        mac: esp.macAddress.replace(/:/g, "").toLowerCase(),
+        serial
+      });
+      await prisma.apiKey.update({ where: { id: key.id }, data: { lastUsedAt: /* @__PURE__ */ new Date() } }).catch(() => void 0);
+      logger.info(`[mqtt] \u{1F511} ${serial} authenticated (home ${key.homeId})`);
+      callback(null, true);
+    } catch (err) {
+      logger.warn("[mqtt] auth error", err instanceof Error ? err.message : String(err));
+      callback(err instanceof Error ? err : new Error(String(err)), false);
+    }
+  };
+  broker.authorizePublish = (client, packet, callback) => {
+    const meta = client ? connectedDevices.get(client.id) : null;
+    if (!meta) return callback(new Error("unauthorized"));
+    const prefix = `sn/${meta.mac}/`;
+    if (!packet.topic.startsWith(prefix)) {
+      return callback(new Error("topic not allowed"));
+    }
+    callback(null);
+  };
+  broker.authorizeSubscribe = (client, sub, callback) => {
+    const meta = client ? connectedDevices.get(client.id) : null;
+    if (!meta) return callback(new Error("unauthorized"), null);
+    const prefix = `sn/${meta.mac}/`;
+    if (!sub.topic.startsWith(prefix)) {
+      return callback(new Error("topic not allowed"), null);
+    }
+    callback(null, sub);
+  };
+  broker.on("publish", async (packet, client) => {
+    if (!client) return;
+    const meta = connectedDevices.get(client.id);
+    if (!meta) return;
+    const topic = packet.topic;
+    if (topic === `sn/${meta.mac}/log`) {
+      try {
+        const payloadStr = packet.payload.toString();
+        emitToBoardLogs(meta.espId, payloadStr);
+      } catch (err) {
+        logger.warn(`[mqtt] log parse error from ${meta.serial}`, err instanceof Error ? err.message : String(err));
+      }
+      return;
+    }
+    if (topic === `sn/${meta.mac}/state`) {
+      try {
+        const payload = JSON.parse(packet.payload.toString());
+        await handleDeviceState(meta, payload);
+      } catch (err) {
+        logger.warn(`[mqtt] state parse error from ${meta.serial}`, err instanceof Error ? err.message : String(err));
+      }
+    }
+  });
+  broker.on("client", async (client) => {
+    const meta = connectedDevices.get(client.id);
+    if (!meta) return;
+    logger.info(`[mqtt] \u2197 ${meta.serial} (${meta.mac}) connected`);
+    await prisma.espDevice.update({
+      where: { id: meta.espId },
+      data: { lastSeen: /* @__PURE__ */ new Date(), offline: false }
+    }).catch(() => null);
+    await prisma.device.updateMany({
+      where: { espId: meta.espId },
+      data: { lastSeen: /* @__PURE__ */ new Date(), offline: false }
+    }).catch(() => null);
+    await pushPendingCommands(meta);
+    await pushDeviceNames(meta);
+  });
+  broker.on("clientDisconnect", async (client) => {
+    const meta = connectedDevices.get(client.id);
+    if (!meta) return;
+    logger.info(`[mqtt] \u2198 ${meta.serial} (${meta.mac}) disconnected`);
+    connectedDevices.delete(client.id);
+    await prisma.espDevice.update({
+      where: { id: meta.espId },
+      data: { offline: true }
+    }).catch(() => null);
+    const devices = await prisma.device.findMany({
+      where: { espId: meta.espId },
+      select: { id: true }
+    });
+    await prisma.device.updateMany({
+      where: { espId: meta.espId },
+      data: { offline: true }
+    }).catch(() => null);
+    for (const d of devices) {
+      await emitDeviceUpdated(meta.homeId, d.id);
+    }
+  });
+  tcpServer.listen(MQTT_PORT, () => {
+    logger.info(`\u{1F99F} MQTT Broker (Aedes) listening on tcp://0.0.0.0:${MQTT_PORT}`);
+  });
+  tcpServer.on("error", (err) => {
+    logger.warn(`[mqtt] TCP server error: ${err.message}`);
+  });
+}
+async function handleDeviceState(meta, payload) {
+  const { homeId, espId, serial } = meta;
+  const espUpdate = {
+    lastSeen: /* @__PURE__ */ new Date(),
+    offline: false
+  };
+  if (payload.fw) espUpdate.firmwareVersion = payload.fw;
+  if (payload.ip) espUpdate.ipAddress = payload.ip;
+  if (payload.ssid) espUpdate.ssid = payload.ssid;
+  if (payload.model) espUpdate.modelCode = payload.model.toUpperCase();
+  const esp = await prisma.espDevice.update({
+    where: { id: espId },
+    data: espUpdate
+  });
+  emitToHome(homeId, "esp:updated", esp);
+  if (payload.states && Array.isArray(payload.states)) {
+    const mappedDevices = await prisma.device.findMany({
+      where: { espId, homeId }
+    });
+    for (let i = 0; i < payload.states.length; i++) {
+      const channelNum = i + 1;
+      const target = mappedDevices.find((d) => d.channel === channelNum);
+      if (!target) continue;
+      const targetStatus = payload.states[i] ? "on" : "off";
+      if (target.status === targetStatus) continue;
+      await prisma.device.update({
+        where: { id: target.id },
+        data: {
+          status: targetStatus,
+          lastSeen: /* @__PURE__ */ new Date(),
+          offline: false
+        }
+      });
+      await emitDeviceUpdated(homeId, target.id);
+    }
+  }
+  await prisma.device.updateMany({
+    where: { espId, homeId },
+    data: { lastSeen: /* @__PURE__ */ new Date(), offline: false }
+  }).catch(() => null);
+}
+async function pushPendingCommands(meta) {
+  if (!broker) return;
+  const { homeId, espId, mac } = meta;
+  const devices = await prisma.device.findMany({
+    where: { espId, homeId },
+    select: { id: true, channel: true }
+  });
+  const deviceIds = devices.map((d) => d.id);
+  if (deviceIds.length === 0) return;
+  const cmds = await prisma.deviceCommand.findMany({
+    where: { deviceId: { in: deviceIds }, status: "pending" },
+    orderBy: { createdAt: "asc" },
+    take: 20,
+    select: { id: true, deviceId: true, command: true }
+  });
+  if (cmds.length === 0) return;
+  const commands = cmds.map((c) => {
+    const dev = devices.find((d) => d.id === c.deviceId);
+    return { id: c.id, ch: dev?.channel ?? 0, action: c.command };
+  });
+  const topic = `sn/${mac}/cmd`;
+  const payload = JSON.stringify({ commands });
+  broker.publish(
+    { cmd: "publish", topic, payload: Buffer.from(payload), qos: 1, retain: false, dup: false },
+    () => {
+      logger.info(`[mqtt] \u2192 ${meta.serial} pushed ${commands.length} cmd(s)`);
+    }
+  );
+}
+async function pushDeviceNames(meta) {
+  if (!broker) return;
+  const { homeId, espId, mac } = meta;
+  const devices = await prisma.device.findMany({
+    where: { espId, homeId },
+    select: { channel: true, name: true }
+  });
+  const chCount = devices.reduce((m, d) => Math.max(m, d.channel ?? 0), 4);
+  const names = new Array(chCount).fill("");
+  for (const d of devices) {
+    if (d.channel != null && d.channel >= 1) {
+      names[d.channel - 1] = d.name;
+    }
+  }
+  const topic = `sn/${mac}/cmd`;
+  const payload = JSON.stringify({ names });
+  broker.publish(
+    { cmd: "publish", topic, payload: Buffer.from(payload), qos: 1, retain: false, dup: false },
+    () => {
+    }
+  );
+}
+function mqttPushCommands(mac) {
+  const cleanMac = mac.replace(/:/g, "").toLowerCase();
+  const metaMac = mac.toLowerCase();
+  for (const [, meta] of connectedDevices) {
+    if (meta.mac === cleanMac || meta.mac === metaMac) {
+      void pushPendingCommands(meta);
+      return;
+    }
+  }
+}
+function mqttPushRotatePassword(mac, newPass) {
+  if (!broker) return;
+  const topic = `sn/${mac}/cmd`;
+  const payload = JSON.stringify({
+    commands: [{ id: Math.floor(Math.random() * 1e5), action: "rotate_console_pass", newPass }]
+  });
+  broker.publish(
+    { cmd: "publish", topic, payload: Buffer.from(payload), qos: 1, retain: false, dup: false },
+    () => {
+      logger.info(`[mqtt] \u2192 ${mac} pushed rotate_console_pass`);
+    }
+  );
+}
+function mqttPushToHome(homeId) {
+  for (const [, meta] of connectedDevices) {
+    if (meta.homeId === homeId) {
+      void pushPendingCommands(meta);
+    }
+  }
+}
+function mqttConnectedCount() {
+  return connectedDevices.size;
+}
+function mqttConnectedDevices() {
+  return Array.from(connectedDevices.values()).map((m) => m.serial);
+}
+function publishTermCommand(mac, cmd) {
+  if (!broker) return;
+  const cleanMac = mac.replace(/:/g, "").toLowerCase();
+  const topic = `sn/${cleanMac}/term_cmd`;
+  broker.publish({
+    topic,
+    payload: Buffer.from(cmd),
+    qos: 1,
+    retain: false,
+    cmd: "publish",
+    dup: false
+  }, (err) => {
+    if (err) logger.error(`[mqtt] Failed to push terminal command to ${mac}`);
+  });
+}
+function mqttPushLedState(mac, enabled) {
+  if (!broker) return;
+  const cleanMac = mac.replace(/:/g, "").toLowerCase();
+  const topic = `sn/${cleanMac}/cmd`;
+  const payload = JSON.stringify({ type: "set_led", enabled });
+  broker.publish(
+    { cmd: "publish", topic, payload: Buffer.from(payload), qos: 1, retain: false, dup: false },
+    () => {
+      logger.info(`[mqtt] \u2192 ${cleanMac} pushed LED state: ${enabled}`);
+    }
+  );
+}
+var import_aedes, MQTT_PORT, broker, tcpServer, connectedDevices;
+var init_mqtt_service = __esm({
+  "src/services/mqtt.service.ts"() {
+    "use strict";
+    import_aedes = __toESM(require_aedes(), 1);
+    init_prisma();
+    init_socket();
+    init_logger();
+    MQTT_PORT = Number(process.env.MQTT_PORT) || 1883;
+    broker = null;
+    tcpServer = null;
+    connectedDevices = /* @__PURE__ */ new Map();
+  }
+});
+
+// src/lib/socket.ts
+import { Server } from "socket.io";
+import jwt from "jsonwebtoken";
+function initSocket(server) {
+  io = new Server(server, {
+    cors: { origin: corsOrigins, credentials: true }
+  });
+  io.use((socket, next) => {
+    try {
+      const token = socket.handshake.auth?.token;
+      if (!token) throw new Error("missing token");
+      const payload = jwt.verify(token, env.JWT_ACCESS_SECRET);
+      socket.data.userId = payload.sub;
+      if (payload.sid) {
+        socket.data.sessionId = payload.sid;
+      }
+      next();
+    } catch {
+      next(new Error("unauthorized"));
+    }
+  });
+  io.on("connection", async (socket) => {
+    const userId = socket.data.userId;
+    const sessionId = socket.data.sessionId;
+    socket.join(`user:${userId}`);
+    if (sessionId) {
+      socket.join(`session:${sessionId}`);
+    }
+    let joined = 0;
+    let isAdmin = false;
+    try {
+      const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+      isAdmin = user?.role === "system_admin";
+      const homes = isAdmin ? await prisma.home.findMany({ select: { id: true } }) : await prisma.homeMember.findMany({ where: { userId }, select: { homeId: true } });
+      for (const h of homes) {
+        socket.join(`home:${"homeId" in h ? h.homeId : h.id}`);
+        joined++;
+      }
+    } catch {
+    }
+    socket.emit(REALTIME_EVENTS.socketReady, { homes: joined });
+    console.log(`[socket] user ${userId} connected (${joined} homes)`);
+    const pendingCall = activeCalls.get(userId);
+    if (pendingCall && Date.now() - pendingCall.timestamp < 6e4) {
+      socket.emit("webrtc:signal", {
+        senderId: pendingCall.adminId,
+        type: "call-request",
+        payload: { callType: pendingCall.callType }
+      });
+    }
+    socket.on("webrtc:signal", (data) => {
+      const { targetId, type, payload } = data || {};
+      if (targetId) {
+        const roomName = `user:${targetId}`;
+        const room = io?.sockets.adapter.rooms.get(roomName);
+        if (type === "call-request") {
+          activeCalls.set(targetId, { adminId: userId, callType: payload?.callType || "video", timestamp: Date.now() });
+          setTimeout(() => activeCalls.delete(targetId), 6e4);
+          if (!room || room.size === 0) {
+            Promise.resolve().then(() => (init_push_service(), push_service_exports)).then(({ sendPushToUser: sendPushToUser2 }) => {
+              sendPushToUser2(
+                targetId,
+                "Incoming Support Call",
+                "Admin is calling you for support. Tap to answer.",
+                { type: "webrtc-call", callType: payload?.callType || "video", adminId: userId },
+                "support"
+              ).catch(console.error);
+            });
+            socket.emit("webrtc:signal", {
+              senderId: targetId,
+              type: "call-offline-push-sent"
+            });
+          }
+        } else if (type === "call-end" || type === "call-reject" || type === "call-accept") {
+          activeCalls.delete(targetId);
+          activeCalls.delete(userId);
+          if (type === "call-accept" || type === "call-reject") {
+            socket.to(`user:${userId}`).emit("webrtc:signal", {
+              senderId: targetId,
+              type: "call-end",
+              payload: { reason: "handled-elsewhere" }
+            });
+          }
+        }
+        socket.to(roomName).emit("webrtc:signal", {
+          senderId: userId,
+          type,
+          payload
+        });
+      }
+    });
+    socket.on("admin:subscribe-logs", (data) => {
+      if (!isAdmin) return;
+      const { espId } = data || {};
+      if (espId) {
+        socket.join(`board-logs-${espId}`);
+        socket.emit("admin:board-log", `[Server] Subscribed to terminal logs for board #${espId}`);
+      }
+    });
+    socket.on("admin:unsubscribe-logs", (data) => {
+      const { espId } = data || {};
+      if (espId) socket.leave(`board-logs-${espId}`);
+    });
+    socket.on("admin:send-cmd", async (data) => {
+      if (!isAdmin) return;
+      const { espId, cmd } = data || {};
+      if (espId && cmd) {
+        try {
+          const esp = await prisma.espDevice.findUnique({ where: { id: espId }, select: { macAddress: true } });
+          if (esp) {
+            Promise.resolve().then(() => (init_mqtt_service(), mqtt_service_exports)).then(({ publishTermCommand: publishTermCommand2 }) => {
+              publishTermCommand2(esp.macAddress, cmd);
+            });
+          }
+        } catch (e) {
+          console.error("[socket] Failed to send terminal command", e);
+        }
+      }
+    });
+  });
+  return io;
+}
+function emitToUser(userId, event, payload) {
+  io?.to(`user:${userId}`).emit(event, payload);
+}
+function emitToSession(sessionId, event, payload) {
+  io?.to(`session:${sessionId}`).emit(event, payload);
+}
+function emitToHome(homeId, event, payload) {
+  io?.to(`home:${homeId}`).emit(event, payload);
+}
+async function emitDeviceUpdated(homeId, deviceId) {
+  if (!io) return;
+  try {
+    const device = await prisma.device.findUnique({
+      where: { id: deviceId },
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        offline: true,
+        lastSeen: true,
+        lastUpdated: true
+      }
+    });
+    if (!device) return;
+    const payload = {
+      id: device.id,
+      homeId,
+      name: device.name,
+      status: device.status,
+      online: !device.offline,
+      offline: device.offline,
+      lastSeen: device.lastSeen ? device.lastSeen.toISOString() : null,
+      updatedAt: device.lastUpdated.toISOString()
+    };
+    io.to(`home:${homeId}`).emit(REALTIME_EVENTS.deviceUpdated, payload);
+  } catch (err) {
+    console.error("[socket] emitDeviceUpdated failed", err);
+  }
+}
+async function leaveHomeRoom(userId, homeId) {
+  if (!io) return;
+  try {
+    const sockets = await io.in(`home:${homeId}`).fetchSockets();
+    for (const s of sockets) {
+      if (s.data.userId === userId) s.leave(`home:${homeId}`);
+    }
+  } catch {
+  }
+  emitToUser(userId, REALTIME_EVENTS.homeAccessRevoked, { homeId });
+}
+function emitToBoardLogs(espId, logMsg) {
+  io?.to(`board-logs-${espId}`).emit("admin:board-log", logMsg);
+}
+var io, activeCalls;
+var init_socket = __esm({
+  "src/lib/socket.ts"() {
+    "use strict";
+    init_src();
+    init_env();
+    init_prisma();
+    io = null;
+    activeCalls = /* @__PURE__ */ new Map();
+  }
+});
+
+// src/services/audit.service.ts
+var audit_service_exports = {};
+__export(audit_service_exports, {
+  audit: () => audit
+});
+async function audit(actorId, action, opts = {}) {
+  try {
+    const data = {
+      actorId,
+      homeId: opts.homeId ?? null,
+      action,
+      entity: opts.entity ?? null,
+      entityId: opts.entityId ?? null
+    };
+    if (opts.meta) data.meta = opts.meta;
+    await prisma.auditLog.create({ data });
+  } catch (err) {
+    console.error("[audit] failed to write audit log:", err);
+  }
+}
+var init_audit_service = __esm({
+  "src/services/audit.service.ts"() {
+    "use strict";
+    init_prisma();
+  }
+});
+
+// src/services/notificationQuery.ts
+function normalizeCategory(category, title) {
+  if (category === "system" && SCHEDULE_TITLE_RE.test(title ?? "")) return "schedule";
+  return category;
+}
+function buildNotificationWhere(userId, args = {}) {
+  const where = { userId };
+  if (args.category && args.category !== "all") {
+    if (args.category === "schedule") {
+      where.OR = [{ category: "schedule" }, { category: "system", title: { contains: "Schedule fired" } }];
+    } else if (args.category === "system") {
+      where.OR = [{ category: "system", NOT: { title: { contains: "Schedule fired" } } }];
+    } else {
+      where.category = args.category;
+    }
+  }
+  if (args.type && args.type !== "all") where.type = args.type;
+  if (args.unread) where.readAt = null;
+  return where;
+}
+var SCHEDULE_TITLE_RE;
+var init_notificationQuery = __esm({
+  "src/services/notificationQuery.ts"() {
+    "use strict";
+    SCHEDULE_TITLE_RE = /Schedule fired/i;
+  }
+});
+
+// src/services/notification.service.ts
+var notification_service_exports = {};
+__export(notification_service_exports, {
+  attachDraftToBody: () => attachDraftToBody,
+  createNotification: () => createNotification,
+  createNotificationWithEmail: () => createNotificationWithEmail,
+  listNotifications: () => listNotifications,
+  markAllRead: () => markAllRead,
+  markRead: () => markRead,
+  remove: () => remove2,
+  removeAll: () => removeAll,
+  unreadCount: () => unreadCount
+});
+function attachDraftToBody(body, title) {
+  const draft = buildNotificationDraft({ category: "", title, body });
+  if (!draft) return body;
+  let parsed2 = {};
+  if (body) {
+    try {
+      const o = JSON.parse(body);
+      if (o && typeof o === "object") parsed2 = o;
+    } catch {
+    }
+  }
+  const t = typeof parsed2.t === "string" ? parsed2.t : body ?? "";
+  return JSON.stringify({
+    t,
+    ...typeof parsed2.u === "number" ? { u: parsed2.u } : {},
+    d: draft
+  });
+}
+async function createNotification(userId, input) {
+  const notification = await prisma.notification.create({
+    data: {
+      userId,
+      category: input.category ?? "system",
+      type: input.type ?? "info",
+      title: input.title,
+      body: attachDraftToBody(input.body ?? null, input.title)
+    }
+  });
+  emitToUser(userId, "notification:new", notification);
+  Promise.resolve().then(() => (init_push_service(), push_service_exports)).then(({ sendPushToUser: sendPushToUser2 }) => {
+    let plaintext = input.body || "";
+    try {
+      const p = JSON.parse(plaintext);
+      if (p.t) plaintext = p.t;
+    } catch {
+    }
+    let pushCat = "system";
+    const c = input.category ?? "system";
+    if (c === "auth" || c === "security") pushCat = "security";
+    else if (c === "shop" || c === "order") pushCat = "order";
+    else if (c === "hardware" || c === "offline") pushCat = "power";
+    else if (c === "support") pushCat = "support";
+    else if (c === "promo") pushCat = "promo";
+    else if (c === "device") pushCat = "device";
+    sendPushToUser2(userId, input.title, plaintext, void 0, pushCat);
+  }).catch(console.error);
+  return notification;
+}
+async function createNotificationWithEmail(userId, input, opts = {}) {
+  const notification = await createNotification(userId, input);
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, username: true }
+    });
+    if (user?.email) {
+      await sendNotificationEmail({
+        to: user.email,
+        userName: user.username,
+        title: opts.emailSubject ?? input.title,
+        body: opts.emailBody ?? input.body ?? input.title,
+        ctaUrl: opts.ctaUrl,
+        ctaLabel: opts.ctaLabel
+      });
+    }
+  } catch (err) {
+    console.error(`[notify+email] email failed for user ${userId}:`, err instanceof Error ? err.message : err);
+  }
+  return notification;
+}
+async function listNotifications(userId, args = {}) {
+  const page = Math.max(1, Math.floor(args.page ?? 1));
+  const pageSize = Math.min(50, Math.max(1, Math.floor(args.pageSize ?? 20)));
+  const where = buildNotificationWhere(userId, args);
+  const [raw, total2] = await Promise.all([
+    prisma.notification.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize
+    }),
+    prisma.notification.count({ where })
+  ]);
+  const items = raw.map((n) => ({ ...n, category: normalizeCategory(n.category, n.title) }));
+  return { items, total: total2, page, pageSize, totalPages: Math.max(1, Math.ceil(total2 / pageSize)) };
+}
+async function remove2(userId, notificationId) {
+  await prisma.notification.deleteMany({ where: { id: notificationId, userId } });
+  emitToUser(userId, "notification:deleted", { id: notificationId });
+  return { ok: true };
+}
+async function removeAll(userId) {
+  await prisma.notification.deleteMany({ where: { userId } });
+  emitToUser(userId, "notification:updated", { all: true });
+  return { ok: true };
+}
+async function unreadCount(userId) {
+  return prisma.notification.count({ where: { userId, readAt: null } });
+}
+async function markRead(userId, notificationId) {
+  await prisma.notification.updateMany({
+    where: { id: notificationId, userId },
+    data: { readAt: /* @__PURE__ */ new Date() }
+  });
+  emitToUser(userId, "notification:updated", { id: notificationId });
+  return { ok: true };
+}
+async function markAllRead(userId) {
+  await prisma.notification.updateMany({
+    where: { userId, readAt: null },
+    data: { readAt: /* @__PURE__ */ new Date() }
+  });
+  emitToUser(userId, "notification:updated", { all: true });
+  return { ok: true };
+}
+var init_notification_service = __esm({
+  "src/services/notification.service.ts"() {
+    "use strict";
+    init_prisma();
+    init_socket();
+    init_email_service();
+    init_src();
+    init_notificationQuery();
+  }
+});
+
+// src/services/firmware.service.ts
+var firmware_service_exports = {};
+__export(firmware_service_exports, {
+  MODEL_CODES: () => MODEL_CODES,
+  resolveFirmware: () => resolveFirmware
+});
+async function resolveFirmware(modelCode) {
+  const model = (modelCode ?? "").trim().toUpperCase();
+  return prisma.firmwareVersion.findFirst({
+    where: {
+      isCurrent: true,
+      OR: model ? [{ modelCode: model }, { modelCode: "" }] : [{ modelCode: "" }]
+    },
+    orderBy: { modelCode: "desc" }
+    // "" sabse chhota -> model-specific wins
+  });
+}
+var MODEL_CODES;
+var init_firmware_service = __esm({
+  "src/services/firmware.service.ts"() {
+    "use strict";
+    init_prisma();
+    MODEL_CODES = ["2CH", "4CH", "5CH", "6CH", "8CH", "4CH-IR", "FAN-DIM", "DIM-3S", "DIM-4S"];
+  }
+});
+
 // src/index.ts
 import { createServer } from "http";
 
@@ -43693,8 +44124,8 @@ init_env();
 import express2 from "express";
 import cors from "cors";
 import helmet from "helmet";
-import path11 from "node:path";
-import fs10 from "node:fs";
+import path13 from "node:path";
+import fs12 from "node:fs";
 
 // src/middleware/errorHandler.ts
 import { ZodError } from "zod";
@@ -43768,7 +44199,7 @@ init_prisma();
 init_env();
 init_prisma();
 import bcrypt from "bcryptjs";
-import crypto2 from "node:crypto";
+import crypto10 from "node:crypto";
 import jwt2 from "jsonwebtoken";
 init_logger();
 
@@ -43823,7 +44254,7 @@ function toAuthUser(user) {
   };
 }
 function hashToken(token) {
-  return crypto2.createHash("sha256").update(token).digest("hex");
+  return crypto10.createHash("sha256").update(token).digest("hex");
 }
 function signAccessToken(user, sessionId) {
   return jwt2.sign(
@@ -43833,7 +44264,7 @@ function signAccessToken(user, sessionId) {
       email: user.email,
       role: user.role,
       ver: user.tokenVersion,
-      jti: crypto2.randomUUID(),
+      jti: crypto10.randomUUID(),
       sid: sessionId
     },
     env.JWT_ACCESS_SECRET,
@@ -43841,7 +44272,7 @@ function signAccessToken(user, sessionId) {
   );
 }
 function signRefreshToken(user) {
-  return jwt2.sign({ sub: user.id, ver: user.tokenVersion, jti: crypto2.randomUUID() }, env.JWT_REFRESH_SECRET, {
+  return jwt2.sign({ sub: user.id, ver: user.tokenVersion, jti: crypto10.randomUUID() }, env.JWT_REFRESH_SECRET, {
     expiresIn: env.JWT_REFRESH_EXPIRES
   });
 }
@@ -44086,7 +44517,7 @@ async function requestPasswordReset(email) {
     where: { userId: user.id, usedAt: null },
     data: { usedAt: /* @__PURE__ */ new Date() }
   });
-  const rawToken = crypto2.randomBytes(32).toString("base64url");
+  const rawToken = crypto10.randomBytes(32).toString("base64url");
   const tokenHash = hashToken(rawToken);
   await prisma.passwordResetToken.create({
     data: {
@@ -44766,219 +45197,7 @@ init_audit_service();
 init_notification_service();
 init_push_service();
 init_firmware_service();
-
-// src/services/mqtt.service.ts
-var import_aedes = __toESM(require_aedes(), 1);
-init_prisma();
-init_socket();
-init_logger();
-import { createServer as createNetServer } from "net";
-import crypto10 from "node:crypto";
-var MQTT_PORT = Number(process.env.MQTT_PORT) || 1883;
-function hashKey(raw) {
-  return crypto10.createHash("sha256").update(raw).digest("hex");
-}
-var broker = null;
-var tcpServer = null;
-var connectedDevices = /* @__PURE__ */ new Map();
-function startMqttBroker() {
-  broker = new import_aedes.default();
-  tcpServer = createNetServer(broker.handle);
-  broker.authenticate = async (client, username, password, callback) => {
-    try {
-      if (!username || !password) {
-        return callback(new Error("credentials required"), false);
-      }
-      const serial = username.toString().trim().toUpperCase();
-      const apiKeyPlain = password.toString().trim();
-      const key = await prisma.apiKey.findUnique({
-        where: { keyHash: hashKey(apiKeyPlain) },
-        select: { id: true, homeId: true, revokedAt: true, expiresAt: true }
-      });
-      if (!key || !key.homeId) {
-        return callback(new Error("invalid API key"), false);
-      }
-      if (key.revokedAt) {
-        return callback(new Error("API key revoked"), false);
-      }
-      if (key.expiresAt && key.expiresAt < /* @__PURE__ */ new Date()) {
-        return callback(new Error("API key expired"), false);
-      }
-      const esp = await prisma.espDevice.findFirst({
-        where: { serialCode: serial, homeId: key.homeId },
-        select: { id: true, macAddress: true }
-      });
-      if (!esp) {
-        return callback(new Error("device not registered"), false);
-      }
-      connectedDevices.set(client.id, {
-        homeId: key.homeId,
-        espId: esp.id,
-        mac: esp.macAddress,
-        serial
-      });
-      await prisma.apiKey.update({ where: { id: key.id }, data: { lastUsedAt: /* @__PURE__ */ new Date() } }).catch(() => void 0);
-      logger.info(`[mqtt] \u{1F511} ${serial} authenticated (home ${key.homeId})`);
-      callback(null, true);
-    } catch (err) {
-      logger.warn("[mqtt] auth error", err instanceof Error ? err.message : String(err));
-      callback(err instanceof Error ? err : new Error(String(err)), false);
-    }
-  };
-  broker.authorizePublish = (client, packet, callback) => {
-    const meta = client ? connectedDevices.get(client.id) : null;
-    if (!meta) return callback(new Error("unauthorized"));
-    const prefix = `sn/${meta.mac}/`;
-    if (!packet.topic.startsWith(prefix)) {
-      return callback(new Error("topic not allowed"));
-    }
-    callback(null);
-  };
-  broker.authorizeSubscribe = (client, sub, callback) => {
-    const meta = client ? connectedDevices.get(client.id) : null;
-    if (!meta) return callback(new Error("unauthorized"), null);
-    const prefix = `sn/${meta.mac}/`;
-    if (!sub.topic.startsWith(prefix)) {
-      return callback(new Error("topic not allowed"), null);
-    }
-    callback(null, sub);
-  };
-  broker.on("publish", async (packet, client) => {
-    if (!client) return;
-    const meta = connectedDevices.get(client.id);
-    if (!meta) return;
-    const topic = packet.topic;
-    if (topic === `sn/${meta.mac}/state`) {
-      try {
-        const payload = JSON.parse(packet.payload.toString());
-        await handleDeviceState(meta, payload);
-      } catch (err) {
-        logger.warn(`[mqtt] state parse error from ${meta.serial}`, err instanceof Error ? err.message : String(err));
-      }
-    }
-  });
-  broker.on("client", async (client) => {
-    const meta = connectedDevices.get(client.id);
-    if (!meta) return;
-    logger.info(`[mqtt] \u2197 ${meta.serial} (${meta.mac}) connected`);
-    await prisma.espDevice.update({
-      where: { id: meta.espId },
-      data: { lastSeen: /* @__PURE__ */ new Date(), offline: false }
-    }).catch(() => null);
-    await prisma.device.updateMany({
-      where: { espId: meta.espId },
-      data: { lastSeen: /* @__PURE__ */ new Date(), offline: false }
-    }).catch(() => null);
-    await pushPendingCommands(meta);
-  });
-  broker.on("clientDisconnect", async (client) => {
-    const meta = connectedDevices.get(client.id);
-    if (!meta) return;
-    logger.info(`[mqtt] \u2198 ${meta.serial} (${meta.mac}) disconnected`);
-    connectedDevices.delete(client.id);
-    await prisma.espDevice.update({
-      where: { id: meta.espId },
-      data: { offline: true }
-    }).catch(() => null);
-    const devices = await prisma.device.findMany({
-      where: { espId: meta.espId },
-      select: { id: true }
-    });
-    await prisma.device.updateMany({
-      where: { espId: meta.espId },
-      data: { offline: true }
-    }).catch(() => null);
-    for (const d of devices) {
-      await emitDeviceUpdated(meta.homeId, d.id);
-    }
-  });
-  tcpServer.listen(MQTT_PORT, () => {
-    logger.info(`\u{1F99F} MQTT Broker (Aedes) listening on tcp://0.0.0.0:${MQTT_PORT}`);
-  });
-  tcpServer.on("error", (err) => {
-    logger.warn(`[mqtt] TCP server error: ${err.message}`);
-  });
-}
-async function handleDeviceState(meta, payload) {
-  const { homeId, espId, serial } = meta;
-  const espUpdate = {
-    lastSeen: /* @__PURE__ */ new Date(),
-    offline: false
-  };
-  if (payload.fw) espUpdate.firmwareVersion = payload.fw;
-  if (payload.ip) espUpdate.ipAddress = payload.ip;
-  if (payload.ssid) espUpdate.ssid = payload.ssid;
-  if (payload.model) espUpdate.modelCode = payload.model.toUpperCase();
-  const esp = await prisma.espDevice.update({
-    where: { id: espId },
-    data: espUpdate
-  });
-  emitToHome(homeId, "esp:updated", esp);
-  if (payload.states && Array.isArray(payload.states)) {
-    const mappedDevices = await prisma.device.findMany({
-      where: { espId, homeId }
-    });
-    for (let i = 0; i < payload.states.length; i++) {
-      const channelNum = i + 1;
-      const target = mappedDevices.find((d) => d.channel === channelNum);
-      if (!target) continue;
-      const targetStatus = payload.states[i] ? "on" : "off";
-      if (target.status === targetStatus) continue;
-      await prisma.device.update({
-        where: { id: target.id },
-        data: {
-          status: targetStatus,
-          lastSeen: /* @__PURE__ */ new Date(),
-          offline: false
-        }
-      });
-      await emitDeviceUpdated(homeId, target.id);
-    }
-  }
-  await prisma.device.updateMany({
-    where: { espId, homeId },
-    data: { lastSeen: /* @__PURE__ */ new Date(), offline: false }
-  }).catch(() => null);
-}
-async function pushPendingCommands(meta) {
-  if (!broker) return;
-  const { homeId, espId, mac } = meta;
-  const devices = await prisma.device.findMany({
-    where: { espId, homeId },
-    select: { id: true, channel: true }
-  });
-  const deviceIds = devices.map((d) => d.id);
-  if (deviceIds.length === 0) return;
-  const cmds = await prisma.deviceCommand.findMany({
-    where: { deviceId: { in: deviceIds }, status: "pending" },
-    orderBy: { createdAt: "asc" },
-    take: 20,
-    select: { id: true, deviceId: true, command: true }
-  });
-  if (cmds.length === 0) return;
-  const commands = cmds.map((c) => {
-    const dev = devices.find((d) => d.id === c.deviceId);
-    return { id: c.id, ch: dev?.channel ?? 0, action: c.command };
-  });
-  const topic = `sn/${mac}/cmd`;
-  const payload = JSON.stringify({ commands });
-  broker.publish(
-    { cmd: "publish", topic, payload: Buffer.from(payload), qos: 1, retain: false, dup: false },
-    () => {
-      logger.info(`[mqtt] \u2192 ${meta.serial} pushed ${commands.length} cmd(s)`);
-    }
-  );
-}
-function mqttPushCommands(mac) {
-  for (const [, meta] of connectedDevices) {
-    if (meta.mac === mac) {
-      void pushPendingCommands(meta);
-      return;
-    }
-  }
-}
-
-// src/services/device.service.ts
+init_mqtt_service();
 async function listDevices(homeId, viewerId) {
   const where = { homeId };
   if (viewerId && prisma.deviceAccess) {
@@ -45279,6 +45498,9 @@ async function setEspLed(args) {
     }
   });
   emitToHome(homeId, "esp:updated", { id: esp.id, ledEnabled: esp.ledEnabled });
+  if (esp.macAddress) {
+    mqttPushLedState(esp.macAddress, esp.ledEnabled);
+  }
   return esp;
 }
 async function getDeviceLogs(homeId, deviceId, limit = 50) {
@@ -46700,6 +46922,12 @@ async function heartbeat(key, input, baseUrl2) {
   const pendingNow = esp ? esp.otaPendingVersion : device?.otaPendingVersion;
   let ota = null;
   if (pendingNow && current && running2 !== current.version) {
+    ota = {
+      version: current.version,
+      url: baseUrl2 + current.url,
+      releaseNotes: current.releaseNotes,
+      required: true
+    };
   }
   return {
     device: updatedDevice,
@@ -47491,11 +47719,11 @@ function matchedTypes(text) {
   }
   return [...found];
 }
-function parseIntent(text, rawDevices) {
-  const action = detectAction(text);
-  const lower = text.toLowerCase();
-  const all = isAllRequest(text);
-  const types = matchedTypes(text);
+function parseIntent(enhancedText, currentText, rawDevices) {
+  const action = detectAction(currentText);
+  const lower = enhancedText.toLowerCase();
+  const all = isAllRequest(enhancedText);
+  const types = matchedTypes(enhancedText);
   const roomNames = new Set(rawDevices.map((d) => d.room?.name).filter(Boolean));
   let targetRoom = null;
   for (const r of roomNames) {
@@ -47697,7 +47925,7 @@ function parseLlmActions(raw, devices) {
   }
   return { reply: reply || (actions.length ? "Confirm karo to execute ho jayega." : ""), actions };
 }
-async function tryLlmReply(content, devices) {
+async function tryLlmReply(content, devices, products) {
   if (!await aiConfigured()) return null;
   try {
     const raw = await chatCompletion({
@@ -47722,7 +47950,7 @@ async function tryLlmReply(content, devices) {
     return null;
   }
 }
-async function sendMessage(userId, chatId, content) {
+async function sendMessage(userId, chatId, content, replyToMessageId) {
   const chat = await getChat(userId, chatId);
   if (!chat) throw new AppError("NOT_FOUND", "Chat not found", 404);
   const userMessage = await prisma.assistantMessage.create({
@@ -47743,9 +47971,18 @@ async function sendMessage(userId, chatId, content) {
       _count: { select: { commands: { where: { status: "pending" } } } }
     }
   });
-  const queryType = detectQueryType(content);
+  const products = await prisma.product.findMany({ where: { active: true }, select: { id: true, name: true, modelCode: true, relayCount: true, price: true, stockCount: true } });
+  let enhancedContent = content;
+  if (replyToMessageId) {
+    const repliedMsg = await prisma.assistantMessage.findUnique({ where: { id: replyToMessageId } });
+    if (repliedMsg) {
+      enhancedContent = `(Context: The user is replying to a previous message: "${repliedMsg.content}")
+User says: ${content}`;
+    }
+  }
+  const queryType = detectQueryType(enhancedContent);
   if (queryType) {
-    const replyText2 = queryType === "troubleshoot" ? buildTroubleshootReply(devices, content) : buildStatusReply(devices, content);
+    const replyText2 = queryType === "troubleshoot" ? buildTroubleshootReply(devices, enhancedContent) : buildStatusReply(devices, enhancedContent);
     const assistantMessage2 = await prisma.assistantMessage.create({
       data: { chatId, role: "assistant", content: encodeAssistantContent(replyText2, null) }
     });
@@ -47757,7 +47994,7 @@ async function sendMessage(userId, chatId, content) {
     }
     return { chat, userMessage, assistantMessage: { ...assistantMessage2, content: replyText2, proposal: null } };
   }
-  const llm = await tryLlmReply(content, devices);
+  const llm = await tryLlmReply(enhancedContent, devices, products);
   if (llm) {
     const assistantMessage2 = await prisma.assistantMessage.create({
       data: { chatId, role: "assistant", content: encodeAssistantContent(llm.content, llm.proposal) }
@@ -47774,7 +48011,7 @@ async function sendMessage(userId, chatId, content) {
       assistantMessage: { ...assistantMessage2, content: llm.content, proposal: llm.proposal }
     };
   }
-  const parsed2 = parseIntent(content, devices);
+  const parsed2 = parseIntent(enhancedContent, content, devices);
   let replyText;
   let proposal = null;
   if (!parsed2.action) {
@@ -47872,7 +48109,7 @@ var createSchema6 = z11.object({
   homeId: z11.number().int().positive(),
   title: z11.string().max(100).optional()
 });
-var messageSchema = z11.object({ content: z11.string().min(1).max(2e3) });
+var messageSchema = z11.object({ content: z11.string().min(1).max(2e3), replyToMessageId: z11.number().int().positive().optional() });
 var confirmSchema = z11.object({ messageId: z11.number().int().positive() });
 async function membership(userId, homeId) {
   return prisma.homeMember.findUnique({
@@ -47897,7 +48134,7 @@ assistantRouter.post(
   validateParams(chatParams),
   validateBody(messageSchema),
   async (req, res) => {
-    const result = await sendMessage(req.user.sub, Number(req.params.chatId), req.body.content);
+    const result = await sendMessage(req.user.sub, Number(req.params.chatId), req.body.content, req.body.replyToMessageId);
     const member = await membership(req.user.sub, result.chat.homeId);
     if (!member) {
       return res.status(403).json({ success: false, error: { code: "FORBIDDEN", message: "Not a member of this home" } });
@@ -48387,6 +48624,9 @@ async function createOrder(input) {
     if (!Number.isInteger(it.quantity) || it.quantity < 1) {
       throw new AppError("BAD_REQUEST", `Invalid quantity for ${prod.name}`);
     }
+    if (prod.stockCount < it.quantity) {
+      throw new AppError("BAD_REQUEST", `Insufficient stock for ${prod.name}. Only ${prod.stockCount} left.`);
+    }
     total2 += Number(prod.price) * it.quantity;
   }
   const wifiPasswordEnc = input.wifi?.password ? encryptSecret(input.wifi.password) : null;
@@ -48408,6 +48648,10 @@ async function createOrder(input) {
     for (const it of input.items) {
       const prod = productMap.get(it.productId);
       const serials = await reserveSerials(tx, created.id, prod.id, it.quantity);
+      await tx.product.update({
+        where: { id: prod.id },
+        data: { stockCount: { decrement: it.quantity } }
+      });
       await tx.orderItem.create({
         data: {
           orderId: created.id,
@@ -48489,6 +48733,12 @@ async function updateOrderStatus(orderId, status) {
         where: { orderId: order.id },
         data: { status: "available", orderId: null }
       });
+      for (const item of order.items) {
+        await tx.product.update({
+          where: { id: item.productId },
+          data: { stockCount: { increment: item.quantity } }
+        });
+      }
     } else if (status === "processing") {
       for (const item of order.items) {
         if (item.serialCode) continue;
@@ -50444,6 +50694,25 @@ adminRouter.get("/devices/:id/support", async (req, res) => {
   const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1e3);
   ok(res, { ...device, online: device.lastSeen !== null && device.lastSeen.getTime() > dayAgo.getTime() });
 });
+adminRouter.post("/esp/:id/rotate-console-password", async (req, res) => {
+  const id = Number(req.params.id);
+  const crypto17 = await import("node:crypto");
+  const newPass = crypto17.randomBytes(4).toString("hex");
+  const esp = await prisma.espDevice.findUnique({ where: { id } });
+  if (!esp) throw new AppError("NOT_FOUND", "ESP not found", 404);
+  await prisma.espDevice.update({
+    where: { id },
+    data: { consolePassword: newPass }
+  });
+  const { mqttPushRotatePassword: mqttPushRotatePassword2 } = await Promise.resolve().then(() => (init_mqtt_service(), mqtt_service_exports));
+  mqttPushRotatePassword2(esp.macAddress, newPass);
+  await audit(req.user.sub, "admin.esp.rotate_password", {
+    entity: "esp",
+    entityId: id,
+    meta: { macAddress: esp.macAddress, newPass }
+  });
+  ok(res, { id, newPass });
+});
 adminRouter.post("/devices/:id/clear-commands", async (req, res) => {
   const id = Number(req.params.id);
   const device = await prisma.device.findUnique({
@@ -50592,12 +50861,12 @@ adminRouter.get("/esp/:id/probe", async (req, res) => {
 adminRouter.get("/products", async (_req, res) => {
   const products = await prisma.product.findMany({
     orderBy: { id: "asc" },
-    include: { _count: { select: { serials: true } } }
+    include: { _count: { select: { serials: true } }, media: { where: { reviewId: null }, orderBy: { id: "asc" } } }
   });
   ok(res, products);
 });
 adminRouter.post("/products", async (req, res) => {
-  const { name, modelCode, relayCount, price, description, features, imageUrl } = req.body ?? {};
+  const { name, modelCode, relayCount, price, description, features, imageUrl, stockCount } = req.body ?? {};
   if (!name || !modelCode || price == null) {
     throw new AppError("BAD_REQUEST", "name, modelCode and price are required");
   }
@@ -50609,7 +50878,8 @@ adminRouter.post("/products", async (req, res) => {
       price: Number(price),
       description: description ? String(description) : void 0,
       features: features ? typeof features === "string" ? JSON.parse(features) : features : void 0,
-      imageUrl: imageUrl ? String(imageUrl).slice(0, 255) : void 0
+      imageUrl: imageUrl ? String(imageUrl).slice(0, 255) : void 0,
+      stockCount: stockCount != null ? Number(stockCount) : 0
     }
   });
   await audit(req.user.sub, "admin.product.create", { entity: "product", entityId: product.id, meta: { modelCode } });
@@ -50617,7 +50887,7 @@ adminRouter.post("/products", async (req, res) => {
 });
 adminRouter.patch("/products/:id", async (req, res) => {
   const id = Number(req.params.id);
-  const { name, price, description, features, imageUrl, active } = req.body ?? {};
+  const { name, price, description, features, imageUrl, active, stockCount } = req.body ?? {};
   const product = await prisma.product.update({
     where: { id },
     data: {
@@ -50626,6 +50896,7 @@ adminRouter.patch("/products/:id", async (req, res) => {
       description: description != null ? String(description) : void 0,
       features: features ? typeof features === "string" ? JSON.parse(features) : features : void 0,
       imageUrl: imageUrl != null ? String(imageUrl).slice(0, 255) : void 0,
+      stockCount: stockCount != null ? Number(stockCount) : void 0,
       active: active != null ? Boolean(active) : void 0
     }
   });
@@ -50636,6 +50907,47 @@ adminRouter.delete("/products/:id", async (req, res) => {
   const id = Number(req.params.id);
   await prisma.product.delete({ where: { id } });
   await audit(req.user.sub, "admin.product.delete", { entity: "product", entityId: id });
+  ok(res, { deleted: true });
+});
+var productMediaUpload = multer2({
+  storage: multer2.diskStorage({
+    destination: (_req, _file, cb) => {
+      const dir = path8.join(process.cwd(), "uploads/product-media");
+      fs7.mkdirSync(dir, { recursive: true });
+      cb(null, dir);
+    },
+    filename: (_req, file, cb) => {
+      const ext = path8.extname(file.originalname);
+      cb(null, `pm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`);
+    }
+  }),
+  limits: { fileSize: 20 * 1024 * 1024 }
+});
+adminRouter.post("/products/:id/media", productMediaUpload.single("file"), async (req, res) => {
+  const productId = Number(req.params.id);
+  if (!req.file) throw new AppError("BAD_REQUEST", "No file uploaded");
+  const product = await prisma.product.findUnique({ where: { id: productId } });
+  if (!product) throw new AppError("NOT_FOUND", "Product not found");
+  const fileUrl = `/uploads/product-media/${req.file.filename}`;
+  const ext = path8.extname(req.file.originalname).toLowerCase();
+  const type = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"].includes(ext) ? "image" : [".mp4", ".webm", ".mov"].includes(ext) ? "video" : "document";
+  const media = await prisma.productMedia.create({
+    data: { productId, url: fileUrl, type }
+  });
+  await audit(req.user.sub, "admin.product.media.add", { entity: "product", entityId: productId, meta: { mediaId: media.id } });
+  ok(res, media, 201);
+});
+adminRouter.delete("/products/media/:mediaId", async (req, res) => {
+  const mediaId = Number(req.params.mediaId);
+  const media = await prisma.productMedia.findUnique({ where: { id: mediaId } });
+  if (!media) throw new AppError("NOT_FOUND", "Media not found");
+  const filePath = path8.join(process.cwd(), media.url.replace(/^\/+/, ""));
+  try {
+    fs7.unlinkSync(filePath);
+  } catch {
+  }
+  await prisma.productMedia.delete({ where: { id: mediaId } });
+  await audit(req.user.sub, "admin.product.media.delete", { entity: "product", entityId: media.productId ?? void 0, meta: { mediaId } });
   ok(res, { deleted: true });
 });
 adminRouter.get("/orders", async (req, res) => {
@@ -50931,16 +51243,20 @@ adminRouter.get("/orders/:id/provision", async (req, res) => {
 });
 adminRouter.post("/serials/:code/mark-tested", async (req, res) => {
   const code = String(req.params.code).trim().toUpperCase();
+  const { consolePassword } = req.body ?? {};
   const serial = await prisma.serialRegistry.findUnique({ where: { serialCode: code } });
   if (!serial) throw new AppError("NOT_FOUND", "Serial not found");
   const updated = await prisma.serialRegistry.update({
     where: { id: serial.id },
-    data: { testedAt: /* @__PURE__ */ new Date() }
+    data: {
+      testedAt: /* @__PURE__ */ new Date(),
+      consolePassword: consolePassword ? String(consolePassword) : void 0
+    }
   });
   await audit(req.user.sub, "admin.serial.tested", {
     entity: "serial",
     entityId: serial.id,
-    meta: { serialCode: code }
+    meta: { serialCode: code, hasConsolePassword: !!consolePassword }
   });
   if (serial.orderId) {
     try {
@@ -51121,6 +51437,7 @@ adminRouter.post("/reset", validateBody(resetSchema), async (req, res) => {
 
 // src/routes/shop.routes.ts
 import { Router as Router12 } from "express";
+import multer3 from "multer";
 init_prisma();
 init_audit_service();
 
@@ -51155,12 +51472,60 @@ import { promisify } from "util";
 import os4 from "os";
 var execAsync = promisify(exec);
 var shopRouter = Router12();
+var storage2 = multer3.diskStorage({
+  destination: "uploads/",
+  filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname.replace(/[^a-zA-Z0-9.-]/g, "_"))
+});
+var upload3 = multer3({ storage: storage2, limits: { fileSize: 50 * 1024 * 1024 } });
 shopRouter.get("/products", async (_req, res) => {
   const products = await prisma.product.findMany({
     where: { active: true },
+    include: { media: true },
     orderBy: { id: "asc" }
   });
   ok(res, products);
+});
+shopRouter.post("/upload", requireAuth, upload3.single("file"), (req, res) => {
+  if (!req.file) throw new AppError("BAD_REQUEST", "No file uploaded");
+  ok(res, { url: `/uploads/${req.file.filename}` });
+});
+shopRouter.get("/products/:id/reviews", async (req, res) => {
+  const reviews = await prisma.productReview.findMany({
+    where: { productId: Number(req.params.id) },
+    include: { user: { select: { username: true, avatarUrl: true } }, media: true },
+    orderBy: { createdAt: "desc" }
+  });
+  ok(res, reviews);
+});
+shopRouter.post("/products/:id/reviews", requireAuth, async (req, res) => {
+  const productId = Number(req.params.id);
+  const { rating, comment, mediaUrls } = req.body;
+  if (!rating || rating < 1 || rating > 5) throw new AppError("BAD_REQUEST", "Valid rating (1-5) required");
+  const product = await prisma.product.findUnique({ where: { id: productId } });
+  if (!product) throw new AppError("NOT_FOUND", "Product not found");
+  const review = await prisma.$transaction(async (tx) => {
+    const rev = await tx.productReview.create({
+      data: {
+        productId,
+        userId: req.user.sub,
+        rating,
+        comment,
+        media: {
+          create: (mediaUrls || []).map((url) => ({ url, type: url.match(/\.(mp4|mov|webm)$/i) ? "video" : "image" }))
+        }
+      },
+      include: { media: true, user: { select: { username: true } } }
+    });
+    const all = await tx.productReview.findMany({ where: { productId }, select: { rating: true } });
+    const total2 = all.length;
+    const avg = all.reduce((sum, r) => sum + Number(r.rating), 0) / total2;
+    await tx.product.update({
+      where: { id: productId },
+      data: { rating: avg, totalReviews: total2 }
+    });
+    return rev;
+  });
+  ok(res, review, 201);
 });
 shopRouter.post("/orders", requireAuth, async (req, res) => {
   const { items, shipping, wifi, paymentMethod } = req.body ?? {};
@@ -51257,13 +51622,7 @@ shopRouter.post("/orders/:id/cancel", requireAuth, async (req, res) => {
   if (order.status !== "pending") {
     throw new AppError("BAD_REQUEST", "Only pending orders can be cancelled");
   }
-  await prisma.$transaction([
-    prisma.serialRegistry.updateMany({
-      where: { orderId: id },
-      data: { status: "available", orderId: null }
-    }),
-    prisma.order.update({ where: { id }, data: { status: "cancelled" } })
-  ]);
+  await updateOrderStatus(id, "cancelled");
   await audit(req.user.sub, "shop.order.cancel", { entity: "order", entityId: id });
   ok(res, { cancelled: true });
 });
@@ -51597,7 +51956,17 @@ init_prisma();
 import { Router as Router15 } from "express";
 init_audit_service();
 init_siteSettings_service();
+import path9 from "path";
+import fs8 from "fs";
 var publicRouter = Router15();
+publicRouter.get("/apk", (req, res) => {
+  const apkPath = path9.resolve(process.cwd(), "../mobile/android/app/build/outputs/apk/debug/app-debug.apk");
+  if (fs8.existsSync(apkPath)) {
+    res.download(apkPath, "SwitchNest.apk");
+  } else {
+    res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "APK not built yet." } });
+  }
+});
 var assistantLimiter = rateLimit({
   name: "public:assistant",
   windowMs: 6e4,
@@ -52035,8 +52404,8 @@ init_notification_service();
 init_socket();
 
 // src/lib/attachmentStore.ts
-import * as fs8 from "fs";
-import * as path9 from "path";
+import * as fs9 from "fs";
+import * as path10 from "path";
 function extFor(type, name) {
   const fromName = name.split(".").pop()?.toLowerCase();
   if (fromName && /^[a-z0-9]{1,8}$/.test(fromName)) return fromName;
@@ -52053,25 +52422,25 @@ function saveAttachment(base64, type, name) {
   const buf = Buffer.from(base64, "base64");
   if (buf.length === 0) throw new Error("Empty file");
   const filename = `a_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}.${extFor(type, name)}`;
-  fs8.mkdirSync(attachmentDir, { recursive: true });
-  fs8.writeFileSync(path9.join(attachmentDir, filename), buf);
+  fs9.mkdirSync(attachmentDir, { recursive: true });
+  fs9.writeFileSync(path10.join(attachmentDir, filename), buf);
   return filename;
 }
 function readAttachmentFile(filename) {
-  const safe = path9.basename(filename);
+  const safe = path10.basename(filename);
   if (safe !== filename) return null;
   try {
-    return fs8.readFileSync(path9.join(attachmentDir, safe));
+    return fs9.readFileSync(path10.join(attachmentDir, safe));
   } catch {
     return null;
   }
 }
 function deleteAttachmentFile(filename) {
   if (!filename) return;
-  const safe = path9.basename(filename);
+  const safe = path10.basename(filename);
   if (safe !== filename) return;
   try {
-    fs8.unlinkSync(path9.join(attachmentDir, safe));
+    fs9.unlinkSync(path10.join(attachmentDir, safe));
   } catch {
   }
 }
@@ -52079,7 +52448,26 @@ function deleteAttachmentFile(filename) {
 // src/routes/support.routes.ts
 init_email_service();
 init_env();
+import multer4 from "multer";
+import path11 from "path";
+import fs10 from "fs";
 var supportRouter = Router16();
+if (!fs10.existsSync(attachmentDir)) {
+  fs10.mkdirSync(attachmentDir, { recursive: true });
+}
+var storage3 = multer4.diskStorage({
+  destination: attachmentDir,
+  filename: (req, file, cb) => {
+    const ext = path11.extname(file.originalname) || "";
+    const safeName = path11.basename(file.originalname, ext).replace(/[^a-zA-Z0-9_-]/g, "");
+    cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}-${safeName}${ext}`);
+  }
+});
+var upload4 = multer4({
+  storage: storage3,
+  limits: { fileSize: 50 * 1024 * 1024 }
+  // 50MB
+});
 var userSendLimiter = rateLimit({
   name: "support:user-send",
   windowMs: 6e4,
@@ -52315,6 +52703,79 @@ supportRouter.post("/messages", requireAuth, userSendLimiter, validateBody(userS
     emitToUser(admin.id, "support:new", { senderRole: "user", message: created });
   }
   emitToUser(userId, "support:new", { senderRole: "user", message: created });
+  ok(res, created, 201);
+});
+supportRouter.post("/messages/media", requireAuth, userSendLimiter, upload4.single("file"), async (req, res) => {
+  const userId = req.user.sub;
+  const message = req.body.message || "";
+  if (!req.file && !message) {
+    throw new AppError("VALIDATION_ERROR", "Message or file required", 400);
+  }
+  const created = await supportModel().create({
+    data: {
+      userId,
+      senderRole: "user",
+      senderName: req.user.username,
+      message,
+      attachmentName: req.file?.originalname ?? null,
+      attachmentType: req.file?.mimetype ?? null,
+      attachmentData: null,
+      attachmentPath: req.file?.filename ?? null,
+      readByUser: true,
+      readByAdmin: false
+    }
+  });
+  const admin = await prisma.user.findFirst({
+    where: { role: "system_admin" },
+    select: { id: true },
+    orderBy: { id: "asc" }
+  });
+  if (admin) {
+    if (!await isMuted(admin.id, req.user.sub)) {
+      await createNotification(admin.id, {
+        category: "support",
+        type: "info",
+        title: "\u{1F4F2} User ne support me media bheja",
+        body: JSON.stringify({ u: req.user.sub, t: "Media file uploaded" })
+      });
+    }
+    emitToUser(admin.id, "support:new", { senderRole: "user", message: created });
+  }
+  emitToUser(userId, "support:new", { senderRole: "user", message: created });
+  ok(res, created, 201);
+});
+supportRouter.post("/admin/messages/media", requireAuth, adminSendLimiter, upload4.single("file"), async (req, res) => {
+  if (req.user.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
+  const userId = Number(req.body.userId);
+  const message = req.body.message || "";
+  if (!Number.isInteger(userId) || userId <= 0) throw new AppError("VALIDATION_ERROR", "Valid userId required", 400);
+  if (!req.file && !message) throw new AppError("VALIDATION_ERROR", "Message or file required", 400);
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, username: true, email: true } });
+  if (!user) throw new AppError("NOT_FOUND", "User not found", 404);
+  const created = await supportModel().create({
+    data: {
+      userId,
+      senderRole: "admin",
+      senderName: req.user.username,
+      message,
+      attachmentName: req.file?.originalname ?? null,
+      attachmentType: req.file?.mimetype ?? null,
+      attachmentData: null,
+      attachmentPath: req.file?.filename ?? null,
+      readByUser: false,
+      readByAdmin: true
+    }
+  });
+  if (!await isMuted(userId, req.user.sub)) {
+    await createNotification(userId, {
+      category: "support",
+      type: "info",
+      title: "\u{1F3A7} Support ne media bheja",
+      body: JSON.stringify({ u: req.user.sub, t: "Media file sent" })
+    });
+  }
+  emitToUser(userId, "support:new", { senderRole: "admin", message: created });
+  emitToUser(req.user.sub, "support:new", { senderRole: "admin", message: created });
   ok(res, created, 201);
 });
 supportRouter.get("/attachment/:id", async (req, res) => {
@@ -53224,8 +53685,8 @@ init_env();
 init_prisma();
 import { Router as Router22 } from "express";
 import mysql from "mysql2/promise";
-import fs9 from "node:fs";
-import path10 from "node:path";
+import fs11 from "node:fs";
+import path12 from "node:path";
 import bcrypt3 from "bcryptjs";
 init_logger();
 
@@ -53498,7 +53959,7 @@ async function checkOfflineDevicesInner() {
 }
 
 // src/routes/install.routes.ts
-var SCHEMA_SQL = path10.resolve(process.cwd(), "prisma/schema.sql");
+var SCHEMA_SQL = path12.resolve(process.cwd(), "prisma/schema.sql");
 var installRouter = Router22();
 var DEFAULT_PRODUCTS = [
   { name: "2CH WiFi Relay Module", modelCode: "2CH", relayCount: 2, price: "599", description: "Two-channel WiFi relay board for lights and small appliances. 10A per channel, ESP32 based, works with the SwitchNest app and voice assistant.", features: { channels: 2, wifi: true, ota: true, voice: true } },
@@ -53626,10 +54087,10 @@ async function createDatabase(parts) {
   logger.info(`[install] database ready: ${parts.name} (server ${version3.serverVersion})`);
 }
 async function applySchema(parts) {
-  if (!fs9.existsSync(SCHEMA_SQL)) {
+  if (!fs11.existsSync(SCHEMA_SQL)) {
     throw new AppError("SCHEMA_MISSING", "prisma/schema.sql nahi mila \u2014 install package incomplete hai", 500);
   }
-  const schemaSql = fs9.readFileSync(SCHEMA_SQL, "utf-8");
+  const schemaSql = fs11.readFileSync(SCHEMA_SQL, "utf-8");
   let conn;
   try {
     conn = await mysql.createConnection({
@@ -54041,18 +54502,18 @@ var DESCRIPTIONS = {
   "GET /api/health": "Health check \u2014 DB schema diag + build version (ops).",
   "GET /api/version": "API version (ops)."
 };
-function securityFor(path13, method) {
-  if (method === "GET" && (path13 === "/api/health" || path13 === "/api/version")) return void 0;
-  if (path13.startsWith("/api/device")) return [{ deviceApiKey: [] }];
-  if (path13.startsWith("/api/install") || path13.startsWith("/api/public")) return void 0;
-  if (path13.startsWith("/api/docs")) return void 0;
-  if (path13.startsWith("/api/auth")) {
-    if (method === "GET" || path13.includes("/me") || path13 === "/api/auth/theme") {
+function securityFor(path15, method) {
+  if (method === "GET" && (path15 === "/api/health" || path15 === "/api/version")) return void 0;
+  if (path15.startsWith("/api/device")) return [{ deviceApiKey: [] }];
+  if (path15.startsWith("/api/install") || path15.startsWith("/api/public")) return void 0;
+  if (path15.startsWith("/api/docs")) return void 0;
+  if (path15.startsWith("/api/auth")) {
+    if (method === "GET" || path15.includes("/me") || path15 === "/api/auth/theme") {
       return [{ bearerAuth: [] }];
     }
     return void 0;
   }
-  if (path13.startsWith("/api/shop/products")) return void 0;
+  if (path15.startsWith("/api/shop/products")) return void 0;
   return [{ bearerAuth: [] }];
 }
 var BODIES = {
@@ -54493,8 +54954,8 @@ var SCHEMAS = {
     }
   }
 };
-function tagFor(path13) {
-  const seg = path13.replace(/^\/api\//, "").split("/")[0] ?? "system";
+function tagFor(path15) {
+  const seg = path15.replace(/^\/api\//, "").split("/")[0] ?? "system";
   const map = {
     auth: "Auth",
     device: "Device API (ESP32)",
@@ -54515,11 +54976,11 @@ function tagFor(path13) {
   };
   return map[seg] ?? "Homes";
 }
-function paramsFor(path13) {
+function paramsFor(path15) {
   const out = [];
   const re = /:([A-Za-z0-9_]+)/g;
   let m;
-  while ((m = re.exec(path13)) !== null) {
+  while ((m = re.exec(path15)) !== null) {
     out.push({
       name: m[1],
       in: "path",
@@ -55384,11 +55845,11 @@ docsRouter.get("/plain", (_req, res) => {
   const spec = getOpenApiSpec();
   const paths = spec.paths;
   const byTag = /* @__PURE__ */ new Map();
-  for (const [path13, ops] of Object.entries(paths)) {
+  for (const [path15, ops] of Object.entries(paths)) {
     for (const [method, op] of Object.entries(ops)) {
       const tag = op.tags?.[0] ?? "Other";
       if (!byTag.has(tag)) byTag.set(tag, []);
-      byTag.get(tag).push({ method: method.toUpperCase(), path: path13, summary: op.summary ?? "" });
+      byTag.get(tag).push({ method: method.toUpperCase(), path: path15, summary: op.summary ?? "" });
     }
   }
   const methodColor2 = {
@@ -55489,15 +55950,19 @@ function createApp() {
   app.get("/api/version", (req, res) => {
     const requestHost = req.get("host") || "192.168.1.36:4000";
     const protocol = req.protocol || "http";
+    const latestVersion = "1.0.11";
+    const minRequiredVersion = "1.0.0";
     res.json({
       success: true,
       data: {
         version: API_VERSION,
         mobileAppOptions: {
-          minRequiredVersion: "1.0.0",
-          latestVersion: "1.0.0",
+          minRequiredVersion,
+          latestVersion,
           downloadUrl: `${protocol}://${requestHost}/mobile-app/SwitchNest_Latest.apk`,
-          updateMessage: "A mandatory server upgrade requires an app update to continue."
+          updateMessage: "ESP WebServer & Background Call Fixes",
+          releaseNotes: "\u2022 Added In-App ESP WebServer\n\u2022 Fixed Call Ringing on Multiple Devices\n\u2022 Fixed ESP Hardware State Sync UI Glitch",
+          isMandatory: true
         },
         ts: (/* @__PURE__ */ new Date()).toISOString()
       }
@@ -55519,10 +55984,10 @@ function createApp() {
   app.use("/firmware", express2.static(firmwareDir));
   app.use("/uploads", express2.static(uploadsDir));
   app.use("/mobile-app", express2.static(mobileAppDir));
-  if (fs10.existsSync(path11.join(webDist, "index.html"))) {
+  if (fs12.existsSync(path13.join(webDist, "index.html"))) {
     app.use(express2.static(webDist));
     app.get(/^\/(?!api|firmware|socket\.io).*/, (_req, res) => {
-      res.sendFile(path11.join(webDist, "index.html"));
+      res.sendFile(path13.join(webDist, "index.html"));
     });
   }
   app.use((_req, res) => {
@@ -55690,11 +56155,11 @@ function startKeyExpiryWatcher() {
 init_prisma();
 init_siteSettings_service();
 init_logger();
-import fs11 from "node:fs";
-import path12 from "node:path";
-var UPLOADS_DIR = path12.join(process.cwd(), "uploads");
-var COLD_STORAGE_TELEMETRY = path12.join(UPLOADS_DIR, "cold_storage", "telemetry");
-var COLD_STORAGE_SUPPORT = path12.join(UPLOADS_DIR, "cold_storage", "support");
+import fs13 from "node:fs";
+import path14 from "node:path";
+var UPLOADS_DIR = path14.join(process.cwd(), "uploads");
+var COLD_STORAGE_TELEMETRY = path14.join(UPLOADS_DIR, "cold_storage", "telemetry");
+var COLD_STORAGE_SUPPORT = path14.join(UPLOADS_DIR, "cold_storage", "support");
 var archivalTimer = null;
 var isRunning = false;
 function startArchivalService() {
@@ -55708,8 +56173,8 @@ async function runArchival() {
   isRunning = true;
   try {
     const settings = await getSiteSettings();
-    fs11.mkdirSync(COLD_STORAGE_TELEMETRY, { recursive: true });
-    fs11.mkdirSync(COLD_STORAGE_SUPPORT, { recursive: true });
+    fs13.mkdirSync(COLD_STORAGE_TELEMETRY, { recursive: true });
+    fs13.mkdirSync(COLD_STORAGE_SUPPORT, { recursive: true });
     const now = /* @__PURE__ */ new Date();
     const telemetryThreshold = /* @__PURE__ */ new Date();
     telemetryThreshold.setDate(telemetryThreshold.getDate() - (settings.deviceTelemetryRetentionDays || 180));
@@ -55721,9 +56186,9 @@ async function runArchival() {
         orderBy: { createdAt: "asc" }
       });
       if (oldLogs.length === 0) break;
-      const filePath = path12.join(COLD_STORAGE_TELEMETRY, `telemetry_${now.toISOString().split("T")[0]}.jsonl`);
+      const filePath = path14.join(COLD_STORAGE_TELEMETRY, `telemetry_${now.toISOString().split("T")[0]}.jsonl`);
       const lines = oldLogs.map((l) => JSON.stringify(l)).join("\n") + "\n";
-      fs11.appendFileSync(filePath, lines);
+      fs13.appendFileSync(filePath, lines);
       const ids = oldLogs.map((l) => l.id);
       await prisma.deviceLog.deleteMany({ where: { id: { in: ids } } });
       archivedTelemetryCount += oldLogs.length;
@@ -55741,9 +56206,9 @@ async function runArchival() {
         orderBy: { createdAt: "asc" }
       });
       if (oldMessages.length === 0) break;
-      const filePath = path12.join(COLD_STORAGE_SUPPORT, `chat_${now.toISOString().split("T")[0]}.jsonl`);
+      const filePath = path14.join(COLD_STORAGE_SUPPORT, `chat_${now.toISOString().split("T")[0]}.jsonl`);
       const lines = oldMessages.map((m) => JSON.stringify(m)).join("\n") + "\n";
-      fs11.appendFileSync(filePath, lines);
+      fs13.appendFileSync(filePath, lines);
       const ids = oldMessages.map((m) => m.id);
       await prisma.supportMessage.deleteMany({ where: { id: { in: ids } } });
       archivedChatCount += oldMessages.length;
@@ -55759,6 +56224,7 @@ async function runArchival() {
 }
 
 // src/index.ts
+init_mqtt_service();
 import { execFileSync } from "node:child_process";
 async function runLightMigrations() {
   const migration = async (label, fn) => {
@@ -56011,6 +56477,18 @@ async function runLightMigrations() {
           "ALTER TABLE `api_keys` ADD COLUMN `revoked_at` DATETIME(3) NULL"
         );
         logger.info("\u2705 Migration: api_keys.revoked_at added");
+      }
+    });
+    await migration("esp_devices.led_enabled", async () => {
+      const le = await prisma.$queryRaw`
+        SELECT COUNT(*) AS c FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'esp_devices' AND column_name = 'led_enabled'
+      `;
+      if (Number(le[0]?.c ?? 0) === 0) {
+        await prisma.$executeRawUnsafe(
+          "ALTER TABLE `esp_devices` ADD COLUMN `led_enabled` BOOLEAN NOT NULL DEFAULT TRUE"
+        );
+        logger.info("\u2705 Migration: esp_devices.led_enabled added");
       }
     });
   } catch (err) {
