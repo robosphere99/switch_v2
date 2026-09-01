@@ -7,7 +7,7 @@ import { audit } from "./audit.service";
 import { createNotification } from "./notification.service";
 import { sendPushToUser } from "./push.service";
 import { resolveFirmware } from "./firmware.service";
-import { mqttPushCommands } from "./mqtt.service";
+import { mqttPushCommands, mqttPushLedState } from "./mqtt.service";
 
 export async function listDevices(homeId: number, viewerId?: number) {
   const where: Prisma.DeviceWhereInput = { homeId };
@@ -410,6 +410,9 @@ export async function setEspLed(args: {
 
   // Push immediate update to ESP, Web, and Mobile
   emitToHome(homeId, "esp:updated", { id: esp.id, ledEnabled: esp.ledEnabled });
+  if (esp.macAddress) {
+    mqttPushLedState(esp.macAddress, esp.ledEnabled);
+  }
 
   return esp;
 }

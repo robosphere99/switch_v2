@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import * as Updates from 'expo-updates';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Platform } from 'react-native';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { APP_VERSION } from '../../App';
 import { API_URL } from '../api/client';
 
@@ -44,7 +45,7 @@ export interface AutoUpdateActions {
     /** Retry native APK download after an error */
     retryNativeDownload: () => void;
     /** Manually trigger both checks (for Settings "Check for Updates") */
-    manualCheck: () => void;
+    manualCheck: () => Promise<{ hasUpdate: boolean }>;
 }
 
 /* ─── Semver compare ─────────────────────────────────────────── */
@@ -76,14 +77,27 @@ export function useAutoUpdate(): [AutoUpdateState, AutoUpdateActions] {
     const dismissed = useRef(false);
     const hasChecked = useRef(false);
 
+    /* ── Prevent screen sleep during download ──────────────── */
+    useEffect(() => {
+        if (nativeDownloading || jsDownloading) {
+            activateKeepAwakeAsync('DOWNLOAD_WAKE_LOCK').catch(() => {});
+        } else {
+            deactivateKeepAwake('DOWNLOAD_WAKE_LOCK').catch(() => {});
+        }
+        return () => {
+            deactivateKeepAwake('DOWNLOAD_WAKE_LOCK').catch(() => {});
+        };
+    }, [nativeDownloading, jsDownloading]);
+
     /* ── JS OTA Check ──────────────────────────────────────── */
 
-    const checkJsUpdate = useCallback(async () => {
+    const checkJsUpdate = useCallback(async (): Promise<boolean> => {
         // expo-updates only works in standalone (production/preview) builds
-        if (__DEV__) return;
+        if (__DEV__) return false;
 
         setJsChecking(true);
         setJsError(null);
+        let found = false;
 
         try {
             const check = await Updates.checkForUpdateAsync();
@@ -95,6 +109,7 @@ export function useAutoUpdate(): [AutoUpdateState, AutoUpdateActions] {
 
                 if (result.isNew) {
                     setJsUpdateReady(true);
+                    found = true;
                 }
             }
         } catch (e: any) {
@@ -105,6 +120,7 @@ export function useAutoUpdate(): [AutoUpdateState, AutoUpdateActions] {
             setJsChecking(false);
             setJsDownloading(false);
         }
+        return found;
     }, []);
 
     const reloadWithJsUpdate = useCallback(async () => {
@@ -124,8 +140,9 @@ export function useAutoUpdate(): [AutoUpdateState, AutoUpdateActions] {
 
     /* ── Native APK Check ──────────────────────────────────── */
 
-    const checkNativeUpdate = useCallback(async () => {
-        if (Platform.OS !== 'android') return;
+    const checkNativeUpdate = useCallback(async (): Promise<boolean> => {
+        if (Platform.OS !== 'android') return false;
+        let found = false;
 
         try {
             const { api: apiInstance } = await import('../api/client');
@@ -144,11 +161,13 @@ export function useAutoUpdate(): [AutoUpdateState, AutoUpdateActions] {
                         isMandatory: opts.isMandatory === true || (opts.minRequiredVersion && compareSemver(APP_VERSION, opts.minRequiredVersion) < 0),
                         updateMessage: opts.updateMessage || undefined,
                     });
+                    found = true;
                 }
             }
         } catch (e: any) {
             console.log('[AutoUpdate] Native version check failed (safe bypass):', e.message);
         }
+        return found;
     }, []);
 
     const downloadAndInstallNative = useCallback(async () => {
@@ -165,11 +184,21 @@ export function useAutoUpdate(): [AutoUpdateState, AutoUpdateActions] {
                 downloadUrl = API_BASE + downloadUrl;
             }
 
-            const fileUri = FileSystem.cacheDirectory + 'SwitchNestUpdate.apk';
+            const apkPath = `${FileSystem.documentDirectory}update_${nativeUpdate.latestVersion}.apk`;
+
+            // Clean up old APKs to save space
+            try {
+                const files = await FileSystem.readDirectoryAsync(FileSystem.documentDirectory || '');
+                for (const file of files) {
+                    if (file.startsWith('update_') && file.endsWith('.apk') && file !== `update_${nativeUpdate.latestVersion}.apk`) {
+                        await FileSystem.deleteAsync(`${FileSystem.documentDirectory}${file}`, { idempotent: true });
+                    }
+                }
+            } catch (e) { }
 
             const downloadResumable = FileSystem.createDownloadResumable(
                 downloadUrl,
-                fileUri,
+                apkPath,
                 {},
                 (downloadProgress) => {
                     const progress = downloadProgress.totalBytesWritten / downloadProgress.totalBytesExpectedToWrite;
@@ -215,13 +244,16 @@ export function useAutoUpdate(): [AutoUpdateState, AutoUpdateActions] {
 
     /* ── Manual Check (for Settings button) ────────────────── */
 
-    const manualCheck = useCallback(() => {
+    const manualCheck = useCallback(async (): Promise<{ hasUpdate: boolean }> => {
         setJsError(null);
         setNativeError(null);
         dismissed.current = false;
         hasChecked.current = false;
-        checkJsUpdate();
-        checkNativeUpdate();
+        const [jsFound, nativeFound] = await Promise.all([
+            checkJsUpdate(),
+            checkNativeUpdate()
+        ]);
+        return { hasUpdate: jsFound || nativeFound };
     }, [checkJsUpdate, checkNativeUpdate]);
 
     /* ── Auto-check on mount ───────────────────────────────── */

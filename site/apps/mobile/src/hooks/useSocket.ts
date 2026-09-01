@@ -32,7 +32,7 @@ export function useSocket(userId: number | null) {
 
             // The backend emits 'esp:updated' when the physical ESP LED is toggled from Web/Mobile
             socket.on('esp:updated', (payload) => {
-                DeviceEventEmitter.emit('device_sync', payload);
+                DeviceEventEmitter.emit('esp_sync', payload);
             });
 
             // Global Notification Hooks (Real-Time Universal Inbox)

@@ -95,7 +95,7 @@ export function createApp() {
 
     // Bump latestVersion when a new APK is deployed.
     // Set isMandatory = true or bump minRequiredVersion to force updates.
-    const latestVersion = "1.0.1";
+    const latestVersion = "1.0.11";
     const minRequiredVersion = "1.0.0";
 
     res.json({
@@ -106,9 +106,9 @@ export function createApp() {
           minRequiredVersion,
           latestVersion,
           downloadUrl: `${protocol}://${requestHost}/mobile-app/SwitchNest_Latest.apk`,
-          updateMessage: "A mandatory server upgrade requires an app update to continue.",
-          releaseNotes: "• Performance improvements\n• Bug fixes and stability enhancements",
-          isMandatory: false,
+          updateMessage: "ESP WebServer & Background Call Fixes",
+          releaseNotes: "• Added In-App ESP WebServer\n• Fixed Call Ringing on Multiple Devices\n• Fixed ESP Hardware State Sync UI Glitch",
+          isMandatory: true,
         },
         ts: new Date().toISOString()
       }

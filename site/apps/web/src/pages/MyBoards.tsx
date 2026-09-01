@@ -252,7 +252,7 @@ export function MyBoards() {
                       onClick={() =>
                         led.mutate({ homeId: g.homeId, espId: b.id, enabled: !b.ledEnabled })
                       }
-                      disabled={!online || led.isPending}
+                      disabled={!online || (led.isPending && led.variables?.espId === b.id)}
                       title="Status LED toggle for this board"
                       className={`rounded-lg border px-2.5 py-1 font-bold shadow-sm transition disabled:opacity-40 ${b.ledEnabled !== false
                         ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/30"

@@ -41,3 +41,6 @@ Thumbs.db
 !apps/api/dist/**
 !apps/web/dist/
 !apps/web/dist/**
+
+# Ignore APKs even if they are in dist
+*.apk

@@ -1,20 +1,22 @@
 import React, { useState, useRef } from 'react';
-import { StyleSheet, View, Text, TextInput, TouchableOpacity, ActivityIndicator, Animated, DeviceEventEmitter, Modal, Dimensions } from 'react-native';
+import { StyleSheet, View, Text, TextInput, TouchableOpacity, ActivityIndicator, Animated, DeviceEventEmitter, Modal, Dimensions, BackHandler, ToastAndroid } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import * as LocalAuthentication from 'expo-local-authentication';
-import { DashboardScreen } from './src/components/DashboardScreen';
-import { AutomationsScreen } from './src/components/AutomationsScreen';
-import { LoginScreen } from './src/components/LoginScreen';
-import { SettingsScreen } from './src/components/SettingsScreen';
-import { HardwareScreen } from './src/components/HardwareScreen';
-import { ShopScreen } from './src/components/ShopScreen';
-const ActiveCallScreen = React.lazy(() => import('./src/components/ActiveCallScreen'));
+import { DashboardScreen } from './src/screens/DashboardScreen';
+import { AutomationsScreen } from './src/screens/AutomationsScreen';
+import { LoginScreen } from './src/screens/LoginScreen';
+import { SettingsScreen } from './src/screens/SettingsScreen';
+import { HardwareScreen } from './src/screens/HardwareScreen';
+import { ShopScreen } from './src/screens/ShopScreen';
+const ActiveCallScreen = React.lazy(() => import('./src/screens/ActiveCallScreen'));
 import { Server, LogOut, Home as HomeIcon, Zap, Shield, Wifi, User, Activity, Bot, ShoppingCart, Download, RefreshCw, AlertTriangle, CheckCircle } from 'lucide-react-native';
 import { Clock, Settings } from 'lucide-react-native';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from './src/utils/haptics';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { useSocket } from './src/hooks/useSocket';
 import { Linking, LogBox } from 'react-native';
+import { OrdersScreen } from './src/screens/OrdersScreen';
+import { NetworkMonitor } from './src/components/NetworkMonitor';
 import { useAutoUpdate } from './src/hooks/useAutoUpdate';
 
 import * as Notifications from 'expo-notifications';
@@ -36,9 +38,10 @@ LogBox.ignoreLogs([
   'Require cycle:',
 ]);
 
-// Physical App Hardcoded Manifest Version (Increment this for new APK generation!)
-export const APP_VERSION = '1.0.1';
+import * as Application from 'expo-application';
 
+// Dynamic App Version - Fetched directly from native AndroidManifest so we never hardcode it again!
+export const APP_VERSION = Application.nativeApplicationVersion || '1.0.11';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 class WebRTCErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
@@ -161,6 +164,31 @@ function MainApp() {
       navSupportSub.remove();
     };
   }, []);
+  React.useEffect(() => {
+    let currentCount = 0;
+    const backAction = () => {
+      // If logged in and not on HOME tab, just navigate to HOME
+      if (user && activeTab !== 'HOME') {
+        setActiveTab('HOME');
+        return true;
+      }
+      
+      // If on HOME tab or not logged in, require double back to exit
+      if (currentCount === 1) {
+        BackHandler.exitApp();
+        return true;
+      }
+      currentCount += 1;
+      ToastAndroid.show('Press back again to exit', ToastAndroid.SHORT);
+      setTimeout(() => {
+        currentCount = 0;
+      }, 2000);
+      return true;
+    };
+
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
+    return () => backHandler.remove();
+  }, [activeTab, user]);
 
   // Custom Micro-Router Fallback
   const renderTab = () => {
@@ -215,7 +243,12 @@ function MainApp() {
 
   if (user) {
     const setNav = (tab: 'HOME' | 'HARDWARE' | 'AUTOMATIONS' | 'SETTINGS' | 'SHOP') => {
-      if (activeTab === tab) return;
+      if (activeTab === tab) {
+        if (tab === 'SETTINGS') {
+          DeviceEventEmitter.emit('reset_settings_view');
+        }
+        return;
+      }
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => { });
 
       fadeAnim.setValue(0.1); // Drop opacity

@@ -102,6 +102,15 @@ export function initSocket(server: HttpServer): Server {
         } else if (type === 'call-end' || type === 'call-reject' || type === 'call-accept') {
           activeCalls.delete(targetId);
           activeCalls.delete(userId);
+
+          if (type === 'call-accept' || type === 'call-reject') {
+            // End the call for other sessions of this user so they stop ringing
+            socket.to(`user:${userId}`).emit('webrtc:signal', {
+              senderId: targetId,
+              type: 'call-end',
+              payload: { reason: 'handled-elsewhere' }
+            });
+          }
         }
 
         socket.to(roomName).emit('webrtc:signal', {

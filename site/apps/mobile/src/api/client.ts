@@ -4,7 +4,7 @@ import { DeviceEventEmitter } from 'react-native';
 
 // Using EXPO_PUBLIC_ variables allows you to change the IP for physical device testing.
 // Defaulting to 10.0.2.2 for Android emulators if no env is set.
-export const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:4000/api';
+export const API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://your-live-domain.com/api';
 console.log('[DEBUG] API_URL Initialized as:', API_URL);
 
 export const api = axios.create({

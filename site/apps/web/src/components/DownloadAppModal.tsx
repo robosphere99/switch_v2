@@ -2,7 +2,7 @@ import { Smartphone, Download, X } from "lucide-react";
 
 export function DownloadAppModal({ onClose }: { onClose: () => void }) {
   // App download URL (updated name to bust cache)
-  const apkUrl = `${window.location.origin}/mobile-app/SwitchNest_v1.0.1.apk`;
+  const apkUrl = `http://${window.location.hostname}:5173/mobile-app/SwitchNest_v1.0.5.apk`;
   
   // Use a simple public API to generate the QR code image without relying on heavy Node packages
   const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(apkUrl)}`;
