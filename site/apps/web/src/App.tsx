@@ -87,18 +87,39 @@ export default function App() {
   }, []);
 
   // First-run gate: DB/tables nahi hain to pura app ki jagah install wizard.
-  const [installState, setInstallState] = useState<"checking" | "installed" | "setup">("checking");
+  const [installState, setInstallState] = useState<"checking" | "installed" | "setup" | "error">("checking");
+  const [installError, setInstallError] = useState("");
 
   useEffect(() => {
     getInstallStatus()
       .then((s) => setInstallState(s.installed ? "installed" : "setup"))
-      .catch(() => setInstallState("installed")); // API down ho to site normal dikhao
+      .catch((err) => {
+        setInstallError(err instanceof Error ? err.message : String(err));
+        setInstallState("error");
+      });
   }, []);
 
   if (installState === "checking") {
     return (
       <div className="flex min-h-screen items-center justify-center text-gray-500">
         Checking installation...
+      </div>
+    );
+  }
+
+  if (installState === "error") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-night-950 text-white p-4">
+        <div className="max-w-md w-full border border-red-500/30 bg-red-500/10 p-6 rounded-xl text-center">
+          <div className="text-4xl mb-4">⚠️</div>
+          <h1 className="text-xl font-bold mb-2">Backend API is crashing</h1>
+          <p className="text-sm text-gray-400 mb-4">
+            The frontend loaded, but the Node.js API server returned an invalid response (possibly an IIS/Plesk error page).
+          </p>
+          <div className="text-xs text-red-400 bg-black/50 p-3 rounded text-left overflow-auto font-mono">
+            {installError}
+          </div>
+        </div>
       </div>
     );
   }
