@@ -16,7 +16,7 @@ const execAsync = promisify(exec);
 export const shopRouter = Router();
 
 const storage = multer.diskStorage({
-  destination: 'uploads/',
+  destination: (_req, _file, cb) => cb(null, 'uploads/'),
   filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname.replace(/[^a-zA-Z0-9.-]/g, '_'))
 });
 const upload = multer({ storage, limits: { fileSize: 50 * 1024 * 1024 } }); // 50MB
