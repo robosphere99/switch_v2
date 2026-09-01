@@ -604,6 +604,131 @@ var init_email_service = __esm({
   }
 });
 
+// ../../packages/shared/src/notificationDraft.ts
+function parseNotificationBody(body) {
+  if (!body) return { text: "" };
+  try {
+    const obj = JSON.parse(body);
+    if (obj && typeof obj === "object" && typeof obj.t === "string") {
+      const o = obj;
+      return {
+        text: o.t,
+        targetUserId: typeof o.u === "number" ? o.u : void 0,
+        draft: typeof o.d === "string" && o.d.length > 0 ? o.d : void 0
+      };
+    }
+  } catch {
+  }
+  return { text: body };
+}
+function buildClientSupportDraft(n) {
+  const title = n.title ?? "";
+  const body = n.body ?? "";
+  if (/Support ne message bheja/.test(title)) return null;
+  if (/User ne support me reply kiya/.test(title)) return null;
+  let m = title.match(/Support ne (.+?) (ON|OFF) kiya/i);
+  if (m) {
+    const on = m[2].toUpperCase() === "ON";
+    return `Aapne mera device "${m[1].trim()}" ${on ? "ON" : "OFF"} kar diya, lekin maine aisa koi action nahi kiya tha. Kya yeh sahi hai? Please check karein.`;
+  }
+  m = title.match(/board renamed kiya: (.+?) → (.+)/i);
+  if (m) {
+    return `Aapne mera board rename kar diya hai (${m[1].trim()} \u2192 ${m[2].trim()}). Mujhe yeh samajh nahi aaya \u2014 kya yeh galat hua?`;
+  }
+  m = title.match(/"(.*?)" ke stuck commands clear/i);
+  if (m) {
+    return `Mera device "${m[1].trim()}" abhi kaam nahi kar raha tha. Ab kya karna hoga? Koi aur dikkat ho toh bata dijiye.`;
+  }
+  m = title.match(/"(.*?)" ke liye firmware update push/i);
+  if (m) {
+    return `Aapne mere device "${m[1].trim()}" pe firmware update push kiya hai \u2014 kya yeh expected tha? Update ke baad koi dikkat aaye toh yahi bataunga.`;
+  }
+  m = title.match(/Board offline: (.+)/i);
+  if (m) return `Mera board "${m[1].trim()}" offline ho gaya hai \u2014 WiFi/power check kar liya, phir bhi connect nahi ho raha. Please help karein.`;
+  m = title.match(/Board online: (.+)/i);
+  if (m) return `Mera board "${m[1].trim()}" wapas online aa gaya hai. Sab theek hai ya kuch aur check karna hai?`;
+  m = title.match(/^📡 (.+?) offline$/i);
+  if (m) return `Mera device "${m[1].trim()}" offline ho gaya hai \u2014 WiFi/power check kar liya, phir bhi nahi aa raha. Please help karein.`;
+  m = title.match(/^✅ (.+?) online$/i);
+  if (m) return `Mera device "${m[1].trim()}" wapas online ho gaya hai. Sab theek hai ya kuch aur check karna hai?`;
+  m = title.match(/"(.*?)" pe firmware update push/i);
+  if (m) return `Mere device "${m[1].trim()}" pe firmware update chal raha hai \u2014 kya yeh sahi hai?`;
+  m = title.match(/Board renamed: (.+?) → (.+)/i);
+  if (m) return `Mera board rename ho gaya hai (${m[1].trim()} \u2192 ${m[2].trim()}). Kya yeh theek hai ya kuch galat hua?`;
+  m = title.match(/Child safety: "(.*?)" band kiya/i);
+  if (m) {
+    return `Mera device "${m[1].trim()}" child safety ke karan band ho gaya \u2014 kya yeh sahi tha? Agar main ab bhi use kar sakta hoon to bata dijiye.`;
+  }
+  m = title.match(/"(.*?)" ka time khatam/i);
+  if (m) {
+    return `Mujhe bataya gaya ki device "${m[1].trim()}" ka aaj ka time khatam ho gaya. Kya main isse dobara ON kar sakta hoon?`;
+  }
+  m = title.match(/Schedule fired: (.+?) (ON|OFF)/i);
+  if (m) return `Mera schedule device "${m[1].trim()}" ko ${m[2].toLowerCase()} kar diya \u2014 kya time aur action sahi tha? Please confirm karein.`;
+  if (/Order placed/.test(title)) {
+    const num = body.match(/Order ([A-Z0-9-]+)/i);
+    return `Mere order${num ? ` ${num[1]}` : ""} ke baare me ek sawal hai \u2014 please madad karein.`;
+  }
+  m = title.match(/New member joined (.+)/i);
+  if (m) return `Mere home "${m[1].trim()}" me koi naya member join hua hai \u2014 kya yeh expected tha?`;
+  const text = body ? ` \u2014 ${body}` : "";
+  return `Mujhe yeh notification mili: "${title}"${text}. Iske baare me madad chahiye.`;
+}
+function buildClientAdminReplyDraft(n) {
+  const title = n.title ?? "";
+  if (!/User ne support me reply kiya/.test(title)) return null;
+  const { text } = parseNotificationBody(n.body);
+  const trimmed = text.trim();
+  if (trimmed) {
+    const quote = trimmed.slice(0, 120);
+    return `Namaste, aapka message padh liya: "${quote}" \u2014 hum isse check kar rahe hain, jald hi update denge. \u{1F64F}`;
+  }
+  return `Namaste, aapka support message note kar liya \u2014 hum jald hi update denge. \u{1F64F}`;
+}
+function buildNotificationDraft(n) {
+  return buildClientSupportDraft(n) ?? buildClientAdminReplyDraft(n);
+}
+var init_notificationDraft = __esm({
+  "../../packages/shared/src/notificationDraft.ts"() {
+    "use strict";
+  }
+});
+
+// ../../packages/shared/src/realtime.ts
+var REALTIME_EVENTS;
+var init_realtime = __esm({
+  "../../packages/shared/src/realtime.ts"() {
+    "use strict";
+    REALTIME_EVENTS = {
+      /** Device row change — hamesha uniform DTO (id + status + online + updatedAt). */
+      deviceUpdated: "device:updated",
+      /** ESP board update (admin/devices page). */
+      espUpdated: "esp:updated",
+      /** Command executed/failed — pending badge confirm ke liye. */
+      commandUpdated: "command:updated",
+      /** Naya notification (bell + badge). */
+      notificationNew: "notification:new",
+      /** Support chat message. */
+      supportNew: "support:new",
+      /** Socket connect hone pe ack — UI "live" indicator ke liye. */
+      socketReady: "socket:ready",
+      /** Home membership revoke/role-change — socket ko room se nikaala gaya. */
+      homeAccessRevoked: "home:access-revoked"
+    };
+  }
+});
+
+// ../../packages/shared/src/index.ts
+var HOME_MEMBER_ROLES;
+var init_src = __esm({
+  "../../packages/shared/src/index.ts"() {
+    "use strict";
+    init_notificationDraft();
+    init_realtime();
+    HOME_MEMBER_ROLES = ["owner", "admin", "member", "viewer"];
+  }
+});
+
 // src/services/push.service.ts
 var push_service_exports = {};
 __export(push_service_exports, {
@@ -1009,7 +1134,6 @@ var init_mqtt_service = __esm({
 // src/lib/socket.ts
 import { Server } from "socket.io";
 import jwt from "jsonwebtoken";
-import { REALTIME_EVENTS } from "@robosphere/shared";
 function initSocket(server) {
   io = new Server(server, {
     cors: { origin: corsOrigins, credentials: true }
@@ -1186,6 +1310,7 @@ var io, activeCalls;
 var init_socket = __esm({
   "src/lib/socket.ts"() {
     "use strict";
+    init_src();
     init_env();
     init_prisma();
     io = null;
@@ -1261,9 +1386,6 @@ __export(notification_service_exports, {
   removeAll: () => removeAll,
   unreadCount: () => unreadCount
 });
-import {
-  buildNotificationDraft
-} from "@robosphere/shared";
 function attachDraftToBody(body, title) {
   const draft = buildNotificationDraft({ category: "", title, body });
   if (!draft) return body;
@@ -1385,6 +1507,7 @@ var init_notification_service = __esm({
     init_prisma();
     init_socket();
     init_email_service();
+    init_src();
     init_notificationQuery();
   }
 });
@@ -3101,8 +3224,8 @@ async function requestOta2(req, res) {
 }
 
 // src/middleware/requireRole.ts
+init_src();
 init_prisma();
-import { HOME_MEMBER_ROLES } from "@robosphere/shared";
 var ROLE_INDEX = Object.fromEntries(HOME_MEMBER_ROLES.map((r, i) => [r, i]));
 function requireHomeMember(minRole = "member") {
   return async (req, _res, next) => {
