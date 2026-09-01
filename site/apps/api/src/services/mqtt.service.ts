@@ -432,3 +432,19 @@ export function publishTermCommand(mac: string, cmd: string) {
         if (err) logger.error(`[mqtt] Failed to push terminal command to ${mac}`);
     });
 }
+
+/**
+ * Public helper: push LED status configuration to a specific device via MQTT.
+ */
+export function mqttPushLedState(mac: string, enabled: boolean): void {
+    if (!broker) return;
+    const cleanMac = mac.replace(/:/g, "").toLowerCase();
+    const topic = `sn/${cleanMac}/cmd`;
+    const payload = JSON.stringify({ type: "set_led", enabled });
+    broker.publish(
+        { cmd: "publish", topic, payload: Buffer.from(payload), qos: 1, retain: false, dup: false },
+        () => {
+            logger.info(`[mqtt] → ${cleanMac} pushed LED state: ${enabled}`);
+        }
+    );
+}

@@ -7,7 +7,7 @@
 > Repo location (this machine): `C:\Users\robos\OneDrive\Documents\SwitchNest`
 >
 <!-- AUTO:STAMP:START -->
-> _Auto-updated: 2026-08-24 21:43 UTC · branch `main` · tree dirty (44 changes) · 277 commits_
+> _Auto-updated: 2026-08-31 20:44 UTC · branch `main` · tree dirty (3 changes) · 280 commits_
 <!-- AUTO:STAMP:END -->
 
 ---
@@ -112,6 +112,9 @@ that also serves real ESP32 hardware).
 <!-- AUTO:RECENT_COMMITS:START -->
 Sabse naye 20 commits:
 
+- `fd6d87f` (2026-09-01) feat(mobile): add double back press to exit app
+- `8299eb6` (2026-09-01) fix(firmware/api): fix LED offline toggle, web UI blink, and SERVER_ERROR LED override
+- `431fcd1` (2026-09-01) fix: resolve DevLauncher crashes & secure WebRTC media context; feat: add Download App modal
 - `22cb8e2` (2026-08-25) docs: overhaul static docs generator, add Light theme and Portfolio route
 - `d4973eb` (2026-08-24) fix(api): drop type module to appease iisnode legacy parsing limits
 - `14ed77c` (2026-08-24) fix(api): use cjs extension for IISProxy alias via dynamic import
@@ -129,9 +132,6 @@ Sabse naye 20 commits:
 - `2ac5bce` (2026-08-24) build: instrument diag script with iisnode crash log extraction
 - `ae667fd` (2026-08-24) build: compile plesk artifacts for MQTT and UI enhancements
 - `13cfca1` (2026-08-24) feat: IoT Transport Modernization, Vertical Grid UI, and Rate-Limiting
-- `b5a65dd` (2026-08-22) fix(mobile): babel syntax error with template literals in profile view
-- `d4a63d6` (2026-08-22) feat(profile): User profile expansion with avatar, dob, mobile app edit modal
-- `0813bb0` (2026-08-22) feat: Mobile device management, room creation, edit device and custom popup modals via in-app UI
 <!-- AUTO:RECENT_COMMITS:END -->
 
 - 503 root-cause work: DB probe retry loop so the app self-heals, `nodeProcessCountPerApplication=1`,

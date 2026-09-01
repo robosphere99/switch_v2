@@ -13,6 +13,7 @@ export interface Product {
     stockCount?: number;
     rating?: number;
     totalReviews?: number;
+    media?: Array<{ id: number; url: string; type: string }>;
 }
 
 export interface OrderItem {
@@ -38,7 +39,15 @@ export interface Order {
 
 export async function getProducts(): Promise<Product[]> {
     const { data } = await api.get('/shop/products');
-    return data.data;
+    const API_BASE = api.defaults.baseURL?.replace('/api', '') || '';
+    return data.data.map((p: Product) => ({
+        ...p,
+        imageUrl: p.imageUrl && p.imageUrl.startsWith('/') ? API_BASE + p.imageUrl : p.imageUrl,
+        media: p.media ? p.media.map(m => ({
+            ...m,
+            url: m.url.startsWith('/') ? API_BASE + m.url : m.url
+        })) : []
+    }));
 }
 
 export async function createOrder(payload: {

@@ -54,22 +54,30 @@ function updateLocalIp() {
     }
 }
 
-// Execute IP detection
-try {
-    updateLocalIp();
-} catch (e) {
-    console.warn('[SwitchNest IP Auto-Updater] Failed to auto-update local IP:', e.message);
+// Execute IP detection ONLY in development mode
+// Production ya EAS builds ke dauran yeh auto-update skip ho jayega.
+const isProduction = process.env.APP_ENV === 'production' || process.env.NODE_ENV === 'production' || process.env.EAS_BUILD;
+
+if (!isProduction) {
+    try {
+        updateLocalIp();
+    } catch (e) {
+        console.warn('[SwitchNest IP Auto-Updater] Failed to auto-update local IP:', e.message);
+    }
+} else {
+    console.log('[SwitchNest IP Auto-Updater] Skipped — Production build detected. App will use the URL from .env');
 }
 
 module.exports = {
     expo: {
         name: "mobile",
         slug: "mobile",
-        version: "1.0.1",
+        platforms: ["ios", "android"],
+        version: "1.0.11",
         runtimeVersion: {
             policy: "appVersion"
         },
-        orientation: "default",
+        orientation: "portrait",
         icon: "./assets/icon.png",
         userInterfaceStyle: "automatic",
         ios: {
@@ -79,6 +87,7 @@ module.exports = {
             }
         },
         android: {
+            versionCode: 2,
             adaptiveIcon: {
                 backgroundColor: "#E6F4FE",
                 foregroundImage: "./assets/android-icon-foreground.png",
@@ -101,7 +110,10 @@ module.exports = {
             }
         },
         updates: {
-            url: "https://u.expo.dev/538b7c36-6d64-4158-a985-a01d5880736d"
+            url: "https://u.expo.dev/538b7c36-6d64-4158-a985-a01d5880736d",
+            requestHeaders: {
+                "expo-channel-name": "preview"
+            }
         },
         plugins: [
             "@react-native-community/datetimepicker",

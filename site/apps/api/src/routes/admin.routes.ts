@@ -2415,7 +2415,7 @@ adminRouter.delete("/products/media/:mediaId", async (req, res) => {
   const filePath = path.join(process.cwd(), media.url.replace(/^\/+/, ""));
   try { fs.unlinkSync(filePath); } catch { /* file may not exist */ }
   await prisma.productMedia.delete({ where: { id: mediaId } });
-  await audit(req.user!.sub, "admin.product.media.delete", { entity: "product", entityId: media.productId, meta: { mediaId } });
+  await audit(req.user!.sub, "admin.product.media.delete", { entity: "product", entityId: media.productId ?? undefined, meta: { mediaId } });
   ok(res, { deleted: true });
 });
 
