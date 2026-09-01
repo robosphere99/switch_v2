@@ -26,7 +26,7 @@ try {
 } catch (e) {}
 
 const storage = multer.diskStorage({
-  destination: attachmentDir,
+  destination: (_req, _file, cb) => cb(null, attachmentDir),
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname) || '';
     const safeName = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9_-]/g, '');

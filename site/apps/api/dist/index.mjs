@@ -8898,7 +8898,7 @@ import os4 from "os";
 var execAsync = promisify(exec);
 var shopRouter = Router12();
 var storage2 = multer3.diskStorage({
-  destination: "uploads/",
+  destination: (_req, _file, cb) => cb(null, "uploads/"),
   filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname.replace(/[^a-zA-Z0-9.-]/g, "_"))
 });
 var upload3 = multer3({ storage: storage2, limits: { fileSize: 50 * 1024 * 1024 } });
@@ -9884,7 +9884,7 @@ try {
 } catch (e) {
 }
 var storage3 = multer4.diskStorage({
-  destination: attachmentDir,
+  destination: (_req, _file, cb) => cb(null, attachmentDir),
   filename: (req, file, cb) => {
     const ext = path11.extname(file.originalname) || "";
     const safeName = path11.basename(file.originalname, ext).replace(/[^a-zA-Z0-9_-]/g, "");
