@@ -2313,7 +2313,10 @@ import path5 from "node:path";
 import fs4 from "node:fs";
 init_prisma();
 var avatarsDir = path5.join(uploadsDir, "avatars");
-fs4.mkdirSync(avatarsDir, { recursive: true });
+try {
+  fs4.mkdirSync(avatarsDir, { recursive: true });
+} catch (e) {
+}
 var storage = multer.diskStorage({
   destination: function(_req, _file, cb) {
     cb(null, avatarsDir);
@@ -9874,8 +9877,11 @@ import multer4 from "multer";
 import path11 from "path";
 import fs10 from "fs";
 var supportRouter = Router16();
-if (!fs10.existsSync(attachmentDir)) {
-  fs10.mkdirSync(attachmentDir, { recursive: true });
+try {
+  if (!fs10.existsSync(attachmentDir)) {
+    fs10.mkdirSync(attachmentDir, { recursive: true });
+  }
+} catch (e) {
 }
 var storage3 = multer4.diskStorage({
   destination: attachmentDir,

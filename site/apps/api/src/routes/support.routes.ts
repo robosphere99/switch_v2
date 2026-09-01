@@ -19,9 +19,11 @@ import { attachmentDir } from "../lib/paths";
 
 export const supportRouter = Router();
 
-if (!fs.existsSync(attachmentDir)) {
-  fs.mkdirSync(attachmentDir, { recursive: true });
-}
+try {
+  if (!fs.existsSync(attachmentDir)) {
+    fs.mkdirSync(attachmentDir, { recursive: true });
+  }
+} catch (e) {}
 
 const storage = multer.diskStorage({
   destination: attachmentDir,
