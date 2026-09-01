@@ -145,12 +145,20 @@ export function createApp() {
   app.use("/mobile-app", express.static(mobileAppDir));
 
   // Production: built web app (Vite dist) ko bhi API hi serve karta hai —
-  // Plesk pe ek hi Node.js app se sab chalta hai (dev me Vite proxy hota hai).
-  if (fs.existsSync(path.join(webDist, "index.html"))) {
-    app.use(express.static(webDist));
-    // SPA fallback — API/firmware/socket paths JSON 404 dete hain.
+  // Plesk pe ek hi Node.js app se sab chalta hai. sync-api.mjs index.html ko api folder me copy karta hai.
+  const apiRootHtml = path.join(process.cwd(), "index.html");
+  const webDistHtml = path.join(webDist, "index.html");
+  
+  if (fs.existsSync(apiRootHtml)) {
+    // Serve static assets from api root (assets folder)
+    app.use(express.static(process.cwd()));
     app.get(/^\/(?!api|firmware|socket\.io).*/, (_req, res) => {
-      res.sendFile(path.join(webDist, "index.html"));
+      res.sendFile(apiRootHtml);
+    });
+  } else if (fs.existsSync(webDistHtml)) {
+    app.use(express.static(webDist));
+    app.get(/^\/(?!api|firmware|socket\.io).*/, (_req, res) => {
+      res.sendFile(webDistHtml);
     });
   }
 
