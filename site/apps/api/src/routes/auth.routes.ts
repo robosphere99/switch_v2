@@ -11,7 +11,7 @@ import { uploadsDir } from "../lib/paths";
 import { prisma } from "../lib/prisma";
 
 const avatarsDir = path.join(uploadsDir, "avatars");
-fs.mkdirSync(avatarsDir, { recursive: true });
+try { fs.mkdirSync(avatarsDir, { recursive: true }); } catch(e) {}
 
 /**
  * Deterministic avatar storage: {username}.{ext}
