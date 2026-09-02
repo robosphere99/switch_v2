@@ -129,25 +129,29 @@ function persistDatabaseConfig(p: DbParts): { path: string; ok: boolean } {
 
 /** Server se connect karke (bina DB select kiye) connection test + version. */
 async function connectServer(parts: DbParts): Promise<{ serverVersion: string }> {
-  let conn: mysql.Connection;
-  try {
-    conn = await mysql.createConnection({
-      host: parts.host,
-      port: parts.port,
-      user: parts.user,
-      password: parts.pass,
-      connectTimeout: 8000,
-    });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    throw new AppError("DB_CONNECT_FAILED", `Database server se connect nahi ho paya: ${msg}`, 502);
+  const hostsToTry = parts.host === "localhost" ? ["127.0.0.1", "localhost"] : [parts.host, "127.0.0.1"];
+  let lastErr: unknown = null;
+  for (const h of hostsToTry) {
+    let conn: mysql.Connection | null = null;
+    try {
+      conn = await mysql.createConnection({
+        host: h,
+        port: parts.port,
+        user: parts.user,
+        password: parts.pass,
+        connectTimeout: 8000,
+      });
+      parts.host = h; // lock onto working host
+      const [rows] = await conn.query("SELECT VERSION() AS v");
+      await conn.end().catch(() => undefined);
+      return { serverVersion: String((rows as Array<{ v: string }>)[0]?.v ?? "") };
+    } catch (err) {
+      lastErr = err;
+      if (conn) await conn.end().catch(() => undefined);
+    }
   }
-  try {
-    const [rows] = await conn.query("SELECT VERSION() AS v");
-    return { serverVersion: String((rows as Array<{ v: string }>)[0]?.v ?? "") };
-  } finally {
-    await conn.end().catch(() => undefined);
-  }
+  const msg = lastErr instanceof Error ? lastErr.message : String(lastErr);
+  throw new AppError("DB_CONNECT_FAILED", `Database server se connect nahi ho paya: ${msg}`, 502);
 }
 
 /** DB create (agar nahi hai) — server-level permission chahiye. */
