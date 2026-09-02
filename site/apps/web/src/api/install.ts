@@ -17,12 +17,12 @@ export async function getInstallStatus(): Promise<InstallStatus> {
     /* ignore and use optimistic installed fallback below */
   }
   return {
-    installed: true,
-    dbReachable: true,
-    tablesReady: true,
-    dbConfigured: true,
+    installed: false,
+    dbReachable: false,
+    tablesReady: false,
+    dbConfigured: false,
     db: { host: "localhost", port: 3306, user: "root", name: "switchnest" },
-    admin: { username: "admin", email: "admin@switchnest.in", passwordSet: true },
+    admin: { username: "admin", email: "admin@switchnest.in", passwordSet: false },
   };
 }
 
