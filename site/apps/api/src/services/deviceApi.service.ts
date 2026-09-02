@@ -494,5 +494,15 @@ export async function ackCommand(
     data: { status, executedAt: new Date() },
   });
   emitToHome(homeId, "command:updated", { id: commandId, status, executedAt: updated.executedAt });
+
+  if (command.device.espId) {
+    const isTerm = command.command.startsWith("term:");
+    const cleanCmd = isTerm ? command.command.replace(/^term:/, "") : command.command;
+    const resp = cleanCmd === "ping" ? "pong" : `${status}: ${cleanCmd}`;
+    import("../lib/socket").then(({ emitToBoardLogs }) => {
+      emitToBoardLogs(command.device.espId!, `[ESP] ${resp}`);
+    }).catch(() => undefined);
+  }
+
   return updated;
 }

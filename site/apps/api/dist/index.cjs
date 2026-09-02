@@ -1196,6 +1196,16 @@ var init_mqtt_service = __esm({
 });
 
 // src/lib/socket.ts
+var socket_exports = {};
+__export(socket_exports, {
+  emitDeviceUpdated: () => emitDeviceUpdated,
+  emitToBoardLogs: () => emitToBoardLogs,
+  emitToHome: () => emitToHome,
+  emitToSession: () => emitToSession,
+  emitToUser: () => emitToUser,
+  initSocket: () => initSocket,
+  leaveHomeRoom: () => leaveHomeRoom
+});
 function initSocket(server) {
   io = new import_socket2.Server(server, {
     cors: { origin: corsOrigins, credentials: true }
@@ -1301,11 +1311,22 @@ function initSocket(server) {
       const { espId, cmd } = data || {};
       if (espId && cmd) {
         try {
-          const esp = await prisma.espDevice.findUnique({ where: { id: espId }, select: { macAddress: true } });
+          const esp = await prisma.espDevice.findUnique({ where: { id: espId }, select: { id: true, macAddress: true, homeId: true } });
           if (esp) {
+            emitToBoardLogs(esp.id, `[Admin] Sending: ${cmd}`);
             Promise.resolve().then(() => (init_mqtt_service(), mqtt_service_exports)).then(({ publishTermCommand: publishTermCommand2 }) => {
               publishTermCommand2(esp.macAddress, cmd);
-            });
+            }).catch(() => void 0);
+            const devices = await prisma.device.findMany({ where: { espId: esp.id } });
+            if (devices.length) {
+              await prisma.deviceCommand.create({
+                data: {
+                  deviceId: devices[0].id,
+                  command: `term:${cmd}`,
+                  status: "pending"
+                }
+              });
+            }
           }
         } catch (e) {
           console.error("[socket] Failed to send terminal command", e);
@@ -4571,6 +4592,14 @@ async function ackCommand(key, commandId, deviceId, status) {
     data: { status, executedAt: /* @__PURE__ */ new Date() }
   });
   emitToHome(homeId, "command:updated", { id: commandId, status, executedAt: updated.executedAt });
+  if (command.device.espId) {
+    const isTerm = command.command.startsWith("term:");
+    const cleanCmd = isTerm ? command.command.replace(/^term:/, "") : command.command;
+    const resp = cleanCmd === "ping" ? "pong" : `${status}: ${cleanCmd}`;
+    Promise.resolve().then(() => (init_socket(), socket_exports)).then(({ emitToBoardLogs: emitToBoardLogs2 }) => {
+      emitToBoardLogs2(command.device.espId, `[ESP] ${resp}`);
+    }).catch(() => void 0);
+  }
   return updated;
 }
 
