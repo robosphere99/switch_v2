@@ -1769,7 +1769,12 @@ async function signup(input, deviceInfo, ipAddress) {
         data: {
           username: input.username,
           email: input.email,
-          password
+          password,
+          role: "user",
+          status: "active",
+          pushDeviceToggles: true,
+          pushSystemAlerts: true,
+          tokenVersion: 0
         }
       });
       await tx.home.create({
