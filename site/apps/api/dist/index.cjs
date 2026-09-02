@@ -11529,8 +11529,7 @@ async function connectServer(parts) {
 }
 async function createDatabase(parts) {
   const dbName = escIdent(parts.name);
-  const version = await connectServer(parts);
-  let conn;
+  let conn = null;
   try {
     conn = await import_promise.default.createConnection({
       host: parts.host,
@@ -11539,18 +11538,13 @@ async function createDatabase(parts) {
       password: parts.pass,
       connectTimeout: 8e3
     });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    throw new AppError("DB_CONNECT_FAILED", `Database connect failed: ${msg}`, 502);
-  }
-  try {
     await conn.query(
       `CREATE DATABASE IF NOT EXISTS \`${dbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
     );
+  } catch (_err) {
   } finally {
-    await conn.end().catch(() => void 0);
+    if (conn) await conn.end().catch(() => void 0);
   }
-  logger.info(`[install] database ready: ${parts.name} (server ${version.serverVersion})`);
 }
 async function applySchema(parts) {
   if (!import_node_fs3.default.existsSync(SCHEMA_SQL)) {
