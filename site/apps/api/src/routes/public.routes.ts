@@ -62,10 +62,20 @@ const mySupportLimiter = rateLimit({
   max: 60,
 });
 
-// Site-wide public settings (brand color, contact info) — login se pehle bhi
-// chahiye taaki theme + support details har jagah consistent rahe.
 publicRouter.get("/site-settings", siteSettingsLimiter, async (_req, res) => {
-  ok(res, await getPublicSiteSettings());
+  try {
+    const settings = await getPublicSiteSettings();
+    ok(res, settings);
+  } catch (_err) {
+    ok(res, {
+      siteName: "SwitchNest",
+      supportEmail: "support@switchnest.in",
+      supportPhone: "+91 98765 43210",
+      supportAddress: "SwitchNest Labs, Noida, UP",
+      supportHours: "24/7 Support",
+      brandColor: "#0284c7",
+    });
+  }
 });
 
 // ---------------------------------------------------------------------------
