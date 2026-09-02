@@ -159,7 +159,12 @@ export async function removeAll(userId: number) {
 }
 
 export async function unreadCount(userId: number) {
-  return prisma.notification.count({ where: { userId, readAt: null } });
+  try {
+    const count = await prisma.notification.count({ where: { userId, readAt: null } });
+    return { unread: count };
+  } catch (_err) {
+    return { unread: 0 };
+  }
 }
 
 export async function markRead(userId: number, notificationId: number) {

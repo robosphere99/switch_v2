@@ -1492,7 +1492,12 @@ async function removeAll(userId) {
   return { ok: true };
 }
 async function unreadCount(userId) {
-  return prisma.notification.count({ where: { userId, readAt: null } });
+  try {
+    const count = await prisma.notification.count({ where: { userId, readAt: null } });
+    return { unread: count };
+  } catch (_err) {
+    return { unread: 0 };
+  }
 }
 async function markRead(userId, notificationId) {
   await prisma.notification.updateMany({
