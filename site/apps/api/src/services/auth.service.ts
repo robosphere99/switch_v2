@@ -76,28 +76,34 @@ export async function signup(input: {
 
   const password = await bcrypt.hash(input.password, 10);
 
-  const user = await prisma.$transaction(async (tx) => {
-    const created = await tx.user.create({
-      data: {
-        username: input.username,
-        email: input.email,
-        password,
-      },
-    });
-
-    // Auto-create the user's first home (they become the owner).
-    await tx.home.create({
-      data: {
-        name: input.homeName?.trim() || `${input.username}'s Home`,
-        ownerId: created.id,
-        members: {
-          create: { userId: created.id, role: "owner" },
+  let user: User;
+  try {
+    user = await prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: {
+          username: input.username,
+          email: input.email,
+          password,
         },
-      },
-    });
+      });
 
-    return created;
-  });
+      // Auto-create the user's first home (they become the owner).
+      await tx.home.create({
+        data: {
+          name: input.homeName?.trim() || `${input.username}'s Home`,
+          ownerId: created.id,
+          members: {
+            create: { userId: created.id, role: "owner" },
+          },
+        },
+      });
+
+      return created;
+    });
+  } catch (err) {
+    logger.error("[signup] Error during user creation transaction", err instanceof Error ? err.stack : err);
+    throw err;
+  }
 
   return issueTokens(user, deviceInfo, ipAddress);
 }
