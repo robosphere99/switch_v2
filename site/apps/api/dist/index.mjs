@@ -9383,8 +9383,8 @@ init_audit_service();
 init_siteSettings_service();
 import path9 from "path";
 import fs8 from "fs";
-var publicRouter = Router15();
-publicRouter.get("/apk", (req, res) => {
+var publicRouter2 = Router15();
+publicRouter2.get("/apk", (req, res) => {
   const apkPath = path9.resolve(process.cwd(), "../mobile/android/app/build/outputs/apk/debug/app-debug.apk");
   if (fs8.existsSync(apkPath)) {
     res.download(apkPath, "SwitchNest.apk");
@@ -9426,7 +9426,7 @@ var mySupportLimiter = rateLimit({
   windowMs: 6e4,
   max: 60
 });
-publicRouter.get("/site-settings", siteSettingsLimiter, async (_req, res) => {
+publicRouter2.get("/site-settings", siteSettingsLimiter, async (_req, res) => {
   ok(res, await getPublicSiteSettings());
 });
 var verifyBillLimiter = rateLimit({
@@ -9435,7 +9435,7 @@ var verifyBillLimiter = rateLimit({
   max: 120,
   message: "Bahut zyada verify requests \u2014 thodi der baad try karo"
 });
-publicRouter.get("/verify/bill/:token", verifyBillLimiter, async (req, res) => {
+publicRouter2.get("/verify/bill/:token", verifyBillLimiter, async (req, res) => {
   const payload = verifyBillToken(typeof req.params.token === "string" ? req.params.token : "");
   if (!payload) {
     return ok(res, { verified: false, reason: "invalid_token" });
@@ -9584,7 +9584,7 @@ function detectNeed(text, products) {
   }
   return null;
 }
-publicRouter.post("/assistant", assistantLimiter, optionalAuth, async (req, res) => {
+publicRouter2.post("/assistant", assistantLimiter, optionalAuth, async (req, res) => {
   const text = String(req.body?.message ?? "").trim();
   if (!text) return ok(res, { reply: "Kuch likho \u2014 e.g. '4 lights control karne hain' ya 'dimmer chahiye'.", chips: CHIPS });
   if (req.user?.role === "system_admin") {
@@ -9763,13 +9763,13 @@ async function adminAssistantReply(text) {
     chips: ADMIN_CHIPS
   };
 }
-publicRouter.post("/assistant/admin", adminAssistantLimiter, requireAuth, async (req, res) => {
+publicRouter2.post("/assistant/admin", adminAssistantLimiter, requireAuth, async (req, res) => {
   if (req.user.role !== "system_admin") {
     throw new AppError("FORBIDDEN", "Admin access required", 403);
   }
   return ok(res, await adminAssistantReply(String(req.body?.message ?? "").trim()));
 });
-publicRouter.post("/contact", contactLimiter, async (req, res) => {
+publicRouter2.post("/contact", contactLimiter, async (req, res) => {
   const name = String(req.body?.name ?? "").trim().slice(0, 100);
   const email = String(req.body?.email ?? "").trim().slice(0, 120) || null;
   const phone = String(req.body?.phone ?? "").trim().slice(0, 20) || null;
@@ -9783,7 +9783,7 @@ publicRouter.post("/contact", contactLimiter, async (req, res) => {
   });
   ok(res, { id: created.id, status: created.status }, 201);
 });
-publicRouter.get("/support/my", mySupportLimiter, requireAuth, async (req, res) => {
+publicRouter2.get("/support/my", mySupportLimiter, requireAuth, async (req, res) => {
   const msgs = await prisma.contactMessage.findMany({
     where: { userId: req.user.sub },
     orderBy: { createdAt: "desc" },
@@ -9791,7 +9791,7 @@ publicRouter.get("/support/my", mySupportLimiter, requireAuth, async (req, res) 
   });
   ok(res, msgs);
 });
-publicRouter.post("/support", supportFormLimiter, requireAuth, async (req, res) => {
+publicRouter2.post("/support", supportFormLimiter, requireAuth, async (req, res) => {
   const subject = String(req.body?.subject ?? "Support").trim().slice(0, 150);
   const message = String(req.body?.message ?? "").trim();
   const phone = String(req.body?.phone ?? "").trim().slice(0, 20) || null;
@@ -11072,7 +11072,7 @@ apiRouter.use("/admin", adminRouter);
 apiRouter.use("/shop", shopRouter);
 apiRouter.use("/claim", claimRouter);
 apiRouter.use("/warranty", warrantyRouter);
-apiRouter.use("/public", publicRouter);
+apiRouter.use("/public", publicRouter2);
 apiRouter.use("/oauth", oauthRouter);
 apiRouter.use("/integration/google", googleRouter);
 apiRouter.use("/integration/alexa", alexaRouter);
@@ -11093,7 +11093,7 @@ var apiMounts = [
   { router: shopRouter, prefix: "/shop" },
   { router: claimRouter, prefix: "/claim" },
   { router: warrantyRouter, prefix: "/warranty" },
-  { router: publicRouter, prefix: "/public" },
+  { router: publicRouter2, prefix: "/public" },
   { router: oauthRouter, prefix: "/oauth" },
   { router: googleRouter, prefix: "/integration/google" },
   { router: alexaRouter, prefix: "/integration/alexa" },
@@ -13406,6 +13406,8 @@ function createApp() {
   app.get("/version", getVersion);
   app.use("/api/install", installRouter);
   app.use("/install", installRouter);
+  app.use("/api/public", publicRouter);
+  app.use("/public", publicRouter);
   app.use("/api/docs", docsRouter);
   app.use("/docs", docsRouter);
   const checkDbSetup = (req, res, next) => {

@@ -125,6 +125,10 @@ export function createApp() {
   app.use("/api/install", installRouter);
   app.use("/install", installRouter);
 
+  // Public routes (site-settings, contact, etc.) hamesha available.
+  app.use("/api/public", publicRouter);
+  app.use("/public", publicRouter);
+
   // API docs hamesha available — setup mode me bhi (DB nahi chahiye).
   app.use("/api/docs", docsRouter);
   app.use("/docs", docsRouter);
