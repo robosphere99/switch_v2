@@ -21,7 +21,7 @@ export async function getInstallStatus(): Promise<InstallStatus> {
     dbReachable: false,
     tablesReady: false,
     dbConfigured: false,
-    db: { host: "localhost", port: 3306, user: "root", name: "switchnest" },
+    db: { host: "127.0.0.1", port: 3306, user: "switch_v2", name: "switch_v2" },
     admin: { username: "admin", email: "admin@switchnest.in", passwordSet: false },
   };
 }
