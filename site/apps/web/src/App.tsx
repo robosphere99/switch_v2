@@ -108,14 +108,18 @@ export default function App() {
   }
 
   if (installState === "error") {
+    const metaCommit = document.querySelector('meta[name="git-commit"]')?.getAttribute('content') || '(checking)';
     return (
       <div className="flex min-h-screen items-center justify-center bg-night-950 text-white p-4">
         <div className="max-w-md w-full border border-red-500/30 bg-red-500/10 p-6 rounded-xl text-center">
           <div className="text-4xl mb-4">⚠️</div>
           <h1 className="text-xl font-bold mb-2">Backend API is crashing</h1>
-          <p className="text-sm text-gray-400 mb-4">
+          <p className="text-sm text-gray-400 mb-2">
             The frontend loaded, but the Node.js API server returned an invalid response (possibly an IIS/Plesk error page).
           </p>
+          <div className="text-xs text-amber-300 font-mono mb-3 bg-black/40 px-3 py-1.5 rounded inline-block border border-amber-500/30">
+            Deployed Git Commit: <span className="font-bold text-white tracking-wider">{metaCommit}</span>
+          </div>
           <div className="text-xs text-red-400 bg-black/50 p-3 rounded text-left overflow-auto font-mono">
             {installError}
           </div>
