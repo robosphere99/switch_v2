@@ -147,9 +147,7 @@ export function createApp() {
   };
 
   app.use("/api", checkDbSetup);
-
   app.use("/api", apiRouter);
-  app.use("/", apiRouter);
 
   // Serve published ESP32 firmware at /firmware/firmware.bin (OTA downloads).
   app.use("/firmware", express.static(firmwareDir));
@@ -180,7 +178,8 @@ export function createApp() {
         },
       }),
     );
-  } else if (fs.existsSync(webDistAssets)) {
+  }
+  if (fs.existsSync(webDistAssets)) {
     app.use(
       "/assets",
       express.static(webDistAssets, {
@@ -196,13 +195,14 @@ export function createApp() {
 
   if (fs.existsSync(apiRootHtml)) {
     app.use(express.static(process.cwd()));
-    app.get(/^\/(?!api|firmware|uploads|mobile-app|assets|socket\.io).*/, (_req, res) => {
+    app.get(["/", "/login", "/signup", "/forgot-password", "/reset-password", "/support", "/verify-bill", "/dashboard*", "/admin*", "/shop*"], (_req, res) => {
       res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
       res.sendFile(apiRootHtml);
     });
-  } else if (fs.existsSync(webDistHtml)) {
+  }
+  if (fs.existsSync(webDistHtml)) {
     app.use(express.static(webDist));
-    app.get(/^\/(?!api|firmware|uploads|mobile-app|assets|socket\.io).*/, (_req, res) => {
+    app.get(["/", "/login", "/signup", "/forgot-password", "/reset-password", "/support", "/verify-bill", "/dashboard*", "/admin*", "/shop*"], (_req, res) => {
       res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
       res.sendFile(webDistHtml);
     });

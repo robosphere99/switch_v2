@@ -13443,7 +13443,6 @@ function createApp() {
   };
   app.use("/api", checkDbSetup);
   app.use("/api", apiRouter);
-  app.use("/", apiRouter);
   app.use("/firmware", express2.static(firmwareDir));
   app.use("/uploads", express2.static(uploadsDir));
   app.use("/mobile-app", express2.static(mobileAppDir));
@@ -13463,7 +13462,8 @@ function createApp() {
         }
       })
     );
-  } else if (fs12.existsSync(webDistAssets)) {
+  }
+  if (fs12.existsSync(webDistAssets)) {
     app.use(
       "/assets",
       express2.static(webDistAssets, {
@@ -13478,13 +13478,14 @@ function createApp() {
   }
   if (fs12.existsSync(apiRootHtml)) {
     app.use(express2.static(process.cwd()));
-    app.get(/^\/(?!api|firmware|uploads|mobile-app|assets|socket\.io).*/, (_req, res) => {
+    app.get(["/", "/login", "/signup", "/forgot-password", "/reset-password", "/support", "/verify-bill", "/dashboard*", "/admin*", "/shop*"], (_req, res) => {
       res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
       res.sendFile(apiRootHtml);
     });
-  } else if (fs12.existsSync(webDistHtml)) {
+  }
+  if (fs12.existsSync(webDistHtml)) {
     app.use(express2.static(webDist));
-    app.get(/^\/(?!api|firmware|uploads|mobile-app|assets|socket\.io).*/, (_req, res) => {
+    app.get(["/", "/login", "/signup", "/forgot-password", "/reset-password", "/support", "/verify-bill", "/dashboard*", "/admin*", "/shop*"], (_req, res) => {
       res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
       res.sendFile(webDistHtml);
     });
