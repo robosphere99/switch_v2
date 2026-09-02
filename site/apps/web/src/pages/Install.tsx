@@ -146,7 +146,12 @@ export function Install() {
       });
       setStep(4);
       setDone(true);
-      setTimeout(() => window.location.reload(), 2500);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("switchnest_installed", "true");
+      }
+      setTimeout(() => {
+        window.location.href = "/login";
+      }, 2000);
     } catch (err: unknown) {
       const anyErr = err as { response?: { data?: { error?: { message?: string } } } };
       setError(anyErr.response?.data?.error?.message ?? "Setup complete nahi ho paya — details check karo");
