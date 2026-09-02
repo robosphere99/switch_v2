@@ -14755,6 +14755,7 @@ async function runLightMigrations() {
     await addCol("esp_devices", "model_code", "VARCHAR(16) NULL");
     await addCol("esp_devices", "offline", "BOOLEAN NOT NULL DEFAULT TRUE");
     await addCol("esp_devices", "updated_at", "DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)");
+    await addCol("esp_devices", "console_password", "VARCHAR(64) NULL");
     await migration("alter orders.status to VARCHAR(32)", async () => {
       await prisma.$executeRawUnsafe("ALTER TABLE `orders` MODIFY COLUMN `status` VARCHAR(32) NOT NULL DEFAULT 'pending'");
     });
