@@ -586,16 +586,7 @@ async function selfHealPrismaClient(): Promise<void> {
       update: { value: new Date().toISOString() },
     })
     .catch(() => undefined);
-  // IMPORTANT: turant process.exit(0) NAHI — iisnode startup ke waqt exit ko
-  // "startup failure" maan leta hai → IIS rapid-fail protection pool ko stop
-  // kar deta hai → 503 jab tak manual restart na ho (yahi recurring 503 ka
-  // source tha). Reboot ko HAMESHA 120s uptime ke baad rakho — koi bhi exit
-  // iisnode startup window (pehle ~60s) me nahi aata. 10-min guard loop hone
-  // nahi deta.
-  const healUptime = Math.round(process.uptime());
-  const healDelayMs = healUptime < 120 ? (120 - healUptime) * 1000 : 5_000;
-  fileLog(`[boot] prisma generate OK — ${Math.round(healDelayMs / 1000)}s baad safe reboot (fresh client load)`);
-  setTimeout(() => process.exit(0), healDelayMs);
+  fileLog("[boot] prisma generate OK — client updated");
 }
 
 async function initDatabase(): Promise<void> {
