@@ -82,19 +82,22 @@ export function createApp() {
     next();
   });
 
-  app.get(["/api/health", "/health"], async (_req, res) => {
+  app.get("/api/health", async (_req, res) => {
+    res.json({
+      success: true,
+      data: { status: "ok", ts: new Date().toISOString(), schema: await schemaDiag(), build: API_VERSION },
+    });
+  });
+  app.get("/health", async (_req, res) => {
     res.json({
       success: true,
       data: { status: "ok", ts: new Date().toISOString(), schema: await schemaDiag(), build: API_VERSION },
     });
   });
 
-  app.get(["/api/version", "/version"], (req, res) => {
+  const getVersion = (req: express.Request, res: express.Response) => {
     const requestHost = req.get('host') || '192.168.1.36:4000';
     const protocol = req.protocol || 'http';
-
-    // Bump latestVersion when a new APK is deployed.
-    // Set isMandatory = true or bump minRequiredVersion to force updates.
     const latestVersion = "1.0.11";
     const minRequiredVersion = "1.0.0";
 
@@ -113,16 +116,21 @@ export function createApp() {
         ts: new Date().toISOString()
       }
     });
-  });
+  };
+
+  app.get("/api/version", getVersion);
+  app.get("/version", getVersion);
 
   // Install routes hamesha available — setup mode me bhi.
-  app.use(["/api/install", "/install"], installRouter);
+  app.use("/api/install", installRouter);
+  app.use("/install", installRouter);
 
   // API docs hamesha available — setup mode me bhi (DB nahi chahiye).
-  app.use(["/api/docs", "/docs"], docsRouter);
+  app.use("/api/docs", docsRouter);
+  app.use("/docs", docsRouter);
 
   // Setup mode (DB install pending) — baaki saare routes 503.
-  app.use("/api", (req, res, next) => {
+  const checkDbSetup = (req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (isDbReady()) return next();
     res.status(503).json({
       success: false,
@@ -131,9 +139,12 @@ export function createApp() {
         message: "Database not installed yet — run installation first (GET/POST /api/install)",
       },
     });
-  });
+  };
+
+  app.use("/api", checkDbSetup);
 
   app.use("/api", apiRouter);
+  app.use("/", apiRouter);
 
   // Serve published ESP32 firmware at /firmware/firmware.bin (OTA downloads).
   app.use("/firmware", express.static(firmwareDir));

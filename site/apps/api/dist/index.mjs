@@ -13369,13 +13369,19 @@ function createApp() {
     });
     next();
   });
-  app.get(["/api/health", "/health"], async (_req, res) => {
+  app.get("/api/health", async (_req, res) => {
     res.json({
       success: true,
       data: { status: "ok", ts: (/* @__PURE__ */ new Date()).toISOString(), schema: await schemaDiag(), build: API_VERSION }
     });
   });
-  app.get(["/api/version", "/version"], (req, res) => {
+  app.get("/health", async (_req, res) => {
+    res.json({
+      success: true,
+      data: { status: "ok", ts: (/* @__PURE__ */ new Date()).toISOString(), schema: await schemaDiag(), build: API_VERSION }
+    });
+  });
+  const getVersion = (req, res) => {
     const requestHost = req.get("host") || "192.168.1.36:4000";
     const protocol = req.protocol || "http";
     const latestVersion = "1.0.11";
@@ -13395,10 +13401,14 @@ function createApp() {
         ts: (/* @__PURE__ */ new Date()).toISOString()
       }
     });
-  });
-  app.use(["/api/install", "/install"], installRouter);
-  app.use(["/api/docs", "/docs"], docsRouter);
-  app.use("/api", (req, res, next) => {
+  };
+  app.get("/api/version", getVersion);
+  app.get("/version", getVersion);
+  app.use("/api/install", installRouter);
+  app.use("/install", installRouter);
+  app.use("/api/docs", docsRouter);
+  app.use("/docs", docsRouter);
+  const checkDbSetup = (req, res, next) => {
     if (isDbReady()) return next();
     res.status(503).json({
       success: false,
@@ -13407,8 +13417,10 @@ function createApp() {
         message: "Database not installed yet \u2014 run installation first (GET/POST /api/install)"
       }
     });
-  });
+  };
+  app.use("/api", checkDbSetup);
   app.use("/api", apiRouter);
+  app.use("/", apiRouter);
   app.use("/firmware", express2.static(firmwareDir));
   app.use("/uploads", express2.static(uploadsDir));
   app.use("/mobile-app", express2.static(mobileAppDir));
