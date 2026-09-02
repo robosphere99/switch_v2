@@ -171,17 +171,29 @@ var init_logger = __esm({
 // src/lib/prisma.ts
 var prisma_exports = {};
 __export(prisma_exports, {
+  getEffectiveDbUrl: () => getEffectiveDbUrl,
   prisma: () => prisma,
   resetPrismaClient: () => resetPrismaClient,
   withConnLimit: () => withConnLimit
 });
+function getEffectiveDbUrl() {
+  const envUrl = process.env.DATABASE_URL?.trim();
+  if (envUrl) return envUrl;
+  const host = process.env.DB_HOST || "127.0.0.1";
+  const port = process.env.DB_PORT || "3306";
+  const user = process.env.DB_USER || "switch_v2";
+  const pass = process.env.DB_PASS || "switchnest@1234567890";
+  const name = process.env.DB_NAME || "switch_v2";
+  return `mysql://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}:${port}/${name}`;
+}
 function withConnLimit(url, limit = 10) {
+  const target = url.trim() || getEffectiveDbUrl();
   try {
-    const u = new URL(url);
+    const u = new URL(target);
     u.searchParams.set("connection_limit", String(limit));
     return u.toString();
   } catch {
-    return url;
+    return target;
   }
 }
 async function resetPrismaClient(databaseUrl) {
@@ -190,20 +202,39 @@ async function resetPrismaClient(databaseUrl) {
   } catch {
   }
   process.env.DATABASE_URL = withConnLimit(databaseUrl);
-  const next = new import_client.PrismaClient();
-  await next.$connect();
+  const next = new import_client.PrismaClient({
+    datasources: { db: { url: process.env.DATABASE_URL } }
+  });
+  await next.$connect().catch(() => void 0);
   prisma = next;
   if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = next;
   return next;
 }
-var import_client, globalForPrisma, prisma;
+var import_client, import_dotenv2, import_node_path2, import_node_fs, candidatePaths, globalForPrisma, prisma;
 var init_prisma = __esm({
   "src/lib/prisma.ts"() {
     "use strict";
     import_client = require("@prisma/client");
+    import_dotenv2 = __toESM(require("dotenv"), 1);
+    import_node_path2 = __toESM(require("node:path"), 1);
+    import_node_fs = __toESM(require("node:fs"), 1);
+    candidatePaths = [
+      import_node_path2.default.resolve(process.cwd(), ".env"),
+      import_node_path2.default.resolve(process.cwd(), "../.env"),
+      import_node_path2.default.resolve(process.cwd(), "../../.env")
+    ];
+    for (const p of candidatePaths) {
+      try {
+        if (import_node_fs.default.existsSync(p)) {
+          import_dotenv2.default.config({ path: p, override: true });
+        }
+      } catch {
+      }
+    }
+    process.env.DATABASE_URL = withConnLimit(getEffectiveDbUrl());
     globalForPrisma = globalThis;
     prisma = globalForPrisma.prisma ?? new import_client.PrismaClient({
-      datasources: { db: { url: withConnLimit(process.env.DATABASE_URL ?? "") } }
+      datasources: { db: { url: process.env.DATABASE_URL } }
     });
     if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
   }
@@ -1581,8 +1612,8 @@ var import_http = require("http");
 var import_express24 = __toESM(require("express"), 1);
 var import_cors = __toESM(require("cors"), 1);
 var import_helmet = __toESM(require("helmet"), 1);
-var import_node_path5 = __toESM(require("node:path"), 1);
-var import_node_fs4 = __toESM(require("node:fs"), 1);
+var import_node_path6 = __toESM(require("node:path"), 1);
+var import_node_fs5 = __toESM(require("node:fs"), 1);
 init_env();
 
 // src/middleware/errorHandler.ts
@@ -1662,24 +1693,24 @@ init_prisma();
 init_logger();
 
 // src/lib/envPersist.ts
-var fs4 = __toESM(require("fs"), 1);
-var path5 = __toESM(require("path"), 1);
+var fs5 = __toESM(require("fs"), 1);
+var path6 = __toESM(require("path"), 1);
 init_logger();
 function escapeEnv(v) {
   return /[\s#"']/.test(v) ? `"${v.replace(/"/g, '\\"')}"` : v;
 }
 function persistEnvKeys(entries) {
   const targets = [
-    path5.resolve(process.cwd(), ".env"),
-    path5.resolve(process.cwd(), "../.env"),
-    path5.resolve(process.cwd(), "../../.env")
+    path6.resolve(process.cwd(), ".env"),
+    path6.resolve(process.cwd(), "../.env"),
+    path6.resolve(process.cwd(), "../../.env")
   ];
   let mainPath = targets[0];
   let written = false;
   for (const envPath of targets) {
     try {
       let content = "";
-      if (fs4.existsSync(envPath)) content = fs4.readFileSync(envPath, "utf-8");
+      if (fs5.existsSync(envPath)) content = fs5.readFileSync(envPath, "utf-8");
       for (const [key, value] of entries) {
         process.env[key] = value;
         const line = `${key}=${escapeEnv(value)}`;
@@ -1687,7 +1718,7 @@ function persistEnvKeys(entries) {
         if (re.test(content)) content = content.replace(re, line);
         else content = (content ? content.replace(/\s*$/, "\n") : "") + line + "\n";
       }
-      fs4.writeFileSync(envPath, content, "utf-8");
+      fs5.writeFileSync(envPath, content, "utf-8");
       mainPath = envPath;
       written = true;
     } catch (err) {
@@ -2410,12 +2441,12 @@ function validateParams(schema) {
 
 // src/routes/auth.routes.ts
 var import_multer = __toESM(require("multer"), 1);
-var import_node_path2 = __toESM(require("node:path"), 1);
-var import_node_fs = __toESM(require("node:fs"), 1);
+var import_node_path3 = __toESM(require("node:path"), 1);
+var import_node_fs2 = __toESM(require("node:fs"), 1);
 init_prisma();
-var avatarsDir = import_node_path2.default.join(uploadsDir, "avatars");
+var avatarsDir = import_node_path3.default.join(uploadsDir, "avatars");
 try {
-  import_node_fs.default.mkdirSync(avatarsDir, { recursive: true });
+  import_node_fs2.default.mkdirSync(avatarsDir, { recursive: true });
 } catch (e) {
 }
 var storage = import_multer.default.diskStorage({
@@ -2423,19 +2454,19 @@ var storage = import_multer.default.diskStorage({
     cb(null, avatarsDir);
   },
   filename: function(req, file, cb) {
-    const ext = import_node_path2.default.extname(file.originalname).toLowerCase() || ".jpg";
+    const ext = import_node_path3.default.extname(file.originalname).toLowerCase() || ".jpg";
     prisma.user.findUnique({ where: { id: req.user.sub }, select: { username: true } }).then((u) => {
       if (!u) return cb(new Error("User not found"), "");
       const username = u.username;
       const canonicalName = `${username}${ext}`;
       try {
-        const existing = import_node_fs.default.readdirSync(avatarsDir).filter(
-          (f) => f.startsWith(`${username}.`) && !import_node_fs.default.statSync(import_node_path2.default.join(avatarsDir, f)).isDirectory()
+        const existing = import_node_fs2.default.readdirSync(avatarsDir).filter(
+          (f) => f.startsWith(`${username}.`) && !import_node_fs2.default.statSync(import_node_path3.default.join(avatarsDir, f)).isDirectory()
         );
         if (existing.length > 0) {
-          const archiveDir = import_node_path2.default.join(avatarsDir, username);
-          import_node_fs.default.mkdirSync(archiveDir, { recursive: true });
-          const archived = import_node_fs.default.readdirSync(archiveDir);
+          const archiveDir = import_node_path3.default.join(avatarsDir, username);
+          import_node_fs2.default.mkdirSync(archiveDir, { recursive: true });
+          const archived = import_node_fs2.default.readdirSync(archiveDir);
           let maxNum = 0;
           for (const a of archived) {
             const match = a.match(new RegExp(`^${username}_(\\d+)`));
@@ -2443,10 +2474,10 @@ var storage = import_multer.default.diskStorage({
           }
           for (const oldFile of existing) {
             maxNum++;
-            const oldExt = import_node_path2.default.extname(oldFile);
-            import_node_fs.default.renameSync(
-              import_node_path2.default.join(avatarsDir, oldFile),
-              import_node_path2.default.join(archiveDir, `${username}_${maxNum}${oldExt}`)
+            const oldExt = import_node_path3.default.extname(oldFile);
+            import_node_fs2.default.renameSync(
+              import_node_path3.default.join(avatarsDir, oldFile),
+              import_node_path3.default.join(archiveDir, `${username}_${maxNum}${oldExt}`)
             );
           }
         }
@@ -5706,14 +5737,14 @@ assistantRouter.get("/chats/:chatId/messages", requireAuth, validateParams(chatP
 var import_express11 = require("express");
 var import_zod13 = require("zod");
 var import_multer2 = __toESM(require("multer"), 1);
-var import_node_path3 = __toESM(require("node:path"), 1);
-var import_node_fs2 = __toESM(require("node:fs"), 1);
+var import_node_path4 = __toESM(require("node:path"), 1);
+var import_node_fs3 = __toESM(require("node:fs"), 1);
 var import_node_child_process = require("node:child_process");
 init_prisma();
 
 // src/lib/healthMonitor.ts
-var fs6 = __toESM(require("fs"), 1);
-var path7 = __toESM(require("path"), 1);
+var fs7 = __toESM(require("fs"), 1);
+var path8 = __toESM(require("path"), 1);
 init_logger();
 
 // src/lib/dbState.ts
@@ -5739,13 +5770,13 @@ var checking = false;
 var activeIncident = null;
 function hcFile() {
   if (!logFilePath) return null;
-  return path7.join(path7.dirname(logFilePath), "health-check.jsonl");
+  return path8.join(path8.dirname(logFilePath), "health-check.jsonl");
 }
 function append(ev) {
   const f = hcFile();
   if (!f) return;
   try {
-    fs6.appendFileSync(f, JSON.stringify(ev) + "\n");
+    fs7.appendFileSync(f, JSON.stringify(ev) + "\n");
   } catch {
   }
 }
@@ -5758,9 +5789,9 @@ function setLastSeenHost(host) {
 }
 function adoptOpenIncident() {
   const f = hcFile();
-  if (!f || !fs6.existsSync(f)) return;
+  if (!f || !fs7.existsSync(f)) return;
   try {
-    const lines = fs6.readFileSync(f, "utf8").split("\n").filter(Boolean).slice(-200);
+    const lines = fs7.readFileSync(f, "utf8").split("\n").filter(Boolean).slice(-200);
     let open = null;
     for (const l of lines) {
       try {
@@ -5855,9 +5886,9 @@ function startHealthMonitor() {
 function getHealthMonitorState() {
   const incidents2 = [];
   const f = hcFile();
-  if (f && fs6.existsSync(f)) {
+  if (f && fs7.existsSync(f)) {
     try {
-      const lines = fs6.readFileSync(f, "utf8").split("\n").filter(Boolean).slice(-500);
+      const lines = fs7.readFileSync(f, "utf8").split("\n").filter(Boolean).slice(-500);
       for (const l of lines) {
         try {
           const e = JSON.parse(l);
@@ -5897,8 +5928,8 @@ function getHealthMonitorState() {
 }
 
 // src/lib/leakMonitor.ts
-var fs7 = __toESM(require("fs"), 1);
-var path8 = __toESM(require("path"), 1);
+var fs8 = __toESM(require("fs"), 1);
+var path9 = __toESM(require("path"), 1);
 init_logger();
 var CHECK_INTERVAL_MS2 = 6e4;
 var LEAK_WINDOW_MS = 4 * 36e5;
@@ -5912,21 +5943,21 @@ var activeLeak = null;
 var incidents = [];
 function incidentFile() {
   if (!logFilePath) return null;
-  return path8.join(path8.dirname(logFilePath), "leak-incidents.jsonl");
+  return path9.join(path9.dirname(logFilePath), "leak-incidents.jsonl");
 }
 function append2(ev) {
   const f = incidentFile();
   if (!f) return;
   try {
-    fs7.appendFileSync(f, JSON.stringify(ev) + "\n");
+    fs8.appendFileSync(f, JSON.stringify(ev) + "\n");
   } catch {
   }
 }
 function loadIncidents() {
   const f = incidentFile();
-  if (!f || !fs7.existsSync(f)) return;
+  if (!f || !fs8.existsSync(f)) return;
   try {
-    const lines = fs7.readFileSync(f, "utf8").split("\n").filter(Boolean).slice(-500);
+    const lines = fs8.readFileSync(f, "utf8").split("\n").filter(Boolean).slice(-500);
     const evs = [];
     for (const l of lines) {
       try {
@@ -5959,16 +5990,16 @@ function loadIncidents() {
   }
 }
 function readHeartbeatPoints() {
-  if (!logFilePath || !fs7.existsSync(logFilePath)) return [];
+  if (!logFilePath || !fs8.existsSync(logFilePath)) return [];
   try {
-    const st = fs7.statSync(logFilePath);
+    const st = fs8.statSync(logFilePath);
     if (st.size <= 0) return [];
     const start = Math.max(0, st.size - TAIL_MAX);
     const len = st.size - start;
-    const fd = fs7.openSync(logFilePath, "r");
+    const fd = fs8.openSync(logFilePath, "r");
     const buf = Buffer.alloc(len);
-    fs7.readSync(fd, buf, 0, len, start);
-    fs7.closeSync(fd);
+    fs8.readSync(fd, buf, 0, len, start);
+    fs8.closeSync(fd);
     const text = buf.toString("utf8");
     const re = /\[hb\] alive ts=([\d:.TZ-]+) uptime=(\d+)s pid=(\d+) rss=(\d+)MB(?: heap=(\d+)MB)?/g;
     const points = [];
@@ -6028,9 +6059,9 @@ function push(ev) {
 }
 function lastFileEvent() {
   const f = incidentFile();
-  if (!f || !fs7.existsSync(f)) return null;
+  if (!f || !fs8.existsSync(f)) return null;
   try {
-    const lines = fs7.readFileSync(f, "utf8").split("\n").filter(Boolean);
+    const lines = fs8.readFileSync(f, "utf8").split("\n").filter(Boolean);
     if (!lines.length) return null;
     return JSON.parse(lines[lines.length - 1]);
   } catch {
@@ -7555,10 +7586,10 @@ adminRouter.post("/check-url", checkUrlLimiter, validateBody(checkUrlSchema), as
 });
 adminRouter.get("/deploy-info", async (_req, res) => {
   let marker = null;
-  const markerPath = import_node_path3.default.resolve(process.cwd(), "../logs/deploy.json");
+  const markerPath = import_node_path4.default.resolve(process.cwd(), "../logs/deploy.json");
   try {
-    if (import_node_fs2.default.existsSync(markerPath)) {
-      marker = JSON.parse(import_node_fs2.default.readFileSync(markerPath, "utf8"));
+    if (import_node_fs3.default.existsSync(markerPath)) {
+      marker = JSON.parse(import_node_fs3.default.readFileSync(markerPath, "utf8"));
     }
   } catch {
   }
@@ -7571,9 +7602,9 @@ adminRouter.get("/deploy-info", async (_req, res) => {
   }
   let build = null;
   try {
-    const bp = import_node_path3.default.resolve(process.cwd(), "dist/build-commit.json");
-    if (import_node_fs2.default.existsSync(bp)) {
-      const bj = JSON.parse(import_node_fs2.default.readFileSync(bp, "utf8"));
+    const bp = import_node_path4.default.resolve(process.cwd(), "dist/build-commit.json");
+    if (import_node_fs3.default.existsSync(bp)) {
+      const bj = JSON.parse(import_node_fs3.default.readFileSync(bp, "utf8"));
       if (bj?.commit) build = { commit: bj.commit, builtAt: bj.builtAt || "" };
     }
   } catch {
@@ -7654,19 +7685,19 @@ adminRouter.get("/diagnostics", async (_req, res) => {
     appPool: null,
     wpEvents: null
   };
-  if (logFilePath && import_node_fs2.default.existsSync(logFilePath)) {
+  if (logFilePath && import_node_fs3.default.existsSync(logFilePath)) {
     try {
-      const st = import_node_fs2.default.statSync(logFilePath);
+      const st = import_node_fs3.default.statSync(logFilePath);
       result.logBytes = st.size;
       let raw = "";
       if (st.size > TAIL_MAX2) {
-        const fd = import_node_fs2.default.openSync(logFilePath, "r");
+        const fd = import_node_fs3.default.openSync(logFilePath, "r");
         const buf = Buffer.alloc(TAIL_MAX2);
-        import_node_fs2.default.readSync(fd, buf, 0, TAIL_MAX2, st.size - TAIL_MAX2);
-        import_node_fs2.default.closeSync(fd);
+        import_node_fs3.default.readSync(fd, buf, 0, TAIL_MAX2, st.size - TAIL_MAX2);
+        import_node_fs3.default.closeSync(fd);
         raw = buf.toString("utf8");
       } else {
-        raw = import_node_fs2.default.readFileSync(logFilePath, "utf8");
+        raw = import_node_fs3.default.readFileSync(logFilePath, "utf8");
       }
       const lines = raw.split(/\r?\n/).filter(Boolean);
       const pushCap = (arr, l, cap) => {
@@ -7743,13 +7774,13 @@ adminRouter.get("/diagnostics", async (_req, res) => {
   result.healthCheck = getHealthMonitorState();
   result.leak = getLeakMonitorState();
   for (const cand of [
-    import_node_path3.default.resolve(process.cwd(), "web.config"),
-    import_node_path3.default.resolve(process.cwd(), "../web.config"),
-    import_node_path3.default.resolve(process.cwd(), "../../web.config")
+    import_node_path4.default.resolve(process.cwd(), "web.config"),
+    import_node_path4.default.resolve(process.cwd(), "../web.config"),
+    import_node_path4.default.resolve(process.cwd(), "../../web.config")
   ]) {
-    if (!import_node_fs2.default.existsSync(cand)) continue;
+    if (!import_node_fs3.default.existsSync(cand)) continue;
     try {
-      const content = import_node_fs2.default.readFileSync(cand, "utf8");
+      const content = import_node_fs3.default.readFileSync(cand, "utf8");
       const grab = (re) => {
         const m = re.exec(content);
         return m ? m[0].slice(0, 500) : null;
@@ -7818,8 +7849,8 @@ adminRouter.get("/diagnostics", async (_req, res) => {
 adminRouter.get("/logs", async (_req, res) => {
   const n = Math.min(Number(_req.query.lines ?? 300) || 300, 1e3);
   const result = { path: logFilePath ?? null, totalLines: 0, lines: [], crashes: [], iisnodeLogs: [] };
-  if (logFilePath && import_node_fs2.default.existsSync(logFilePath)) {
-    const raw = import_node_fs2.default.readFileSync(logFilePath, "utf8");
+  if (logFilePath && import_node_fs3.default.existsSync(logFilePath)) {
+    const raw = import_node_fs3.default.readFileSync(logFilePath, "utf8");
     const lines = raw.split(/\r?\n/).filter(Boolean).slice(-n);
     result.lines = lines;
     result.totalLines = lines.length;
@@ -7835,13 +7866,13 @@ adminRouter.get("/logs", async (_req, res) => {
     result.crashes = [...crashMap.values()];
   }
   const dirs = /* @__PURE__ */ new Set();
-  if (logFilePath) dirs.add(import_node_path3.default.dirname(logFilePath));
-  dirs.add(import_node_path3.default.resolve(process.cwd(), "../logs"));
-  dirs.add(import_node_path3.default.resolve(process.cwd(), "../../logs"));
+  if (logFilePath) dirs.add(import_node_path4.default.dirname(logFilePath));
+  dirs.add(import_node_path4.default.resolve(process.cwd(), "../logs"));
+  dirs.add(import_node_path4.default.resolve(process.cwd(), "../../logs"));
   for (const dir of dirs) {
     let entries = [];
     try {
-      entries = import_node_fs2.default.readdirSync(dir, { withFileTypes: true });
+      entries = import_node_fs3.default.readdirSync(dir, { withFileTypes: true });
     } catch {
       continue;
     }
@@ -7849,10 +7880,10 @@ adminRouter.get("/logs", async (_req, res) => {
       if (!e.isFile()) continue;
       const name = e.name;
       if (!/^stdout_/i.test(name) && !/^stderr_/i.test(name) && !/\.log$/i.test(name)) continue;
-      const full = import_node_path3.default.join(dir, name);
+      const full = import_node_path4.default.join(dir, name);
       try {
-        const size = import_node_fs2.default.statSync(full).size;
-        const buf = import_node_fs2.default.readFileSync(full, "utf8");
+        const size = import_node_fs3.default.statSync(full).size;
+        const buf = import_node_fs3.default.readFileSync(full, "utf8");
         const ls = buf.split(/\r?\n/).filter(Boolean).slice(-200);
         result.iisnodeLogs.push({ name, path: full, size, lines: ls });
       } catch {
@@ -7862,7 +7893,7 @@ adminRouter.get("/logs", async (_req, res) => {
   ok(res, result);
 });
 try {
-  import_node_fs2.default.mkdirSync(firmwareDir, { recursive: true });
+  import_node_fs3.default.mkdirSync(firmwareDir, { recursive: true });
 } catch (err) {
   console.warn(`[firmware] cannot create ${firmwareDir}:`, err instanceof Error ? err.message : err);
 }
@@ -8110,11 +8141,11 @@ adminRouter.post("/firmware", upload2.single("firmware"), async (req, res) => {
   const filename = modelCode ? `firmware-${modelCode.toLowerCase()}.bin` : "firmware.bin";
   const url = `/firmware/${filename}`;
   if (modelCode && filename !== "firmware.bin") {
-    const uploaded = import_node_path3.default.join(firmwareDir, "firmware.bin");
-    const target = import_node_path3.default.join(firmwareDir, filename);
-    if (import_node_fs2.default.existsSync(uploaded) && uploaded !== target) {
-      if (import_node_fs2.default.existsSync(target)) import_node_fs2.default.unlinkSync(target);
-      import_node_fs2.default.renameSync(uploaded, target);
+    const uploaded = import_node_path4.default.join(firmwareDir, "firmware.bin");
+    const target = import_node_path4.default.join(firmwareDir, filename);
+    if (import_node_fs3.default.existsSync(uploaded) && uploaded !== target) {
+      if (import_node_fs3.default.existsSync(target)) import_node_fs3.default.unlinkSync(target);
+      import_node_fs3.default.renameSync(uploaded, target);
     }
   }
   await prisma.$transaction([
@@ -8438,12 +8469,12 @@ adminRouter.delete("/products/:id", async (req, res) => {
 var productMediaUpload = (0, import_multer2.default)({
   storage: import_multer2.default.diskStorage({
     destination: (_req, _file, cb) => {
-      const dir = import_node_path3.default.join(process.cwd(), "uploads/product-media");
-      import_node_fs2.default.mkdirSync(dir, { recursive: true });
+      const dir = import_node_path4.default.join(process.cwd(), "uploads/product-media");
+      import_node_fs3.default.mkdirSync(dir, { recursive: true });
       cb(null, dir);
     },
     filename: (_req, file, cb) => {
-      const ext = import_node_path3.default.extname(file.originalname);
+      const ext = import_node_path4.default.extname(file.originalname);
       cb(null, `pm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`);
     }
   }),
@@ -8455,7 +8486,7 @@ adminRouter.post("/products/:id/media", productMediaUpload.single("file"), async
   const product = await prisma.product.findUnique({ where: { id: productId } });
   if (!product) throw new AppError("NOT_FOUND", "Product not found");
   const fileUrl = `/uploads/product-media/${req.file.filename}`;
-  const ext = import_node_path3.default.extname(req.file.originalname).toLowerCase();
+  const ext = import_node_path4.default.extname(req.file.originalname).toLowerCase();
   const type = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"].includes(ext) ? "image" : [".mp4", ".webm", ".mov"].includes(ext) ? "video" : "document";
   const media = await prisma.productMedia.create({
     data: { productId, url: fileUrl, type }
@@ -8467,9 +8498,9 @@ adminRouter.delete("/products/media/:mediaId", async (req, res) => {
   const mediaId = Number(req.params.mediaId);
   const media = await prisma.productMedia.findUnique({ where: { id: mediaId } });
   if (!media) throw new AppError("NOT_FOUND", "Media not found");
-  const filePath = import_node_path3.default.join(process.cwd(), media.url.replace(/^\/+/, ""));
+  const filePath = import_node_path4.default.join(process.cwd(), media.url.replace(/^\/+/, ""));
   try {
-    import_node_fs2.default.unlinkSync(filePath);
+    import_node_fs3.default.unlinkSync(filePath);
   } catch {
   }
   await prisma.productMedia.delete({ where: { id: mediaId } });
@@ -9942,8 +9973,8 @@ init_notification_service();
 init_socket();
 
 // src/lib/attachmentStore.ts
-var fs10 = __toESM(require("fs"), 1);
-var path11 = __toESM(require("path"), 1);
+var fs11 = __toESM(require("fs"), 1);
+var path12 = __toESM(require("path"), 1);
 function extFor(type, name) {
   const fromName = name.split(".").pop()?.toLowerCase();
   if (fromName && /^[a-z0-9]{1,8}$/.test(fromName)) return fromName;
@@ -9960,25 +9991,25 @@ function saveAttachment(base64, type, name) {
   const buf = Buffer.from(base64, "base64");
   if (buf.length === 0) throw new Error("Empty file");
   const filename = `a_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}.${extFor(type, name)}`;
-  fs10.mkdirSync(attachmentDir, { recursive: true });
-  fs10.writeFileSync(path11.join(attachmentDir, filename), buf);
+  fs11.mkdirSync(attachmentDir, { recursive: true });
+  fs11.writeFileSync(path12.join(attachmentDir, filename), buf);
   return filename;
 }
 function readAttachmentFile(filename) {
-  const safe = path11.basename(filename);
+  const safe = path12.basename(filename);
   if (safe !== filename) return null;
   try {
-    return fs10.readFileSync(path11.join(attachmentDir, safe));
+    return fs11.readFileSync(path12.join(attachmentDir, safe));
   } catch {
     return null;
   }
 }
 function deleteAttachmentFile(filename) {
   if (!filename) return;
-  const safe = path11.basename(filename);
+  const safe = path12.basename(filename);
   if (safe !== filename) return;
   try {
-    fs10.unlinkSync(path11.join(attachmentDir, safe));
+    fs11.unlinkSync(path12.join(attachmentDir, safe));
   } catch {
   }
 }
@@ -11224,8 +11255,8 @@ apiRouter.get("/firmware/current", requireAuth, async (_req, res) => {
 // src/routes/install.routes.ts
 var import_express22 = require("express");
 var import_promise = __toESM(require("mysql2/promise"), 1);
-var import_node_fs3 = __toESM(require("node:fs"), 1);
-var import_node_path4 = __toESM(require("node:path"), 1);
+var import_node_fs4 = __toESM(require("node:fs"), 1);
+var import_node_path5 = __toESM(require("node:path"), 1);
 var import_bcryptjs3 = __toESM(require("bcryptjs"), 1);
 init_env();
 init_prisma();
@@ -11500,7 +11531,7 @@ async function checkOfflineDevicesInner() {
 }
 
 // src/routes/install.routes.ts
-var SCHEMA_SQL = import_node_path4.default.resolve(process.cwd(), "prisma/schema.sql");
+var SCHEMA_SQL = import_node_path5.default.resolve(process.cwd(), "prisma/schema.sql");
 var installRouter = (0, import_express22.Router)();
 var DEFAULT_PRODUCTS = [
   { name: "2CH WiFi Relay Module", modelCode: "2CH", relayCount: 2, price: "599", description: "Two-channel WiFi relay board for lights and small appliances. 10A per channel, ESP32 based, works with the SwitchNest app and voice assistant.", features: { channels: 2, wifi: true, ota: true, voice: true } },
@@ -11627,18 +11658,18 @@ async function createDatabase(parts) {
 }
 function getSchemaSql() {
   const candidates = [
-    import_node_path4.default.resolve(process.cwd(), "prisma/schema.sql"),
-    import_node_path4.default.resolve(process.cwd(), "dist/schema.sql"),
-    import_node_path4.default.resolve(process.cwd(), "apps/api/prisma/schema.sql"),
-    import_node_path4.default.resolve(process.cwd(), "site/apps/api/prisma/schema.sql"),
-    import_node_path4.default.resolve(__dirname, "../prisma/schema.sql"),
-    import_node_path4.default.resolve(__dirname, "schema.sql"),
-    import_node_path4.default.resolve(__dirname, "prisma/schema.sql")
+    import_node_path5.default.resolve(process.cwd(), "prisma/schema.sql"),
+    import_node_path5.default.resolve(process.cwd(), "dist/schema.sql"),
+    import_node_path5.default.resolve(process.cwd(), "apps/api/prisma/schema.sql"),
+    import_node_path5.default.resolve(process.cwd(), "site/apps/api/prisma/schema.sql"),
+    import_node_path5.default.resolve(__dirname, "../prisma/schema.sql"),
+    import_node_path5.default.resolve(__dirname, "schema.sql"),
+    import_node_path5.default.resolve(__dirname, "prisma/schema.sql")
   ];
   for (const p of candidates) {
-    if (import_node_fs3.default.existsSync(p)) {
+    if (import_node_fs4.default.existsSync(p)) {
       try {
-        const sql = import_node_fs3.default.readFileSync(p, "utf-8");
+        const sql = import_node_fs4.default.readFileSync(p, "utf-8");
         if (sql && sql.trim().length > 50) return sql;
       } catch {
       }
@@ -12540,18 +12571,18 @@ var DESCRIPTIONS = {
   "GET /api/health": "Health check \u2014 DB schema diag + build version (ops).",
   "GET /api/version": "API version (ops)."
 };
-function securityFor(path16, method) {
-  if (method === "GET" && (path16 === "/api/health" || path16 === "/api/version")) return void 0;
-  if (path16.startsWith("/api/device")) return [{ deviceApiKey: [] }];
-  if (path16.startsWith("/api/install") || path16.startsWith("/api/public")) return void 0;
-  if (path16.startsWith("/api/docs")) return void 0;
-  if (path16.startsWith("/api/auth")) {
-    if (method === "GET" || path16.includes("/me") || path16 === "/api/auth/theme") {
+function securityFor(path17, method) {
+  if (method === "GET" && (path17 === "/api/health" || path17 === "/api/version")) return void 0;
+  if (path17.startsWith("/api/device")) return [{ deviceApiKey: [] }];
+  if (path17.startsWith("/api/install") || path17.startsWith("/api/public")) return void 0;
+  if (path17.startsWith("/api/docs")) return void 0;
+  if (path17.startsWith("/api/auth")) {
+    if (method === "GET" || path17.includes("/me") || path17 === "/api/auth/theme") {
       return [{ bearerAuth: [] }];
     }
     return void 0;
   }
-  if (path16.startsWith("/api/shop/products")) return void 0;
+  if (path17.startsWith("/api/shop/products")) return void 0;
   return [{ bearerAuth: [] }];
 }
 var BODIES = {
@@ -12992,8 +13023,8 @@ var SCHEMAS = {
     }
   }
 };
-function tagFor(path16) {
-  const seg = path16.replace(/^\/api\//, "").split("/")[0] ?? "system";
+function tagFor(path17) {
+  const seg = path17.replace(/^\/api\//, "").split("/")[0] ?? "system";
   const map = {
     auth: "Auth",
     device: "Device API (ESP32)",
@@ -13014,11 +13045,11 @@ function tagFor(path16) {
   };
   return map[seg] ?? "Homes";
 }
-function paramsFor(path16) {
+function paramsFor(path17) {
   const out = [];
   const re = /:([A-Za-z0-9_]+)/g;
   let m;
-  while ((m = re.exec(path16)) !== null) {
+  while ((m = re.exec(path17)) !== null) {
     out.push({
       name: m[1],
       in: "path",
@@ -13883,11 +13914,11 @@ docsRouter.get("/plain", (_req, res) => {
   const spec = getOpenApiSpec();
   const paths = spec.paths;
   const byTag = /* @__PURE__ */ new Map();
-  for (const [path16, ops] of Object.entries(paths)) {
+  for (const [path17, ops] of Object.entries(paths)) {
     for (const [method, op] of Object.entries(ops)) {
       const tag = op.tags?.[0] ?? "Other";
       if (!byTag.has(tag)) byTag.set(tag, []);
-      byTag.get(tag).push({ method: method.toUpperCase(), path: path16, summary: op.summary ?? "" });
+      byTag.get(tag).push({ method: method.toUpperCase(), path: path17, summary: op.summary ?? "" });
     }
   }
   const methodColor2 = {
@@ -14035,11 +14066,11 @@ function createApp() {
   app.use("/firmware", import_express24.default.static(firmwareDir));
   app.use("/uploads", import_express24.default.static(uploadsDir));
   app.use("/mobile-app", import_express24.default.static(mobileAppDir));
-  const apiRootHtml = import_node_path5.default.join(process.cwd(), "index.html");
-  const apiAssetsDir = import_node_path5.default.join(process.cwd(), "assets");
-  const webDistHtml = import_node_path5.default.join(webDist, "index.html");
-  const webDistAssets = import_node_path5.default.join(webDist, "assets");
-  if (import_node_fs4.default.existsSync(apiAssetsDir)) {
+  const apiRootHtml = import_node_path6.default.join(process.cwd(), "index.html");
+  const apiAssetsDir = import_node_path6.default.join(process.cwd(), "assets");
+  const webDistHtml = import_node_path6.default.join(webDist, "index.html");
+  const webDistAssets = import_node_path6.default.join(webDist, "assets");
+  if (import_node_fs5.default.existsSync(apiAssetsDir)) {
     app.use(
       "/assets",
       import_express24.default.static(apiAssetsDir, {
@@ -14052,7 +14083,7 @@ function createApp() {
       })
     );
   }
-  if (import_node_fs4.default.existsSync(webDistAssets)) {
+  if (import_node_fs5.default.existsSync(webDistAssets)) {
     app.use(
       "/assets",
       import_express24.default.static(webDistAssets, {
@@ -14067,14 +14098,14 @@ function createApp() {
   }
   app.use("/assets", (req, res, next) => {
     if (req.path.endsWith(".js")) {
-      const targetDir = import_node_fs4.default.existsSync(apiAssetsDir) ? apiAssetsDir : import_node_fs4.default.existsSync(webDistAssets) ? webDistAssets : null;
+      const targetDir = import_node_fs5.default.existsSync(apiAssetsDir) ? apiAssetsDir : import_node_fs5.default.existsSync(webDistAssets) ? webDistAssets : null;
       if (targetDir) {
         try {
-          const files = import_node_fs4.default.readdirSync(targetDir);
+          const files = import_node_fs5.default.readdirSync(targetDir);
           const latestJs = files.find((f) => f.startsWith("index-") && f.endsWith(".js"));
           if (latestJs) {
             res.setHeader("Content-Type", "application/javascript");
-            return res.sendFile(import_node_path5.default.join(targetDir, latestJs));
+            return res.sendFile(import_node_path6.default.join(targetDir, latestJs));
           }
         } catch {
         }
@@ -14086,16 +14117,16 @@ function createApp() {
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0");
     res.setHeader("Pragma", "no-cache");
     res.setHeader("Expires", "0");
-    if (import_node_fs4.default.existsSync(apiRootHtml)) {
+    if (import_node_fs5.default.existsSync(apiRootHtml)) {
       res.sendFile(apiRootHtml);
-    } else if (import_node_fs4.default.existsSync(webDistHtml)) {
+    } else if (import_node_fs5.default.existsSync(webDistHtml)) {
       res.sendFile(webDistHtml);
     }
   };
-  if (import_node_fs4.default.existsSync(apiRootHtml)) {
+  if (import_node_fs5.default.existsSync(apiRootHtml)) {
     app.use(import_express24.default.static(process.cwd()));
   }
-  if (import_node_fs4.default.existsSync(webDistHtml)) {
+  if (import_node_fs5.default.existsSync(webDistHtml)) {
     app.use(import_express24.default.static(webDist));
   }
   app.get(["/", "/login", "/signup", "/install", "/activate", "/print-serials", "/print-bill", "/warranty", "/forgot-password", "/reset-password", "/support", "/verify-bill"], sendSpaHtml);
@@ -14264,12 +14295,12 @@ function startKeyExpiryWatcher() {
 // src/services/archival.service.ts
 init_prisma();
 init_siteSettings_service();
-var import_node_fs5 = __toESM(require("node:fs"), 1);
-var import_node_path6 = __toESM(require("node:path"), 1);
+var import_node_fs6 = __toESM(require("node:fs"), 1);
+var import_node_path7 = __toESM(require("node:path"), 1);
 init_logger();
-var UPLOADS_DIR = import_node_path6.default.join(process.cwd(), "uploads");
-var COLD_STORAGE_TELEMETRY = import_node_path6.default.join(UPLOADS_DIR, "cold_storage", "telemetry");
-var COLD_STORAGE_SUPPORT = import_node_path6.default.join(UPLOADS_DIR, "cold_storage", "support");
+var UPLOADS_DIR = import_node_path7.default.join(process.cwd(), "uploads");
+var COLD_STORAGE_TELEMETRY = import_node_path7.default.join(UPLOADS_DIR, "cold_storage", "telemetry");
+var COLD_STORAGE_SUPPORT = import_node_path7.default.join(UPLOADS_DIR, "cold_storage", "support");
 var archivalTimer = null;
 var isRunning = false;
 function startArchivalService() {
@@ -14283,8 +14314,8 @@ async function runArchival() {
   isRunning = true;
   try {
     const settings = await getSiteSettings();
-    import_node_fs5.default.mkdirSync(COLD_STORAGE_TELEMETRY, { recursive: true });
-    import_node_fs5.default.mkdirSync(COLD_STORAGE_SUPPORT, { recursive: true });
+    import_node_fs6.default.mkdirSync(COLD_STORAGE_TELEMETRY, { recursive: true });
+    import_node_fs6.default.mkdirSync(COLD_STORAGE_SUPPORT, { recursive: true });
     const now = /* @__PURE__ */ new Date();
     const telemetryThreshold = /* @__PURE__ */ new Date();
     telemetryThreshold.setDate(telemetryThreshold.getDate() - (settings.deviceTelemetryRetentionDays || 180));
@@ -14296,9 +14327,9 @@ async function runArchival() {
         orderBy: { createdAt: "asc" }
       });
       if (oldLogs.length === 0) break;
-      const filePath = import_node_path6.default.join(COLD_STORAGE_TELEMETRY, `telemetry_${now.toISOString().split("T")[0]}.jsonl`);
+      const filePath = import_node_path7.default.join(COLD_STORAGE_TELEMETRY, `telemetry_${now.toISOString().split("T")[0]}.jsonl`);
       const lines = oldLogs.map((l) => JSON.stringify(l)).join("\n") + "\n";
-      import_node_fs5.default.appendFileSync(filePath, lines);
+      import_node_fs6.default.appendFileSync(filePath, lines);
       const ids = oldLogs.map((l) => l.id);
       await prisma.deviceLog.deleteMany({ where: { id: { in: ids } } });
       archivedTelemetryCount += oldLogs.length;
@@ -14316,9 +14347,9 @@ async function runArchival() {
         orderBy: { createdAt: "asc" }
       });
       if (oldMessages.length === 0) break;
-      const filePath = import_node_path6.default.join(COLD_STORAGE_SUPPORT, `chat_${now.toISOString().split("T")[0]}.jsonl`);
+      const filePath = import_node_path7.default.join(COLD_STORAGE_SUPPORT, `chat_${now.toISOString().split("T")[0]}.jsonl`);
       const lines = oldMessages.map((m) => JSON.stringify(m)).join("\n") + "\n";
-      import_node_fs5.default.appendFileSync(filePath, lines);
+      import_node_fs6.default.appendFileSync(filePath, lines);
       const ids = oldMessages.map((m) => m.id);
       await prisma.supportMessage.deleteMany({ where: { id: { in: ids } } });
       archivedChatCount += oldMessages.length;
