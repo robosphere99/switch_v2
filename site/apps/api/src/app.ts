@@ -50,7 +50,7 @@ export function createApp() {
     next();
   });
 
-  app.use(helmet());
+  app.use(helmet({ contentSecurityPolicy: false }));
   app.use(
     cors({
       origin: corsOrigins,
