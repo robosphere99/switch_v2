@@ -157,8 +157,7 @@ async function connectServer(parts: DbParts): Promise<{ serverVersion: string }>
 /** DB create (agar nahi hai) — server-level permission chahiye. */
 async function createDatabase(parts: DbParts): Promise<void> {
   const dbName = escIdent(parts.name);
-  const version = await connectServer(parts);
-  let conn: mysql.Connection;
+  let conn: mysql.Connection | null = null;
   try {
     conn = await mysql.createConnection({
       host: parts.host,
@@ -167,18 +166,15 @@ async function createDatabase(parts: DbParts): Promise<void> {
       password: parts.pass,
       connectTimeout: 8000,
     });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    throw new AppError("DB_CONNECT_FAILED", `Database connect failed: ${msg}`, 502);
-  }
-  try {
     await conn.query(
       `CREATE DATABASE IF NOT EXISTS \`${dbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
     );
+  } catch (_err) {
+    // Shared hosting (Plesk) pe DB user ke paas global CREATE DATABASE permission
+    // nahi hoti, lekin DB Plesk UI se pehle hi ban chuka hota hai — skip query error.
   } finally {
-    await conn.end().catch(() => undefined);
+    if (conn) await conn.end().catch(() => undefined);
   }
-  logger.info(`[install] database ready: ${parts.name} (server ${version.serverVersion})`);
 }
 
 /** Saari tables banao — schema.sql (Prisma schema se generate kiya hua). */
