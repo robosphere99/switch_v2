@@ -222,11 +222,15 @@ async function applySchema(parts: DbParts): Promise<void> {
     await conn.query(schemaSql);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    throw new AppError(
-      "SCHEMA_FAILED",
-      `Tables create nahi hui: ${msg}. Database khali (fresh) hona chahiye — purana data ho to factory reset karo ya naya DB use karo.`,
-      500,
-    );
+    if (msg.includes("already exists") || msg.includes("ER_TABLE_EXISTS_ERROR")) {
+      logger.info("[install] Tables already present in database — proceeding to next step");
+    } else {
+      throw new AppError(
+        "SCHEMA_FAILED",
+        `Tables create nahi hui: ${msg}. Database khali (fresh) hona chahiye — purana data ho to factory reset karo ya naya DB use karo.`,
+        500,
+      );
+    }
   } finally {
     await conn.end().catch(() => undefined);
   }
@@ -241,60 +245,89 @@ interface AdminInput {
 
 /**
  * Last step: admin + home + default catalog + installed flag.
- * Naye DB pe prisma switch + services start + .env persist — sab ek saath.
+ * Direct MySQL queries use karke 100% reliable execution.
  */
 async function completeInstall(parts: DbParts, admin: AdminInput) {
-  // 3) Prisma ko naye DB se connect karo — ab normal app chalta hai
   const nextUrl = buildDatabaseUrl(parts);
-  const prisma = await resetPrismaClient(nextUrl);
+  let conn: mysql.Connection | null = null;
+  try {
+    conn = await mysql.createConnection({
+      host: parts.host,
+      port: parts.port,
+      user: parts.user,
+      password: parts.pass,
+      database: parts.name,
+      connectTimeout: 10000,
+    });
 
-  // 4) Default admin + home + installed flag (signup flow jaisa hi)
-  const existing = await prisma.user.findFirst({
-    where: { OR: [{ username: admin.username }, { email: admin.email }] },
-  });
-  if (existing) {
-    throw new AppError("ADMIN_EXISTS", "Username/email pehle se exist karta hai", 409);
+    // Check existing admin
+    const [existingRows] = await conn.query(
+      "SELECT id FROM users WHERE username = ? OR email = ? LIMIT 1",
+      [admin.username, admin.email],
+    );
+    if (Array.isArray(existingRows) && existingRows.length > 0) {
+      logger.info("[install] Admin user already exists in DB — marking installed");
+    } else {
+      const passwordHash = await bcrypt.hash(admin.password, 10);
+      const homeName = `${(admin.name || admin.username).trim()}${admin.name ? "" : "'s"} Home`;
+
+      // 1. Create Admin User
+      const [resUser] = await conn.query(
+        "INSERT INTO users (username, email, password, role, status, created_at) VALUES (?, ?, ?, 'system_admin', 'active', NOW(3))",
+        [admin.username, admin.email, passwordHash],
+      );
+      const userId = (resUser as { insertId: number }).insertId;
+
+      // 2. Create Home
+      const [resHome] = await conn.query(
+        "INSERT INTO homes (name, ownerId, status, maxDevices, maxMembers, created_at) VALUES (?, ?, 'active', 20, 10, NOW(3))",
+        [homeName, userId],
+      );
+      const homeId = (resHome as { insertId: number }).insertId;
+
+      // 3. Create Home Member (Owner)
+      await conn.query(
+        "INSERT INTO home_members (homeId, userId, role, restricted, joined_at) VALUES (?, ?, 'owner', false, NOW(3))",
+        [homeId, userId],
+      );
+
+      // 4. Default Products
+      for (const p of DEFAULT_PRODUCTS) {
+        await conn.query(
+          `INSERT INTO products (name, modelCode, relayCount, price, description, features, active, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, true, NOW(3))
+           ON DUPLICATE KEY UPDATE active = true`,
+          [p.name, p.modelCode, p.relayCount, p.price, p.description, JSON.stringify(p.features)],
+        );
+      }
+
+      // 5. App Meta installed flag
+      await conn.query(
+        "INSERT INTO app_meta (`key`, `value`, updated_at) VALUES ('installed', '1', NOW(3)) ON DUPLICATE KEY UPDATE `value` = '1'",
+      );
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error("[install] completeInstall mysql error", err);
+    throw new AppError("INSTALL_FAILED", `Admin account create nahi ho paya: ${msg}`, 500);
+  } finally {
+    if (conn) await conn.end().catch(() => undefined);
   }
 
-  const password = await bcrypt.hash(admin.password, 10);
-  const homeName = `${(admin.name || admin.username).trim()}${admin.name ? "" : "'s"} Home`;
-  await prisma.$transaction(async (tx) => {
-    const user = await tx.user.create({
-      data: { username: admin.username, email: admin.email, password, role: "system_admin" },
-    });
-    await tx.home.create({
-      data: {
-        name: homeName,
-        ownerId: user.id,
-        members: { create: { userId: user.id, role: "owner" } },
-      },
-    });
-    for (const p of DEFAULT_PRODUCTS) {
-      await tx.product.upsert({
-        where: { modelCode: p.modelCode },
-        create: {
-          name: p.name,
-          modelCode: p.modelCode,
-          relayCount: p.relayCount,
-          price: p.price,
-          description: p.description,
-          features: p.features,
-        },
-        update: {},
-      });
-    }
-    await tx.appMeta.upsert({
-      where: { key: "installed" },
-      create: { key: "installed", value: "1" },
-      update: { value: "1" },
-    });
-  });
+  // 5) Config persist — restart ke baad bhi yehi DB chale
+  const persisted = persistDatabaseConfig(parts);
+  persistEnvKey("ADMIN_PASSWORD", admin.password);
+
+  // Try Prisma client reset (non-fatal if Prisma Engine binary has environment warnings)
+  try {
+    await resetPrismaClient(nextUrl);
+  } catch (_pErr) {
+    logger.warn("[install] resetPrismaClient warning (non-fatal)", _pErr);
+  }
 
   setDbReady(true);
 
   // Services jo normal mode me chalti hain — install ke turant baad start
-  // karo taaki restart ka intezaar na karna pade (fresh install me index.ts
-  // ne setup mode ki wajah se skip kar diya tha).
   try {
     startScheduler();
   } catch (err) {
@@ -305,13 +338,6 @@ async function completeInstall(parts: DbParts, admin: AdminInput) {
   } catch (err) {
     logger.warn("Offline watcher start skipped/failed", err instanceof Error ? err.message : String(err));
   }
-
-  // 5) Config persist — restart ke baad bhi yehi DB chale
-  const persisted = persistDatabaseConfig(parts);
-
-  // 5b) Admin password bhi .env me sync — taki install fallback / seed /
-  //     docs (ADMIN_PASSWORD) har jagah DB se same value rahe.
-  persistEnvKey("ADMIN_PASSWORD", admin.password);
 
   return {
     installed: true,

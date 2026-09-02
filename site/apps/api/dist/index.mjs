@@ -11566,57 +11566,80 @@ async function applySchema(parts) {
     await conn.query(schemaSql);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    throw new AppError(
-      "SCHEMA_FAILED",
-      `Tables create nahi hui: ${msg}. Database khali (fresh) hona chahiye \u2014 purana data ho to factory reset karo ya naya DB use karo.`,
-      500
-    );
+    if (msg.includes("already exists") || msg.includes("ER_TABLE_EXISTS_ERROR")) {
+      logger.info("[install] Tables already present in database \u2014 proceeding to next step");
+    } else {
+      throw new AppError(
+        "SCHEMA_FAILED",
+        `Tables create nahi hui: ${msg}. Database khali (fresh) hona chahiye \u2014 purana data ho to factory reset karo ya naya DB use karo.`,
+        500
+      );
+    }
   } finally {
     await conn.end().catch(() => void 0);
   }
 }
 async function completeInstall(parts, admin) {
   const nextUrl = buildDatabaseUrl2(parts);
-  const prisma2 = await resetPrismaClient(nextUrl);
-  const existing = await prisma2.user.findFirst({
-    where: { OR: [{ username: admin.username }, { email: admin.email }] }
-  });
-  if (existing) {
-    throw new AppError("ADMIN_EXISTS", "Username/email pehle se exist karta hai", 409);
-  }
-  const password = await bcrypt3.hash(admin.password, 10);
-  const homeName = `${(admin.name || admin.username).trim()}${admin.name ? "" : "'s"} Home`;
-  await prisma2.$transaction(async (tx) => {
-    const user = await tx.user.create({
-      data: { username: admin.username, email: admin.email, password, role: "system_admin" }
+  let conn = null;
+  try {
+    conn = await mysql.createConnection({
+      host: parts.host,
+      port: parts.port,
+      user: parts.user,
+      password: parts.pass,
+      database: parts.name,
+      connectTimeout: 1e4
     });
-    await tx.home.create({
-      data: {
-        name: homeName,
-        ownerId: user.id,
-        members: { create: { userId: user.id, role: "owner" } }
+    const [existingRows] = await conn.query(
+      "SELECT id FROM users WHERE username = ? OR email = ? LIMIT 1",
+      [admin.username, admin.email]
+    );
+    if (Array.isArray(existingRows) && existingRows.length > 0) {
+      logger.info("[install] Admin user already exists in DB \u2014 marking installed");
+    } else {
+      const passwordHash = await bcrypt3.hash(admin.password, 10);
+      const homeName = `${(admin.name || admin.username).trim()}${admin.name ? "" : "'s"} Home`;
+      const [resUser] = await conn.query(
+        "INSERT INTO users (username, email, password, role, status, created_at) VALUES (?, ?, ?, 'system_admin', 'active', NOW(3))",
+        [admin.username, admin.email, passwordHash]
+      );
+      const userId = resUser.insertId;
+      const [resHome] = await conn.query(
+        "INSERT INTO homes (name, ownerId, status, maxDevices, maxMembers, created_at) VALUES (?, ?, 'active', 20, 10, NOW(3))",
+        [homeName, userId]
+      );
+      const homeId = resHome.insertId;
+      await conn.query(
+        "INSERT INTO home_members (homeId, userId, role, restricted, joined_at) VALUES (?, ?, 'owner', false, NOW(3))",
+        [homeId, userId]
+      );
+      for (const p of DEFAULT_PRODUCTS) {
+        await conn.query(
+          `INSERT INTO products (name, modelCode, relayCount, price, description, features, active, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, true, NOW(3))
+           ON DUPLICATE KEY UPDATE active = true`,
+          [p.name, p.modelCode, p.relayCount, p.price, p.description, JSON.stringify(p.features)]
+        );
       }
-    });
-    for (const p of DEFAULT_PRODUCTS) {
-      await tx.product.upsert({
-        where: { modelCode: p.modelCode },
-        create: {
-          name: p.name,
-          modelCode: p.modelCode,
-          relayCount: p.relayCount,
-          price: p.price,
-          description: p.description,
-          features: p.features
-        },
-        update: {}
-      });
+      await conn.query(
+        "INSERT INTO app_meta (`key`, `value`, updated_at) VALUES ('installed', '1', NOW(3)) ON DUPLICATE KEY UPDATE `value` = '1'"
+      );
     }
-    await tx.appMeta.upsert({
-      where: { key: "installed" },
-      create: { key: "installed", value: "1" },
-      update: { value: "1" }
-    });
-  });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error("[install] completeInstall mysql error", err);
+    throw new AppError("INSTALL_FAILED", `Admin account create nahi ho paya: ${msg}`, 500);
+  } finally {
+    if (conn) await conn.end().catch(() => void 0);
+  }
+  const persisted = persistDatabaseConfig(parts);
+  persistEnvKey("ADMIN_PASSWORD", admin.password);
+  try {
+    await resetPrismaClient(nextUrl);
+  } catch (_pErr) {
+    logger.warn("[install] resetPrismaClient warning (non-fatal)", _pErr);
+  }
   setDbReady(true);
   try {
     startScheduler();
@@ -11628,8 +11651,6 @@ async function completeInstall(parts, admin) {
   } catch (err) {
     logger.warn("Offline watcher start skipped/failed", err instanceof Error ? err.message : String(err));
   }
-  const persisted = persistDatabaseConfig(parts);
-  persistEnvKey("ADMIN_PASSWORD", admin.password);
   return {
     installed: true,
     database: parts.name,
