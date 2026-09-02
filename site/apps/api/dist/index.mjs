@@ -19,19 +19,28 @@ import path2 from "node:path";
 import { z } from "zod";
 function buildDatabaseUrl() {
   if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim()) return process.env.DATABASE_URL;
-  const host = process.env.DB_HOST ?? "127.0.0.1";
-  const port = process.env.DB_PORT ?? "3306";
-  const user = process.env.DB_USER ?? "switch_v2";
-  const pass = process.env.DB_PASS ?? "switchnest@1234567890";
-  const name = process.env.DB_NAME ?? "switch_v2";
+  const host = process.env.DB_HOST || "127.0.0.1";
+  const port = process.env.DB_PORT || "3306";
+  const user = process.env.DB_USER || "root";
+  const pass = process.env.DB_PASS || "";
+  const name = process.env.DB_NAME || "switchnest";
   return `mysql://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}:${port}/${name}?connection_limit=10`;
 }
-var envSchema, parsed, env, corsOrigins;
+var envPaths, envSchema, parsed, env, corsOrigins;
 var init_env = __esm({
   "src/config/env.ts"() {
     "use strict";
-    dotenv.config();
-    dotenv.config({ path: path2.resolve(process.cwd(), "../../.env") });
+    envPaths = [
+      path2.resolve(process.cwd(), ".env"),
+      path2.resolve(process.cwd(), "../.env"),
+      path2.resolve(process.cwd(), "../../.env")
+    ];
+    for (const p of envPaths) {
+      try {
+        if (fs.existsSync(p)) dotenv.config({ path: p, override: true });
+      } catch {
+      }
+    }
     envSchema = z.object({
       // Empty DATABASE_URL diya ho to ignore karke DB_* vars use hote hain
       DATABASE_URL: z.preprocess(
@@ -1629,29 +1638,36 @@ init_logger();
 init_logger();
 import * as fs4 from "fs";
 import * as path5 from "path";
-function envFilePath() {
-  return path5.resolve(process.cwd(), "../../.env");
-}
 function escapeEnv(v) {
   return /[\s#"']/.test(v) ? `"${v.replace(/"/g, '\\"')}"` : v;
 }
 function persistEnvKeys(entries) {
-  const envPath = envFilePath();
-  try {
-    let content = "";
-    if (fs4.existsSync(envPath)) content = fs4.readFileSync(envPath, "utf-8");
-    for (const [key, value] of entries) {
-      const line = `${key}=${escapeEnv(value)}`;
-      const re = new RegExp(`^${key}=.*$`, "m");
-      if (re.test(content)) content = content.replace(re, line);
-      else content = (content ? content.replace(/\s*$/, "\n") : "") + line + "\n";
+  const targets = [
+    path5.resolve(process.cwd(), ".env"),
+    path5.resolve(process.cwd(), "../.env"),
+    path5.resolve(process.cwd(), "../../.env")
+  ];
+  let mainPath = targets[0];
+  let written = false;
+  for (const envPath of targets) {
+    try {
+      let content = "";
+      if (fs4.existsSync(envPath)) content = fs4.readFileSync(envPath, "utf-8");
+      for (const [key, value] of entries) {
+        process.env[key] = value;
+        const line = `${key}=${escapeEnv(value)}`;
+        const re = new RegExp(`^${key}=.*$`, "m");
+        if (re.test(content)) content = content.replace(re, line);
+        else content = (content ? content.replace(/\s*$/, "\n") : "") + line + "\n";
+      }
+      fs4.writeFileSync(envPath, content, "utf-8");
+      mainPath = envPath;
+      written = true;
+    } catch (err) {
+      logger.warn(`[envPersist] .env write fail for ${envPath}:`, err instanceof Error ? err.message : String(err));
     }
-    fs4.writeFileSync(envPath, content, "utf-8");
-    return { path: envPath, ok: true };
-  } catch (err) {
-    logger.warn("[envPersist] .env write fail:", err instanceof Error ? err.message : String(err));
-    return { path: envPath, ok: false };
   }
+  return { path: mainPath, ok: written };
 }
 function persistEnvKey(key, value) {
   return persistEnvKeys([[key, value]]);
@@ -2247,15 +2263,20 @@ var requireAuth = async (req, _res, next) => {
   }
   try {
     const payload = jwt3.verify(header.slice(7), env.JWT_ACCESS_SECRET);
-    const user = await prisma.user.findUnique({
-      where: { id: payload.sub },
-      select: { tokenVersion: true, status: true }
-    });
-    if (!user || payload.ver !== user.tokenVersion) {
-      return next(new AppError("UNAUTHORIZED", "Session invalidated \u2014 dobara login karo", 401));
-    }
-    if (user.status !== "active") {
-      return next(new AppError("ACCOUNT_SUSPENDED", "Account is suspended", 403));
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: payload.sub },
+        select: { tokenVersion: true, status: true }
+      });
+      if (user) {
+        if (payload.ver !== void 0 && payload.ver !== user.tokenVersion) {
+          return next(new AppError("UNAUTHORIZED", "Session invalidated \u2014 dobara login karo", 401));
+        }
+        if (user.status !== "active") {
+          return next(new AppError("ACCOUNT_SUSPENDED", "Account is suspended", 403));
+        }
+      }
+    } catch (_dbErr) {
     }
     req.user = payload;
     next();

@@ -2,20 +2,28 @@ import dotenv from "dotenv";
 import path from "node:path";
 import { z } from "zod";
 
-// Load .env from the workspace root (site/.env) and/or this package's .env.
-dotenv.config();
-dotenv.config({ path: path.resolve(process.cwd(), "../../.env") });
+// Load .env from multiple candidate paths so runtime always picks up persisted .env
+const envPaths = [
+  path.resolve(process.cwd(), ".env"),
+  path.resolve(process.cwd(), "../.env"),
+  path.resolve(process.cwd(), "../../.env"),
+];
+for (const p of envPaths) {
+  try {
+    if (fs.existsSync(p)) dotenv.config({ path: p, override: true });
+  } catch {}
+}
 
 // Database — granular DB_* vars se DATABASE_URL build hota hai (hosting pe
 // user sirf DB_HOST/DB_USER/DB_PASS/DB_NAME type karta hai). Explicit
 // DATABASE_URL diya ho to woh precedence leta hai.
 function buildDatabaseUrl(): string {
   if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim()) return process.env.DATABASE_URL;
-  const host = process.env.DB_HOST ?? "127.0.0.1";
-  const port = process.env.DB_PORT ?? "3306";
-  const user = process.env.DB_USER ?? "switch_v2";
-  const pass = process.env.DB_PASS ?? "switchnest@1234567890";
-  const name = process.env.DB_NAME ?? "switch_v2";
+  const host = process.env.DB_HOST || "127.0.0.1";
+  const port = process.env.DB_PORT || "3306";
+  const user = process.env.DB_USER || "root";
+  const pass = process.env.DB_PASS || "";
+  const name = process.env.DB_NAME || "switchnest";
   return `mysql://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}:${port}/${name}?connection_limit=10`;
 }
 
