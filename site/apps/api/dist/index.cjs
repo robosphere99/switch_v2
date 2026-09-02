@@ -14087,9 +14087,11 @@ function patchWebConfig() {
   <system.webServer>
     <rewrite>
       <rules>
-        <rule name="DynamicContent">
-          <conditions>
-            <add input="{REQUEST_FILENAME}" matchType="IsFile" negate="True" />
+        <rule name="DynamicContent" stopProcessing="true">
+          <match url=".*" />
+          <conditions logicalGrouping="MatchAll">
+            <add input="{REQUEST_FILENAME}" matchType="IsFile" negate="true" />
+            <add input="{REQUEST_FILENAME}" matchType="IsDirectory" negate="true" />
           </conditions>
           <action type="Rewrite" url="dist/index.cjs" />
         </rule>
