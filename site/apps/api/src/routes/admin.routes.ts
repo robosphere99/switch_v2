@@ -405,11 +405,11 @@ const createUserSchema = z.object({
 /** Admin se naya user banao (temp password ke saath) — user management complete karne ke liye. */
 adminRouter.post("/users", validateBody(createUserSchema), async (req, res) => {
   const { username, email, password, role } = req.body;
-  const exists = await prisma.user.findFirst({
-    where: { OR: [{ username }, { email }] },
-    select: { id: true },
-  });
-  if (exists) throw new AppError("USER_EXISTS", "Username ya email already exists", 409);
+  const existingUsername = await prisma.user.findFirst({ where: { username }, select: { id: true } });
+  if (existingUsername) throw new AppError("USER_EXISTS", `Username '${username}' is already taken. Please use another username.`, 409);
+
+  const existingEmail = await prisma.user.findFirst({ where: { email }, select: { id: true, username: true } });
+  if (existingEmail) throw new AppError("USER_EXISTS", `Email '${email}' is already registered (account: '${existingEmail.username}').`, 409);
   const hashed = await bcrypt.hash(password, 10);
   const user = await prisma.user.create({
     data: { username, email, password: hashed, role: role ?? "user" },

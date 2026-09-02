@@ -1774,11 +1774,13 @@ function signRefreshToken(user) {
   });
 }
 async function signup(input, deviceInfo, ipAddress) {
-  const existing = await prisma.user.findFirst({
-    where: { OR: [{ username: input.username }, { email: input.email }] }
-  });
-  if (existing) {
-    throw new AppError("EMAIL_OR_USERNAME_TAKEN", "Username or email already exists", 409);
+  const existingUsername = await prisma.user.findFirst({ where: { username: input.username }, select: { id: true } });
+  if (existingUsername) {
+    throw new AppError("USERNAME_TAKEN", `Username '${input.username}' is already taken. Please choose another username.`, 409);
+  }
+  const existingEmail = await prisma.user.findFirst({ where: { email: input.email }, select: { id: true } });
+  if (existingEmail) {
+    throw new AppError("EMAIL_TAKEN", `Email '${input.email}' is already registered. Please log in or use another email.`, 409);
   }
   const password = await import_bcryptjs.default.hash(input.password, 10);
   const user = await prisma.$transaction(async (tx) => {
@@ -6907,11 +6909,10 @@ var createUserSchema = import_zod13.z.object({
 });
 adminRouter.post("/users", validateBody(createUserSchema), async (req, res) => {
   const { username, email, password, role } = req.body;
-  const exists = await prisma.user.findFirst({
-    where: { OR: [{ username }, { email }] },
-    select: { id: true }
-  });
-  if (exists) throw new AppError("USER_EXISTS", "Username ya email already exists", 409);
+  const existingUsername = await prisma.user.findFirst({ where: { username }, select: { id: true } });
+  if (existingUsername) throw new AppError("USER_EXISTS", `Username '${username}' is already taken. Please use another username.`, 409);
+  const existingEmail = await prisma.user.findFirst({ where: { email }, select: { id: true, username: true } });
+  if (existingEmail) throw new AppError("USER_EXISTS", `Email '${email}' is already registered (account: '${existingEmail.username}').`, 409);
   const hashed = await import_bcryptjs2.default.hash(password, 10);
   const user = await prisma.user.create({
     data: { username, email, password: hashed, role: role ?? "user" },
