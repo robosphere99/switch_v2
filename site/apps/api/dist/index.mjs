@@ -14399,7 +14399,6 @@ async function runArchival() {
 
 // src/index.ts
 init_mqtt_service();
-import { execFileSync } from "node:child_process";
 async function runLightMigrations() {
   const migration = async (label, fn) => {
     try {
@@ -14913,44 +14912,7 @@ async function main() {
   boot("main() setup complete \u2014 background DB init starting");
   void initDatabase();
 }
-var HEAL_LAST_KEY = "prisma_selfheal_last";
 async function selfHealPrismaClient() {
-  const p = prisma;
-  if (p.deviceAccess && p.deviceUsage && p.supportChatSettings) return;
-  fileLog("[boot] prisma client stale (deviceAccess/deviceUsage/supportChatSettings missing) \u2014 self-heal try");
-  const last = await prisma.appMeta.findUnique({ where: { key: HEAL_LAST_KEY } }).catch(() => null);
-  if (last && Date.now() - new Date(last.value).getTime() < 10 * 60 * 1e3) {
-    fileLog("[boot] self-heal 10 min pehle try hua \u2014 skip (degraded mode, koi loop nahi)");
-    return;
-  }
-  let ok2 = false;
-  for (const args of [
-    ["npx.cmd", "--no-install", "prisma", "generate"],
-    ["npx.cmd", "prisma", "generate"]
-  ]) {
-    try {
-      execFileSync(args[0], args.slice(1), {
-        cwd: process.cwd(),
-        stdio: "pipe",
-        timeout: 18e4,
-        windowsHide: true
-      });
-      ok2 = true;
-      break;
-    } catch (err) {
-      fileLog(`[boot] prisma generate try fail: ${err instanceof Error ? err.message : String(err)}`);
-    }
-  }
-  if (!ok2) {
-    fileLog("[boot] prisma generate FAILED \u2014 degraded mode (restrictions off, site chalega)");
-    return;
-  }
-  await prisma.appMeta.upsert({
-    where: { key: HEAL_LAST_KEY },
-    create: { key: HEAL_LAST_KEY, value: (/* @__PURE__ */ new Date()).toISOString() },
-    update: { value: (/* @__PURE__ */ new Date()).toISOString() }
-  }).catch(() => void 0);
-  fileLog("[boot] prisma generate OK \u2014 client updated");
 }
 async function initDatabase() {
   boot("db probe: connecting...");
