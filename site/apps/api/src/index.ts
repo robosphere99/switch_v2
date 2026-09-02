@@ -306,9 +306,74 @@ async function runLightMigrations(): Promise<void> {
       `;
       if (Number(le[0]?.c ?? 0) === 0) {
         await prisma.$executeRawUnsafe(
-          "ALTER TABLE \`esp_devices\` ADD COLUMN \`led_enabled\` BOOLEAN NOT NULL DEFAULT TRUE",
+          "ALTER TABLE `esp_devices` ADD COLUMN `led_enabled` BOOLEAN NOT NULL DEFAULT TRUE",
         );
         logger.info("✅ Migration: esp_devices.led_enabled added");
+      }
+    });
+    // 9) devices.channel — Relay channel index (1..N) within ESP board
+    await migration("devices.channel", async () => {
+      const ch = await prisma.$queryRaw<{ c: bigint }[]>`
+        SELECT COUNT(*) AS c FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'devices' AND column_name = 'channel'
+      `;
+      if (Number(ch[0]?.c ?? 0) === 0) {
+        await prisma.$executeRawUnsafe(
+          "ALTER TABLE `devices` ADD COLUMN `channel` INT NULL",
+        );
+        logger.info("✅ Migration: devices.channel column added");
+      }
+    });
+    // 10) users.avatar_url & profile fields
+    await migration("users.avatar_url & profile", async () => {
+      const au = await prisma.$queryRaw<{ c: bigint }[]>`
+        SELECT COUNT(*) AS c FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'avatar_url'
+      `;
+      if (Number(au[0]?.c ?? 0) === 0) {
+        await prisma.$executeRawUnsafe(
+          "ALTER TABLE `users` ADD COLUMN `avatar_url` VARCHAR(500) NULL, ADD COLUMN `dob` DATE NULL, ADD COLUMN `gender` VARCHAR(20) NULL, ADD COLUMN `phone` VARCHAR(20) NULL, ADD COLUMN `address` TEXT NULL",
+        );
+        logger.info("✅ Migration: users.avatar_url & profile columns added");
+      }
+    });
+    // 11) products.stock_count & rating
+    await migration("products.stock_count & rating", async () => {
+      const sc = await prisma.$queryRaw<{ c: bigint }[]>`
+        SELECT COUNT(*) AS c FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'products' AND column_name = 'stock_count'
+      `;
+      if (Number(sc[0]?.c ?? 0) === 0) {
+        await prisma.$executeRawUnsafe(
+          "ALTER TABLE `products` ADD COLUMN `stock_count` INT NOT NULL DEFAULT 0, ADD COLUMN `rating` DECIMAL(3,2) NOT NULL DEFAULT 0.0, ADD COLUMN `total_reviews` INT NOT NULL DEFAULT 0",
+        );
+        logger.info("✅ Migration: products.stock_count & rating columns added");
+      }
+    });
+    // 12) orders payment fields
+    await migration("orders payment fields", async () => {
+      const rz = await prisma.$queryRaw<{ c: bigint }[]>`
+        SELECT COUNT(*) AS c FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'orders' AND column_name = 'razorpay_order_id'
+      `;
+      if (Number(rz[0]?.c ?? 0) === 0) {
+        await prisma.$executeRawUnsafe(
+          "ALTER TABLE `orders` ADD COLUMN `razorpay_order_id` VARCHAR(64) NULL, ADD COLUMN `payment_ref` VARCHAR(64) NULL, ADD COLUMN `paid_at` DATETIME(3) NULL",
+        );
+        logger.info("✅ Migration: orders payment fields added");
+      }
+    });
+    // 13) serial_registry warranty fields
+    await migration("serial_registry warranty fields", async () => {
+      const ws = await prisma.$queryRaw<{ c: bigint }[]>`
+        SELECT COUNT(*) AS c FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'serial_registry' AND column_name = 'warranty_status'
+      `;
+      if (Number(ws[0]?.c ?? 0) === 0) {
+        await prisma.$executeRawUnsafe(
+          "ALTER TABLE `serial_registry` ADD COLUMN `warranty_status` VARCHAR(20) NOT NULL DEFAULT 'active', ADD COLUMN `warranty_expires_at` DATETIME(3) NULL, ADD COLUMN `console_password` VARCHAR(64) NULL, ADD COLUMN `tested_at` DATETIME(3) NULL",
+        );
+        logger.info("✅ Migration: serial_registry warranty fields added");
       }
     });
   } catch (err) {

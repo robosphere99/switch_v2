@@ -29,7 +29,8 @@ export const logFilePath: string | null = (() => {
 export function fileLog(line: string): void {
   if (!logFilePath) return;
   try {
-    fs.appendFileSync(logFilePath, line.endsWith("\n") ? line : line + "\n");
+    const timestamped = /^\[\d{4}-\d{2}-\d{2}T/.test(line) ? line : `[${new Date().toISOString()}] ${line}`;
+    fs.appendFileSync(logFilePath, timestamped.endsWith("\n") ? timestamped : timestamped + "\n");
   } catch {
     /* ignore */
   }

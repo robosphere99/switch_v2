@@ -4,9 +4,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { logger } from "../lib/logger";
 
-const UPLOADS_DIR = path.join(process.cwd(), "uploads");
-const COLD_STORAGE_TELEMETRY = path.join(UPLOADS_DIR, "cold_storage", "telemetry");
-const COLD_STORAGE_SUPPORT = path.join(UPLOADS_DIR, "cold_storage", "support");
+import { uploadsDir } from "../lib/paths";
+
+const COLD_STORAGE_TELEMETRY = path.join(uploadsDir, "cold_storage", "telemetry");
+const COLD_STORAGE_SUPPORT = path.join(uploadsDir, "cold_storage", "support");
 
 let archivalTimer: NodeJS.Timeout | null = null;
 let isRunning = false;
