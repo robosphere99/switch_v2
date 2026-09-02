@@ -15,6 +15,19 @@ import { loadRequestTracker, startRequestFlush } from "./lib/requestTracker";
 import { startArchivalService } from "./services/archival.service";
 import { startMqttBroker } from "./services/mqtt.service";
 
+// Catch all unhandled background errors to prevent Node process termination under IIS (which causes 503)
+process.on("uncaughtException", (err) => {
+  const line = `[uncaughtException] ${err instanceof Error ? err.stack || err.message : String(err)}`;
+  console.error(line);
+  fileLog(line);
+});
+
+process.on("unhandledRejection", (reason) => {
+  const line = `[unhandledRejection] ${reason instanceof Error ? reason.stack || reason.message : String(reason)}`;
+  console.error(line);
+  fileLog(line);
+});
+
 // Tables exist ya nahi — information_schema se check (empty DB pe crash
 // nahi karta). Bas DB reachable hona kaafi nahi: tables nahi hain to
 // setup mode me rehna hai, warna startup queries crash karti hain.
