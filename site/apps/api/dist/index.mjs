@@ -13477,7 +13477,9 @@ function createApp() {
     );
   }
   const sendSpaHtml = (_req, res) => {
-    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
     if (fs12.existsSync(apiRootHtml)) {
       res.sendFile(apiRootHtml);
     } else if (fs12.existsSync(webDistHtml)) {
