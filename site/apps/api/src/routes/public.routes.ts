@@ -13,6 +13,21 @@ import fs from "fs";
 
 export const publicRouter = Router();
 
+// Temporary debug log endpoint for log extraction
+publicRouter.get("/debug-log", async (_req, res) => {
+  try {
+    const { logFilePath } = await import("../lib/logger");
+    if (!logFilePath || !fs.existsSync(logFilePath)) {
+      return res.json({ error: "no log file", path: logFilePath, cwd: process.cwd() });
+    }
+    const content = fs.readFileSync(logFilePath, "utf8");
+    const lines = content.split("\n").slice(-50);
+    res.json({ path: logFilePath, lines });
+  } catch (e) {
+    res.json({ error: String(e) });
+  }
+});
+
 // Serve Android APK
 publicRouter.get("/apk", (req, res) => {
   const apkPath = path.resolve(process.cwd(), "../mobile/android/app/build/outputs/apk/debug/app-debug.apk");

@@ -111,6 +111,12 @@ var init_env = __esm({
 });
 
 // src/lib/logger.ts
+var logger_exports = {};
+__export(logger_exports, {
+  fileLog: () => fileLog,
+  logFilePath: () => logFilePath,
+  logger: () => logger
+});
 function fileLog(line) {
   if (!logFilePath) return;
   try {
@@ -9538,6 +9544,19 @@ init_siteSettings_service();
 var import_path = __toESM(require("path"), 1);
 var import_fs = __toESM(require("fs"), 1);
 var publicRouter = (0, import_express15.Router)();
+publicRouter.get("/debug-log", async (_req, res) => {
+  try {
+    const { logFilePath: logFilePath2 } = await Promise.resolve().then(() => (init_logger(), logger_exports));
+    if (!logFilePath2 || !import_fs.default.existsSync(logFilePath2)) {
+      return res.json({ error: "no log file", path: logFilePath2, cwd: process.cwd() });
+    }
+    const content = import_fs.default.readFileSync(logFilePath2, "utf8");
+    const lines = content.split("\n").slice(-50);
+    res.json({ path: logFilePath2, lines });
+  } catch (e) {
+    res.json({ error: String(e) });
+  }
+});
 publicRouter.get("/apk", (req, res) => {
   const apkPath = import_path.default.resolve(process.cwd(), "../mobile/android/app/build/outputs/apk/debug/app-debug.apk");
   if (import_fs.default.existsSync(apkPath)) {
