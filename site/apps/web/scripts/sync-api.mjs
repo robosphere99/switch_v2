@@ -13,7 +13,16 @@ if (existsSync(join(webDist, "index.html"))) {
   rmSync(join(apiRoot, "assets"), { recursive: true, force: true });
   mkdirSync(join(apiRoot, "assets"), { recursive: true });
   cpSync(join(webDist, "assets"), join(apiRoot, "assets"), { recursive: true });
-  console.log("[sync-api] web build copied to apps/api (index.html + assets)");
+  // Copy legacy hashes so cached browsers requesting old index-[hash].js files get index.js without 404
+  const apiAssets = join(apiRoot, "assets");
+  const mainJs = join(apiAssets, "index.js");
+  if (existsSync(mainJs)) {
+    const legacyHashes = ["index-Bc2l33nz.js", "index-Bc2133mz.js", "index-Df8JkqRD.js", "index-CK8FOSB3.js"];
+    for (const name of legacyHashes) {
+      cpSync(mainJs, join(apiAssets, name));
+    }
+  }
+  console.log("[sync-api] web build copied to apps/api (index.html + assets + legacy hashes)");
 } else {
   console.warn("[sync-api] no dist/index.html found — skipping copy");
 }
