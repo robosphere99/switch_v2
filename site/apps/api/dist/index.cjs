@@ -36,13 +36,13 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 
 // src/config/env.ts
 function buildDatabaseUrl() {
-  if (process.env.DATABASE_URL) return process.env.DATABASE_URL;
-  const host = process.env.DB_HOST ?? "localhost";
+  if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim()) return process.env.DATABASE_URL;
+  const host = process.env.DB_HOST ?? "127.0.0.1";
   const port = process.env.DB_PORT ?? "3306";
-  const user = process.env.DB_USER ?? "root";
-  const pass = process.env.DB_PASS ?? "";
+  const user = process.env.DB_USER ?? "switch_v2";
+  const pass = process.env.DB_PASS ?? "switchnest@1234567890";
   const name = process.env.DB_NAME ?? "switch_v2";
-  return `mysql://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}:${port}/${name}?connection_limit=2`;
+  return `mysql://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}:${port}/${name}?connection_limit=10`;
 }
 var import_dotenv, import_node_path, import_zod, envSchema, parsed, env, corsOrigins;
 var init_env = __esm({

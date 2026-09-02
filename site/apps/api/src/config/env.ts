@@ -10,15 +10,13 @@ dotenv.config({ path: path.resolve(process.cwd(), "../../.env") });
 // user sirf DB_HOST/DB_USER/DB_PASS/DB_NAME type karta hai). Explicit
 // DATABASE_URL diya ho to woh precedence leta hai.
 function buildDatabaseUrl(): string {
-  if (process.env.DATABASE_URL) return process.env.DATABASE_URL;
-  const host = process.env.DB_HOST ?? "localhost";
+  if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim()) return process.env.DATABASE_URL;
+  const host = process.env.DB_HOST ?? "127.0.0.1";
   const port = process.env.DB_PORT ?? "3306";
-  const user = process.env.DB_USER ?? "root";
-  const pass = process.env.DB_PASS ?? "";
+  const user = process.env.DB_USER ?? "switch_v2";
+  const pass = process.env.DB_PASS ?? "switchnest@1234567890";
   const name = process.env.DB_NAME ?? "switch_v2";
-  // connection_limit=2 — Plesk pe per-user max_user_connections hota hai.
-  // Default pool (num_cpus*2+1) multiple processes me exhaust ho jata hai (ERROR 1203).
-  return `mysql://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}:${port}/${name}?connection_limit=2`;
+  return `mysql://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}:${port}/${name}?connection_limit=10`;
 }
 
 const envSchema = z.object({
