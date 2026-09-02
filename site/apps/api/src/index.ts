@@ -374,8 +374,7 @@ const boot = (...args: unknown[]) => {
 function patchWebConfig() {
   try {
     const webConfigPath = path.resolve(process.cwd(), "web.config");
-    if (!fs.existsSync(webConfigPath)) {
-      const cleanConfig = `<?xml version="1.0" encoding="utf-8"?>
+    const cleanConfig = `<?xml version="1.0" encoding="utf-8"?>
 <configuration>
   <system.webServer>
     <rewrite>
@@ -394,8 +393,7 @@ function patchWebConfig() {
   </system.webServer>
 </configuration>
 `;
-      fs.writeFileSync(webConfigPath, cleanConfig, "utf-8");
-    }
+    fs.writeFileSync(webConfigPath, cleanConfig, "utf-8");
   } catch (_err) {
     /* ignore */
   }
