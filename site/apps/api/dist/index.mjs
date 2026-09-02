@@ -150,18 +150,33 @@ var init_logger = __esm({
 // src/lib/prisma.ts
 var prisma_exports = {};
 __export(prisma_exports, {
+  getEffectiveDbUrl: () => getEffectiveDbUrl,
   prisma: () => prisma,
   resetPrismaClient: () => resetPrismaClient,
   withConnLimit: () => withConnLimit
 });
 import { PrismaClient } from "@prisma/client";
+import dotenv2 from "dotenv";
+import path5 from "node:path";
+import fs4 from "node:fs";
+function getEffectiveDbUrl() {
+  const envUrl = process.env.DATABASE_URL?.trim();
+  if (envUrl) return envUrl;
+  const host = process.env.DB_HOST || "127.0.0.1";
+  const port = process.env.DB_PORT || "3306";
+  const user = process.env.DB_USER || "switch_v2";
+  const pass = process.env.DB_PASS || "switchnest@1234567890";
+  const name = process.env.DB_NAME || "switch_v2";
+  return `mysql://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}:${port}/${name}`;
+}
 function withConnLimit(url, limit = 10) {
+  const target = url.trim() || getEffectiveDbUrl();
   try {
-    const u = new URL(url);
+    const u = new URL(target);
     u.searchParams.set("connection_limit", String(limit));
     return u.toString();
   } catch {
-    return url;
+    return target;
   }
 }
 async function resetPrismaClient(databaseUrl) {
@@ -170,19 +185,35 @@ async function resetPrismaClient(databaseUrl) {
   } catch {
   }
   process.env.DATABASE_URL = withConnLimit(databaseUrl);
-  const next = new PrismaClient();
-  await next.$connect();
+  const next = new PrismaClient({
+    datasources: { db: { url: process.env.DATABASE_URL } }
+  });
+  await next.$connect().catch(() => void 0);
   prisma = next;
   if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = next;
   return next;
 }
-var globalForPrisma, prisma;
+var candidatePaths, globalForPrisma, prisma;
 var init_prisma = __esm({
   "src/lib/prisma.ts"() {
     "use strict";
+    candidatePaths = [
+      path5.resolve(process.cwd(), ".env"),
+      path5.resolve(process.cwd(), "../.env"),
+      path5.resolve(process.cwd(), "../../.env")
+    ];
+    for (const p of candidatePaths) {
+      try {
+        if (fs4.existsSync(p)) {
+          dotenv2.config({ path: p, override: true });
+        }
+      } catch {
+      }
+    }
+    process.env.DATABASE_URL = withConnLimit(getEffectiveDbUrl());
     globalForPrisma = globalThis;
     prisma = globalForPrisma.prisma ?? new PrismaClient({
-      datasources: { db: { url: withConnLimit(process.env.DATABASE_URL ?? "") } }
+      datasources: { db: { url: process.env.DATABASE_URL } }
     });
     if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
   }
@@ -1560,8 +1591,8 @@ init_env();
 import express2 from "express";
 import cors from "cors";
 import helmet from "helmet";
-import path14 from "node:path";
-import fs13 from "node:fs";
+import path15 from "node:path";
+import fs14 from "node:fs";
 
 // src/middleware/errorHandler.ts
 import { ZodError } from "zod";
@@ -1641,23 +1672,23 @@ init_logger();
 
 // src/lib/envPersist.ts
 init_logger();
-import * as fs4 from "fs";
-import * as path5 from "path";
+import * as fs5 from "fs";
+import * as path6 from "path";
 function escapeEnv(v) {
   return /[\s#"']/.test(v) ? `"${v.replace(/"/g, '\\"')}"` : v;
 }
 function persistEnvKeys(entries) {
   const targets = [
-    path5.resolve(process.cwd(), ".env"),
-    path5.resolve(process.cwd(), "../.env"),
-    path5.resolve(process.cwd(), "../../.env")
+    path6.resolve(process.cwd(), ".env"),
+    path6.resolve(process.cwd(), "../.env"),
+    path6.resolve(process.cwd(), "../../.env")
   ];
   let mainPath = targets[0];
   let written = false;
   for (const envPath of targets) {
     try {
       let content = "";
-      if (fs4.existsSync(envPath)) content = fs4.readFileSync(envPath, "utf-8");
+      if (fs5.existsSync(envPath)) content = fs5.readFileSync(envPath, "utf-8");
       for (const [key, value] of entries) {
         process.env[key] = value;
         const line = `${key}=${escapeEnv(value)}`;
@@ -1665,7 +1696,7 @@ function persistEnvKeys(entries) {
         if (re.test(content)) content = content.replace(re, line);
         else content = (content ? content.replace(/\s*$/, "\n") : "") + line + "\n";
       }
-      fs4.writeFileSync(envPath, content, "utf-8");
+      fs5.writeFileSync(envPath, content, "utf-8");
       mainPath = envPath;
       written = true;
     } catch (err) {
@@ -2388,12 +2419,12 @@ function validateParams(schema) {
 
 // src/routes/auth.routes.ts
 import multer from "multer";
-import path6 from "node:path";
-import fs5 from "node:fs";
+import path7 from "node:path";
+import fs6 from "node:fs";
 init_prisma();
-var avatarsDir = path6.join(uploadsDir, "avatars");
+var avatarsDir = path7.join(uploadsDir, "avatars");
 try {
-  fs5.mkdirSync(avatarsDir, { recursive: true });
+  fs6.mkdirSync(avatarsDir, { recursive: true });
 } catch (e) {
 }
 var storage = multer.diskStorage({
@@ -2401,19 +2432,19 @@ var storage = multer.diskStorage({
     cb(null, avatarsDir);
   },
   filename: function(req, file, cb) {
-    const ext = path6.extname(file.originalname).toLowerCase() || ".jpg";
+    const ext = path7.extname(file.originalname).toLowerCase() || ".jpg";
     prisma.user.findUnique({ where: { id: req.user.sub }, select: { username: true } }).then((u) => {
       if (!u) return cb(new Error("User not found"), "");
       const username = u.username;
       const canonicalName = `${username}${ext}`;
       try {
-        const existing = fs5.readdirSync(avatarsDir).filter(
-          (f) => f.startsWith(`${username}.`) && !fs5.statSync(path6.join(avatarsDir, f)).isDirectory()
+        const existing = fs6.readdirSync(avatarsDir).filter(
+          (f) => f.startsWith(`${username}.`) && !fs6.statSync(path7.join(avatarsDir, f)).isDirectory()
         );
         if (existing.length > 0) {
-          const archiveDir = path6.join(avatarsDir, username);
-          fs5.mkdirSync(archiveDir, { recursive: true });
-          const archived = fs5.readdirSync(archiveDir);
+          const archiveDir = path7.join(avatarsDir, username);
+          fs6.mkdirSync(archiveDir, { recursive: true });
+          const archived = fs6.readdirSync(archiveDir);
           let maxNum = 0;
           for (const a of archived) {
             const match = a.match(new RegExp(`^${username}_(\\d+)`));
@@ -2421,10 +2452,10 @@ var storage = multer.diskStorage({
           }
           for (const oldFile of existing) {
             maxNum++;
-            const oldExt = path6.extname(oldFile);
-            fs5.renameSync(
-              path6.join(avatarsDir, oldFile),
-              path6.join(archiveDir, `${username}_${maxNum}${oldExt}`)
+            const oldExt = path7.extname(oldFile);
+            fs6.renameSync(
+              path7.join(avatarsDir, oldFile),
+              path7.join(archiveDir, `${username}_${maxNum}${oldExt}`)
             );
           }
         }
@@ -5684,15 +5715,15 @@ assistantRouter.get("/chats/:chatId/messages", requireAuth, validateParams(chatP
 import { Router as Router11 } from "express";
 import { z as z12 } from "zod";
 import multer2 from "multer";
-import path9 from "node:path";
-import fs8 from "node:fs";
+import path10 from "node:path";
+import fs9 from "node:fs";
 import { execSync } from "node:child_process";
 init_prisma();
 
 // src/lib/healthMonitor.ts
 init_logger();
-import * as fs6 from "fs";
-import * as path7 from "path";
+import * as fs7 from "fs";
+import * as path8 from "path";
 
 // src/lib/dbState.ts
 var ready = true;
@@ -5717,13 +5748,13 @@ var checking = false;
 var activeIncident = null;
 function hcFile() {
   if (!logFilePath) return null;
-  return path7.join(path7.dirname(logFilePath), "health-check.jsonl");
+  return path8.join(path8.dirname(logFilePath), "health-check.jsonl");
 }
 function append(ev) {
   const f = hcFile();
   if (!f) return;
   try {
-    fs6.appendFileSync(f, JSON.stringify(ev) + "\n");
+    fs7.appendFileSync(f, JSON.stringify(ev) + "\n");
   } catch {
   }
 }
@@ -5736,9 +5767,9 @@ function setLastSeenHost(host) {
 }
 function adoptOpenIncident() {
   const f = hcFile();
-  if (!f || !fs6.existsSync(f)) return;
+  if (!f || !fs7.existsSync(f)) return;
   try {
-    const lines = fs6.readFileSync(f, "utf8").split("\n").filter(Boolean).slice(-200);
+    const lines = fs7.readFileSync(f, "utf8").split("\n").filter(Boolean).slice(-200);
     let open = null;
     for (const l of lines) {
       try {
@@ -5833,9 +5864,9 @@ function startHealthMonitor() {
 function getHealthMonitorState() {
   const incidents2 = [];
   const f = hcFile();
-  if (f && fs6.existsSync(f)) {
+  if (f && fs7.existsSync(f)) {
     try {
-      const lines = fs6.readFileSync(f, "utf8").split("\n").filter(Boolean).slice(-500);
+      const lines = fs7.readFileSync(f, "utf8").split("\n").filter(Boolean).slice(-500);
       for (const l of lines) {
         try {
           const e = JSON.parse(l);
@@ -5876,8 +5907,8 @@ function getHealthMonitorState() {
 
 // src/lib/leakMonitor.ts
 init_logger();
-import * as fs7 from "fs";
-import * as path8 from "path";
+import * as fs8 from "fs";
+import * as path9 from "path";
 var CHECK_INTERVAL_MS2 = 6e4;
 var LEAK_WINDOW_MS = 4 * 36e5;
 var LEAK_MIN_SPAN_MS = 30 * 6e4;
@@ -5890,21 +5921,21 @@ var activeLeak = null;
 var incidents = [];
 function incidentFile() {
   if (!logFilePath) return null;
-  return path8.join(path8.dirname(logFilePath), "leak-incidents.jsonl");
+  return path9.join(path9.dirname(logFilePath), "leak-incidents.jsonl");
 }
 function append2(ev) {
   const f = incidentFile();
   if (!f) return;
   try {
-    fs7.appendFileSync(f, JSON.stringify(ev) + "\n");
+    fs8.appendFileSync(f, JSON.stringify(ev) + "\n");
   } catch {
   }
 }
 function loadIncidents() {
   const f = incidentFile();
-  if (!f || !fs7.existsSync(f)) return;
+  if (!f || !fs8.existsSync(f)) return;
   try {
-    const lines = fs7.readFileSync(f, "utf8").split("\n").filter(Boolean).slice(-500);
+    const lines = fs8.readFileSync(f, "utf8").split("\n").filter(Boolean).slice(-500);
     const evs = [];
     for (const l of lines) {
       try {
@@ -5937,16 +5968,16 @@ function loadIncidents() {
   }
 }
 function readHeartbeatPoints() {
-  if (!logFilePath || !fs7.existsSync(logFilePath)) return [];
+  if (!logFilePath || !fs8.existsSync(logFilePath)) return [];
   try {
-    const st = fs7.statSync(logFilePath);
+    const st = fs8.statSync(logFilePath);
     if (st.size <= 0) return [];
     const start = Math.max(0, st.size - TAIL_MAX);
     const len = st.size - start;
-    const fd = fs7.openSync(logFilePath, "r");
+    const fd = fs8.openSync(logFilePath, "r");
     const buf = Buffer.alloc(len);
-    fs7.readSync(fd, buf, 0, len, start);
-    fs7.closeSync(fd);
+    fs8.readSync(fd, buf, 0, len, start);
+    fs8.closeSync(fd);
     const text = buf.toString("utf8");
     const re = /\[hb\] alive ts=([\d:.TZ-]+) uptime=(\d+)s pid=(\d+) rss=(\d+)MB(?: heap=(\d+)MB)?/g;
     const points = [];
@@ -6006,9 +6037,9 @@ function push(ev) {
 }
 function lastFileEvent() {
   const f = incidentFile();
-  if (!f || !fs7.existsSync(f)) return null;
+  if (!f || !fs8.existsSync(f)) return null;
   try {
-    const lines = fs7.readFileSync(f, "utf8").split("\n").filter(Boolean);
+    const lines = fs8.readFileSync(f, "utf8").split("\n").filter(Boolean);
     if (!lines.length) return null;
     return JSON.parse(lines[lines.length - 1]);
   } catch {
@@ -7533,10 +7564,10 @@ adminRouter.post("/check-url", checkUrlLimiter, validateBody(checkUrlSchema), as
 });
 adminRouter.get("/deploy-info", async (_req, res) => {
   let marker = null;
-  const markerPath = path9.resolve(process.cwd(), "../logs/deploy.json");
+  const markerPath = path10.resolve(process.cwd(), "../logs/deploy.json");
   try {
-    if (fs8.existsSync(markerPath)) {
-      marker = JSON.parse(fs8.readFileSync(markerPath, "utf8"));
+    if (fs9.existsSync(markerPath)) {
+      marker = JSON.parse(fs9.readFileSync(markerPath, "utf8"));
     }
   } catch {
   }
@@ -7549,9 +7580,9 @@ adminRouter.get("/deploy-info", async (_req, res) => {
   }
   let build = null;
   try {
-    const bp = path9.resolve(process.cwd(), "dist/build-commit.json");
-    if (fs8.existsSync(bp)) {
-      const bj = JSON.parse(fs8.readFileSync(bp, "utf8"));
+    const bp = path10.resolve(process.cwd(), "dist/build-commit.json");
+    if (fs9.existsSync(bp)) {
+      const bj = JSON.parse(fs9.readFileSync(bp, "utf8"));
       if (bj?.commit) build = { commit: bj.commit, builtAt: bj.builtAt || "" };
     }
   } catch {
@@ -7632,19 +7663,19 @@ adminRouter.get("/diagnostics", async (_req, res) => {
     appPool: null,
     wpEvents: null
   };
-  if (logFilePath && fs8.existsSync(logFilePath)) {
+  if (logFilePath && fs9.existsSync(logFilePath)) {
     try {
-      const st = fs8.statSync(logFilePath);
+      const st = fs9.statSync(logFilePath);
       result.logBytes = st.size;
       let raw = "";
       if (st.size > TAIL_MAX2) {
-        const fd = fs8.openSync(logFilePath, "r");
+        const fd = fs9.openSync(logFilePath, "r");
         const buf = Buffer.alloc(TAIL_MAX2);
-        fs8.readSync(fd, buf, 0, TAIL_MAX2, st.size - TAIL_MAX2);
-        fs8.closeSync(fd);
+        fs9.readSync(fd, buf, 0, TAIL_MAX2, st.size - TAIL_MAX2);
+        fs9.closeSync(fd);
         raw = buf.toString("utf8");
       } else {
-        raw = fs8.readFileSync(logFilePath, "utf8");
+        raw = fs9.readFileSync(logFilePath, "utf8");
       }
       const lines = raw.split(/\r?\n/).filter(Boolean);
       const pushCap = (arr, l, cap) => {
@@ -7721,13 +7752,13 @@ adminRouter.get("/diagnostics", async (_req, res) => {
   result.healthCheck = getHealthMonitorState();
   result.leak = getLeakMonitorState();
   for (const cand of [
-    path9.resolve(process.cwd(), "web.config"),
-    path9.resolve(process.cwd(), "../web.config"),
-    path9.resolve(process.cwd(), "../../web.config")
+    path10.resolve(process.cwd(), "web.config"),
+    path10.resolve(process.cwd(), "../web.config"),
+    path10.resolve(process.cwd(), "../../web.config")
   ]) {
-    if (!fs8.existsSync(cand)) continue;
+    if (!fs9.existsSync(cand)) continue;
     try {
-      const content = fs8.readFileSync(cand, "utf8");
+      const content = fs9.readFileSync(cand, "utf8");
       const grab = (re) => {
         const m = re.exec(content);
         return m ? m[0].slice(0, 500) : null;
@@ -7796,8 +7827,8 @@ adminRouter.get("/diagnostics", async (_req, res) => {
 adminRouter.get("/logs", async (_req, res) => {
   const n = Math.min(Number(_req.query.lines ?? 300) || 300, 1e3);
   const result = { path: logFilePath ?? null, totalLines: 0, lines: [], crashes: [], iisnodeLogs: [] };
-  if (logFilePath && fs8.existsSync(logFilePath)) {
-    const raw = fs8.readFileSync(logFilePath, "utf8");
+  if (logFilePath && fs9.existsSync(logFilePath)) {
+    const raw = fs9.readFileSync(logFilePath, "utf8");
     const lines = raw.split(/\r?\n/).filter(Boolean).slice(-n);
     result.lines = lines;
     result.totalLines = lines.length;
@@ -7813,13 +7844,13 @@ adminRouter.get("/logs", async (_req, res) => {
     result.crashes = [...crashMap.values()];
   }
   const dirs = /* @__PURE__ */ new Set();
-  if (logFilePath) dirs.add(path9.dirname(logFilePath));
-  dirs.add(path9.resolve(process.cwd(), "../logs"));
-  dirs.add(path9.resolve(process.cwd(), "../../logs"));
+  if (logFilePath) dirs.add(path10.dirname(logFilePath));
+  dirs.add(path10.resolve(process.cwd(), "../logs"));
+  dirs.add(path10.resolve(process.cwd(), "../../logs"));
   for (const dir of dirs) {
     let entries = [];
     try {
-      entries = fs8.readdirSync(dir, { withFileTypes: true });
+      entries = fs9.readdirSync(dir, { withFileTypes: true });
     } catch {
       continue;
     }
@@ -7827,10 +7858,10 @@ adminRouter.get("/logs", async (_req, res) => {
       if (!e.isFile()) continue;
       const name = e.name;
       if (!/^stdout_/i.test(name) && !/^stderr_/i.test(name) && !/\.log$/i.test(name)) continue;
-      const full = path9.join(dir, name);
+      const full = path10.join(dir, name);
       try {
-        const size = fs8.statSync(full).size;
-        const buf = fs8.readFileSync(full, "utf8");
+        const size = fs9.statSync(full).size;
+        const buf = fs9.readFileSync(full, "utf8");
         const ls = buf.split(/\r?\n/).filter(Boolean).slice(-200);
         result.iisnodeLogs.push({ name, path: full, size, lines: ls });
       } catch {
@@ -7840,7 +7871,7 @@ adminRouter.get("/logs", async (_req, res) => {
   ok(res, result);
 });
 try {
-  fs8.mkdirSync(firmwareDir, { recursive: true });
+  fs9.mkdirSync(firmwareDir, { recursive: true });
 } catch (err) {
   console.warn(`[firmware] cannot create ${firmwareDir}:`, err instanceof Error ? err.message : err);
 }
@@ -8088,11 +8119,11 @@ adminRouter.post("/firmware", upload2.single("firmware"), async (req, res) => {
   const filename = modelCode ? `firmware-${modelCode.toLowerCase()}.bin` : "firmware.bin";
   const url = `/firmware/${filename}`;
   if (modelCode && filename !== "firmware.bin") {
-    const uploaded = path9.join(firmwareDir, "firmware.bin");
-    const target = path9.join(firmwareDir, filename);
-    if (fs8.existsSync(uploaded) && uploaded !== target) {
-      if (fs8.existsSync(target)) fs8.unlinkSync(target);
-      fs8.renameSync(uploaded, target);
+    const uploaded = path10.join(firmwareDir, "firmware.bin");
+    const target = path10.join(firmwareDir, filename);
+    if (fs9.existsSync(uploaded) && uploaded !== target) {
+      if (fs9.existsSync(target)) fs9.unlinkSync(target);
+      fs9.renameSync(uploaded, target);
     }
   }
   await prisma.$transaction([
@@ -8416,12 +8447,12 @@ adminRouter.delete("/products/:id", async (req, res) => {
 var productMediaUpload = multer2({
   storage: multer2.diskStorage({
     destination: (_req, _file, cb) => {
-      const dir = path9.join(process.cwd(), "uploads/product-media");
-      fs8.mkdirSync(dir, { recursive: true });
+      const dir = path10.join(process.cwd(), "uploads/product-media");
+      fs9.mkdirSync(dir, { recursive: true });
       cb(null, dir);
     },
     filename: (_req, file, cb) => {
-      const ext = path9.extname(file.originalname);
+      const ext = path10.extname(file.originalname);
       cb(null, `pm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`);
     }
   }),
@@ -8433,7 +8464,7 @@ adminRouter.post("/products/:id/media", productMediaUpload.single("file"), async
   const product = await prisma.product.findUnique({ where: { id: productId } });
   if (!product) throw new AppError("NOT_FOUND", "Product not found");
   const fileUrl = `/uploads/product-media/${req.file.filename}`;
-  const ext = path9.extname(req.file.originalname).toLowerCase();
+  const ext = path10.extname(req.file.originalname).toLowerCase();
   const type = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"].includes(ext) ? "image" : [".mp4", ".webm", ".mov"].includes(ext) ? "video" : "document";
   const media = await prisma.productMedia.create({
     data: { productId, url: fileUrl, type }
@@ -8445,9 +8476,9 @@ adminRouter.delete("/products/media/:mediaId", async (req, res) => {
   const mediaId = Number(req.params.mediaId);
   const media = await prisma.productMedia.findUnique({ where: { id: mediaId } });
   if (!media) throw new AppError("NOT_FOUND", "Media not found");
-  const filePath = path9.join(process.cwd(), media.url.replace(/^\/+/, ""));
+  const filePath = path10.join(process.cwd(), media.url.replace(/^\/+/, ""));
   try {
-    fs8.unlinkSync(filePath);
+    fs9.unlinkSync(filePath);
   } catch {
   }
   await prisma.productMedia.delete({ where: { id: mediaId } });
@@ -9460,12 +9491,12 @@ init_prisma();
 import { Router as Router15 } from "express";
 init_audit_service();
 init_siteSettings_service();
-import path10 from "path";
-import fs9 from "fs";
+import path11 from "path";
+import fs10 from "fs";
 var publicRouter = Router15();
 publicRouter.get("/apk", (req, res) => {
-  const apkPath = path10.resolve(process.cwd(), "../mobile/android/app/build/outputs/apk/debug/app-debug.apk");
-  if (fs9.existsSync(apkPath)) {
+  const apkPath = path11.resolve(process.cwd(), "../mobile/android/app/build/outputs/apk/debug/app-debug.apk");
+  if (fs10.existsSync(apkPath)) {
     res.download(apkPath, "SwitchNest.apk");
   } else {
     res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "APK not built yet." } });
@@ -9920,8 +9951,8 @@ init_notification_service();
 init_socket();
 
 // src/lib/attachmentStore.ts
-import * as fs10 from "fs";
-import * as path11 from "path";
+import * as fs11 from "fs";
+import * as path12 from "path";
 function extFor(type, name) {
   const fromName = name.split(".").pop()?.toLowerCase();
   if (fromName && /^[a-z0-9]{1,8}$/.test(fromName)) return fromName;
@@ -9938,25 +9969,25 @@ function saveAttachment(base64, type, name) {
   const buf = Buffer.from(base64, "base64");
   if (buf.length === 0) throw new Error("Empty file");
   const filename = `a_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}.${extFor(type, name)}`;
-  fs10.mkdirSync(attachmentDir, { recursive: true });
-  fs10.writeFileSync(path11.join(attachmentDir, filename), buf);
+  fs11.mkdirSync(attachmentDir, { recursive: true });
+  fs11.writeFileSync(path12.join(attachmentDir, filename), buf);
   return filename;
 }
 function readAttachmentFile(filename) {
-  const safe = path11.basename(filename);
+  const safe = path12.basename(filename);
   if (safe !== filename) return null;
   try {
-    return fs10.readFileSync(path11.join(attachmentDir, safe));
+    return fs11.readFileSync(path12.join(attachmentDir, safe));
   } catch {
     return null;
   }
 }
 function deleteAttachmentFile(filename) {
   if (!filename) return;
-  const safe = path11.basename(filename);
+  const safe = path12.basename(filename);
   if (safe !== filename) return;
   try {
-    fs10.unlinkSync(path11.join(attachmentDir, safe));
+    fs11.unlinkSync(path12.join(attachmentDir, safe));
   } catch {
   }
 }
@@ -9965,20 +9996,20 @@ function deleteAttachmentFile(filename) {
 init_email_service();
 init_env();
 import multer4 from "multer";
-import path12 from "path";
-import fs11 from "fs";
+import path13 from "path";
+import fs12 from "fs";
 var supportRouter = Router16();
 try {
-  if (!fs11.existsSync(attachmentDir)) {
-    fs11.mkdirSync(attachmentDir, { recursive: true });
+  if (!fs12.existsSync(attachmentDir)) {
+    fs12.mkdirSync(attachmentDir, { recursive: true });
   }
 } catch (e) {
 }
 var storage3 = multer4.diskStorage({
   destination: (_req, _file, cb) => cb(null, attachmentDir),
   filename: (req, file, cb) => {
-    const ext = path12.extname(file.originalname) || "";
-    const safeName = path12.basename(file.originalname, ext).replace(/[^a-zA-Z0-9_-]/g, "");
+    const ext = path13.extname(file.originalname) || "";
+    const safeName = path13.basename(file.originalname, ext).replace(/[^a-zA-Z0-9_-]/g, "");
     cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}-${safeName}${ext}`);
   }
 });
@@ -11204,8 +11235,8 @@ init_env();
 init_prisma();
 import { Router as Router22 } from "express";
 import mysql from "mysql2/promise";
-import fs12 from "node:fs";
-import path13 from "node:path";
+import fs13 from "node:fs";
+import path14 from "node:path";
 import bcrypt3 from "bcryptjs";
 init_logger();
 
@@ -11478,7 +11509,7 @@ async function checkOfflineDevicesInner() {
 }
 
 // src/routes/install.routes.ts
-var SCHEMA_SQL = path13.resolve(process.cwd(), "prisma/schema.sql");
+var SCHEMA_SQL = path14.resolve(process.cwd(), "prisma/schema.sql");
 var installRouter = Router22();
 var DEFAULT_PRODUCTS = [
   { name: "2CH WiFi Relay Module", modelCode: "2CH", relayCount: 2, price: "599", description: "Two-channel WiFi relay board for lights and small appliances. 10A per channel, ESP32 based, works with the SwitchNest app and voice assistant.", features: { channels: 2, wifi: true, ota: true, voice: true } },
@@ -11605,18 +11636,18 @@ async function createDatabase(parts) {
 }
 function getSchemaSql() {
   const candidates = [
-    path13.resolve(process.cwd(), "prisma/schema.sql"),
-    path13.resolve(process.cwd(), "dist/schema.sql"),
-    path13.resolve(process.cwd(), "apps/api/prisma/schema.sql"),
-    path13.resolve(process.cwd(), "site/apps/api/prisma/schema.sql"),
-    path13.resolve(__dirname, "../prisma/schema.sql"),
-    path13.resolve(__dirname, "schema.sql"),
-    path13.resolve(__dirname, "prisma/schema.sql")
+    path14.resolve(process.cwd(), "prisma/schema.sql"),
+    path14.resolve(process.cwd(), "dist/schema.sql"),
+    path14.resolve(process.cwd(), "apps/api/prisma/schema.sql"),
+    path14.resolve(process.cwd(), "site/apps/api/prisma/schema.sql"),
+    path14.resolve(__dirname, "../prisma/schema.sql"),
+    path14.resolve(__dirname, "schema.sql"),
+    path14.resolve(__dirname, "prisma/schema.sql")
   ];
   for (const p of candidates) {
-    if (fs12.existsSync(p)) {
+    if (fs13.existsSync(p)) {
       try {
-        const sql = fs12.readFileSync(p, "utf-8");
+        const sql = fs13.readFileSync(p, "utf-8");
         if (sql && sql.trim().length > 50) return sql;
       } catch {
       }
@@ -12518,18 +12549,18 @@ var DESCRIPTIONS = {
   "GET /api/health": "Health check \u2014 DB schema diag + build version (ops).",
   "GET /api/version": "API version (ops)."
 };
-function securityFor(path16, method) {
-  if (method === "GET" && (path16 === "/api/health" || path16 === "/api/version")) return void 0;
-  if (path16.startsWith("/api/device")) return [{ deviceApiKey: [] }];
-  if (path16.startsWith("/api/install") || path16.startsWith("/api/public")) return void 0;
-  if (path16.startsWith("/api/docs")) return void 0;
-  if (path16.startsWith("/api/auth")) {
-    if (method === "GET" || path16.includes("/me") || path16 === "/api/auth/theme") {
+function securityFor(path17, method) {
+  if (method === "GET" && (path17 === "/api/health" || path17 === "/api/version")) return void 0;
+  if (path17.startsWith("/api/device")) return [{ deviceApiKey: [] }];
+  if (path17.startsWith("/api/install") || path17.startsWith("/api/public")) return void 0;
+  if (path17.startsWith("/api/docs")) return void 0;
+  if (path17.startsWith("/api/auth")) {
+    if (method === "GET" || path17.includes("/me") || path17 === "/api/auth/theme") {
       return [{ bearerAuth: [] }];
     }
     return void 0;
   }
-  if (path16.startsWith("/api/shop/products")) return void 0;
+  if (path17.startsWith("/api/shop/products")) return void 0;
   return [{ bearerAuth: [] }];
 }
 var BODIES = {
@@ -12970,8 +13001,8 @@ var SCHEMAS = {
     }
   }
 };
-function tagFor(path16) {
-  const seg = path16.replace(/^\/api\//, "").split("/")[0] ?? "system";
+function tagFor(path17) {
+  const seg = path17.replace(/^\/api\//, "").split("/")[0] ?? "system";
   const map = {
     auth: "Auth",
     device: "Device API (ESP32)",
@@ -12992,11 +13023,11 @@ function tagFor(path16) {
   };
   return map[seg] ?? "Homes";
 }
-function paramsFor(path16) {
+function paramsFor(path17) {
   const out = [];
   const re = /:([A-Za-z0-9_]+)/g;
   let m;
-  while ((m = re.exec(path16)) !== null) {
+  while ((m = re.exec(path17)) !== null) {
     out.push({
       name: m[1],
       in: "path",
@@ -13861,11 +13892,11 @@ docsRouter.get("/plain", (_req, res) => {
   const spec = getOpenApiSpec();
   const paths = spec.paths;
   const byTag = /* @__PURE__ */ new Map();
-  for (const [path16, ops] of Object.entries(paths)) {
+  for (const [path17, ops] of Object.entries(paths)) {
     for (const [method, op] of Object.entries(ops)) {
       const tag = op.tags?.[0] ?? "Other";
       if (!byTag.has(tag)) byTag.set(tag, []);
-      byTag.get(tag).push({ method: method.toUpperCase(), path: path16, summary: op.summary ?? "" });
+      byTag.get(tag).push({ method: method.toUpperCase(), path: path17, summary: op.summary ?? "" });
     }
   }
   const methodColor2 = {
@@ -14013,11 +14044,11 @@ function createApp() {
   app.use("/firmware", express2.static(firmwareDir));
   app.use("/uploads", express2.static(uploadsDir));
   app.use("/mobile-app", express2.static(mobileAppDir));
-  const apiRootHtml = path14.join(process.cwd(), "index.html");
-  const apiAssetsDir = path14.join(process.cwd(), "assets");
-  const webDistHtml = path14.join(webDist, "index.html");
-  const webDistAssets = path14.join(webDist, "assets");
-  if (fs13.existsSync(apiAssetsDir)) {
+  const apiRootHtml = path15.join(process.cwd(), "index.html");
+  const apiAssetsDir = path15.join(process.cwd(), "assets");
+  const webDistHtml = path15.join(webDist, "index.html");
+  const webDistAssets = path15.join(webDist, "assets");
+  if (fs14.existsSync(apiAssetsDir)) {
     app.use(
       "/assets",
       express2.static(apiAssetsDir, {
@@ -14030,7 +14061,7 @@ function createApp() {
       })
     );
   }
-  if (fs13.existsSync(webDistAssets)) {
+  if (fs14.existsSync(webDistAssets)) {
     app.use(
       "/assets",
       express2.static(webDistAssets, {
@@ -14045,14 +14076,14 @@ function createApp() {
   }
   app.use("/assets", (req, res, next) => {
     if (req.path.endsWith(".js")) {
-      const targetDir = fs13.existsSync(apiAssetsDir) ? apiAssetsDir : fs13.existsSync(webDistAssets) ? webDistAssets : null;
+      const targetDir = fs14.existsSync(apiAssetsDir) ? apiAssetsDir : fs14.existsSync(webDistAssets) ? webDistAssets : null;
       if (targetDir) {
         try {
-          const files = fs13.readdirSync(targetDir);
+          const files = fs14.readdirSync(targetDir);
           const latestJs = files.find((f) => f.startsWith("index-") && f.endsWith(".js"));
           if (latestJs) {
             res.setHeader("Content-Type", "application/javascript");
-            return res.sendFile(path14.join(targetDir, latestJs));
+            return res.sendFile(path15.join(targetDir, latestJs));
           }
         } catch {
         }
@@ -14064,16 +14095,16 @@ function createApp() {
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0");
     res.setHeader("Pragma", "no-cache");
     res.setHeader("Expires", "0");
-    if (fs13.existsSync(apiRootHtml)) {
+    if (fs14.existsSync(apiRootHtml)) {
       res.sendFile(apiRootHtml);
-    } else if (fs13.existsSync(webDistHtml)) {
+    } else if (fs14.existsSync(webDistHtml)) {
       res.sendFile(webDistHtml);
     }
   };
-  if (fs13.existsSync(apiRootHtml)) {
+  if (fs14.existsSync(apiRootHtml)) {
     app.use(express2.static(process.cwd()));
   }
-  if (fs13.existsSync(webDistHtml)) {
+  if (fs14.existsSync(webDistHtml)) {
     app.use(express2.static(webDist));
   }
   app.get(["/", "/login", "/signup", "/install", "/activate", "/print-serials", "/print-bill", "/warranty", "/forgot-password", "/reset-password", "/support", "/verify-bill"], sendSpaHtml);
@@ -14243,11 +14274,11 @@ function startKeyExpiryWatcher() {
 init_prisma();
 init_siteSettings_service();
 init_logger();
-import fs14 from "node:fs";
-import path15 from "node:path";
-var UPLOADS_DIR = path15.join(process.cwd(), "uploads");
-var COLD_STORAGE_TELEMETRY = path15.join(UPLOADS_DIR, "cold_storage", "telemetry");
-var COLD_STORAGE_SUPPORT = path15.join(UPLOADS_DIR, "cold_storage", "support");
+import fs15 from "node:fs";
+import path16 from "node:path";
+var UPLOADS_DIR = path16.join(process.cwd(), "uploads");
+var COLD_STORAGE_TELEMETRY = path16.join(UPLOADS_DIR, "cold_storage", "telemetry");
+var COLD_STORAGE_SUPPORT = path16.join(UPLOADS_DIR, "cold_storage", "support");
 var archivalTimer = null;
 var isRunning = false;
 function startArchivalService() {
@@ -14261,8 +14292,8 @@ async function runArchival() {
   isRunning = true;
   try {
     const settings = await getSiteSettings();
-    fs14.mkdirSync(COLD_STORAGE_TELEMETRY, { recursive: true });
-    fs14.mkdirSync(COLD_STORAGE_SUPPORT, { recursive: true });
+    fs15.mkdirSync(COLD_STORAGE_TELEMETRY, { recursive: true });
+    fs15.mkdirSync(COLD_STORAGE_SUPPORT, { recursive: true });
     const now = /* @__PURE__ */ new Date();
     const telemetryThreshold = /* @__PURE__ */ new Date();
     telemetryThreshold.setDate(telemetryThreshold.getDate() - (settings.deviceTelemetryRetentionDays || 180));
@@ -14274,9 +14305,9 @@ async function runArchival() {
         orderBy: { createdAt: "asc" }
       });
       if (oldLogs.length === 0) break;
-      const filePath = path15.join(COLD_STORAGE_TELEMETRY, `telemetry_${now.toISOString().split("T")[0]}.jsonl`);
+      const filePath = path16.join(COLD_STORAGE_TELEMETRY, `telemetry_${now.toISOString().split("T")[0]}.jsonl`);
       const lines = oldLogs.map((l) => JSON.stringify(l)).join("\n") + "\n";
-      fs14.appendFileSync(filePath, lines);
+      fs15.appendFileSync(filePath, lines);
       const ids = oldLogs.map((l) => l.id);
       await prisma.deviceLog.deleteMany({ where: { id: { in: ids } } });
       archivedTelemetryCount += oldLogs.length;
@@ -14294,9 +14325,9 @@ async function runArchival() {
         orderBy: { createdAt: "asc" }
       });
       if (oldMessages.length === 0) break;
-      const filePath = path15.join(COLD_STORAGE_SUPPORT, `chat_${now.toISOString().split("T")[0]}.jsonl`);
+      const filePath = path16.join(COLD_STORAGE_SUPPORT, `chat_${now.toISOString().split("T")[0]}.jsonl`);
       const lines = oldMessages.map((m) => JSON.stringify(m)).join("\n") + "\n";
-      fs14.appendFileSync(filePath, lines);
+      fs15.appendFileSync(filePath, lines);
       const ids = oldMessages.map((m) => m.id);
       await prisma.supportMessage.deleteMany({ where: { id: { in: ids } } });
       archivedChatCount += oldMessages.length;
