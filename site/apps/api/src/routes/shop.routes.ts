@@ -25,12 +25,20 @@ const upload = multer({ storage, limits: { fileSize: 50 * 1024 * 1024 } }); // 5
 // ---------- Public: products ----------
 
 shopRouter.get("/products", async (_req, res) => {
-  const products = await prisma.product.findMany({
-    where: { active: true },
-    include: { media: true },
-    orderBy: { id: "asc" },
-  });
-  ok(res, products);
+  try {
+    const products = await prisma.product.findMany({
+      where: { active: true },
+      include: { media: true },
+      orderBy: { id: "asc" },
+    });
+    ok(res, products);
+  } catch (err) {
+    const products = await prisma.product.findMany({
+      where: { active: true },
+      orderBy: { id: "asc" },
+    });
+    ok(res, products.map(p => ({ ...p, media: [] })));
+  }
 });
 
 
