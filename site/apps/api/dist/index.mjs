@@ -13398,7 +13398,7 @@ function createApp() {
   });
   app.use(["/api/install", "/install"], installRouter);
   app.use(["/api/docs", "/docs"], docsRouter);
-  app.use(["/api", "/api/*"], (req, res, next) => {
+  app.use("/api", (req, res, next) => {
     if (isDbReady()) return next();
     res.status(503).json({
       success: false,

@@ -122,7 +122,7 @@ export function createApp() {
   app.use(["/api/docs", "/docs"], docsRouter);
 
   // Setup mode (DB install pending) — baaki saare routes 503.
-  app.use(["/api", "/api/*"], (req, res, next) => {
+  app.use("/api", (req, res, next) => {
     if (isDbReady()) return next();
     res.status(503).json({
       success: false,
