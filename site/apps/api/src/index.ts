@@ -371,7 +371,36 @@ const boot = (...args: unknown[]) => {
   fileLog(line);
 };
 
+function patchWebConfig() {
+  try {
+    const webConfigPath = path.resolve(process.cwd(), "web.config");
+    if (!fs.existsSync(webConfigPath)) {
+      const cleanConfig = `<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <system.webServer>
+    <rewrite>
+      <rules>
+        <rule name="DynamicContent">
+          <conditions>
+            <add input="{REQUEST_FILENAME}" matchType="IsFile" negate="True" />
+          </conditions>
+          <action type="Rewrite" url="dist/index.cjs" />
+        </rule>
+      </rules>
+    </rewrite>
+    <httpErrors existingResponse="PassThrough" />
+  </system.webServer>
+</configuration>
+`;
+      fs.writeFileSync(webConfigPath, cleanConfig, "utf-8");
+    }
+  } catch (_err) {
+    /* ignore */
+  }
+}
+
 async function main() {
+  patchWebConfig();
   // Plesk/IISNode ko readiness signal turant chahiye — server pehle listen
   // karta hai, DB init background me hota hai. app.ts ka isDbReady() gate
   // setup mode (503) + install wizard ko handle karta hai.
