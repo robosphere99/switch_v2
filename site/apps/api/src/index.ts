@@ -373,6 +373,8 @@ async function runLightMigrations(): Promise<void> {
     await addCol("notifications", "category", "VARCHAR(20) NOT NULL DEFAULT 'system'");
     await addCol("notifications", "cta_url", "VARCHAR(255) NULL");
     await addCol("notifications", "cta_label", "VARCHAR(50) NULL");
+    await addCol("home_members", "restricted", "BOOLEAN NOT NULL DEFAULT FALSE");
+    await addCol("home_members", "daily_limit_minutes", "INT NULL");
     await migration("fix pending orders with paymentRef", async () => {
       const updatedCount = await prisma.$executeRawUnsafe(`
         UPDATE orders
