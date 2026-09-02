@@ -1973,6 +1973,8 @@ async function issueTokens(user, deviceInfo, ipAddress, revokeOtherSessions3) {
   const accessToken = signAccessToken(user, sessionId);
   return {
     user: toAuthUser(user),
+    accessToken,
+    refreshToken,
     tokens: {
       accessToken,
       refreshToken

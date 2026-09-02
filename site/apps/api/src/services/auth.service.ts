@@ -355,6 +355,8 @@ async function issueTokens(user: User, deviceInfo?: string, ipAddress?: string, 
 
   return {
     user: toAuthUser(user),
+    accessToken,
+    refreshToken,
     tokens: {
       accessToken,
       refreshToken,
