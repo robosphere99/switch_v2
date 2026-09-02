@@ -9,7 +9,13 @@
     "resolveJsonModule": true,
     "noEmit": true,
     "types": ["node"],
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "baseUrl": ".",
+    "paths": {
+      "@robosphere/shared": ["../../packages/shared/src/index.ts"]
+    }
   },
-  "include": ["src", "prisma"]
+  "include": ["src", "prisma"],
+  "exclude": ["node_modules", "**/*.test.ts", "src/tests", "src/**/*.test.ts"]
 }
+

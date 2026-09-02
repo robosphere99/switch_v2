@@ -216,7 +216,7 @@ describe.skipIf(!reachable)("api integration (real MySQL)", () => {
     expect(r.status).toBe(200);
     expect(r.body!.data).toEqual({ sent: true });
 
-    const logged = logSpy.mock.calls.map((c) => c.join(" ")).join("\n");
+    const logged = logSpy.mock.calls.map((c: unknown[]) => c.join(" ")).join("\n");
     const token = logged.match(/[?&]token=([^&\s]+)/)?.[1];
     expect(token).toBeTruthy();
     logSpy.mockRestore();
