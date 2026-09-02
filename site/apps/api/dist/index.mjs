@@ -13476,6 +13476,23 @@ function createApp() {
       })
     );
   }
+  app.use("/assets", (req, res, next) => {
+    if (req.path.endsWith(".js")) {
+      const targetDir = fs12.existsSync(apiAssetsDir) ? apiAssetsDir : fs12.existsSync(webDistAssets) ? webDistAssets : null;
+      if (targetDir) {
+        try {
+          const files = fs12.readdirSync(targetDir);
+          const latestJs = files.find((f) => f.startsWith("index-") && f.endsWith(".js"));
+          if (latestJs) {
+            res.setHeader("Content-Type", "application/javascript");
+            return res.sendFile(path13.join(targetDir, latestJs));
+          }
+        } catch {
+        }
+      }
+    }
+    next();
+  });
   const sendSpaHtml = (_req, res) => {
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0");
     res.setHeader("Pragma", "no-cache");
