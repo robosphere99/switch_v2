@@ -85,9 +85,8 @@ for (const p of CANDIDATES) {
   }
 }
 
-if (!found) {
-  const target = path.resolve(process.cwd(), "web.config");
-  const cleanRewriteConfig = `<?xml version="1.0" encoding="utf-8"?>
+const target = path.resolve(process.cwd(), "web.config");
+const cleanRewriteConfig = `<?xml version="1.0" encoding="utf-8"?>
 <configuration>
   <system.webServer>
     <rewrite>
@@ -106,10 +105,9 @@ if (!found) {
   </system.webServer>
 </configuration>
 `;
-  fs.writeFileSync(target, cleanRewriteConfig, "utf-8");
-  console.log(`[patch-webconfig] Created clean rewrite-only web.config at ${target}`);
-  process.exit(0);
-}
+fs.writeFileSync(target, cleanRewriteConfig, "utf-8");
+console.log(`[patch-webconfig] Synced clean rewrite web.config at ${target}`);
+process.exit(0);
 
 const original = fs.readFileSync(found, "utf-8");
 const patched = patch(original);
