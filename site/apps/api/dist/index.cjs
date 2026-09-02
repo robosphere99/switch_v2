@@ -14889,10 +14889,7 @@ async function selfHealPrismaClient() {
     create: { key: HEAL_LAST_KEY, value: (/* @__PURE__ */ new Date()).toISOString() },
     update: { value: (/* @__PURE__ */ new Date()).toISOString() }
   }).catch(() => void 0);
-  const healUptime = Math.round(process.uptime());
-  const healDelayMs = healUptime < 120 ? (120 - healUptime) * 1e3 : 5e3;
-  fileLog(`[boot] prisma generate OK \u2014 ${Math.round(healDelayMs / 1e3)}s baad safe reboot (fresh client load)`);
-  setTimeout(() => process.exit(0), healDelayMs);
+  fileLog("[boot] prisma generate OK \u2014 client updated");
 }
 async function initDatabase() {
   boot("db probe: connecting...");
