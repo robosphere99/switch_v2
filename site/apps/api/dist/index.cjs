@@ -37,19 +37,20 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 // src/config/env.ts
 function buildDatabaseUrl() {
   if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim()) return process.env.DATABASE_URL;
-  const host = process.env.DB_HOST || "127.0.0.1";
-  const port = process.env.DB_PORT || "3306";
-  const user = process.env.DB_USER || "root";
-  const pass = process.env.DB_PASS || "";
-  const name = process.env.DB_NAME || "switchnest";
+  const host = process.env.DB_HOST ?? "127.0.0.1";
+  const port = process.env.DB_PORT ?? "3306";
+  const user = process.env.DB_USER ?? "root";
+  const pass = process.env.DB_PASS ?? "";
+  const name = process.env.DB_NAME ?? "switchnest";
   return `mysql://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}:${port}/${name}?connection_limit=10`;
 }
-var import_dotenv, import_node_path, import_zod, envPaths, envSchema, parsed, env, corsOrigins;
+var import_dotenv, import_node_path, import_node_fs, import_zod, envPaths, envSchema, parsed, env, corsOrigins;
 var init_env = __esm({
   "src/config/env.ts"() {
     "use strict";
     import_dotenv = __toESM(require("dotenv"), 1);
     import_node_path = __toESM(require("node:path"), 1);
+    import_node_fs = __toESM(require("node:fs"), 1);
     import_zod = require("zod");
     envPaths = [
       import_node_path.default.resolve(process.cwd(), ".env"),
@@ -58,7 +59,7 @@ var init_env = __esm({
     ];
     for (const p of envPaths) {
       try {
-        if (fs.existsSync(p)) import_dotenv.default.config({ path: p, override: true });
+        if (import_node_fs.default.existsSync(p)) import_dotenv.default.config({ path: p, override: true });
       } catch {
       }
     }
@@ -131,27 +132,27 @@ function log(level, msg, meta) {
     else console.log(line);
   }
 }
-var fs2, path3, os, logFilePath, ORDER, logger;
+var fs2, path2, os, logFilePath, ORDER, logger;
 var init_logger = __esm({
   "src/lib/logger.ts"() {
     "use strict";
     init_env();
     fs2 = __toESM(require("fs"), 1);
-    path3 = __toESM(require("path"), 1);
+    path2 = __toESM(require("path"), 1);
     os = __toESM(require("os"), 1);
     logFilePath = (() => {
       const candidates = [
-        path3.resolve(process.cwd(), "../logs"),
+        path2.resolve(process.cwd(), "../logs"),
         // site/apps/logs — iisnode yahi likhta hai (writable)
-        path3.resolve(process.cwd(), "logs"),
+        path2.resolve(process.cwd(), "logs"),
         // site/apps/api/logs
-        path3.join(os.tmpdir(), "switchnest-logs")
+        path2.join(os.tmpdir(), "switchnest-logs")
       ];
       for (const dir of candidates) {
         try {
           fs2.mkdirSync(dir, { recursive: true });
           fs2.accessSync(dir, fs2.constants.W_OK);
-          return path3.join(dir, "app.log");
+          return path2.join(dir, "app.log");
         } catch {
           continue;
         }
@@ -179,11 +180,11 @@ __export(prisma_exports, {
 function getEffectiveDbUrl() {
   const envUrl = process.env.DATABASE_URL?.trim();
   if (envUrl) return envUrl;
-  const host = process.env.DB_HOST || "127.0.0.1";
-  const port = process.env.DB_PORT || "3306";
-  const user = process.env.DB_USER || "switch_v2";
-  const pass = process.env.DB_PASS || "switchnest@1234567890";
-  const name = process.env.DB_NAME || "switch_v2";
+  const host = process.env.DB_HOST ?? "127.0.0.1";
+  const port = process.env.DB_PORT ?? "3306";
+  const user = process.env.DB_USER ?? "root";
+  const pass = process.env.DB_PASS ?? "";
+  const name = process.env.DB_NAME ?? "switchnest";
   return `mysql://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}:${port}/${name}`;
 }
 function withConnLimit(url, limit = 10) {
@@ -210,14 +211,14 @@ async function resetPrismaClient(databaseUrl) {
   if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = next;
   return next;
 }
-var import_client, import_dotenv2, import_node_path2, import_node_fs, candidatePaths, globalForPrisma, prisma;
+var import_client, import_dotenv2, import_node_path2, import_node_fs2, candidatePaths, globalForPrisma, prisma;
 var init_prisma = __esm({
   "src/lib/prisma.ts"() {
     "use strict";
     import_client = require("@prisma/client");
     import_dotenv2 = __toESM(require("dotenv"), 1);
     import_node_path2 = __toESM(require("node:path"), 1);
-    import_node_fs = __toESM(require("node:fs"), 1);
+    import_node_fs2 = __toESM(require("node:fs"), 1);
     candidatePaths = [
       import_node_path2.default.resolve(process.cwd(), ".env"),
       import_node_path2.default.resolve(process.cwd(), "../.env"),
@@ -225,7 +226,7 @@ var init_prisma = __esm({
     ];
     for (const p of candidatePaths) {
       try {
-        if (import_node_fs.default.existsSync(p)) {
+        if (import_node_fs2.default.existsSync(p)) {
           import_dotenv2.default.config({ path: p, override: true });
         }
       } catch {
@@ -1613,7 +1614,7 @@ var import_express24 = __toESM(require("express"), 1);
 var import_cors = __toESM(require("cors"), 1);
 var import_helmet = __toESM(require("helmet"), 1);
 var import_node_path6 = __toESM(require("node:path"), 1);
-var import_node_fs5 = __toESM(require("node:fs"), 1);
+var import_node_fs6 = __toESM(require("node:fs"), 1);
 init_env();
 
 // src/middleware/errorHandler.ts
@@ -1655,24 +1656,24 @@ var errorHandler = (err, _req, res, _next) => {
 
 // src/lib/paths.ts
 var fs3 = __toESM(require("fs"), 1);
-var path4 = __toESM(require("path"), 1);
+var path3 = __toESM(require("path"), 1);
 function findRepoRoot(start) {
-  let dir = path4.resolve(start);
+  let dir = path3.resolve(start);
   for (let i = 0; i < 8; i++) {
-    if (fs3.existsSync(path4.join(dir, "hardware"))) return dir;
-    const parent = path4.dirname(dir);
+    if (fs3.existsSync(path3.join(dir, "hardware"))) return dir;
+    const parent = path3.dirname(dir);
     if (parent === dir) break;
     dir = parent;
   }
   return null;
 }
 var repoRoot = findRepoRoot(process.cwd());
-var firmwareDir = repoRoot ? path4.join(repoRoot, "hardware", "firmware") : path4.resolve(process.cwd(), "../../../hardware/firmware");
-var mobileAppDir = repoRoot ? path4.join(repoRoot, "mobile-app") : path4.resolve(process.cwd(), "../../../mobile-app");
-var attachmentDir = repoRoot ? path4.join(repoRoot, "hardware", "attachments") : path4.resolve(process.cwd(), "../../../hardware/attachments");
-var webDist = repoRoot ? path4.join(repoRoot, "site", "apps", "web", "dist") : path4.resolve(process.cwd(), "../../apps/web/dist");
-var swaggerUiDir = repoRoot ? path4.join(repoRoot, "site", "apps", "api", "public", "swagger-ui") : path4.resolve(process.cwd(), "public/swagger-ui");
-var uploadsDir = repoRoot ? path4.join(repoRoot, "site", "apps", "api", "uploads") : path4.resolve(process.cwd(), "uploads");
+var firmwareDir = repoRoot ? path3.join(repoRoot, "hardware", "firmware") : path3.resolve(process.cwd(), "../../../hardware/firmware");
+var mobileAppDir = repoRoot ? path3.join(repoRoot, "mobile-app") : path3.resolve(process.cwd(), "../../../mobile-app");
+var attachmentDir = repoRoot ? path3.join(repoRoot, "hardware", "attachments") : path3.resolve(process.cwd(), "../../../hardware/attachments");
+var webDist = repoRoot ? path3.join(repoRoot, "site", "apps", "web", "dist") : path3.resolve(process.cwd(), "../../apps/web/dist");
+var swaggerUiDir = repoRoot ? path3.join(repoRoot, "site", "apps", "api", "public", "swagger-ui") : path3.resolve(process.cwd(), "public/swagger-ui");
+var uploadsDir = repoRoot ? path3.join(repoRoot, "site", "apps", "api", "uploads") : path3.resolve(process.cwd(), "uploads");
 
 // src/routes/index.ts
 var import_express21 = require("express");
@@ -1694,16 +1695,16 @@ init_logger();
 
 // src/lib/envPersist.ts
 var fs5 = __toESM(require("fs"), 1);
-var path6 = __toESM(require("path"), 1);
+var path5 = __toESM(require("path"), 1);
 init_logger();
 function escapeEnv(v) {
   return /[\s#"']/.test(v) ? `"${v.replace(/"/g, '\\"')}"` : v;
 }
 function persistEnvKeys(entries) {
   const targets = [
-    path6.resolve(process.cwd(), ".env"),
-    path6.resolve(process.cwd(), "../.env"),
-    path6.resolve(process.cwd(), "../../.env")
+    path5.resolve(process.cwd(), ".env"),
+    path5.resolve(process.cwd(), "../.env"),
+    path5.resolve(process.cwd(), "../../.env")
   ];
   let mainPath = targets[0];
   let written = false;
@@ -1889,7 +1890,7 @@ async function login(usernameEmail, password, deviceInfo, ipAddress, revokeOther
   } catch (_pErr) {
     try {
       const mysql2 = (await import("mysql2/promise")).default;
-      const dbUrl = process.env.DATABASE_URL || env.DATABASE_URL || "mysql://switch_v2:switchnest%401234567890@127.0.0.1:3306/switch_v2";
+      const dbUrl = getEffectiveDbUrl();
       const u = new URL(dbUrl);
       const conn = await mysql2.createConnection({
         host: u.hostname === "localhost" ? "127.0.0.1" : u.hostname,
@@ -1976,7 +1977,7 @@ async function issueTokens(user, deviceInfo, ipAddress, revokeOtherSessions3) {
   } catch (_rErr) {
     try {
       const mysql2 = (await import("mysql2/promise")).default;
-      const dbUrl = process.env.DATABASE_URL || env.DATABASE_URL || "mysql://switch_v2:switchnest%401234567890@127.0.0.1:3306/switch_v2";
+      const dbUrl = getEffectiveDbUrl();
       const u = new URL(dbUrl);
       const conn = await mysql2.createConnection({
         host: u.hostname === "localhost" ? "127.0.0.1" : u.hostname,
@@ -2442,11 +2443,11 @@ function validateParams(schema) {
 // src/routes/auth.routes.ts
 var import_multer = __toESM(require("multer"), 1);
 var import_node_path3 = __toESM(require("node:path"), 1);
-var import_node_fs2 = __toESM(require("node:fs"), 1);
+var import_node_fs3 = __toESM(require("node:fs"), 1);
 init_prisma();
 var avatarsDir = import_node_path3.default.join(uploadsDir, "avatars");
 try {
-  import_node_fs2.default.mkdirSync(avatarsDir, { recursive: true });
+  import_node_fs3.default.mkdirSync(avatarsDir, { recursive: true });
 } catch (e) {
 }
 var storage = import_multer.default.diskStorage({
@@ -2460,13 +2461,13 @@ var storage = import_multer.default.diskStorage({
       const username = u.username;
       const canonicalName = `${username}${ext}`;
       try {
-        const existing = import_node_fs2.default.readdirSync(avatarsDir).filter(
-          (f) => f.startsWith(`${username}.`) && !import_node_fs2.default.statSync(import_node_path3.default.join(avatarsDir, f)).isDirectory()
+        const existing = import_node_fs3.default.readdirSync(avatarsDir).filter(
+          (f) => f.startsWith(`${username}.`) && !import_node_fs3.default.statSync(import_node_path3.default.join(avatarsDir, f)).isDirectory()
         );
         if (existing.length > 0) {
           const archiveDir = import_node_path3.default.join(avatarsDir, username);
-          import_node_fs2.default.mkdirSync(archiveDir, { recursive: true });
-          const archived = import_node_fs2.default.readdirSync(archiveDir);
+          import_node_fs3.default.mkdirSync(archiveDir, { recursive: true });
+          const archived = import_node_fs3.default.readdirSync(archiveDir);
           let maxNum = 0;
           for (const a of archived) {
             const match = a.match(new RegExp(`^${username}_(\\d+)`));
@@ -2475,7 +2476,7 @@ var storage = import_multer.default.diskStorage({
           for (const oldFile of existing) {
             maxNum++;
             const oldExt = import_node_path3.default.extname(oldFile);
-            import_node_fs2.default.renameSync(
+            import_node_fs3.default.renameSync(
               import_node_path3.default.join(avatarsDir, oldFile),
               import_node_path3.default.join(archiveDir, `${username}_${maxNum}${oldExt}`)
             );
@@ -5738,13 +5739,13 @@ var import_express11 = require("express");
 var import_zod13 = require("zod");
 var import_multer2 = __toESM(require("multer"), 1);
 var import_node_path4 = __toESM(require("node:path"), 1);
-var import_node_fs3 = __toESM(require("node:fs"), 1);
+var import_node_fs4 = __toESM(require("node:fs"), 1);
 var import_node_child_process = require("node:child_process");
 init_prisma();
 
 // src/lib/healthMonitor.ts
 var fs7 = __toESM(require("fs"), 1);
-var path8 = __toESM(require("path"), 1);
+var path7 = __toESM(require("path"), 1);
 init_logger();
 
 // src/lib/dbState.ts
@@ -5770,7 +5771,7 @@ var checking = false;
 var activeIncident = null;
 function hcFile() {
   if (!logFilePath) return null;
-  return path8.join(path8.dirname(logFilePath), "health-check.jsonl");
+  return path7.join(path7.dirname(logFilePath), "health-check.jsonl");
 }
 function append(ev) {
   const f = hcFile();
@@ -5929,7 +5930,7 @@ function getHealthMonitorState() {
 
 // src/lib/leakMonitor.ts
 var fs8 = __toESM(require("fs"), 1);
-var path9 = __toESM(require("path"), 1);
+var path8 = __toESM(require("path"), 1);
 init_logger();
 var CHECK_INTERVAL_MS2 = 6e4;
 var LEAK_WINDOW_MS = 4 * 36e5;
@@ -5943,7 +5944,7 @@ var activeLeak = null;
 var incidents = [];
 function incidentFile() {
   if (!logFilePath) return null;
-  return path9.join(path9.dirname(logFilePath), "leak-incidents.jsonl");
+  return path8.join(path8.dirname(logFilePath), "leak-incidents.jsonl");
 }
 function append2(ev) {
   const f = incidentFile();
@@ -7587,8 +7588,8 @@ adminRouter.get("/deploy-info", async (_req, res) => {
   let marker = null;
   const markerPath = import_node_path4.default.resolve(process.cwd(), "../logs/deploy.json");
   try {
-    if (import_node_fs3.default.existsSync(markerPath)) {
-      marker = JSON.parse(import_node_fs3.default.readFileSync(markerPath, "utf8"));
+    if (import_node_fs4.default.existsSync(markerPath)) {
+      marker = JSON.parse(import_node_fs4.default.readFileSync(markerPath, "utf8"));
     }
   } catch {
   }
@@ -7602,8 +7603,8 @@ adminRouter.get("/deploy-info", async (_req, res) => {
   let build = null;
   try {
     const bp = import_node_path4.default.resolve(process.cwd(), "dist/build-commit.json");
-    if (import_node_fs3.default.existsSync(bp)) {
-      const bj = JSON.parse(import_node_fs3.default.readFileSync(bp, "utf8"));
+    if (import_node_fs4.default.existsSync(bp)) {
+      const bj = JSON.parse(import_node_fs4.default.readFileSync(bp, "utf8"));
       if (bj?.commit) build = { commit: bj.commit, builtAt: bj.builtAt || "" };
     }
   } catch {
@@ -7684,19 +7685,19 @@ adminRouter.get("/diagnostics", async (_req, res) => {
     appPool: null,
     wpEvents: null
   };
-  if (logFilePath && import_node_fs3.default.existsSync(logFilePath)) {
+  if (logFilePath && import_node_fs4.default.existsSync(logFilePath)) {
     try {
-      const st = import_node_fs3.default.statSync(logFilePath);
+      const st = import_node_fs4.default.statSync(logFilePath);
       result.logBytes = st.size;
       let raw = "";
       if (st.size > TAIL_MAX2) {
-        const fd = import_node_fs3.default.openSync(logFilePath, "r");
+        const fd = import_node_fs4.default.openSync(logFilePath, "r");
         const buf = Buffer.alloc(TAIL_MAX2);
-        import_node_fs3.default.readSync(fd, buf, 0, TAIL_MAX2, st.size - TAIL_MAX2);
-        import_node_fs3.default.closeSync(fd);
+        import_node_fs4.default.readSync(fd, buf, 0, TAIL_MAX2, st.size - TAIL_MAX2);
+        import_node_fs4.default.closeSync(fd);
         raw = buf.toString("utf8");
       } else {
-        raw = import_node_fs3.default.readFileSync(logFilePath, "utf8");
+        raw = import_node_fs4.default.readFileSync(logFilePath, "utf8");
       }
       const lines = raw.split(/\r?\n/).filter(Boolean);
       const pushCap = (arr, l, cap) => {
@@ -7777,9 +7778,9 @@ adminRouter.get("/diagnostics", async (_req, res) => {
     import_node_path4.default.resolve(process.cwd(), "../web.config"),
     import_node_path4.default.resolve(process.cwd(), "../../web.config")
   ]) {
-    if (!import_node_fs3.default.existsSync(cand)) continue;
+    if (!import_node_fs4.default.existsSync(cand)) continue;
     try {
-      const content = import_node_fs3.default.readFileSync(cand, "utf8");
+      const content = import_node_fs4.default.readFileSync(cand, "utf8");
       const grab = (re) => {
         const m = re.exec(content);
         return m ? m[0].slice(0, 500) : null;
@@ -7848,8 +7849,8 @@ adminRouter.get("/diagnostics", async (_req, res) => {
 adminRouter.get("/logs", async (_req, res) => {
   const n = Math.min(Number(_req.query.lines ?? 300) || 300, 1e3);
   const result = { path: logFilePath ?? null, totalLines: 0, lines: [], crashes: [], iisnodeLogs: [] };
-  if (logFilePath && import_node_fs3.default.existsSync(logFilePath)) {
-    const raw = import_node_fs3.default.readFileSync(logFilePath, "utf8");
+  if (logFilePath && import_node_fs4.default.existsSync(logFilePath)) {
+    const raw = import_node_fs4.default.readFileSync(logFilePath, "utf8");
     const lines = raw.split(/\r?\n/).filter(Boolean).slice(-n);
     result.lines = lines;
     result.totalLines = lines.length;
@@ -7871,7 +7872,7 @@ adminRouter.get("/logs", async (_req, res) => {
   for (const dir of dirs) {
     let entries = [];
     try {
-      entries = import_node_fs3.default.readdirSync(dir, { withFileTypes: true });
+      entries = import_node_fs4.default.readdirSync(dir, { withFileTypes: true });
     } catch {
       continue;
     }
@@ -7881,8 +7882,8 @@ adminRouter.get("/logs", async (_req, res) => {
       if (!/^stdout_/i.test(name) && !/^stderr_/i.test(name) && !/\.log$/i.test(name)) continue;
       const full = import_node_path4.default.join(dir, name);
       try {
-        const size = import_node_fs3.default.statSync(full).size;
-        const buf = import_node_fs3.default.readFileSync(full, "utf8");
+        const size = import_node_fs4.default.statSync(full).size;
+        const buf = import_node_fs4.default.readFileSync(full, "utf8");
         const ls = buf.split(/\r?\n/).filter(Boolean).slice(-200);
         result.iisnodeLogs.push({ name, path: full, size, lines: ls });
       } catch {
@@ -7892,7 +7893,7 @@ adminRouter.get("/logs", async (_req, res) => {
   ok(res, result);
 });
 try {
-  import_node_fs3.default.mkdirSync(firmwareDir, { recursive: true });
+  import_node_fs4.default.mkdirSync(firmwareDir, { recursive: true });
 } catch (err) {
   console.warn(`[firmware] cannot create ${firmwareDir}:`, err instanceof Error ? err.message : err);
 }
@@ -8142,9 +8143,9 @@ adminRouter.post("/firmware", upload2.single("firmware"), async (req, res) => {
   if (modelCode && filename !== "firmware.bin") {
     const uploaded = import_node_path4.default.join(firmwareDir, "firmware.bin");
     const target = import_node_path4.default.join(firmwareDir, filename);
-    if (import_node_fs3.default.existsSync(uploaded) && uploaded !== target) {
-      if (import_node_fs3.default.existsSync(target)) import_node_fs3.default.unlinkSync(target);
-      import_node_fs3.default.renameSync(uploaded, target);
+    if (import_node_fs4.default.existsSync(uploaded) && uploaded !== target) {
+      if (import_node_fs4.default.existsSync(target)) import_node_fs4.default.unlinkSync(target);
+      import_node_fs4.default.renameSync(uploaded, target);
     }
   }
   await prisma.$transaction([
@@ -8469,7 +8470,7 @@ var productMediaUpload = (0, import_multer2.default)({
   storage: import_multer2.default.diskStorage({
     destination: (_req, _file, cb) => {
       const dir = import_node_path4.default.join(process.cwd(), "uploads/product-media");
-      import_node_fs3.default.mkdirSync(dir, { recursive: true });
+      import_node_fs4.default.mkdirSync(dir, { recursive: true });
       cb(null, dir);
     },
     filename: (_req, file, cb) => {
@@ -8499,7 +8500,7 @@ adminRouter.delete("/products/media/:mediaId", async (req, res) => {
   if (!media) throw new AppError("NOT_FOUND", "Media not found");
   const filePath = import_node_path4.default.join(process.cwd(), media.url.replace(/^\/+/, ""));
   try {
-    import_node_fs3.default.unlinkSync(filePath);
+    import_node_fs4.default.unlinkSync(filePath);
   } catch {
   }
   await prisma.productMedia.delete({ where: { id: mediaId } });
@@ -9973,7 +9974,7 @@ init_socket();
 
 // src/lib/attachmentStore.ts
 var fs11 = __toESM(require("fs"), 1);
-var path12 = __toESM(require("path"), 1);
+var path11 = __toESM(require("path"), 1);
 function extFor(type, name) {
   const fromName = name.split(".").pop()?.toLowerCase();
   if (fromName && /^[a-z0-9]{1,8}$/.test(fromName)) return fromName;
@@ -9991,24 +9992,24 @@ function saveAttachment(base64, type, name) {
   if (buf.length === 0) throw new Error("Empty file");
   const filename = `a_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}.${extFor(type, name)}`;
   fs11.mkdirSync(attachmentDir, { recursive: true });
-  fs11.writeFileSync(path12.join(attachmentDir, filename), buf);
+  fs11.writeFileSync(path11.join(attachmentDir, filename), buf);
   return filename;
 }
 function readAttachmentFile(filename) {
-  const safe = path12.basename(filename);
+  const safe = path11.basename(filename);
   if (safe !== filename) return null;
   try {
-    return fs11.readFileSync(path12.join(attachmentDir, safe));
+    return fs11.readFileSync(path11.join(attachmentDir, safe));
   } catch {
     return null;
   }
 }
 function deleteAttachmentFile(filename) {
   if (!filename) return;
-  const safe = path12.basename(filename);
+  const safe = path11.basename(filename);
   if (safe !== filename) return;
   try {
-    fs11.unlinkSync(path12.join(attachmentDir, safe));
+    fs11.unlinkSync(path11.join(attachmentDir, safe));
   } catch {
   }
 }
@@ -11254,7 +11255,7 @@ apiRouter.get("/firmware/current", requireAuth, async (_req, res) => {
 // src/routes/install.routes.ts
 var import_express22 = require("express");
 var import_promise = __toESM(require("mysql2/promise"), 1);
-var import_node_fs4 = __toESM(require("node:fs"), 1);
+var import_node_fs5 = __toESM(require("node:fs"), 1);
 var import_node_path5 = __toESM(require("node:path"), 1);
 var import_bcryptjs3 = __toESM(require("bcryptjs"), 1);
 init_env();
@@ -11666,9 +11667,9 @@ function getSchemaSql() {
     import_node_path5.default.resolve(__dirname, "prisma/schema.sql")
   ];
   for (const p of candidates) {
-    if (import_node_fs4.default.existsSync(p)) {
+    if (import_node_fs5.default.existsSync(p)) {
       try {
-        const sql = import_node_fs4.default.readFileSync(p, "utf-8");
+        const sql = import_node_fs5.default.readFileSync(p, "utf-8");
         if (sql && sql.trim().length > 50) return sql;
       } catch {
       }
@@ -11806,26 +11807,9 @@ function dbFromBody(bodyDb) {
 }
 installRouter.get("/status", async (_req, res) => {
   try {
-    const dbUrl = process.env.DATABASE_URL || env.DATABASE_URL || "mysql://switch_v2:switchnest%401234567890@127.0.0.1:3306/switch_v2";
-    let parts = parseDatabaseUrl(dbUrl);
-    let probe = await probeDb(parts);
-    if (!probe.installed) {
-      const pleskParts = {
-        host: "127.0.0.1",
-        port: 3306,
-        user: "switch_v2",
-        pass: "switchnest@1234567890",
-        name: "switch_v2"
-      };
-      const pleskProbe = await probeDb(pleskParts);
-      if (pleskProbe.installed) {
-        probe = pleskProbe;
-        parts = pleskParts;
-        env.DATABASE_URL = buildDatabaseUrl2(pleskParts);
-        process.env.DATABASE_URL = env.DATABASE_URL;
-        setDbReady(true);
-      }
-    }
+    const dbUrl = getEffectiveDbUrl();
+    const parts = parseDatabaseUrl(dbUrl);
+    const probe = await probeDb(parts);
     ok(res, {
       installed: probe.installed,
       dbReachable: probe.reachable,
@@ -11834,8 +11818,8 @@ installRouter.get("/status", async (_req, res) => {
       db: {
         host: parts.host || "127.0.0.1",
         port: parts.port || 3306,
-        user: parts.user || "switch_v2",
-        name: parts.name || "switch_v2"
+        user: parts.user || "root",
+        name: parts.name || "switchnest"
       },
       admin: {
         username: env.ADMIN_USERNAME || "admin",
@@ -11849,7 +11833,7 @@ installRouter.get("/status", async (_req, res) => {
       dbReachable: true,
       tablesReady: true,
       dbConfigured: true,
-      db: { host: "127.0.0.1", port: 3306, user: "switch_v2", name: "switch_v2" },
+      db: { host: "127.0.0.1", port: 3306, user: "root", name: "switchnest" },
       admin: { username: "admin", email: "admin@switchnest.in", passwordSet: true }
     });
   }
@@ -12570,18 +12554,18 @@ var DESCRIPTIONS = {
   "GET /api/health": "Health check \u2014 DB schema diag + build version (ops).",
   "GET /api/version": "API version (ops)."
 };
-function securityFor(path17, method) {
-  if (method === "GET" && (path17 === "/api/health" || path17 === "/api/version")) return void 0;
-  if (path17.startsWith("/api/device")) return [{ deviceApiKey: [] }];
-  if (path17.startsWith("/api/install") || path17.startsWith("/api/public")) return void 0;
-  if (path17.startsWith("/api/docs")) return void 0;
-  if (path17.startsWith("/api/auth")) {
-    if (method === "GET" || path17.includes("/me") || path17 === "/api/auth/theme") {
+function securityFor(path16, method) {
+  if (method === "GET" && (path16 === "/api/health" || path16 === "/api/version")) return void 0;
+  if (path16.startsWith("/api/device")) return [{ deviceApiKey: [] }];
+  if (path16.startsWith("/api/install") || path16.startsWith("/api/public")) return void 0;
+  if (path16.startsWith("/api/docs")) return void 0;
+  if (path16.startsWith("/api/auth")) {
+    if (method === "GET" || path16.includes("/me") || path16 === "/api/auth/theme") {
       return [{ bearerAuth: [] }];
     }
     return void 0;
   }
-  if (path17.startsWith("/api/shop/products")) return void 0;
+  if (path16.startsWith("/api/shop/products")) return void 0;
   return [{ bearerAuth: [] }];
 }
 var BODIES = {
@@ -13022,8 +13006,8 @@ var SCHEMAS = {
     }
   }
 };
-function tagFor(path17) {
-  const seg = path17.replace(/^\/api\//, "").split("/")[0] ?? "system";
+function tagFor(path16) {
+  const seg = path16.replace(/^\/api\//, "").split("/")[0] ?? "system";
   const map = {
     auth: "Auth",
     device: "Device API (ESP32)",
@@ -13044,11 +13028,11 @@ function tagFor(path17) {
   };
   return map[seg] ?? "Homes";
 }
-function paramsFor(path17) {
+function paramsFor(path16) {
   const out = [];
   const re = /:([A-Za-z0-9_]+)/g;
   let m;
-  while ((m = re.exec(path17)) !== null) {
+  while ((m = re.exec(path16)) !== null) {
     out.push({
       name: m[1],
       in: "path",
@@ -13913,11 +13897,11 @@ docsRouter.get("/plain", (_req, res) => {
   const spec = getOpenApiSpec();
   const paths = spec.paths;
   const byTag = /* @__PURE__ */ new Map();
-  for (const [path17, ops] of Object.entries(paths)) {
+  for (const [path16, ops] of Object.entries(paths)) {
     for (const [method, op] of Object.entries(ops)) {
       const tag = op.tags?.[0] ?? "Other";
       if (!byTag.has(tag)) byTag.set(tag, []);
-      byTag.get(tag).push({ method: method.toUpperCase(), path: path17, summary: op.summary ?? "" });
+      byTag.get(tag).push({ method: method.toUpperCase(), path: path16, summary: op.summary ?? "" });
     }
   }
   const methodColor2 = {
@@ -14069,7 +14053,7 @@ function createApp() {
   const apiAssetsDir = import_node_path6.default.join(process.cwd(), "assets");
   const webDistHtml = import_node_path6.default.join(webDist, "index.html");
   const webDistAssets = import_node_path6.default.join(webDist, "assets");
-  if (import_node_fs5.default.existsSync(apiAssetsDir)) {
+  if (import_node_fs6.default.existsSync(apiAssetsDir)) {
     app.use(
       "/assets",
       import_express24.default.static(apiAssetsDir, {
@@ -14082,7 +14066,7 @@ function createApp() {
       })
     );
   }
-  if (import_node_fs5.default.existsSync(webDistAssets)) {
+  if (import_node_fs6.default.existsSync(webDistAssets)) {
     app.use(
       "/assets",
       import_express24.default.static(webDistAssets, {
@@ -14097,10 +14081,10 @@ function createApp() {
   }
   app.use("/assets", (req, res, next) => {
     if (req.path.endsWith(".js")) {
-      const targetDir = import_node_fs5.default.existsSync(apiAssetsDir) ? apiAssetsDir : import_node_fs5.default.existsSync(webDistAssets) ? webDistAssets : null;
+      const targetDir = import_node_fs6.default.existsSync(apiAssetsDir) ? apiAssetsDir : import_node_fs6.default.existsSync(webDistAssets) ? webDistAssets : null;
       if (targetDir) {
         try {
-          const files = import_node_fs5.default.readdirSync(targetDir);
+          const files = import_node_fs6.default.readdirSync(targetDir);
           const latestJs = files.find((f) => f.startsWith("index-") && f.endsWith(".js"));
           if (latestJs) {
             res.setHeader("Content-Type", "application/javascript");
@@ -14116,16 +14100,16 @@ function createApp() {
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0");
     res.setHeader("Pragma", "no-cache");
     res.setHeader("Expires", "0");
-    if (import_node_fs5.default.existsSync(apiRootHtml)) {
+    if (import_node_fs6.default.existsSync(apiRootHtml)) {
       res.sendFile(apiRootHtml);
-    } else if (import_node_fs5.default.existsSync(webDistHtml)) {
+    } else if (import_node_fs6.default.existsSync(webDistHtml)) {
       res.sendFile(webDistHtml);
     }
   };
-  if (import_node_fs5.default.existsSync(apiRootHtml)) {
+  if (import_node_fs6.default.existsSync(apiRootHtml)) {
     app.use(import_express24.default.static(process.cwd()));
   }
-  if (import_node_fs5.default.existsSync(webDistHtml)) {
+  if (import_node_fs6.default.existsSync(webDistHtml)) {
     app.use(import_express24.default.static(webDist));
   }
   app.get(["/", "/login", "/signup", "/install", "/activate", "/print-serials", "/print-bill", "/warranty", "/forgot-password", "/reset-password", "/support", "/verify-bill"], sendSpaHtml);
@@ -14294,7 +14278,7 @@ function startKeyExpiryWatcher() {
 // src/services/archival.service.ts
 init_prisma();
 init_siteSettings_service();
-var import_node_fs6 = __toESM(require("node:fs"), 1);
+var import_node_fs7 = __toESM(require("node:fs"), 1);
 var import_node_path7 = __toESM(require("node:path"), 1);
 init_logger();
 var UPLOADS_DIR = import_node_path7.default.join(process.cwd(), "uploads");
@@ -14313,8 +14297,8 @@ async function runArchival() {
   isRunning = true;
   try {
     const settings = await getSiteSettings();
-    import_node_fs6.default.mkdirSync(COLD_STORAGE_TELEMETRY, { recursive: true });
-    import_node_fs6.default.mkdirSync(COLD_STORAGE_SUPPORT, { recursive: true });
+    import_node_fs7.default.mkdirSync(COLD_STORAGE_TELEMETRY, { recursive: true });
+    import_node_fs7.default.mkdirSync(COLD_STORAGE_SUPPORT, { recursive: true });
     const now = /* @__PURE__ */ new Date();
     const telemetryThreshold = /* @__PURE__ */ new Date();
     telemetryThreshold.setDate(telemetryThreshold.getDate() - (settings.deviceTelemetryRetentionDays || 180));
@@ -14328,7 +14312,7 @@ async function runArchival() {
       if (oldLogs.length === 0) break;
       const filePath = import_node_path7.default.join(COLD_STORAGE_TELEMETRY, `telemetry_${now.toISOString().split("T")[0]}.jsonl`);
       const lines = oldLogs.map((l) => JSON.stringify(l)).join("\n") + "\n";
-      import_node_fs6.default.appendFileSync(filePath, lines);
+      import_node_fs7.default.appendFileSync(filePath, lines);
       const ids = oldLogs.map((l) => l.id);
       await prisma.deviceLog.deleteMany({ where: { id: { in: ids } } });
       archivedTelemetryCount += oldLogs.length;
@@ -14348,7 +14332,7 @@ async function runArchival() {
       if (oldMessages.length === 0) break;
       const filePath = import_node_path7.default.join(COLD_STORAGE_SUPPORT, `chat_${now.toISOString().split("T")[0]}.jsonl`);
       const lines = oldMessages.map((m) => JSON.stringify(m)).join("\n") + "\n";
-      import_node_fs6.default.appendFileSync(filePath, lines);
+      import_node_fs7.default.appendFileSync(filePath, lines);
       const ids = oldMessages.map((m) => m.id);
       await prisma.supportMessage.deleteMany({ where: { id: { in: ids } } });
       archivedChatCount += oldMessages.length;
@@ -14647,7 +14631,7 @@ async function dbHasSchema() {
   }
   try {
     const mysql2 = (await import("mysql2/promise")).default;
-    const dbUrl = process.env.DATABASE_URL || env.DATABASE_URL || "mysql://switch_v2:switchnest%401234567890@127.0.0.1:3306/switch_v2";
+    const dbUrl = getEffectiveDbUrl();
     const u = new URL(dbUrl);
     const conn = await mysql2.createConnection({
       host: u.hostname === "localhost" ? "127.0.0.1" : u.hostname,
@@ -14694,34 +14678,7 @@ var boot = (...args) => {
   process.stderr.write(line + "\n");
   fileLog(line);
 };
-function patchWebConfig() {
-  try {
-    const webConfigPath = path.resolve(process.cwd(), "web.config");
-    const cleanConfig = `<?xml version="1.0" encoding="utf-8"?>
-<configuration>
-  <system.webServer>
-    <rewrite>
-      <rules>
-        <rule name="DynamicContent" stopProcessing="true">
-          <match url=".*" />
-          <conditions logicalGrouping="MatchAll">
-            <add input="{REQUEST_FILENAME}" matchType="IsFile" negate="true" />
-            <add input="{REQUEST_FILENAME}" matchType="IsDirectory" negate="true" />
-          </conditions>
-          <action type="Rewrite" url="dist/index.cjs" />
-        </rule>
-      </rules>
-    </rewrite>
-    <httpErrors existingResponse="PassThrough" />
-  </system.webServer>
-</configuration>
-`;
-    fs.writeFileSync(webConfigPath, cleanConfig, "utf-8");
-  } catch (_err) {
-  }
-}
 async function main() {
-  patchWebConfig();
   boot("node", process.version, "| cwd =", process.cwd());
   boot("PORT env =", JSON.stringify(process.env.PORT ?? "(not set)"), "-> API_PORT =", env.API_PORT);
   boot("log file =", logFilePath ?? "(disabled)");

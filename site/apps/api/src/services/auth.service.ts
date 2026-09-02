@@ -4,7 +4,7 @@ import jwt, { type SignOptions } from "jsonwebtoken";
 import { Prisma, type User } from "@prisma/client";
 import type { AuthUser, LoginResponse } from "@robosphere/shared";
 import { env } from "../config/env";
-import { prisma } from "../lib/prisma";
+import { prisma, getEffectiveDbUrl } from "../lib/prisma";
 import { AppError } from "../lib/response";
 import { logger } from "../lib/logger";
 import { persistEnvKey } from "../lib/envPersist";
@@ -227,7 +227,7 @@ export async function login(usernameEmail: string, password: string, deviceInfo?
     // Prisma query failed — try direct mysql2 lookup as fallback
     try {
       const mysql = (await import("mysql2/promise")).default;
-      const dbUrl = process.env.DATABASE_URL || env.DATABASE_URL || "mysql://switch_v2:switchnest%401234567890@127.0.0.1:3306/switch_v2";
+      const dbUrl = getEffectiveDbUrl();
       const u = new URL(dbUrl);
       const conn = await mysql.createConnection({
         host: u.hostname === "localhost" ? "127.0.0.1" : u.hostname,
@@ -325,7 +325,7 @@ async function issueTokens(user: User, deviceInfo?: string, ipAddress?: string, 
   } catch (_rErr) {
     try {
       const mysql = (await import("mysql2/promise")).default;
-      const dbUrl = process.env.DATABASE_URL || env.DATABASE_URL || "mysql://switch_v2:switchnest%401234567890@127.0.0.1:3306/switch_v2";
+      const dbUrl = getEffectiveDbUrl();
       const u = new URL(dbUrl);
       const conn = await mysql.createConnection({
         host: u.hostname === "localhost" ? "127.0.0.1" : u.hostname,

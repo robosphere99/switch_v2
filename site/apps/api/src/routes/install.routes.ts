@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import bcrypt from "bcryptjs";
 import { env } from "../config/env";
-import { resetPrismaClient } from "../lib/prisma";
+import { resetPrismaClient, getEffectiveDbUrl } from "../lib/prisma";
 import { setDbReady, isDbReady } from "../lib/dbState";
 import { ok } from "../lib/response";
 import { AppError } from "../lib/response";
@@ -367,27 +367,9 @@ function dbFromBody(bodyDb: Partial<DbParts> | undefined): DbParts {
 /** Install ka status — web wizard isse poll karta hai. */
 installRouter.get("/status", async (_req, res) => {
   try {
-    const dbUrl = process.env.DATABASE_URL || env.DATABASE_URL || "mysql://switch_v2:switchnest%401234567890@127.0.0.1:3306/switch_v2";
-    let parts = parseDatabaseUrl(dbUrl);
-    let probe = await probeDb(parts);
-
-    if (!probe.installed) {
-      const pleskParts: DbParts = {
-        host: "127.0.0.1",
-        port: 3306,
-        user: "switch_v2",
-        pass: "switchnest@1234567890",
-        name: "switch_v2",
-      };
-      const pleskProbe = await probeDb(pleskParts);
-      if (pleskProbe.installed) {
-        probe = pleskProbe;
-        parts = pleskParts;
-        env.DATABASE_URL = buildDatabaseUrl(pleskParts);
-        process.env.DATABASE_URL = env.DATABASE_URL;
-        setDbReady(true);
-      }
-    }
+    const dbUrl = getEffectiveDbUrl();
+    const parts = parseDatabaseUrl(dbUrl);
+    const probe = await probeDb(parts);
 
     ok(res, {
       installed: probe.installed,
@@ -397,8 +379,8 @@ installRouter.get("/status", async (_req, res) => {
       db: {
         host: parts.host || "127.0.0.1",
         port: parts.port || 3306,
-        user: parts.user || "switch_v2",
-        name: parts.name || "switch_v2",
+        user: parts.user || "root",
+        name: parts.name || "switchnest",
       },
       admin: {
         username: env.ADMIN_USERNAME || "admin",
@@ -412,7 +394,7 @@ installRouter.get("/status", async (_req, res) => {
       dbReachable: true,
       tablesReady: true,
       dbConfigured: true,
-      db: { host: "127.0.0.1", port: 3306, user: "switch_v2", name: "switch_v2" },
+      db: { host: "127.0.0.1", port: 3306, user: "root", name: "switchnest" },
       admin: { username: "admin", email: "admin@switchnest.in", passwordSet: true },
     });
   }
