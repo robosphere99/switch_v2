@@ -322,9 +322,28 @@ async function dbHasSchema(): Promise<boolean> {
       SELECT COUNT(*) AS c FROM information_schema.tables
       WHERE table_schema = DATABASE() AND table_name = 'users'
     `;
-    return Number(rows[0]?.c ?? 0) > 0;
+    if (Number(rows[0]?.c ?? 0) > 0) return true;
   } catch (err) {
-    logger.warn("Schema probe failed", err instanceof Error ? err.message : String(err));
+    logger.warn("Schema probe via Prisma failed — trying direct mysql probe:", err instanceof Error ? err.message : String(err));
+  }
+  try {
+    const mysql = (await import("mysql2/promise")).default;
+    const dbUrl = process.env.DATABASE_URL || env.DATABASE_URL || "mysql://switch_v2:switchnest%401234567890@127.0.0.1:3306/switch_v2";
+    const u = new URL(dbUrl);
+    const conn = await mysql.createConnection({
+      host: u.hostname === "localhost" ? "127.0.0.1" : u.hostname,
+      port: Number(u.port || 3306),
+      user: decodeURIComponent(u.username),
+      password: decodeURIComponent(u.password),
+      database: decodeURIComponent(u.pathname.replace(/^\//, "")),
+      connectTimeout: 5000,
+    });
+    const [rows] = await conn.query(
+      "SELECT COUNT(*) AS c FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'users'",
+    );
+    await conn.end().catch(() => undefined);
+    return Number((rows as Array<{ c: number }>)[0]?.c ?? 0) > 0;
+  } catch {
     return false;
   }
 }
