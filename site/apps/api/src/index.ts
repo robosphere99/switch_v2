@@ -409,6 +409,8 @@ async function runLightMigrations(): Promise<void> {
       }
     });
 
+    await addCol("product_media", "review_id", "INT NULL");
+
     // 15) product_media table
     await migration("product_media table", async () => {
       const pm = await prisma.$queryRaw<{ c: bigint }[]>`
@@ -420,6 +422,7 @@ async function runLightMigrations(): Promise<void> {
           CREATE TABLE product_media (
             id INT NOT NULL AUTO_INCREMENT,
             product_id INT NOT NULL,
+            review_id INT NULL,
             type VARCHAR(20) NOT NULL DEFAULT 'image',
             url VARCHAR(500) NOT NULL,
             created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
