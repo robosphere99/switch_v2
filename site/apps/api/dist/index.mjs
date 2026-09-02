@@ -14694,6 +14694,26 @@ async function runLightMigrations() {
     await addCol("serial_registry", "console_password", "VARCHAR(64) NULL");
     await addCol("serial_registry", "tested_at", "DATETIME(3) NULL");
     await addCol("home_members", "joined_at", "DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)");
+    await migration("auto-seed default products", async () => {
+      const pc = await prisma.product.count();
+      if (pc === 0) {
+        const DEFAULT_PRODUCTS2 = [
+          { name: "2CH WiFi Relay Module", modelCode: "2CH", relayCount: 2, price: "599", description: "Two-channel WiFi relay board for lights and small appliances. 10A per channel, ESP32 based, works with the SwitchNest app and voice assistant.", features: JSON.stringify({ channels: 2, wifi: true, ota: true, voice: true }), stockCount: 50 },
+          { name: "4CH WiFi Relay Module", modelCode: "4CH", relayCount: 4, price: "799", description: "Four-channel WiFi relay board \u2014 the classic choice for room-wide control. 10A per channel with status LED and manual override switches.", features: JSON.stringify({ channels: 4, wifi: true, ota: true, voice: true }), stockCount: 50 },
+          { name: "5CH WiFi Relay Module", modelCode: "5CH", relayCount: 5, price: "899", description: "Five-channel relay board \u2014 perfect for combining 4 devices plus one spare. ESP32 with OTA updates and two-way sync.", features: JSON.stringify({ channels: 5, wifi: true, ota: true, voice: true }), stockCount: 50 },
+          { name: "6CH WiFi Relay Module", modelCode: "6CH", relayCount: 6, price: "999", description: "Six-channel WiFi relay board for medium-size homes. Control lights, fans and appliances from one compact board.", features: JSON.stringify({ channels: 6, wifi: true, ota: true, voice: true }), stockCount: 50 },
+          { name: "8CH WiFi Relay Module", modelCode: "8CH", relayCount: 8, price: "1199", description: "Eight-channel WiFi relay board \u2014 full-home control. Ideal for new construction wiring with all loads in one panel.", features: JSON.stringify({ channels: 8, wifi: true, ota: true, voice: true }), stockCount: 50 },
+          { name: "4CH IR WiFi Relay Module", modelCode: "4CH-IR", relayCount: 4, price: "999", description: "Four-channel relay board with built-in IR receiver \u2014 control with the app and any IR remote. Works with ACs, TVs and IR appliances.", features: JSON.stringify({ channels: 4, ir: true, wifi: true, ota: true, voice: true }), stockCount: 50 },
+          { name: "Fan Speed Dimmer (WiFi)", modelCode: "FAN-DIM", relayCount: 1, price: "899", description: "WiFi fan regulator with stepped speed control. Replace your old 5-step regulator and control the fan from the app or voice.", features: JSON.stringify({ fanDimmer: true, steps: 5, wifi: true, ota: true, voice: true }), stockCount: 50 },
+          { name: "3-State Touch Dimmer", modelCode: "DIM-3S", relayCount: 1, price: "749", description: "Touch dimmer with 3 brightness steps (off \u2192 50% \u2192 100%). WiFi + touch control, works with existing bulb holders.", features: JSON.stringify({ dimmer: true, steps: 3, touch: true, wifi: true, ota: true }), stockCount: 50 },
+          { name: "4-State Touch Dimmer", modelCode: "DIM-4S", relayCount: 1, price: "799", description: "Touch dimmer with 4 brightness steps (off \u2192 33% \u2192 66% \u2192 100%). WiFi + touch control, app dimming via steps.", features: JSON.stringify({ dimmer: true, steps: 4, touch: true, wifi: true, ota: true }), stockCount: 50 }
+        ];
+        for (const p of DEFAULT_PRODUCTS2) {
+          await prisma.product.create({ data: p });
+        }
+        logger.info("\u2705 Auto-seeded default product catalog (9 products)");
+      }
+    });
     await migration("refresh_tokens table", async () => {
       const rt = await prisma.$queryRaw`
         SELECT COUNT(*) AS c FROM information_schema.tables
