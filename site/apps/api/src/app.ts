@@ -147,17 +147,47 @@ export function createApp() {
   // Production: built web app (Vite dist) ko bhi API hi serve karta hai —
   // Plesk pe ek hi Node.js app se sab chalta hai. sync-api.mjs index.html ko api folder me copy karta hai.
   const apiRootHtml = path.join(process.cwd(), "index.html");
+  const apiAssetsDir = path.join(process.cwd(), "assets");
   const webDistHtml = path.join(webDist, "index.html");
-  
+  const webDistAssets = path.join(webDist, "assets");
+
+  // Explicitly serve /assets with guaranteed JS/CSS MIME headers
+  if (fs.existsSync(apiAssetsDir)) {
+    app.use(
+      "/assets",
+      express.static(apiAssetsDir, {
+        maxAge: "1y",
+        immutable: true,
+        setHeaders: (res, filePath) => {
+          if (filePath.endsWith(".js")) res.setHeader("Content-Type", "application/javascript");
+          else if (filePath.endsWith(".css")) res.setHeader("Content-Type", "text/css");
+        },
+      }),
+    );
+  } else if (fs.existsSync(webDistAssets)) {
+    app.use(
+      "/assets",
+      express.static(webDistAssets, {
+        maxAge: "1y",
+        immutable: true,
+        setHeaders: (res, filePath) => {
+          if (filePath.endsWith(".js")) res.setHeader("Content-Type", "application/javascript");
+          else if (filePath.endsWith(".css")) res.setHeader("Content-Type", "text/css");
+        },
+      }),
+    );
+  }
+
   if (fs.existsSync(apiRootHtml)) {
-    // Serve static assets from api root (assets folder)
     app.use(express.static(process.cwd()));
-    app.get(/^\/(?!api|firmware|socket\.io).*/, (_req, res) => {
+    app.get(/^\/(?!api|firmware|uploads|mobile-app|assets|socket\.io).*/, (_req, res) => {
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
       res.sendFile(apiRootHtml);
     });
   } else if (fs.existsSync(webDistHtml)) {
     app.use(express.static(webDist));
-    app.get(/^\/(?!api|firmware|socket\.io).*/, (_req, res) => {
+    app.get(/^\/(?!api|firmware|uploads|mobile-app|assets|socket\.io).*/, (_req, res) => {
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
       res.sendFile(webDistHtml);
     });
   }

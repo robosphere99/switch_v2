@@ -13412,10 +13412,46 @@ function createApp() {
   app.use("/firmware", express2.static(firmwareDir));
   app.use("/uploads", express2.static(uploadsDir));
   app.use("/mobile-app", express2.static(mobileAppDir));
-  if (fs12.existsSync(path13.join(webDist, "index.html"))) {
+  const apiRootHtml = path13.join(process.cwd(), "index.html");
+  const apiAssetsDir = path13.join(process.cwd(), "assets");
+  const webDistHtml = path13.join(webDist, "index.html");
+  const webDistAssets = path13.join(webDist, "assets");
+  if (fs12.existsSync(apiAssetsDir)) {
+    app.use(
+      "/assets",
+      express2.static(apiAssetsDir, {
+        maxAge: "1y",
+        immutable: true,
+        setHeaders: (res, filePath) => {
+          if (filePath.endsWith(".js")) res.setHeader("Content-Type", "application/javascript");
+          else if (filePath.endsWith(".css")) res.setHeader("Content-Type", "text/css");
+        }
+      })
+    );
+  } else if (fs12.existsSync(webDistAssets)) {
+    app.use(
+      "/assets",
+      express2.static(webDistAssets, {
+        maxAge: "1y",
+        immutable: true,
+        setHeaders: (res, filePath) => {
+          if (filePath.endsWith(".js")) res.setHeader("Content-Type", "application/javascript");
+          else if (filePath.endsWith(".css")) res.setHeader("Content-Type", "text/css");
+        }
+      })
+    );
+  }
+  if (fs12.existsSync(apiRootHtml)) {
+    app.use(express2.static(process.cwd()));
+    app.get(/^\/(?!api|firmware|uploads|mobile-app|assets|socket\.io).*/, (_req, res) => {
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      res.sendFile(apiRootHtml);
+    });
+  } else if (fs12.existsSync(webDistHtml)) {
     app.use(express2.static(webDist));
-    app.get(/^\/(?!api|firmware|socket\.io).*/, (_req, res) => {
-      res.sendFile(path13.join(webDist, "index.html"));
+    app.get(/^\/(?!api|firmware|uploads|mobile-app|assets|socket\.io).*/, (_req, res) => {
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      res.sendFile(webDistHtml);
     });
   }
   app.use((_req, res) => {
