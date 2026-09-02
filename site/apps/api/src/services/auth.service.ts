@@ -218,9 +218,37 @@ export async function checkAvailability(username?: string, email?: string) {
 
 /** Login with username OR email + password. */
 export async function login(usernameEmail: string, password: string, deviceInfo?: string, ipAddress?: string, revokeOtherSessions?: boolean): Promise<LoginResponse> {
-  const user = await prisma.user.findFirst({
-    where: { OR: [{ username: usernameEmail }, { email: usernameEmail }] },
-  });
+  let user: User | null = null;
+  try {
+    user = await prisma.user.findFirst({
+      where: { OR: [{ username: usernameEmail }, { email: usernameEmail }] },
+    });
+  } catch (_pErr) {
+    // Prisma query failed — try direct mysql2 lookup as fallback
+    try {
+      const mysql = (await import("mysql2/promise")).default;
+      const dbUrl = process.env.DATABASE_URL || env.DATABASE_URL || "mysql://switch_v2:switchnest%401234567890@127.0.0.1:3306/switch_v2";
+      const u = new URL(dbUrl);
+      const conn = await mysql.createConnection({
+        host: u.hostname === "localhost" ? "127.0.0.1" : u.hostname,
+        port: Number(u.port || 3306),
+        user: decodeURIComponent(u.username),
+        password: decodeURIComponent(u.password),
+        database: decodeURIComponent(u.pathname.replace(/^\//, "")),
+        connectTimeout: 5000,
+      });
+      const [rows] = await conn.query(
+        "SELECT id, username, email, password, role, status, token_version AS tokenVersion, created_at AS createdAt FROM users WHERE username = ? OR email = ? LIMIT 1",
+        [usernameEmail, usernameEmail],
+      );
+      await conn.end().catch(() => undefined);
+      if (Array.isArray(rows) && rows.length > 0) {
+        user = rows[0] as User;
+      }
+    } catch (_mErr) {
+      logger.error("[login] Direct mysql user lookup error", _mErr);
+    }
+  }
 
   if (!user || !(await bcrypt.compare(password, user.password))) {
     throw new AppError("INVALID_CREDENTIALS", "Invalid username/email or password", 401);

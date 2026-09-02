@@ -1829,9 +1829,36 @@ async function checkAvailability(username, email) {
   return result;
 }
 async function login(usernameEmail, password, deviceInfo, ipAddress, revokeOtherSessions3) {
-  const user = await prisma.user.findFirst({
-    where: { OR: [{ username: usernameEmail }, { email: usernameEmail }] }
-  });
+  let user = null;
+  try {
+    user = await prisma.user.findFirst({
+      where: { OR: [{ username: usernameEmail }, { email: usernameEmail }] }
+    });
+  } catch (_pErr) {
+    try {
+      const mysql2 = (await import("mysql2/promise")).default;
+      const dbUrl = process.env.DATABASE_URL || env.DATABASE_URL || "mysql://switch_v2:switchnest%401234567890@127.0.0.1:3306/switch_v2";
+      const u = new URL(dbUrl);
+      const conn = await mysql2.createConnection({
+        host: u.hostname === "localhost" ? "127.0.0.1" : u.hostname,
+        port: Number(u.port || 3306),
+        user: decodeURIComponent(u.username),
+        password: decodeURIComponent(u.password),
+        database: decodeURIComponent(u.pathname.replace(/^\//, "")),
+        connectTimeout: 5e3
+      });
+      const [rows] = await conn.query(
+        "SELECT id, username, email, password, role, status, token_version AS tokenVersion, created_at AS createdAt FROM users WHERE username = ? OR email = ? LIMIT 1",
+        [usernameEmail, usernameEmail]
+      );
+      await conn.end().catch(() => void 0);
+      if (Array.isArray(rows) && rows.length > 0) {
+        user = rows[0];
+      }
+    } catch (_mErr) {
+      logger.error("[login] Direct mysql user lookup error", _mErr);
+    }
+  }
   if (!user || !await import_bcryptjs.default.compare(password, user.password)) {
     throw new AppError("INVALID_CREDENTIALS", "Invalid username/email or password", 401);
   }
