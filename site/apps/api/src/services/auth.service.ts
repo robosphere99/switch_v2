@@ -93,7 +93,7 @@ export async function signup(input: {
           name: input.homeName?.trim() || `${input.username}'s Home`,
           ownerId: created.id,
           members: {
-            create: { userId: created.id, role: "owner" },
+            create: { userId: created.id, role: "owner", joinedAt: new Date() },
           },
         },
       });
