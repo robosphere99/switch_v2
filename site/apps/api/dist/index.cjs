@@ -8438,11 +8438,19 @@ adminRouter.get("/esp/:id/probe", async (req, res) => {
   }
 });
 adminRouter.get("/products", async (_req, res) => {
-  const products = await prisma.product.findMany({
-    orderBy: { id: "asc" },
-    include: { _count: { select: { serials: true } }, media: { where: { reviewId: null }, orderBy: { id: "asc" } } }
-  });
-  ok(res, products);
+  try {
+    const products = await prisma.product.findMany({
+      orderBy: { id: "asc" },
+      include: { _count: { select: { serials: true } }, media: { orderBy: { id: "asc" } } }
+    });
+    ok(res, products);
+  } catch (err) {
+    const products = await prisma.product.findMany({
+      orderBy: { id: "asc" },
+      include: { _count: { select: { serials: true } } }
+    });
+    ok(res, products.map((p) => ({ ...p, media: [] })));
+  }
 });
 adminRouter.post("/products", async (req, res) => {
   const { name, modelCode, relayCount, price, description, features, imageUrl, stockCount } = req.body ?? {};
@@ -14770,6 +14778,7 @@ async function runLightMigrations() {
         logger.info("\u2705 Migration: refresh_tokens table created");
       }
     });
+    await addCol("product_media", "review_id", "INT NULL");
     await migration("product_media table", async () => {
       const pm = await prisma.$queryRaw`
         SELECT COUNT(*) AS c FROM information_schema.tables
@@ -14780,6 +14789,7 @@ async function runLightMigrations() {
           CREATE TABLE product_media (
             id INT NOT NULL AUTO_INCREMENT,
             product_id INT NOT NULL,
+            review_id INT NULL,
             type VARCHAR(20) NOT NULL DEFAULT 'image',
             url VARCHAR(500) NOT NULL,
             created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),

@@ -2329,11 +2329,19 @@ adminRouter.get("/esp/:id/probe", async (req, res) => {
 // ---------- Shop: Products ----------
 
 adminRouter.get("/products", async (_req, res) => {
-  const products = await prisma.product.findMany({
-    orderBy: { id: "asc" },
-    include: { _count: { select: { serials: true } }, media: { where: { reviewId: null }, orderBy: { id: "asc" } } },
-  });
-  ok(res, products);
+  try {
+    const products = await prisma.product.findMany({
+      orderBy: { id: "asc" },
+      include: { _count: { select: { serials: true } }, media: { orderBy: { id: "asc" } } },
+    });
+    ok(res, products);
+  } catch (err) {
+    const products = await prisma.product.findMany({
+      orderBy: { id: "asc" },
+      include: { _count: { select: { serials: true } } },
+    });
+    ok(res, products.map((p) => ({ ...p, media: [] })));
+  }
 });
 
 adminRouter.post("/products", async (req, res) => {
