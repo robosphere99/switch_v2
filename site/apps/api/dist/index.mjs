@@ -14399,6 +14399,16 @@ async function runArchival() {
 
 // src/index.ts
 init_mqtt_service();
+process.on("uncaughtException", (err) => {
+  const line = `[uncaughtException] ${err instanceof Error ? err.stack || err.message : String(err)}`;
+  console.error(line);
+  fileLog(line);
+});
+process.on("unhandledRejection", (reason) => {
+  const line = `[unhandledRejection] ${reason instanceof Error ? reason.stack || reason.message : String(reason)}`;
+  console.error(line);
+  fileLog(line);
+});
 async function runLightMigrations() {
   const migration = async (label, fn) => {
     try {
