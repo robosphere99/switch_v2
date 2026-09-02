@@ -24,7 +24,7 @@ export function getAttachmentUrl(msg: {
   return `/api/support/attachment/${msg.id}?token=${encodeURIComponent(token)}`;
 }
 
-// On 401, clear the local session (refresh rotation comes in a later phase).
+// On 401, clear the local session only if it came from explicit auth check routes
 api.interceptors.response.use(
   (res) => {
     // If IIS/iisnode returns an HTML error page with a 200 OK status, reject it!
@@ -34,7 +34,8 @@ api.interceptors.response.use(
     return res;
   },
   (error) => {
-    if (error.response?.status === 401) {
+    const url = error.config?.url ?? "";
+    if (error.response?.status === 401 && (url.includes("/auth/me") || url.includes("/auth/refresh"))) {
       useAuthStore.getState().logout();
     }
     return Promise.reject(error);

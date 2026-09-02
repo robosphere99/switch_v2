@@ -471,8 +471,7 @@ supportRouter.get("/attachment/:id", async (req, res) => {
  * count nahi hote — warna badge kabhi hat hi na (user delete kare to bhi badha rahta tha).
  */
 supportRouter.get("/admin/unread-count", requireAuth, async (req, res) => {
-  if (req.user!.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
-  // Defensive: agar Prisma client purana generate hua ho (model missing) to crash mat karo.
+  if (req.user!.role !== "system_admin") return ok(res, { unread: 0 });
   if (!prisma.supportMessage) return ok(res, { unread: 0 });
   const groups = await supportModel().groupBy({
     by: ["userId"],
