@@ -86,7 +86,26 @@ for (const p of CANDIDATES) {
 }
 
 if (!found) {
-  console.log("[patch-webconfig] web.config nahi mila — skip (koi change nahi)");
+  const target = path.resolve(process.cwd(), "web.config");
+  const cleanRewriteConfig = `<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <system.webServer>
+    <rewrite>
+      <rules>
+        <rule name="DynamicContent">
+          <conditions>
+            <add input="{REQUEST_FILENAME}" matchType="IsFile" negate="True" />
+          </conditions>
+          <action type="Rewrite" url="dist/index.cjs" />
+        </rule>
+      </rules>
+    </rewrite>
+    <httpErrors existingResponse="PassThrough" />
+  </system.webServer>
+</configuration>
+`;
+  fs.writeFileSync(target, cleanRewriteConfig, "utf-8");
+  console.log(`[patch-webconfig] Created clean rewrite-only web.config at ${target}`);
   process.exit(0);
 }
 
