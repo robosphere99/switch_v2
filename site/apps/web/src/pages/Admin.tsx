@@ -50,6 +50,7 @@ import { SupportChatModal } from "../components/SupportChatModal";
 import { AdminFlasherGuide } from "../components/AdminFlasherGuide";
 import { BoardTerminalModal } from "../components/BoardTerminalModal";
 import { getSocket } from "../lib/socket";
+import { extractApiError } from "../api/client";
 
 type Tab = "overview" | "users" | "homes" | "devices" | "ota" | "shop" | "keys" | "audit" | "logs" | "support" | "settings" | "flasher";
 
@@ -274,7 +275,7 @@ export function Admin() {
         setNewUserForm({ username: "", email: "", password: "", role: "user" });
       }
     },
-    onError: () => setNewUserMsg("❌ User create fail — username/email already exists"),
+    onError: (err) => setNewUserMsg(`❌ ${extractApiError(err).message}`),
   });
   const resetPasswordM = useMutation({
     mutationFn: ({ id, password }: { id: number; password: string }) => resetUserPassword(id, password),

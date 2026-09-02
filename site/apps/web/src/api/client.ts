@@ -24,7 +24,19 @@ export function getAttachmentUrl(msg: {
   return `/api/support/attachment/${msg.id}?token=${encodeURIComponent(token)}`;
 }
 
-// On 401, clear the local session only if it came from explicit auth check routes
+let isRefreshing = false;
+let refreshSubscribers: ((token: string) => void)[] = [];
+
+function subscribeTokenRefresh(cb: (token: string) => void) {
+  refreshSubscribers.push(cb);
+}
+
+function onRefreshed(token: string) {
+  refreshSubscribers.forEach((cb) => cb(token));
+  refreshSubscribers = [];
+}
+
+// On 401, auto-refresh token if expired, or clean logout if session is invalid
 api.interceptors.response.use(
   (res) => {
     // If IIS/iisnode returns an HTML error page with a 200 OK status, reject it!
@@ -33,10 +45,47 @@ api.interceptors.response.use(
     }
     return res;
   },
-  (error) => {
-    const url = error.config?.url ?? "";
-    if (error.response?.status === 401 && (url.includes("/auth/me") || url.includes("/auth/refresh"))) {
-      useAuthStore.getState().logout();
+  async (error) => {
+    const originalRequest = error.config;
+    const status = error.response?.status;
+    const url = originalRequest?.url ?? "";
+
+    if (status === 401 && !url.includes("/auth/login") && !url.includes("/auth/signup") && !url.includes("/auth/refresh")) {
+      const refreshToken = useAuthStore.getState().refreshToken;
+
+      if (refreshToken && !originalRequest._retry) {
+        originalRequest._retry = true;
+
+        if (!isRefreshing) {
+          isRefreshing = true;
+          try {
+            const refreshRes = await axios.post("/api/auth/refresh", { refreshToken });
+            if (refreshRes.data?.success && refreshRes.data.data) {
+              const { accessToken, refreshToken: newRefresh, user } = refreshRes.data.data;
+              useAuthStore.getState().setAuth({ accessToken, refreshToken: newRefresh || refreshToken, user });
+              isRefreshing = false;
+              onRefreshed(accessToken);
+              originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+              return api(originalRequest);
+            }
+          } catch {
+            isRefreshing = false;
+            useAuthStore.getState().logout();
+            return Promise.reject(error);
+          }
+        } else {
+          return new Promise((resolve) => {
+            subscribeTokenRefresh((token: string) => {
+              if (originalRequest.headers) {
+                originalRequest.headers.Authorization = `Bearer ${token}`;
+              }
+              resolve(api(originalRequest));
+            });
+          });
+        }
+      } else {
+        useAuthStore.getState().logout();
+      }
     }
     return Promise.reject(error);
   },
