@@ -1,7 +1,7 @@
 import { createServer } from "http";
 import { createApp } from "./app";
 import { env } from "./config/env";
-import { prisma, getEffectiveDbUrl } from "./lib/prisma";
+import { prisma, getEffectiveDbUrl, resetPrismaClient } from "./lib/prisma";
 import { logger, fileLog, logFilePath } from "./lib/logger";
 import { initSocket } from "./lib/socket";
 import { startScheduler } from "./services/scheduler.service";
@@ -532,8 +532,15 @@ async function initDatabase(): Promise<void> {
     try {
       await prisma.$connect();
     } catch (err) {
-      boot("db probe: NOT reachable —", err instanceof Error ? err.message : String(err));
-      return false;
+      // Primary connect fail hua to Plesk MariaDB credentials try karo
+      const pleskUrl = "mysql://switch_v2:switchnest%401234567890@127.0.0.1:3306/switch_v2";
+      try {
+        await resetPrismaClient(pleskUrl);
+        await prisma.$connect();
+      } catch {
+        boot("db probe: NOT reachable —", err instanceof Error ? err.message : String(err));
+        return false;
+      }
     }
     if (await dbHasSchema()) {
       logger.info("✅ Database connected (schema ready)");

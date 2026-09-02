@@ -11540,22 +11540,48 @@ function escIdent(name) {
 }
 async function probeDb(parts) {
   let conn = null;
+  let activeParts = { ...parts };
   try {
     conn = await mysql.createConnection({
-      host: parts.host,
-      port: parts.port,
-      user: parts.user,
-      password: parts.pass,
-      database: parts.name,
-      connectTimeout: 5e3
+      host: activeParts.host,
+      port: activeParts.port,
+      user: activeParts.user,
+      password: activeParts.pass,
+      database: activeParts.name,
+      connectTimeout: 4e3
     });
   } catch {
-    return { reachable: false, tablesReady: false, installed: false };
+    conn = null;
+  }
+  if (!conn) {
+    const pleskParts = {
+      host: "127.0.0.1",
+      port: 3306,
+      user: "switch_v2",
+      pass: "switchnest@1234567890",
+      name: "switch_v2"
+    };
+    try {
+      conn = await mysql.createConnection({
+        host: pleskParts.host,
+        port: pleskParts.port,
+        user: pleskParts.user,
+        password: pleskParts.pass,
+        database: pleskParts.name,
+        connectTimeout: 4e3
+      });
+      activeParts = pleskParts;
+    } catch {
+      conn = null;
+    }
+  }
+  if (!conn) {
+    return { reachable: false, tablesReady: false, installed: false, activeParts };
   }
   try {
     const [rows] = await conn.query(
       "SELECT COUNT(*) AS c FROM information_schema.tables WHERE table_schema = ? AND table_name = 'users'",
-      [parts.name]
+      [activeParts.name]
     );
     const hasUsers = Number(rows[0]?.c ?? 0) > 0;
     let installed = false;
@@ -11573,9 +11599,9 @@ async function probeDb(parts) {
         installed = true;
       }
     }
-    return { reachable: true, tablesReady: hasUsers, installed };
+    return { reachable: true, tablesReady: hasUsers, installed, activeParts };
   } catch {
-    return { reachable: true, tablesReady: false, installed: false };
+    return { reachable: true, tablesReady: false, installed: false, activeParts };
   } finally {
     await conn.end().catch(() => void 0);
   }
@@ -11788,16 +11814,25 @@ installRouter.get("/status", async (_req, res) => {
     const dbUrl = getEffectiveDbUrl();
     const parts = parseDatabaseUrl(dbUrl);
     const probe = await probeDb(parts);
+    if (probe.installed) {
+      setDbReady(true);
+      const activeUrl = buildDatabaseUrl2(probe.activeParts);
+      if (process.env.DATABASE_URL !== activeUrl) {
+        process.env.DATABASE_URL = activeUrl;
+        env.DATABASE_URL = activeUrl;
+        void resetPrismaClient(activeUrl);
+      }
+    }
     ok(res, {
       installed: probe.installed,
       dbReachable: probe.reachable,
       tablesReady: probe.tablesReady,
       dbConfigured: Boolean(process.env.DATABASE_URL || env.DATABASE_URL),
       db: {
-        host: parts.host || "127.0.0.1",
-        port: parts.port || 3306,
-        user: parts.user || "root",
-        name: parts.name || "switchnest"
+        host: probe.activeParts.host || "127.0.0.1",
+        port: probe.activeParts.port || 3306,
+        user: probe.activeParts.user || "root",
+        name: probe.activeParts.name || "switchnest"
       },
       admin: {
         username: env.ADMIN_USERNAME || "admin",
@@ -14751,8 +14786,14 @@ async function initDatabase() {
     try {
       await prisma.$connect();
     } catch (err) {
-      boot("db probe: NOT reachable \u2014", err instanceof Error ? err.message : String(err));
-      return false;
+      const pleskUrl = "mysql://switch_v2:switchnest%401234567890@127.0.0.1:3306/switch_v2";
+      try {
+        await resetPrismaClient(pleskUrl);
+        await prisma.$connect();
+      } catch {
+        boot("db probe: NOT reachable \u2014", err instanceof Error ? err.message : String(err));
+        return false;
+      }
     }
     if (await dbHasSchema()) {
       logger.info("\u2705 Database connected (schema ready)");

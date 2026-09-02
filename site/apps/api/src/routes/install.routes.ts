@@ -61,29 +61,57 @@ function escIdent(name: string): string {
 }
 
 /** DB reachable hai ya nahi + tables bani hui hain ya nahi (setup probe). */
-async function probeDb(parts: DbParts): Promise<{ reachable: boolean; tablesReady: boolean; installed: boolean }> {
+async function probeDb(parts: DbParts): Promise<{ reachable: boolean; tablesReady: boolean; installed: boolean; activeParts: DbParts }> {
   let conn: mysql.Connection | null = null;
+  let activeParts = { ...parts };
+
   try {
     conn = await mysql.createConnection({
-      host: parts.host,
-      port: parts.port,
-      user: parts.user,
-      password: parts.pass,
-      database: parts.name,
-      connectTimeout: 5000,
+      host: activeParts.host,
+      port: activeParts.port,
+      user: activeParts.user,
+      password: activeParts.pass,
+      database: activeParts.name,
+      connectTimeout: 4000,
     });
   } catch {
-    return { reachable: false, tablesReady: false, installed: false };
+    conn = null;
   }
+
+  // Primary probe fail hua to Plesk MariaDB credentials try karo
+  if (!conn) {
+    const pleskParts: DbParts = {
+      host: "127.0.0.1",
+      port: 3306,
+      user: "switch_v2",
+      pass: "switchnest@1234567890",
+      name: "switch_v2",
+    };
+    try {
+      conn = await mysql.createConnection({
+        host: pleskParts.host,
+        port: pleskParts.port,
+        user: pleskParts.user,
+        password: pleskParts.pass,
+        database: pleskParts.name,
+        connectTimeout: 4000,
+      });
+      activeParts = pleskParts;
+    } catch {
+      conn = null;
+    }
+  }
+
+  if (!conn) {
+    return { reachable: false, tablesReady: false, installed: false, activeParts };
+  }
+
   try {
     const [rows] = await conn.query(
       "SELECT COUNT(*) AS c FROM information_schema.tables WHERE table_schema = ? AND table_name = 'users'",
-      [parts.name],
+      [activeParts.name],
     );
     const hasUsers = Number((rows as Array<{ c: number }>)[0]?.c ?? 0) > 0;
-    // installed = asli data hai (admin/user rows). app_meta flag confirm
-    // karta hai; flag na ho toh users count decide karta hai — isse factory
-    // reset (sab empty) pe install wizard sahi dikhta hai.
     let installed = false;
     if (hasUsers) {
       try {
@@ -96,13 +124,12 @@ async function probeDb(parts: DbParts): Promise<{ reachable: boolean; tablesRead
           installed = Number((urows as Array<{ c: number }>)[0]?.c ?? 0) > 0;
         }
       } catch {
-        // app_meta table abhi bani nahi — users table hi kaafi hai
         installed = true;
       }
     }
-    return { reachable: true, tablesReady: hasUsers, installed };
+    return { reachable: true, tablesReady: hasUsers, installed, activeParts };
   } catch {
-    return { reachable: true, tablesReady: false, installed: false };
+    return { reachable: true, tablesReady: false, installed: false, activeParts };
   } finally {
     await conn.end().catch(() => undefined);
   }
@@ -371,16 +398,26 @@ installRouter.get("/status", async (_req, res) => {
     const parts = parseDatabaseUrl(dbUrl);
     const probe = await probeDb(parts);
 
+    if (probe.installed) {
+      setDbReady(true);
+      const activeUrl = buildDatabaseUrl(probe.activeParts);
+      if (process.env.DATABASE_URL !== activeUrl) {
+        process.env.DATABASE_URL = activeUrl;
+        env.DATABASE_URL = activeUrl;
+        void resetPrismaClient(activeUrl);
+      }
+    }
+
     ok(res, {
       installed: probe.installed,
       dbReachable: probe.reachable,
       tablesReady: probe.tablesReady,
       dbConfigured: Boolean(process.env.DATABASE_URL || env.DATABASE_URL),
       db: {
-        host: parts.host || "127.0.0.1",
-        port: parts.port || 3306,
-        user: parts.user || "root",
-        name: parts.name || "switchnest",
+        host: probe.activeParts.host || "127.0.0.1",
+        port: probe.activeParts.port || 3306,
+        user: probe.activeParts.user || "root",
+        name: probe.activeParts.name || "switchnest",
       },
       admin: {
         username: env.ADMIN_USERNAME || "admin",
