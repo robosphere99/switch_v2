@@ -10344,7 +10344,7 @@ supportRouter.get("/attachment/:id", async (req, res) => {
   res.send(buf);
 });
 supportRouter.get("/admin/unread-count", requireAuth, async (req, res) => {
-  if (req.user.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
+  if (req.user.role !== "system_admin") return ok(res, { unread: 0 });
   if (!prisma.supportMessage) return ok(res, { unread: 0 });
   const groups = await supportModel().groupBy({
     by: ["userId"],
