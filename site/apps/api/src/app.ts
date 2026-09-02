@@ -9,6 +9,7 @@ import { firmwareDir, webDist, mobileAppDir, uploadsDir } from "./lib/paths";
 import { apiRouter } from "./routes";
 import { installRouter } from "./routes/install.routes";
 import { docsRouter } from "./routes/docs.routes";
+import { publicRouter } from "./routes/public.routes";
 import { isDbReady } from "./lib/dbState";
 import { fileLog } from "./lib/logger";
 import { prisma } from "./lib/prisma";
