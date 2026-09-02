@@ -290,17 +290,13 @@ shopRouter.post("/orders/:id/pay/demo", requireAuth, async (req, res) => {
   const ref = `DEMO-${Date.now()}`;
   await prisma.order.update({
     where: { id },
-    data: { paidAt: new Date(), paymentRef: ref, paymentStatus: "paid", status: "processing" },
+    data: { paidAt: new Date(), paymentRef: ref, paymentStatus: "paid" },
   });
 
-  try {
-    await updateOrderStatus(id, "processing");
-  } catch (err) {
-    console.warn("[demoPay] updateOrderStatus warning (non-fatal)", err instanceof Error ? err.message : String(err));
-  }
+  const updatedOrder = await updateOrderStatus(id, "processing");
 
   await audit(req.user!.sub, "shop.payment.demo", { entity: "order", entityId: id, meta: { ref, total: Number(order.totalAmount) } });
-  ok(res, { paid: true, status: "processing", paymentRef: ref });
+  ok(res, { paid: true, status: updatedOrder.status, paymentRef: ref });
 });
 
 shopRouter.get("/wifi/current", requireAuth, async (req, res) => {

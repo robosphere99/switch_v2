@@ -161,7 +161,7 @@ export async function updateOrderStatus(orderId: number, status: string) {
     include: { items: true },
   });
   if (!order) throw new AppError("NOT_FOUND", "Order not found");
-  if (order.status === status) {
+  if (order.status === status && status !== "processing") {
     return prisma.order.findUniqueOrThrow({
       where: { id: orderId },
       include: { items: true, user: { select: { id: true, username: true, email: true } } },
@@ -171,7 +171,7 @@ export async function updateOrderStatus(orderId: number, status: string) {
     throw new AppError("BAD_REQUEST", `Invalid status ${status}`);
   }
   const allowed = ORDER_STATUS_FLOW[order.status] ?? [];
-  if (!allowed.includes(status)) {
+  if (order.status !== status && !allowed.includes(status)) {
     throw new AppError("BAD_REQUEST", `Cannot move order from ${order.status} to ${status}`);
   }
 

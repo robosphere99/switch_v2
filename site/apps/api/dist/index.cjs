@@ -6268,7 +6268,7 @@ async function updateOrderStatus(orderId, status) {
     include: { items: true }
   });
   if (!order) throw new AppError("NOT_FOUND", "Order not found");
-  if (order.status === status) {
+  if (order.status === status && status !== "processing") {
     return prisma.order.findUniqueOrThrow({
       where: { id: orderId },
       include: { items: true, user: { select: { id: true, username: true, email: true } } }
@@ -6278,7 +6278,7 @@ async function updateOrderStatus(orderId, status) {
     throw new AppError("BAD_REQUEST", `Invalid status ${status}`);
   }
   const allowed = ORDER_STATUS_FLOW[order.status] ?? [];
-  if (!allowed.includes(status)) {
+  if (order.status !== status && !allowed.includes(status)) {
     throw new AppError("BAD_REQUEST", `Cannot move order from ${order.status} to ${status}`);
   }
   if (status === "processing") {
@@ -9288,15 +9288,11 @@ shopRouter.post("/orders/:id/pay/demo", requireAuth, async (req, res) => {
   const ref = `DEMO-${Date.now()}`;
   await prisma.order.update({
     where: { id },
-    data: { paidAt: /* @__PURE__ */ new Date(), paymentRef: ref, paymentStatus: "paid", status: "processing" }
+    data: { paidAt: /* @__PURE__ */ new Date(), paymentRef: ref, paymentStatus: "paid" }
   });
-  try {
-    await updateOrderStatus(id, "processing");
-  } catch (err) {
-    console.warn("[demoPay] updateOrderStatus warning (non-fatal)", err instanceof Error ? err.message : String(err));
-  }
+  const updatedOrder = await updateOrderStatus(id, "processing");
   await audit(req.user.sub, "shop.payment.demo", { entity: "order", entityId: id, meta: { ref, total: Number(order.totalAmount) } });
-  ok(res, { paid: true, status: "processing", paymentRef: ref });
+  ok(res, { paid: true, status: updatedOrder.status, paymentRef: ref });
 });
 shopRouter.get("/wifi/current", requireAuth, async (req, res) => {
   const platform = import_os.default.platform();
