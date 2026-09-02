@@ -23,22 +23,35 @@ function escapeEnv(v: string): string {
  * missing line append). Multiple keys ek hi write me — atomic-ish.
  */
 export function persistEnvKeys(entries: Array<[string, string]>): { path: string; ok: boolean } {
-  const envPath = envFilePath();
-  try {
-    let content = "";
-    if (fs.existsSync(envPath)) content = fs.readFileSync(envPath, "utf-8");
-    for (const [key, value] of entries) {
-      const line = `${key}=${escapeEnv(value)}`;
-      const re = new RegExp(`^${key}=.*$`, "m");
-      if (re.test(content)) content = content.replace(re, line);
-      else content = (content ? content.replace(/\s*$/, "\n") : "") + line + "\n";
+  const targets = [
+    path.resolve(process.cwd(), ".env"),
+    path.resolve(process.cwd(), "../.env"),
+    path.resolve(process.cwd(), "../../.env"),
+  ];
+
+  let mainPath = targets[0];
+  let written = false;
+
+  for (const envPath of targets) {
+    try {
+      let content = "";
+      if (fs.existsSync(envPath)) content = fs.readFileSync(envPath, "utf-8");
+      for (const [key, value] of entries) {
+        process.env[key] = value;
+        const line = `${key}=${escapeEnv(value)}`;
+        const re = new RegExp(`^${key}=.*$`, "m");
+        if (re.test(content)) content = content.replace(re, line);
+        else content = (content ? content.replace(/\s*$/, "\n") : "") + line + "\n";
+      }
+      fs.writeFileSync(envPath, content, "utf-8");
+      mainPath = envPath;
+      written = true;
+    } catch (err) {
+      logger.warn(`[envPersist] .env write fail for ${envPath}:`, err instanceof Error ? err.message : String(err));
     }
-    fs.writeFileSync(envPath, content, "utf-8");
-    return { path: envPath, ok: true };
-  } catch (err) {
-    logger.warn("[envPersist] .env write fail:", err instanceof Error ? err.message : String(err));
-    return { path: envPath, ok: false };
   }
+
+  return { path: mainPath, ok: written };
 }
 
 export function persistEnvKey(key: string, value: string): { path: string; ok: boolean } {
