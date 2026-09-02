@@ -9291,7 +9291,11 @@ shopRouter.post("/orders/:id/pay/demo", requireAuth, async (req, res) => {
   }
   const ref = `DEMO-${Date.now()}`;
   await prisma.order.update({ where: { id }, data: { paidAt: /* @__PURE__ */ new Date(), paymentRef: ref } });
-  await updateOrderStatus(id, "processing");
+  try {
+    await updateOrderStatus(id, "processing");
+  } catch (err) {
+    console.warn("[demoPay] updateOrderStatus warning (non-fatal)", err instanceof Error ? err.message : String(err));
+  }
   await audit(req.user.sub, "shop.payment.demo", { entity: "order", entityId: id, meta: { ref, total: Number(order.totalAmount) } });
   ok(res, { paid: true, status: "processing", paymentRef: ref });
 });
@@ -14740,6 +14744,9 @@ async function runLightMigrations() {
     await addCol("serial_registry", "warranty_expires_at", "DATETIME(3) NULL");
     await addCol("serial_registry", "console_password", "VARCHAR(64) NULL");
     await addCol("serial_registry", "tested_at", "DATETIME(3) NULL");
+    await addCol("notifications", "category", "VARCHAR(20) NOT NULL DEFAULT 'system'");
+    await addCol("notifications", "cta_url", "VARCHAR(255) NULL");
+    await addCol("notifications", "cta_label", "VARCHAR(50) NULL");
     await addCol("home_members", "joined_at", "DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)");
     await migration("auto-seed default products", async () => {
       const pc = await prisma.product.count();
