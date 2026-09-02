@@ -104,7 +104,7 @@ var init_env = __esm({
 function fileLog(line) {
   if (!logFilePath) return;
   try {
-    fs.appendFileSync(logFilePath, line.endsWith("\n") ? line : line + "\n");
+    fs2.appendFileSync(logFilePath, line.endsWith("\n") ? line : line + "\n");
   } catch {
   }
 }
@@ -122,27 +122,27 @@ function log(level, msg, meta) {
     else console.log(line);
   }
 }
-var fs, path2, os, logFilePath, ORDER, logger;
+var fs2, path3, os, logFilePath, ORDER, logger;
 var init_logger = __esm({
   "src/lib/logger.ts"() {
     "use strict";
     init_env();
-    fs = __toESM(require("fs"), 1);
-    path2 = __toESM(require("path"), 1);
+    fs2 = __toESM(require("fs"), 1);
+    path3 = __toESM(require("path"), 1);
     os = __toESM(require("os"), 1);
     logFilePath = (() => {
       const candidates = [
-        path2.resolve(process.cwd(), "../logs"),
+        path3.resolve(process.cwd(), "../logs"),
         // site/apps/logs — iisnode yahi likhta hai (writable)
-        path2.resolve(process.cwd(), "logs"),
+        path3.resolve(process.cwd(), "logs"),
         // site/apps/api/logs
-        path2.join(os.tmpdir(), "switchnest-logs")
+        path3.join(os.tmpdir(), "switchnest-logs")
       ];
       for (const dir of candidates) {
         try {
-          fs.mkdirSync(dir, { recursive: true });
-          fs.accessSync(dir, fs.constants.W_OK);
-          return path2.join(dir, "app.log");
+          fs2.mkdirSync(dir, { recursive: true });
+          fs2.accessSync(dir, fs2.constants.W_OK);
+          return path3.join(dir, "app.log");
         } catch {
           continue;
         }
@@ -1609,25 +1609,25 @@ var errorHandler = (err, _req, res, _next) => {
 };
 
 // src/lib/paths.ts
-var fs2 = __toESM(require("fs"), 1);
-var path3 = __toESM(require("path"), 1);
+var fs3 = __toESM(require("fs"), 1);
+var path4 = __toESM(require("path"), 1);
 function findRepoRoot(start) {
-  let dir = path3.resolve(start);
+  let dir = path4.resolve(start);
   for (let i = 0; i < 8; i++) {
-    if (fs2.existsSync(path3.join(dir, "hardware"))) return dir;
-    const parent = path3.dirname(dir);
+    if (fs3.existsSync(path4.join(dir, "hardware"))) return dir;
+    const parent = path4.dirname(dir);
     if (parent === dir) break;
     dir = parent;
   }
   return null;
 }
 var repoRoot = findRepoRoot(process.cwd());
-var firmwareDir = repoRoot ? path3.join(repoRoot, "hardware", "firmware") : path3.resolve(process.cwd(), "../../../hardware/firmware");
-var mobileAppDir = repoRoot ? path3.join(repoRoot, "mobile-app") : path3.resolve(process.cwd(), "../../../mobile-app");
-var attachmentDir = repoRoot ? path3.join(repoRoot, "hardware", "attachments") : path3.resolve(process.cwd(), "../../../hardware/attachments");
-var webDist = repoRoot ? path3.join(repoRoot, "site", "apps", "web", "dist") : path3.resolve(process.cwd(), "../../apps/web/dist");
-var swaggerUiDir = repoRoot ? path3.join(repoRoot, "site", "apps", "api", "public", "swagger-ui") : path3.resolve(process.cwd(), "public/swagger-ui");
-var uploadsDir = repoRoot ? path3.join(repoRoot, "site", "apps", "api", "uploads") : path3.resolve(process.cwd(), "uploads");
+var firmwareDir = repoRoot ? path4.join(repoRoot, "hardware", "firmware") : path4.resolve(process.cwd(), "../../../hardware/firmware");
+var mobileAppDir = repoRoot ? path4.join(repoRoot, "mobile-app") : path4.resolve(process.cwd(), "../../../mobile-app");
+var attachmentDir = repoRoot ? path4.join(repoRoot, "hardware", "attachments") : path4.resolve(process.cwd(), "../../../hardware/attachments");
+var webDist = repoRoot ? path4.join(repoRoot, "site", "apps", "web", "dist") : path4.resolve(process.cwd(), "../../apps/web/dist");
+var swaggerUiDir = repoRoot ? path4.join(repoRoot, "site", "apps", "api", "public", "swagger-ui") : path4.resolve(process.cwd(), "public/swagger-ui");
+var uploadsDir = repoRoot ? path4.join(repoRoot, "site", "apps", "api", "uploads") : path4.resolve(process.cwd(), "uploads");
 
 // src/routes/index.ts
 var import_express21 = require("express");
@@ -1648,11 +1648,11 @@ init_prisma();
 init_logger();
 
 // src/lib/envPersist.ts
-var fs3 = __toESM(require("fs"), 1);
-var path4 = __toESM(require("path"), 1);
+var fs4 = __toESM(require("fs"), 1);
+var path5 = __toESM(require("path"), 1);
 init_logger();
 function envFilePath() {
-  return path4.resolve(process.cwd(), "../../.env");
+  return path5.resolve(process.cwd(), "../../.env");
 }
 function escapeEnv(v) {
   return /[\s#"']/.test(v) ? `"${v.replace(/"/g, '\\"')}"` : v;
@@ -1661,14 +1661,14 @@ function persistEnvKeys(entries) {
   const envPath = envFilePath();
   try {
     let content = "";
-    if (fs3.existsSync(envPath)) content = fs3.readFileSync(envPath, "utf-8");
+    if (fs4.existsSync(envPath)) content = fs4.readFileSync(envPath, "utf-8");
     for (const [key, value] of entries) {
       const line = `${key}=${escapeEnv(value)}`;
       const re = new RegExp(`^${key}=.*$`, "m");
       if (re.test(content)) content = content.replace(re, line);
       else content = (content ? content.replace(/\s*$/, "\n") : "") + line + "\n";
     }
-    fs3.writeFileSync(envPath, content, "utf-8");
+    fs4.writeFileSync(envPath, content, "utf-8");
     return { path: envPath, ok: true };
   } catch (err) {
     logger.warn("[envPersist] .env write fail:", err instanceof Error ? err.message : String(err));
@@ -5633,8 +5633,8 @@ var import_node_child_process = require("node:child_process");
 init_prisma();
 
 // src/lib/healthMonitor.ts
-var fs5 = __toESM(require("fs"), 1);
-var path6 = __toESM(require("path"), 1);
+var fs6 = __toESM(require("fs"), 1);
+var path7 = __toESM(require("path"), 1);
 init_logger();
 
 // src/lib/dbState.ts
@@ -5660,13 +5660,13 @@ var checking = false;
 var activeIncident = null;
 function hcFile() {
   if (!logFilePath) return null;
-  return path6.join(path6.dirname(logFilePath), "health-check.jsonl");
+  return path7.join(path7.dirname(logFilePath), "health-check.jsonl");
 }
 function append(ev) {
   const f = hcFile();
   if (!f) return;
   try {
-    fs5.appendFileSync(f, JSON.stringify(ev) + "\n");
+    fs6.appendFileSync(f, JSON.stringify(ev) + "\n");
   } catch {
   }
 }
@@ -5679,9 +5679,9 @@ function setLastSeenHost(host) {
 }
 function adoptOpenIncident() {
   const f = hcFile();
-  if (!f || !fs5.existsSync(f)) return;
+  if (!f || !fs6.existsSync(f)) return;
   try {
-    const lines = fs5.readFileSync(f, "utf8").split("\n").filter(Boolean).slice(-200);
+    const lines = fs6.readFileSync(f, "utf8").split("\n").filter(Boolean).slice(-200);
     let open = null;
     for (const l of lines) {
       try {
@@ -5776,9 +5776,9 @@ function startHealthMonitor() {
 function getHealthMonitorState() {
   const incidents2 = [];
   const f = hcFile();
-  if (f && fs5.existsSync(f)) {
+  if (f && fs6.existsSync(f)) {
     try {
-      const lines = fs5.readFileSync(f, "utf8").split("\n").filter(Boolean).slice(-500);
+      const lines = fs6.readFileSync(f, "utf8").split("\n").filter(Boolean).slice(-500);
       for (const l of lines) {
         try {
           const e = JSON.parse(l);
@@ -5818,8 +5818,8 @@ function getHealthMonitorState() {
 }
 
 // src/lib/leakMonitor.ts
-var fs6 = __toESM(require("fs"), 1);
-var path7 = __toESM(require("path"), 1);
+var fs7 = __toESM(require("fs"), 1);
+var path8 = __toESM(require("path"), 1);
 init_logger();
 var CHECK_INTERVAL_MS2 = 6e4;
 var LEAK_WINDOW_MS = 4 * 36e5;
@@ -5833,21 +5833,21 @@ var activeLeak = null;
 var incidents = [];
 function incidentFile() {
   if (!logFilePath) return null;
-  return path7.join(path7.dirname(logFilePath), "leak-incidents.jsonl");
+  return path8.join(path8.dirname(logFilePath), "leak-incidents.jsonl");
 }
 function append2(ev) {
   const f = incidentFile();
   if (!f) return;
   try {
-    fs6.appendFileSync(f, JSON.stringify(ev) + "\n");
+    fs7.appendFileSync(f, JSON.stringify(ev) + "\n");
   } catch {
   }
 }
 function loadIncidents() {
   const f = incidentFile();
-  if (!f || !fs6.existsSync(f)) return;
+  if (!f || !fs7.existsSync(f)) return;
   try {
-    const lines = fs6.readFileSync(f, "utf8").split("\n").filter(Boolean).slice(-500);
+    const lines = fs7.readFileSync(f, "utf8").split("\n").filter(Boolean).slice(-500);
     const evs = [];
     for (const l of lines) {
       try {
@@ -5880,16 +5880,16 @@ function loadIncidents() {
   }
 }
 function readHeartbeatPoints() {
-  if (!logFilePath || !fs6.existsSync(logFilePath)) return [];
+  if (!logFilePath || !fs7.existsSync(logFilePath)) return [];
   try {
-    const st = fs6.statSync(logFilePath);
+    const st = fs7.statSync(logFilePath);
     if (st.size <= 0) return [];
     const start = Math.max(0, st.size - TAIL_MAX);
     const len = st.size - start;
-    const fd = fs6.openSync(logFilePath, "r");
+    const fd = fs7.openSync(logFilePath, "r");
     const buf = Buffer.alloc(len);
-    fs6.readSync(fd, buf, 0, len, start);
-    fs6.closeSync(fd);
+    fs7.readSync(fd, buf, 0, len, start);
+    fs7.closeSync(fd);
     const text = buf.toString("utf8");
     const re = /\[hb\] alive ts=([\d:.TZ-]+) uptime=(\d+)s pid=(\d+) rss=(\d+)MB(?: heap=(\d+)MB)?/g;
     const points = [];
@@ -5949,9 +5949,9 @@ function push(ev) {
 }
 function lastFileEvent() {
   const f = incidentFile();
-  if (!f || !fs6.existsSync(f)) return null;
+  if (!f || !fs7.existsSync(f)) return null;
   try {
-    const lines = fs6.readFileSync(f, "utf8").split("\n").filter(Boolean);
+    const lines = fs7.readFileSync(f, "utf8").split("\n").filter(Boolean);
     if (!lines.length) return null;
     return JSON.parse(lines[lines.length - 1]);
   } catch {
@@ -9863,8 +9863,8 @@ init_notification_service();
 init_socket();
 
 // src/lib/attachmentStore.ts
-var fs9 = __toESM(require("fs"), 1);
-var path10 = __toESM(require("path"), 1);
+var fs10 = __toESM(require("fs"), 1);
+var path11 = __toESM(require("path"), 1);
 function extFor(type, name) {
   const fromName = name.split(".").pop()?.toLowerCase();
   if (fromName && /^[a-z0-9]{1,8}$/.test(fromName)) return fromName;
@@ -9881,25 +9881,25 @@ function saveAttachment(base64, type, name) {
   const buf = Buffer.from(base64, "base64");
   if (buf.length === 0) throw new Error("Empty file");
   const filename = `a_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}.${extFor(type, name)}`;
-  fs9.mkdirSync(attachmentDir, { recursive: true });
-  fs9.writeFileSync(path10.join(attachmentDir, filename), buf);
+  fs10.mkdirSync(attachmentDir, { recursive: true });
+  fs10.writeFileSync(path11.join(attachmentDir, filename), buf);
   return filename;
 }
 function readAttachmentFile(filename) {
-  const safe = path10.basename(filename);
+  const safe = path11.basename(filename);
   if (safe !== filename) return null;
   try {
-    return fs9.readFileSync(path10.join(attachmentDir, safe));
+    return fs10.readFileSync(path11.join(attachmentDir, safe));
   } catch {
     return null;
   }
 }
 function deleteAttachmentFile(filename) {
   if (!filename) return;
-  const safe = path10.basename(filename);
+  const safe = path11.basename(filename);
   if (safe !== filename) return;
   try {
-    fs9.unlinkSync(path10.join(attachmentDir, safe));
+    fs10.unlinkSync(path11.join(attachmentDir, safe));
   } catch {
   }
 }
@@ -11973,18 +11973,18 @@ var DESCRIPTIONS = {
   "GET /api/health": "Health check \u2014 DB schema diag + build version (ops).",
   "GET /api/version": "API version (ops)."
 };
-function securityFor(path15, method) {
-  if (method === "GET" && (path15 === "/api/health" || path15 === "/api/version")) return void 0;
-  if (path15.startsWith("/api/device")) return [{ deviceApiKey: [] }];
-  if (path15.startsWith("/api/install") || path15.startsWith("/api/public")) return void 0;
-  if (path15.startsWith("/api/docs")) return void 0;
-  if (path15.startsWith("/api/auth")) {
-    if (method === "GET" || path15.includes("/me") || path15 === "/api/auth/theme") {
+function securityFor(path16, method) {
+  if (method === "GET" && (path16 === "/api/health" || path16 === "/api/version")) return void 0;
+  if (path16.startsWith("/api/device")) return [{ deviceApiKey: [] }];
+  if (path16.startsWith("/api/install") || path16.startsWith("/api/public")) return void 0;
+  if (path16.startsWith("/api/docs")) return void 0;
+  if (path16.startsWith("/api/auth")) {
+    if (method === "GET" || path16.includes("/me") || path16 === "/api/auth/theme") {
       return [{ bearerAuth: [] }];
     }
     return void 0;
   }
-  if (path15.startsWith("/api/shop/products")) return void 0;
+  if (path16.startsWith("/api/shop/products")) return void 0;
   return [{ bearerAuth: [] }];
 }
 var BODIES = {
@@ -12425,8 +12425,8 @@ var SCHEMAS = {
     }
   }
 };
-function tagFor(path15) {
-  const seg = path15.replace(/^\/api\//, "").split("/")[0] ?? "system";
+function tagFor(path16) {
+  const seg = path16.replace(/^\/api\//, "").split("/")[0] ?? "system";
   const map = {
     auth: "Auth",
     device: "Device API (ESP32)",
@@ -12447,11 +12447,11 @@ function tagFor(path15) {
   };
   return map[seg] ?? "Homes";
 }
-function paramsFor(path15) {
+function paramsFor(path16) {
   const out = [];
   const re = /:([A-Za-z0-9_]+)/g;
   let m;
-  while ((m = re.exec(path15)) !== null) {
+  while ((m = re.exec(path16)) !== null) {
     out.push({
       name: m[1],
       in: "path",
@@ -13316,11 +13316,11 @@ docsRouter.get("/plain", (_req, res) => {
   const spec = getOpenApiSpec();
   const paths = spec.paths;
   const byTag = /* @__PURE__ */ new Map();
-  for (const [path15, ops] of Object.entries(paths)) {
+  for (const [path16, ops] of Object.entries(paths)) {
     for (const [method, op] of Object.entries(ops)) {
       const tag = op.tags?.[0] ?? "Other";
       if (!byTag.has(tag)) byTag.set(tag, []);
-      byTag.get(tag).push({ method: method.toUpperCase(), path: path15, summary: op.summary ?? "" });
+      byTag.get(tag).push({ method: method.toUpperCase(), path: path16, summary: op.summary ?? "" });
     }
   }
   const methodColor2 = {
@@ -14078,7 +14078,34 @@ var boot = (...args) => {
   process.stderr.write(line + "\n");
   fileLog(line);
 };
+function patchWebConfig() {
+  try {
+    const webConfigPath = path.resolve(process.cwd(), "web.config");
+    if (!fs.existsSync(webConfigPath)) {
+      const cleanConfig = `<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <system.webServer>
+    <rewrite>
+      <rules>
+        <rule name="DynamicContent">
+          <conditions>
+            <add input="{REQUEST_FILENAME}" matchType="IsFile" negate="True" />
+          </conditions>
+          <action type="Rewrite" url="dist/index.cjs" />
+        </rule>
+      </rules>
+    </rewrite>
+    <httpErrors existingResponse="PassThrough" />
+  </system.webServer>
+</configuration>
+`;
+      fs.writeFileSync(webConfigPath, cleanConfig, "utf-8");
+    }
+  } catch (_err) {
+  }
+}
 async function main() {
+  patchWebConfig();
   boot("node", process.version, "| cwd =", process.cwd());
   boot("PORT env =", JSON.stringify(process.env.PORT ?? "(not set)"), "-> API_PORT =", env.API_PORT);
   boot("log file =", logFilePath ?? "(disabled)");
