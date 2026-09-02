@@ -22,6 +22,13 @@ if (existsSync(join(webDist, "index.html"))) {
       cpSync(mainJs, join(apiAssets, name));
     }
   }
+  const mainCss = join(apiAssets, "index.css");
+  if (existsSync(mainCss)) {
+    const legacyCssHashes = ["index-DcBVbXpn.css"];
+    for (const name of legacyCssHashes) {
+      cpSync(mainCss, join(apiAssets, name));
+    }
+  }
   console.log("[sync-api] web build copied to apps/api (index.html + assets + legacy hashes)");
 } else {
   console.warn("[sync-api] no dist/index.html found — skipping copy");

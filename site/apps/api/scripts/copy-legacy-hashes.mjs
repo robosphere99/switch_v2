@@ -16,3 +16,12 @@ if (fs.existsSync(src)) {
     console.log(`[legacy-hash] Copied index.js -> ${name}`);
   }
 }
+
+const cssSrc = path.join(dir, "index.css");
+if (fs.existsSync(cssSrc)) {
+  const legacyCssHashes = ["index-DcBVbXpn.css"];
+  for (const name of legacyCssHashes) {
+    fs.copyFileSync(cssSrc, path.join(dir, name));
+    console.log(`[legacy-hash] Copied index.css -> ${name}`);
+  }
+}
