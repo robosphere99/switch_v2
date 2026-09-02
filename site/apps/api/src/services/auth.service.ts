@@ -65,11 +65,13 @@ export async function signup(input: {
   password: string;
   homeName?: string;
 }, deviceInfo?: string, ipAddress?: string): Promise<LoginResponse> {
-  const existing = await prisma.user.findFirst({
-    where: { OR: [{ username: input.username }, { email: input.email }] },
-  });
-  if (existing) {
-    throw new AppError("EMAIL_OR_USERNAME_TAKEN", "Username or email already exists", 409);
+  const existingUsername = await prisma.user.findFirst({ where: { username: input.username }, select: { id: true } });
+  if (existingUsername) {
+    throw new AppError("USERNAME_TAKEN", `Username '${input.username}' is already taken. Please choose another username.`, 409);
+  }
+  const existingEmail = await prisma.user.findFirst({ where: { email: input.email }, select: { id: true } });
+  if (existingEmail) {
+    throw new AppError("EMAIL_TAKEN", `Email '${input.email}' is already registered. Please log in or use another email.`, 409);
   }
 
   const password = await bcrypt.hash(input.password, 10);
