@@ -193,6 +193,26 @@ export function createApp() {
     );
   }
 
+  // Fallback for stale asset requests (e.g. browser requested old index-Bc2133nz.js when new build has index-Df8JkqRD.js)
+  app.use("/assets", (req, res, next) => {
+    if (req.path.endsWith(".js")) {
+      const targetDir = fs.existsSync(apiAssetsDir) ? apiAssetsDir : fs.existsSync(webDistAssets) ? webDistAssets : null;
+      if (targetDir) {
+        try {
+          const files = fs.readdirSync(targetDir);
+          const latestJs = files.find((f) => f.startsWith("index-") && f.endsWith(".js"));
+          if (latestJs) {
+            res.setHeader("Content-Type", "application/javascript");
+            return res.sendFile(path.join(targetDir, latestJs));
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+    next();
+  });
+
   const sendSpaHtml = (_req: express.Request, res: express.Response) => {
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0");
     res.setHeader("Pragma", "no-cache");

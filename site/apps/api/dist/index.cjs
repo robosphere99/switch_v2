@@ -13498,6 +13498,23 @@ function createApp() {
       })
     );
   }
+  app.use("/assets", (req, res, next) => {
+    if (req.path.endsWith(".js")) {
+      const targetDir = import_node_fs4.default.existsSync(apiAssetsDir) ? apiAssetsDir : import_node_fs4.default.existsSync(webDistAssets) ? webDistAssets : null;
+      if (targetDir) {
+        try {
+          const files = import_node_fs4.default.readdirSync(targetDir);
+          const latestJs = files.find((f) => f.startsWith("index-") && f.endsWith(".js"));
+          if (latestJs) {
+            res.setHeader("Content-Type", "application/javascript");
+            return res.sendFile(import_node_path5.default.join(targetDir, latestJs));
+          }
+        } catch {
+        }
+      }
+    }
+    next();
+  });
   const sendSpaHtml = (_req, res) => {
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0");
     res.setHeader("Pragma", "no-cache");
