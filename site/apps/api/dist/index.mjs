@@ -1968,23 +1968,12 @@ async function issueTokens(user, deviceInfo, ipAddress, revokeOtherSessions3) {
     sessionId = session.id;
   } catch (_rErr) {
     try {
-      const mysql2 = (await import("mysql2/promise")).default;
-      const dbUrl = getEffectiveDbUrl();
-      const u = new URL(dbUrl);
-      const conn = await mysql2.createConnection({
-        host: u.hostname === "localhost" ? "127.0.0.1" : u.hostname,
-        port: Number(u.port || 3306),
-        user: decodeURIComponent(u.username),
-        password: decodeURIComponent(u.password),
-        database: decodeURIComponent(u.pathname.replace(/^\//, "")),
-        connectTimeout: 5e3
-      });
-      const [res] = await conn.query(
+      await prisma.$executeRawUnsafe(
         "INSERT INTO refresh_tokens (userId, token_hash, expires_at, created_at) VALUES (?, ?, ?, NOW(3))",
-        [user.id, tokenHash, exp]
+        user.id,
+        tokenHash,
+        exp
       );
-      await conn.end().catch(() => void 0);
-      sessionId = res.insertId || 1;
     } catch (_mErr) {
       logger.error("[login] refreshToken fallback error", _mErr);
     }
