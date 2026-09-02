@@ -9035,12 +9035,20 @@ var storage2 = multer3.diskStorage({
 });
 var upload3 = multer3({ storage: storage2, limits: { fileSize: 50 * 1024 * 1024 } });
 shopRouter.get("/products", async (_req, res) => {
-  const products = await prisma.product.findMany({
-    where: { active: true },
-    include: { media: true },
-    orderBy: { id: "asc" }
-  });
-  ok(res, products);
+  try {
+    const products = await prisma.product.findMany({
+      where: { active: true },
+      include: { media: true },
+      orderBy: { id: "asc" }
+    });
+    ok(res, products);
+  } catch (err) {
+    const products = await prisma.product.findMany({
+      where: { active: true },
+      orderBy: { id: "asc" }
+    });
+    ok(res, products.map((p) => ({ ...p, media: [] })));
+  }
 });
 shopRouter.post("/upload", requireAuth, upload3.single("file"), (req, res) => {
   if (!req.file) throw new AppError("BAD_REQUEST", "No file uploaded");
@@ -14738,6 +14746,51 @@ async function runLightMigrations() {
           ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         `);
         logger.info("\u2705 Migration: refresh_tokens table created");
+      }
+    });
+    await migration("product_media table", async () => {
+      const pm = await prisma.$queryRaw`
+        SELECT COUNT(*) AS c FROM information_schema.tables
+        WHERE table_schema = DATABASE() AND table_name = 'product_media'
+      `;
+      if (Number(pm[0]?.c ?? 0) === 0) {
+        await prisma.$executeRawUnsafe(`
+          CREATE TABLE product_media (
+            id INT NOT NULL AUTO_INCREMENT,
+            product_id INT NOT NULL,
+            type VARCHAR(20) NOT NULL DEFAULT 'image',
+            url VARCHAR(500) NOT NULL,
+            created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+            PRIMARY KEY (id),
+            INDEX product_media_product_id_idx (product_id),
+            CONSTRAINT product_media_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE ON UPDATE CASCADE
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        `);
+        logger.info("\u2705 Migration: product_media table created");
+      }
+    });
+    await migration("product_reviews table", async () => {
+      const pr = await prisma.$queryRaw`
+        SELECT COUNT(*) AS c FROM information_schema.tables
+        WHERE table_schema = DATABASE() AND table_name = 'product_reviews'
+      `;
+      if (Number(pr[0]?.c ?? 0) === 0) {
+        await prisma.$executeRawUnsafe(`
+          CREATE TABLE product_reviews (
+            id INT NOT NULL AUTO_INCREMENT,
+            product_id INT NOT NULL,
+            user_id INT NOT NULL,
+            rating INT NOT NULL,
+            comment TEXT NULL,
+            created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+            PRIMARY KEY (id),
+            INDEX product_reviews_product_id_idx (product_id),
+            INDEX product_reviews_user_id_idx (user_id),
+            CONSTRAINT product_reviews_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE ON UPDATE CASCADE,
+            CONSTRAINT product_reviews_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        `);
+        logger.info("\u2705 Migration: product_reviews table created");
       }
     });
   } catch (err) {
