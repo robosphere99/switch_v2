@@ -13388,7 +13388,7 @@ function createApp() {
     if (req.headers.host) setLastSeenHost(req.headers.host);
     next();
   });
-  app.use((0, import_helmet.default)());
+  app.use((0, import_helmet.default)({ contentSecurityPolicy: false }));
   app.use(
     (0, import_cors.default)({
       origin: corsOrigins,

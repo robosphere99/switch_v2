@@ -13366,7 +13366,7 @@ function createApp() {
     if (req.headers.host) setLastSeenHost(req.headers.host);
     next();
   });
-  app.use(helmet());
+  app.use(helmet({ contentSecurityPolicy: false }));
   app.use(
     cors({
       origin: corsOrigins,
