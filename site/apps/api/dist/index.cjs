@@ -13531,8 +13531,8 @@ function createApp() {
   if (import_node_fs4.default.existsSync(webDistHtml)) {
     app.use(import_express24.default.static(webDist));
   }
-  app.get(["/", "/login", "/signup", "/forgot-password", "/reset-password", "/support", "/verify-bill"], sendSpaHtml);
-  app.use(["/dashboard", "/admin", "/shop"], sendSpaHtml);
+  app.get(["/", "/login", "/signup", "/install", "/activate", "/print-serials", "/print-bill", "/warranty", "/forgot-password", "/reset-password", "/support", "/verify-bill"], sendSpaHtml);
+  app.use(["/install", "/dashboard", "/admin", "/shop"], sendSpaHtml);
   app.use((_req, res) => {
     res.status(404).json({
       success: false,
