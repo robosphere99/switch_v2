@@ -14711,6 +14711,32 @@ async function runLightMigrations() {
         logger.info("\u2705 Migration: serial_registry warranty fields added");
       }
     });
+    await migration("refresh_tokens table", async () => {
+      const rt = await prisma.$queryRaw`
+        SELECT COUNT(*) AS c FROM information_schema.tables
+        WHERE table_schema = DATABASE() AND table_name = 'refresh_tokens'
+      `;
+      if (Number(rt[0]?.c ?? 0) === 0) {
+        await prisma.$executeRawUnsafe(`
+          CREATE TABLE refresh_tokens (
+            id INT NOT NULL AUTO_INCREMENT,
+            userId INT NOT NULL,
+            token_hash VARCHAR(64) NOT NULL,
+            device_info VARCHAR(255) NULL,
+            ip_address VARCHAR(45) NULL,
+            last_active DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+            expires_at DATETIME(3) NOT NULL,
+            created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+            revoked_at DATETIME(3) NULL,
+            PRIMARY KEY (id),
+            UNIQUE INDEX refresh_tokens_token_hash_key (token_hash),
+            INDEX refresh_tokens_userId_idx (userId),
+            CONSTRAINT refresh_tokens_userId_fkey FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        `);
+        logger.info("\u2705 Migration: refresh_tokens table created");
+      }
+    });
   } catch (err) {
     logger.warn("Light migration (esp serial unique) skip/fail", err instanceof Error ? err.message : String(err));
   }
