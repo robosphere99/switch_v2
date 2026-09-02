@@ -339,6 +339,7 @@ async function runLightMigrations(): Promise<void> {
 
     await addCol("devices", "channel", "INT NULL");
     await addCol("users", "avatar_url", "VARCHAR(500) NULL");
+    await addCol("users", "expo_push_token", "VARCHAR(100) NULL");
     await addCol("users", "dob", "DATE NULL");
     await addCol("users", "gender", "VARCHAR(20) NULL");
     await addCol("users", "phone", "VARCHAR(20) NULL");
