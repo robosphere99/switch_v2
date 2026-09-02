@@ -6905,7 +6905,16 @@ adminRouter.post("/users", validateBody(createUserSchema), async (req, res) => {
   if (existingEmail) throw new AppError("USER_EXISTS", `Email '${email}' is already registered (account: '${existingEmail.username}').`, 409);
   const hashed = await bcrypt2.hash(password, 10);
   const user = await prisma.user.create({
-    data: { username, email, password: hashed, role: role ?? "user" },
+    data: {
+      username,
+      email,
+      password: hashed,
+      role: role ?? "user",
+      status: "active",
+      pushDeviceToggles: true,
+      pushSystemAlerts: true,
+      tokenVersion: 0
+    },
     select: { id: true, username: true, email: true, role: true, status: true, createdAt: true }
   });
   await audit(req.user.sub, "admin.user.create", {
