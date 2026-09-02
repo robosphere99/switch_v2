@@ -204,7 +204,7 @@ async function resetPrismaClient(databaseUrl) {
   } catch {
   }
   process.env.DATABASE_URL = withConnLimit(databaseUrl);
-  const next = new import_client.PrismaClient({
+  const next = new import_client2.PrismaClient({
     datasources: { db: { url: process.env.DATABASE_URL } }
   });
   await next.$connect().catch(() => void 0);
@@ -212,11 +212,11 @@ async function resetPrismaClient(databaseUrl) {
   if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = next;
   return next;
 }
-var import_client, import_dotenv2, import_node_path2, import_node_fs2, candidatePaths, globalForPrisma, prisma;
+var import_client2, import_dotenv2, import_node_path2, import_node_fs2, candidatePaths, globalForPrisma, prisma;
 var init_prisma = __esm({
   "src/lib/prisma.ts"() {
     "use strict";
-    import_client = require("@prisma/client");
+    import_client2 = require("@prisma/client");
     import_dotenv2 = __toESM(require("dotenv"), 1);
     import_node_path2 = __toESM(require("node:path"), 1);
     import_node_fs2 = __toESM(require("node:fs"), 1);
@@ -235,7 +235,7 @@ var init_prisma = __esm({
     }
     process.env.DATABASE_URL = withConnLimit(getEffectiveDbUrl());
     globalForPrisma = globalThis;
-    prisma = globalForPrisma.prisma ?? new import_client.PrismaClient({
+    prisma = globalForPrisma.prisma ?? new import_client2.PrismaClient({
       datasources: { db: { url: process.env.DATABASE_URL } }
     });
     if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
@@ -1620,6 +1620,7 @@ init_env();
 
 // src/middleware/errorHandler.ts
 var import_zod2 = require("zod");
+var import_client = require("@prisma/client");
 
 // src/lib/response.ts
 function ok(res, data, status = 200) {
@@ -1651,8 +1652,16 @@ var errorHandler = (err, _req, res, _next) => {
   if (err instanceof AppError) {
     return fail(res, err.code, err.message, err.status, err.details);
   }
+  if (err instanceof import_client.Prisma.PrismaClientKnownRequestError) {
+    if (err.code === "P2002") {
+      return fail(res, "CONFLICT", "Duplicate entry detected", 409);
+    }
+    if (err.code === "P2025") {
+      return fail(res, "NOT_FOUND", "Record not found", 404);
+    }
+  }
   logger.error("Unhandled error", err instanceof Error ? err.stack : err);
-  return fail(res, "INTERNAL_ERROR", "Internal server error", 500);
+  return fail(res, "INTERNAL_ERROR", err instanceof Error ? err.message : "Internal server error", 500);
 };
 
 // src/lib/paths.ts
@@ -9399,7 +9408,27 @@ claimRouter.post("/", claimLimiter, async (req, res) => {
         warrantyExpiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1e3)
       }
     });
-    const espStub = await tx.espDevice.create({
+    const existingEsp = await tx.espDevice.findFirst({
+      where: {
+        OR: [
+          { macAddress: `PENDING-${serial.serialCode}` },
+          { serialCode: serial.serialCode }
+        ]
+      }
+    });
+    if (existingEsp) {
+      return tx.espDevice.update({
+        where: { id: existingEsp.id },
+        data: {
+          homeId,
+          name: deviceName,
+          serialCode: serial.serialCode,
+          modelCode: serial.product.modelCode,
+          updatedAt: /* @__PURE__ */ new Date()
+        }
+      });
+    }
+    return tx.espDevice.create({
       data: {
         homeId,
         macAddress: `PENDING-${serial.serialCode}`,
@@ -9410,7 +9439,6 @@ claimRouter.post("/", claimLimiter, async (req, res) => {
         updatedAt: /* @__PURE__ */ new Date()
       }
     });
-    return espStub;
   });
   await audit(req.user.sub, "shop.device.claim", {
     entity: "esp_device",
