@@ -11503,25 +11503,29 @@ function persistDatabaseConfig(p) {
   ]);
 }
 async function connectServer(parts) {
-  let conn;
-  try {
-    conn = await import_promise.default.createConnection({
-      host: parts.host,
-      port: parts.port,
-      user: parts.user,
-      password: parts.pass,
-      connectTimeout: 8e3
-    });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    throw new AppError("DB_CONNECT_FAILED", `Database server se connect nahi ho paya: ${msg}`, 502);
+  const hostsToTry = parts.host === "localhost" ? ["127.0.0.1", "localhost"] : [parts.host, "127.0.0.1"];
+  let lastErr = null;
+  for (const h of hostsToTry) {
+    let conn = null;
+    try {
+      conn = await import_promise.default.createConnection({
+        host: h,
+        port: parts.port,
+        user: parts.user,
+        password: parts.pass,
+        connectTimeout: 8e3
+      });
+      parts.host = h;
+      const [rows] = await conn.query("SELECT VERSION() AS v");
+      await conn.end().catch(() => void 0);
+      return { serverVersion: String(rows[0]?.v ?? "") };
+    } catch (err) {
+      lastErr = err;
+      if (conn) await conn.end().catch(() => void 0);
+    }
   }
-  try {
-    const [rows] = await conn.query("SELECT VERSION() AS v");
-    return { serverVersion: String(rows[0]?.v ?? "") };
-  } finally {
-    await conn.end().catch(() => void 0);
-  }
+  const msg = lastErr instanceof Error ? lastErr.message : String(lastErr);
+  throw new AppError("DB_CONNECT_FAILED", `Database server se connect nahi ho paya: ${msg}`, 502);
 }
 async function createDatabase(parts) {
   const dbName = escIdent(parts.name);
