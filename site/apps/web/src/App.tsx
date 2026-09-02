@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { Route, Routes } from "react-router-dom";
 import { Navbar } from "./components/Navbar";
 import { ChatWidget } from "./components/ChatWidget";
@@ -20,9 +20,7 @@ import { Profile } from "./pages/Profile";
 import { Signup } from "./pages/Signup";
 import { VoiceAssistants } from "./pages/VoiceAssistants";
 import { OAuthConsent } from "./pages/OAuthConsent";
-// Admin heavy page hai (stats + diagnostics + charts) — lazy-load taaki
-// normal dashboard bundle me na aaye (perceived performance).
-const Admin = lazy(() => import("./pages/Admin").then((m) => ({ default: m.Admin })));
+import { Admin } from "./pages/Admin";
 import { Assistant } from "./pages/Assistant";
 import { Shop } from "./pages/Shop";
 import { Checkout } from "./pages/Checkout";
