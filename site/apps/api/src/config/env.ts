@@ -1,5 +1,6 @@
 import dotenv from "dotenv";
 import path from "node:path";
+import fs from "node:fs";
 import { z } from "zod";
 
 // Load .env from multiple candidate paths so runtime always picks up persisted .env
@@ -19,11 +20,11 @@ for (const p of envPaths) {
 // DATABASE_URL diya ho to woh precedence leta hai.
 function buildDatabaseUrl(): string {
   if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim()) return process.env.DATABASE_URL;
-  const host = process.env.DB_HOST || "127.0.0.1";
-  const port = process.env.DB_PORT || "3306";
-  const user = process.env.DB_USER || "root";
-  const pass = process.env.DB_PASS || "";
-  const name = process.env.DB_NAME || "switchnest";
+  const host = process.env.DB_HOST ?? "127.0.0.1";
+  const port = process.env.DB_PORT ?? "3306";
+  const user = process.env.DB_USER ?? "root";
+  const pass = process.env.DB_PASS ?? "";
+  const name = process.env.DB_NAME ?? "switchnest";
   return `mysql://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}:${port}/${name}?connection_limit=10`;
 }
 

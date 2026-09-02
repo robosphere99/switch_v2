@@ -17,16 +17,14 @@ for (const p of candidatePaths) {
   } catch {}
 }
 
-const DEFAULT_PLESK_DB_URL = "mysql://switch_v2:switchnest%401234567890@127.0.0.1:3306/switch_v2";
-
 export function getEffectiveDbUrl(): string {
   const envUrl = process.env.DATABASE_URL?.trim();
   if (envUrl) return envUrl;
-  const host = process.env.DB_HOST || "127.0.0.1";
-  const port = process.env.DB_PORT || "3306";
-  const user = process.env.DB_USER || "switch_v2";
-  const pass = process.env.DB_PASS || "switchnest@1234567890";
-  const name = process.env.DB_NAME || "switch_v2";
+  const host = process.env.DB_HOST ?? "127.0.0.1";
+  const port = process.env.DB_PORT ?? "3306";
+  const user = process.env.DB_USER ?? "root";
+  const pass = process.env.DB_PASS ?? "";
+  const name = process.env.DB_NAME ?? "switchnest";
   return `mysql://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}:${port}/${name}`;
 }
 

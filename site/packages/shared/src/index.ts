@@ -207,7 +207,11 @@ export interface LoginResponse {
   accessToken: string;
   refreshToken: string;
   user: AuthUser;
-  sessionId: number;
+  sessionId?: number;
+  tokens?: {
+    accessToken: string;
+    refreshToken: string;
+  };
 }
 
 // ---------- Realtime (Socket.IO) ----------

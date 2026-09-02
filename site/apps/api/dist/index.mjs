@@ -15,15 +15,16 @@ var __export = (target, all) => {
 
 // src/config/env.ts
 import dotenv from "dotenv";
-import path2 from "node:path";
+import path from "node:path";
+import fs from "node:fs";
 import { z } from "zod";
 function buildDatabaseUrl() {
   if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim()) return process.env.DATABASE_URL;
-  const host = process.env.DB_HOST || "127.0.0.1";
-  const port = process.env.DB_PORT || "3306";
-  const user = process.env.DB_USER || "root";
-  const pass = process.env.DB_PASS || "";
-  const name = process.env.DB_NAME || "switchnest";
+  const host = process.env.DB_HOST ?? "127.0.0.1";
+  const port = process.env.DB_PORT ?? "3306";
+  const user = process.env.DB_USER ?? "root";
+  const pass = process.env.DB_PASS ?? "";
+  const name = process.env.DB_NAME ?? "switchnest";
   return `mysql://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}:${port}/${name}?connection_limit=10`;
 }
 var envPaths, envSchema, parsed, env, corsOrigins;
@@ -31,9 +32,9 @@ var init_env = __esm({
   "src/config/env.ts"() {
     "use strict";
     envPaths = [
-      path2.resolve(process.cwd(), ".env"),
-      path2.resolve(process.cwd(), "../.env"),
-      path2.resolve(process.cwd(), "../../.env")
+      path.resolve(process.cwd(), ".env"),
+      path.resolve(process.cwd(), "../.env"),
+      path.resolve(process.cwd(), "../../.env")
     ];
     for (const p of envPaths) {
       try {
@@ -90,7 +91,7 @@ var init_env = __esm({
 
 // src/lib/logger.ts
 import * as fs2 from "fs";
-import * as path3 from "path";
+import * as path2 from "path";
 import * as os from "os";
 function fileLog(line) {
   if (!logFilePath) return;
@@ -120,17 +121,17 @@ var init_logger = __esm({
     init_env();
     logFilePath = (() => {
       const candidates = [
-        path3.resolve(process.cwd(), "../logs"),
+        path2.resolve(process.cwd(), "../logs"),
         // site/apps/logs — iisnode yahi likhta hai (writable)
-        path3.resolve(process.cwd(), "logs"),
+        path2.resolve(process.cwd(), "logs"),
         // site/apps/api/logs
-        path3.join(os.tmpdir(), "switchnest-logs")
+        path2.join(os.tmpdir(), "switchnest-logs")
       ];
       for (const dir of candidates) {
         try {
           fs2.mkdirSync(dir, { recursive: true });
           fs2.accessSync(dir, fs2.constants.W_OK);
-          return path3.join(dir, "app.log");
+          return path2.join(dir, "app.log");
         } catch {
           continue;
         }
@@ -157,16 +158,16 @@ __export(prisma_exports, {
 });
 import { PrismaClient } from "@prisma/client";
 import dotenv2 from "dotenv";
-import path5 from "node:path";
+import path4 from "node:path";
 import fs4 from "node:fs";
 function getEffectiveDbUrl() {
   const envUrl = process.env.DATABASE_URL?.trim();
   if (envUrl) return envUrl;
-  const host = process.env.DB_HOST || "127.0.0.1";
-  const port = process.env.DB_PORT || "3306";
-  const user = process.env.DB_USER || "switch_v2";
-  const pass = process.env.DB_PASS || "switchnest@1234567890";
-  const name = process.env.DB_NAME || "switch_v2";
+  const host = process.env.DB_HOST ?? "127.0.0.1";
+  const port = process.env.DB_PORT ?? "3306";
+  const user = process.env.DB_USER ?? "root";
+  const pass = process.env.DB_PASS ?? "";
+  const name = process.env.DB_NAME ?? "switchnest";
   return `mysql://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}:${port}/${name}`;
 }
 function withConnLimit(url, limit = 10) {
@@ -198,9 +199,9 @@ var init_prisma = __esm({
   "src/lib/prisma.ts"() {
     "use strict";
     candidatePaths = [
-      path5.resolve(process.cwd(), ".env"),
-      path5.resolve(process.cwd(), "../.env"),
-      path5.resolve(process.cwd(), "../../.env")
+      path4.resolve(process.cwd(), ".env"),
+      path4.resolve(process.cwd(), "../.env"),
+      path4.resolve(process.cwd(), "../../.env")
     ];
     for (const p of candidatePaths) {
       try {
@@ -1591,7 +1592,7 @@ init_env();
 import express2 from "express";
 import cors from "cors";
 import helmet from "helmet";
-import path15 from "node:path";
+import path14 from "node:path";
 import fs14 from "node:fs";
 
 // src/middleware/errorHandler.ts
@@ -1633,24 +1634,24 @@ var errorHandler = (err, _req, res, _next) => {
 
 // src/lib/paths.ts
 import * as fs3 from "fs";
-import * as path4 from "path";
+import * as path3 from "path";
 function findRepoRoot(start) {
-  let dir = path4.resolve(start);
+  let dir = path3.resolve(start);
   for (let i = 0; i < 8; i++) {
-    if (fs3.existsSync(path4.join(dir, "hardware"))) return dir;
-    const parent = path4.dirname(dir);
+    if (fs3.existsSync(path3.join(dir, "hardware"))) return dir;
+    const parent = path3.dirname(dir);
     if (parent === dir) break;
     dir = parent;
   }
   return null;
 }
 var repoRoot = findRepoRoot(process.cwd());
-var firmwareDir = repoRoot ? path4.join(repoRoot, "hardware", "firmware") : path4.resolve(process.cwd(), "../../../hardware/firmware");
-var mobileAppDir = repoRoot ? path4.join(repoRoot, "mobile-app") : path4.resolve(process.cwd(), "../../../mobile-app");
-var attachmentDir = repoRoot ? path4.join(repoRoot, "hardware", "attachments") : path4.resolve(process.cwd(), "../../../hardware/attachments");
-var webDist = repoRoot ? path4.join(repoRoot, "site", "apps", "web", "dist") : path4.resolve(process.cwd(), "../../apps/web/dist");
-var swaggerUiDir = repoRoot ? path4.join(repoRoot, "site", "apps", "api", "public", "swagger-ui") : path4.resolve(process.cwd(), "public/swagger-ui");
-var uploadsDir = repoRoot ? path4.join(repoRoot, "site", "apps", "api", "uploads") : path4.resolve(process.cwd(), "uploads");
+var firmwareDir = repoRoot ? path3.join(repoRoot, "hardware", "firmware") : path3.resolve(process.cwd(), "../../../hardware/firmware");
+var mobileAppDir = repoRoot ? path3.join(repoRoot, "mobile-app") : path3.resolve(process.cwd(), "../../../mobile-app");
+var attachmentDir = repoRoot ? path3.join(repoRoot, "hardware", "attachments") : path3.resolve(process.cwd(), "../../../hardware/attachments");
+var webDist = repoRoot ? path3.join(repoRoot, "site", "apps", "web", "dist") : path3.resolve(process.cwd(), "../../apps/web/dist");
+var swaggerUiDir = repoRoot ? path3.join(repoRoot, "site", "apps", "api", "public", "swagger-ui") : path3.resolve(process.cwd(), "public/swagger-ui");
+var uploadsDir = repoRoot ? path3.join(repoRoot, "site", "apps", "api", "uploads") : path3.resolve(process.cwd(), "uploads");
 
 // src/routes/index.ts
 import { Router as Router21 } from "express";
@@ -1673,15 +1674,15 @@ init_logger();
 // src/lib/envPersist.ts
 init_logger();
 import * as fs5 from "fs";
-import * as path6 from "path";
+import * as path5 from "path";
 function escapeEnv(v) {
   return /[\s#"']/.test(v) ? `"${v.replace(/"/g, '\\"')}"` : v;
 }
 function persistEnvKeys(entries) {
   const targets = [
-    path6.resolve(process.cwd(), ".env"),
-    path6.resolve(process.cwd(), "../.env"),
-    path6.resolve(process.cwd(), "../../.env")
+    path5.resolve(process.cwd(), ".env"),
+    path5.resolve(process.cwd(), "../.env"),
+    path5.resolve(process.cwd(), "../../.env")
   ];
   let mainPath = targets[0];
   let written = false;
@@ -1867,7 +1868,7 @@ async function login(usernameEmail, password, deviceInfo, ipAddress, revokeOther
   } catch (_pErr) {
     try {
       const mysql2 = (await import("mysql2/promise")).default;
-      const dbUrl = process.env.DATABASE_URL || env.DATABASE_URL || "mysql://switch_v2:switchnest%401234567890@127.0.0.1:3306/switch_v2";
+      const dbUrl = getEffectiveDbUrl();
       const u = new URL(dbUrl);
       const conn = await mysql2.createConnection({
         host: u.hostname === "localhost" ? "127.0.0.1" : u.hostname,
@@ -1954,7 +1955,7 @@ async function issueTokens(user, deviceInfo, ipAddress, revokeOtherSessions3) {
   } catch (_rErr) {
     try {
       const mysql2 = (await import("mysql2/promise")).default;
-      const dbUrl = process.env.DATABASE_URL || env.DATABASE_URL || "mysql://switch_v2:switchnest%401234567890@127.0.0.1:3306/switch_v2";
+      const dbUrl = getEffectiveDbUrl();
       const u = new URL(dbUrl);
       const conn = await mysql2.createConnection({
         host: u.hostname === "localhost" ? "127.0.0.1" : u.hostname,
@@ -2419,10 +2420,10 @@ function validateParams(schema) {
 
 // src/routes/auth.routes.ts
 import multer from "multer";
-import path7 from "node:path";
+import path6 from "node:path";
 import fs6 from "node:fs";
 init_prisma();
-var avatarsDir = path7.join(uploadsDir, "avatars");
+var avatarsDir = path6.join(uploadsDir, "avatars");
 try {
   fs6.mkdirSync(avatarsDir, { recursive: true });
 } catch (e) {
@@ -2432,17 +2433,17 @@ var storage = multer.diskStorage({
     cb(null, avatarsDir);
   },
   filename: function(req, file, cb) {
-    const ext = path7.extname(file.originalname).toLowerCase() || ".jpg";
+    const ext = path6.extname(file.originalname).toLowerCase() || ".jpg";
     prisma.user.findUnique({ where: { id: req.user.sub }, select: { username: true } }).then((u) => {
       if (!u) return cb(new Error("User not found"), "");
       const username = u.username;
       const canonicalName = `${username}${ext}`;
       try {
         const existing = fs6.readdirSync(avatarsDir).filter(
-          (f) => f.startsWith(`${username}.`) && !fs6.statSync(path7.join(avatarsDir, f)).isDirectory()
+          (f) => f.startsWith(`${username}.`) && !fs6.statSync(path6.join(avatarsDir, f)).isDirectory()
         );
         if (existing.length > 0) {
-          const archiveDir = path7.join(avatarsDir, username);
+          const archiveDir = path6.join(avatarsDir, username);
           fs6.mkdirSync(archiveDir, { recursive: true });
           const archived = fs6.readdirSync(archiveDir);
           let maxNum = 0;
@@ -2452,10 +2453,10 @@ var storage = multer.diskStorage({
           }
           for (const oldFile of existing) {
             maxNum++;
-            const oldExt = path7.extname(oldFile);
+            const oldExt = path6.extname(oldFile);
             fs6.renameSync(
-              path7.join(avatarsDir, oldFile),
-              path7.join(archiveDir, `${username}_${maxNum}${oldExt}`)
+              path6.join(avatarsDir, oldFile),
+              path6.join(archiveDir, `${username}_${maxNum}${oldExt}`)
             );
           }
         }
@@ -5715,7 +5716,7 @@ assistantRouter.get("/chats/:chatId/messages", requireAuth, validateParams(chatP
 import { Router as Router11 } from "express";
 import { z as z12 } from "zod";
 import multer2 from "multer";
-import path10 from "node:path";
+import path9 from "node:path";
 import fs9 from "node:fs";
 import { execSync } from "node:child_process";
 init_prisma();
@@ -5723,7 +5724,7 @@ init_prisma();
 // src/lib/healthMonitor.ts
 init_logger();
 import * as fs7 from "fs";
-import * as path8 from "path";
+import * as path7 from "path";
 
 // src/lib/dbState.ts
 var ready = true;
@@ -5748,7 +5749,7 @@ var checking = false;
 var activeIncident = null;
 function hcFile() {
   if (!logFilePath) return null;
-  return path8.join(path8.dirname(logFilePath), "health-check.jsonl");
+  return path7.join(path7.dirname(logFilePath), "health-check.jsonl");
 }
 function append(ev) {
   const f = hcFile();
@@ -5908,7 +5909,7 @@ function getHealthMonitorState() {
 // src/lib/leakMonitor.ts
 init_logger();
 import * as fs8 from "fs";
-import * as path9 from "path";
+import * as path8 from "path";
 var CHECK_INTERVAL_MS2 = 6e4;
 var LEAK_WINDOW_MS = 4 * 36e5;
 var LEAK_MIN_SPAN_MS = 30 * 6e4;
@@ -5921,7 +5922,7 @@ var activeLeak = null;
 var incidents = [];
 function incidentFile() {
   if (!logFilePath) return null;
-  return path9.join(path9.dirname(logFilePath), "leak-incidents.jsonl");
+  return path8.join(path8.dirname(logFilePath), "leak-incidents.jsonl");
 }
 function append2(ev) {
   const f = incidentFile();
@@ -7563,7 +7564,7 @@ adminRouter.post("/check-url", checkUrlLimiter, validateBody(checkUrlSchema), as
 });
 adminRouter.get("/deploy-info", async (_req, res) => {
   let marker = null;
-  const markerPath = path10.resolve(process.cwd(), "../logs/deploy.json");
+  const markerPath = path9.resolve(process.cwd(), "../logs/deploy.json");
   try {
     if (fs9.existsSync(markerPath)) {
       marker = JSON.parse(fs9.readFileSync(markerPath, "utf8"));
@@ -7579,7 +7580,7 @@ adminRouter.get("/deploy-info", async (_req, res) => {
   }
   let build = null;
   try {
-    const bp = path10.resolve(process.cwd(), "dist/build-commit.json");
+    const bp = path9.resolve(process.cwd(), "dist/build-commit.json");
     if (fs9.existsSync(bp)) {
       const bj = JSON.parse(fs9.readFileSync(bp, "utf8"));
       if (bj?.commit) build = { commit: bj.commit, builtAt: bj.builtAt || "" };
@@ -7751,9 +7752,9 @@ adminRouter.get("/diagnostics", async (_req, res) => {
   result.healthCheck = getHealthMonitorState();
   result.leak = getLeakMonitorState();
   for (const cand of [
-    path10.resolve(process.cwd(), "web.config"),
-    path10.resolve(process.cwd(), "../web.config"),
-    path10.resolve(process.cwd(), "../../web.config")
+    path9.resolve(process.cwd(), "web.config"),
+    path9.resolve(process.cwd(), "../web.config"),
+    path9.resolve(process.cwd(), "../../web.config")
   ]) {
     if (!fs9.existsSync(cand)) continue;
     try {
@@ -7843,9 +7844,9 @@ adminRouter.get("/logs", async (_req, res) => {
     result.crashes = [...crashMap.values()];
   }
   const dirs = /* @__PURE__ */ new Set();
-  if (logFilePath) dirs.add(path10.dirname(logFilePath));
-  dirs.add(path10.resolve(process.cwd(), "../logs"));
-  dirs.add(path10.resolve(process.cwd(), "../../logs"));
+  if (logFilePath) dirs.add(path9.dirname(logFilePath));
+  dirs.add(path9.resolve(process.cwd(), "../logs"));
+  dirs.add(path9.resolve(process.cwd(), "../../logs"));
   for (const dir of dirs) {
     let entries = [];
     try {
@@ -7857,7 +7858,7 @@ adminRouter.get("/logs", async (_req, res) => {
       if (!e.isFile()) continue;
       const name = e.name;
       if (!/^stdout_/i.test(name) && !/^stderr_/i.test(name) && !/\.log$/i.test(name)) continue;
-      const full = path10.join(dir, name);
+      const full = path9.join(dir, name);
       try {
         const size = fs9.statSync(full).size;
         const buf = fs9.readFileSync(full, "utf8");
@@ -8118,8 +8119,8 @@ adminRouter.post("/firmware", upload2.single("firmware"), async (req, res) => {
   const filename = modelCode ? `firmware-${modelCode.toLowerCase()}.bin` : "firmware.bin";
   const url = `/firmware/${filename}`;
   if (modelCode && filename !== "firmware.bin") {
-    const uploaded = path10.join(firmwareDir, "firmware.bin");
-    const target = path10.join(firmwareDir, filename);
+    const uploaded = path9.join(firmwareDir, "firmware.bin");
+    const target = path9.join(firmwareDir, filename);
     if (fs9.existsSync(uploaded) && uploaded !== target) {
       if (fs9.existsSync(target)) fs9.unlinkSync(target);
       fs9.renameSync(uploaded, target);
@@ -8446,12 +8447,12 @@ adminRouter.delete("/products/:id", async (req, res) => {
 var productMediaUpload = multer2({
   storage: multer2.diskStorage({
     destination: (_req, _file, cb) => {
-      const dir = path10.join(process.cwd(), "uploads/product-media");
+      const dir = path9.join(process.cwd(), "uploads/product-media");
       fs9.mkdirSync(dir, { recursive: true });
       cb(null, dir);
     },
     filename: (_req, file, cb) => {
-      const ext = path10.extname(file.originalname);
+      const ext = path9.extname(file.originalname);
       cb(null, `pm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`);
     }
   }),
@@ -8463,7 +8464,7 @@ adminRouter.post("/products/:id/media", productMediaUpload.single("file"), async
   const product = await prisma.product.findUnique({ where: { id: productId } });
   if (!product) throw new AppError("NOT_FOUND", "Product not found");
   const fileUrl = `/uploads/product-media/${req.file.filename}`;
-  const ext = path10.extname(req.file.originalname).toLowerCase();
+  const ext = path9.extname(req.file.originalname).toLowerCase();
   const type = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"].includes(ext) ? "image" : [".mp4", ".webm", ".mov"].includes(ext) ? "video" : "document";
   const media = await prisma.productMedia.create({
     data: { productId, url: fileUrl, type }
@@ -8475,7 +8476,7 @@ adminRouter.delete("/products/media/:mediaId", async (req, res) => {
   const mediaId = Number(req.params.mediaId);
   const media = await prisma.productMedia.findUnique({ where: { id: mediaId } });
   if (!media) throw new AppError("NOT_FOUND", "Media not found");
-  const filePath = path10.join(process.cwd(), media.url.replace(/^\/+/, ""));
+  const filePath = path9.join(process.cwd(), media.url.replace(/^\/+/, ""));
   try {
     fs9.unlinkSync(filePath);
   } catch {
@@ -9490,11 +9491,11 @@ init_prisma();
 import { Router as Router15 } from "express";
 init_audit_service();
 init_siteSettings_service();
-import path11 from "path";
+import path10 from "path";
 import fs10 from "fs";
 var publicRouter = Router15();
 publicRouter.get("/apk", (req, res) => {
-  const apkPath = path11.resolve(process.cwd(), "../mobile/android/app/build/outputs/apk/debug/app-debug.apk");
+  const apkPath = path10.resolve(process.cwd(), "../mobile/android/app/build/outputs/apk/debug/app-debug.apk");
   if (fs10.existsSync(apkPath)) {
     res.download(apkPath, "SwitchNest.apk");
   } else {
@@ -9951,7 +9952,7 @@ init_socket();
 
 // src/lib/attachmentStore.ts
 import * as fs11 from "fs";
-import * as path12 from "path";
+import * as path11 from "path";
 function extFor(type, name) {
   const fromName = name.split(".").pop()?.toLowerCase();
   if (fromName && /^[a-z0-9]{1,8}$/.test(fromName)) return fromName;
@@ -9969,24 +9970,24 @@ function saveAttachment(base64, type, name) {
   if (buf.length === 0) throw new Error("Empty file");
   const filename = `a_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}.${extFor(type, name)}`;
   fs11.mkdirSync(attachmentDir, { recursive: true });
-  fs11.writeFileSync(path12.join(attachmentDir, filename), buf);
+  fs11.writeFileSync(path11.join(attachmentDir, filename), buf);
   return filename;
 }
 function readAttachmentFile(filename) {
-  const safe = path12.basename(filename);
+  const safe = path11.basename(filename);
   if (safe !== filename) return null;
   try {
-    return fs11.readFileSync(path12.join(attachmentDir, safe));
+    return fs11.readFileSync(path11.join(attachmentDir, safe));
   } catch {
     return null;
   }
 }
 function deleteAttachmentFile(filename) {
   if (!filename) return;
-  const safe = path12.basename(filename);
+  const safe = path11.basename(filename);
   if (safe !== filename) return;
   try {
-    fs11.unlinkSync(path12.join(attachmentDir, safe));
+    fs11.unlinkSync(path11.join(attachmentDir, safe));
   } catch {
   }
 }
@@ -9995,7 +9996,7 @@ function deleteAttachmentFile(filename) {
 init_email_service();
 init_env();
 import multer4 from "multer";
-import path13 from "path";
+import path12 from "path";
 import fs12 from "fs";
 var supportRouter = Router16();
 try {
@@ -10007,8 +10008,8 @@ try {
 var storage3 = multer4.diskStorage({
   destination: (_req, _file, cb) => cb(null, attachmentDir),
   filename: (req, file, cb) => {
-    const ext = path13.extname(file.originalname) || "";
-    const safeName = path13.basename(file.originalname, ext).replace(/[^a-zA-Z0-9_-]/g, "");
+    const ext = path12.extname(file.originalname) || "";
+    const safeName = path12.basename(file.originalname, ext).replace(/[^a-zA-Z0-9_-]/g, "");
     cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}-${safeName}${ext}`);
   }
 });
@@ -11235,7 +11236,7 @@ init_prisma();
 import { Router as Router22 } from "express";
 import mysql from "mysql2/promise";
 import fs13 from "node:fs";
-import path14 from "node:path";
+import path13 from "node:path";
 import bcrypt3 from "bcryptjs";
 init_logger();
 
@@ -11508,7 +11509,7 @@ async function checkOfflineDevicesInner() {
 }
 
 // src/routes/install.routes.ts
-var SCHEMA_SQL = path14.resolve(process.cwd(), "prisma/schema.sql");
+var SCHEMA_SQL = path13.resolve(process.cwd(), "prisma/schema.sql");
 var installRouter = Router22();
 var DEFAULT_PRODUCTS = [
   { name: "2CH WiFi Relay Module", modelCode: "2CH", relayCount: 2, price: "599", description: "Two-channel WiFi relay board for lights and small appliances. 10A per channel, ESP32 based, works with the SwitchNest app and voice assistant.", features: { channels: 2, wifi: true, ota: true, voice: true } },
@@ -11635,13 +11636,13 @@ async function createDatabase(parts) {
 }
 function getSchemaSql() {
   const candidates = [
-    path14.resolve(process.cwd(), "prisma/schema.sql"),
-    path14.resolve(process.cwd(), "dist/schema.sql"),
-    path14.resolve(process.cwd(), "apps/api/prisma/schema.sql"),
-    path14.resolve(process.cwd(), "site/apps/api/prisma/schema.sql"),
-    path14.resolve(__dirname, "../prisma/schema.sql"),
-    path14.resolve(__dirname, "schema.sql"),
-    path14.resolve(__dirname, "prisma/schema.sql")
+    path13.resolve(process.cwd(), "prisma/schema.sql"),
+    path13.resolve(process.cwd(), "dist/schema.sql"),
+    path13.resolve(process.cwd(), "apps/api/prisma/schema.sql"),
+    path13.resolve(process.cwd(), "site/apps/api/prisma/schema.sql"),
+    path13.resolve(__dirname, "../prisma/schema.sql"),
+    path13.resolve(__dirname, "schema.sql"),
+    path13.resolve(__dirname, "prisma/schema.sql")
   ];
   for (const p of candidates) {
     if (fs13.existsSync(p)) {
@@ -11784,26 +11785,9 @@ function dbFromBody(bodyDb) {
 }
 installRouter.get("/status", async (_req, res) => {
   try {
-    const dbUrl = process.env.DATABASE_URL || env.DATABASE_URL || "mysql://switch_v2:switchnest%401234567890@127.0.0.1:3306/switch_v2";
-    let parts = parseDatabaseUrl(dbUrl);
-    let probe = await probeDb(parts);
-    if (!probe.installed) {
-      const pleskParts = {
-        host: "127.0.0.1",
-        port: 3306,
-        user: "switch_v2",
-        pass: "switchnest@1234567890",
-        name: "switch_v2"
-      };
-      const pleskProbe = await probeDb(pleskParts);
-      if (pleskProbe.installed) {
-        probe = pleskProbe;
-        parts = pleskParts;
-        env.DATABASE_URL = buildDatabaseUrl2(pleskParts);
-        process.env.DATABASE_URL = env.DATABASE_URL;
-        setDbReady(true);
-      }
-    }
+    const dbUrl = getEffectiveDbUrl();
+    const parts = parseDatabaseUrl(dbUrl);
+    const probe = await probeDb(parts);
     ok(res, {
       installed: probe.installed,
       dbReachable: probe.reachable,
@@ -11812,8 +11796,8 @@ installRouter.get("/status", async (_req, res) => {
       db: {
         host: parts.host || "127.0.0.1",
         port: parts.port || 3306,
-        user: parts.user || "switch_v2",
-        name: parts.name || "switch_v2"
+        user: parts.user || "root",
+        name: parts.name || "switchnest"
       },
       admin: {
         username: env.ADMIN_USERNAME || "admin",
@@ -11827,7 +11811,7 @@ installRouter.get("/status", async (_req, res) => {
       dbReachable: true,
       tablesReady: true,
       dbConfigured: true,
-      db: { host: "127.0.0.1", port: 3306, user: "switch_v2", name: "switch_v2" },
+      db: { host: "127.0.0.1", port: 3306, user: "root", name: "switchnest" },
       admin: { username: "admin", email: "admin@switchnest.in", passwordSet: true }
     });
   }
@@ -12548,18 +12532,18 @@ var DESCRIPTIONS = {
   "GET /api/health": "Health check \u2014 DB schema diag + build version (ops).",
   "GET /api/version": "API version (ops)."
 };
-function securityFor(path17, method) {
-  if (method === "GET" && (path17 === "/api/health" || path17 === "/api/version")) return void 0;
-  if (path17.startsWith("/api/device")) return [{ deviceApiKey: [] }];
-  if (path17.startsWith("/api/install") || path17.startsWith("/api/public")) return void 0;
-  if (path17.startsWith("/api/docs")) return void 0;
-  if (path17.startsWith("/api/auth")) {
-    if (method === "GET" || path17.includes("/me") || path17 === "/api/auth/theme") {
+function securityFor(path16, method) {
+  if (method === "GET" && (path16 === "/api/health" || path16 === "/api/version")) return void 0;
+  if (path16.startsWith("/api/device")) return [{ deviceApiKey: [] }];
+  if (path16.startsWith("/api/install") || path16.startsWith("/api/public")) return void 0;
+  if (path16.startsWith("/api/docs")) return void 0;
+  if (path16.startsWith("/api/auth")) {
+    if (method === "GET" || path16.includes("/me") || path16 === "/api/auth/theme") {
       return [{ bearerAuth: [] }];
     }
     return void 0;
   }
-  if (path17.startsWith("/api/shop/products")) return void 0;
+  if (path16.startsWith("/api/shop/products")) return void 0;
   return [{ bearerAuth: [] }];
 }
 var BODIES = {
@@ -13000,8 +12984,8 @@ var SCHEMAS = {
     }
   }
 };
-function tagFor(path17) {
-  const seg = path17.replace(/^\/api\//, "").split("/")[0] ?? "system";
+function tagFor(path16) {
+  const seg = path16.replace(/^\/api\//, "").split("/")[0] ?? "system";
   const map = {
     auth: "Auth",
     device: "Device API (ESP32)",
@@ -13022,11 +13006,11 @@ function tagFor(path17) {
   };
   return map[seg] ?? "Homes";
 }
-function paramsFor(path17) {
+function paramsFor(path16) {
   const out = [];
   const re = /:([A-Za-z0-9_]+)/g;
   let m;
-  while ((m = re.exec(path17)) !== null) {
+  while ((m = re.exec(path16)) !== null) {
     out.push({
       name: m[1],
       in: "path",
@@ -13891,11 +13875,11 @@ docsRouter.get("/plain", (_req, res) => {
   const spec = getOpenApiSpec();
   const paths = spec.paths;
   const byTag = /* @__PURE__ */ new Map();
-  for (const [path17, ops] of Object.entries(paths)) {
+  for (const [path16, ops] of Object.entries(paths)) {
     for (const [method, op] of Object.entries(ops)) {
       const tag = op.tags?.[0] ?? "Other";
       if (!byTag.has(tag)) byTag.set(tag, []);
-      byTag.get(tag).push({ method: method.toUpperCase(), path: path17, summary: op.summary ?? "" });
+      byTag.get(tag).push({ method: method.toUpperCase(), path: path16, summary: op.summary ?? "" });
     }
   }
   const methodColor2 = {
@@ -14043,10 +14027,10 @@ function createApp() {
   app.use("/firmware", express2.static(firmwareDir));
   app.use("/uploads", express2.static(uploadsDir));
   app.use("/mobile-app", express2.static(mobileAppDir));
-  const apiRootHtml = path15.join(process.cwd(), "index.html");
-  const apiAssetsDir = path15.join(process.cwd(), "assets");
-  const webDistHtml = path15.join(webDist, "index.html");
-  const webDistAssets = path15.join(webDist, "assets");
+  const apiRootHtml = path14.join(process.cwd(), "index.html");
+  const apiAssetsDir = path14.join(process.cwd(), "assets");
+  const webDistHtml = path14.join(webDist, "index.html");
+  const webDistAssets = path14.join(webDist, "assets");
   if (fs14.existsSync(apiAssetsDir)) {
     app.use(
       "/assets",
@@ -14082,7 +14066,7 @@ function createApp() {
           const latestJs = files.find((f) => f.startsWith("index-") && f.endsWith(".js"));
           if (latestJs) {
             res.setHeader("Content-Type", "application/javascript");
-            return res.sendFile(path15.join(targetDir, latestJs));
+            return res.sendFile(path14.join(targetDir, latestJs));
           }
         } catch {
         }
@@ -14274,10 +14258,10 @@ init_prisma();
 init_siteSettings_service();
 init_logger();
 import fs15 from "node:fs";
-import path16 from "node:path";
-var UPLOADS_DIR = path16.join(process.cwd(), "uploads");
-var COLD_STORAGE_TELEMETRY = path16.join(UPLOADS_DIR, "cold_storage", "telemetry");
-var COLD_STORAGE_SUPPORT = path16.join(UPLOADS_DIR, "cold_storage", "support");
+import path15 from "node:path";
+var UPLOADS_DIR = path15.join(process.cwd(), "uploads");
+var COLD_STORAGE_TELEMETRY = path15.join(UPLOADS_DIR, "cold_storage", "telemetry");
+var COLD_STORAGE_SUPPORT = path15.join(UPLOADS_DIR, "cold_storage", "support");
 var archivalTimer = null;
 var isRunning = false;
 function startArchivalService() {
@@ -14304,7 +14288,7 @@ async function runArchival() {
         orderBy: { createdAt: "asc" }
       });
       if (oldLogs.length === 0) break;
-      const filePath = path16.join(COLD_STORAGE_TELEMETRY, `telemetry_${now.toISOString().split("T")[0]}.jsonl`);
+      const filePath = path15.join(COLD_STORAGE_TELEMETRY, `telemetry_${now.toISOString().split("T")[0]}.jsonl`);
       const lines = oldLogs.map((l) => JSON.stringify(l)).join("\n") + "\n";
       fs15.appendFileSync(filePath, lines);
       const ids = oldLogs.map((l) => l.id);
@@ -14324,7 +14308,7 @@ async function runArchival() {
         orderBy: { createdAt: "asc" }
       });
       if (oldMessages.length === 0) break;
-      const filePath = path16.join(COLD_STORAGE_SUPPORT, `chat_${now.toISOString().split("T")[0]}.jsonl`);
+      const filePath = path15.join(COLD_STORAGE_SUPPORT, `chat_${now.toISOString().split("T")[0]}.jsonl`);
       const lines = oldMessages.map((m) => JSON.stringify(m)).join("\n") + "\n";
       fs15.appendFileSync(filePath, lines);
       const ids = oldMessages.map((m) => m.id);
@@ -14625,7 +14609,7 @@ async function dbHasSchema() {
   }
   try {
     const mysql2 = (await import("mysql2/promise")).default;
-    const dbUrl = process.env.DATABASE_URL || env.DATABASE_URL || "mysql://switch_v2:switchnest%401234567890@127.0.0.1:3306/switch_v2";
+    const dbUrl = getEffectiveDbUrl();
     const u = new URL(dbUrl);
     const conn = await mysql2.createConnection({
       host: u.hostname === "localhost" ? "127.0.0.1" : u.hostname,
@@ -14672,34 +14656,7 @@ var boot = (...args) => {
   process.stderr.write(line + "\n");
   fileLog(line);
 };
-function patchWebConfig() {
-  try {
-    const webConfigPath = path.resolve(process.cwd(), "web.config");
-    const cleanConfig = `<?xml version="1.0" encoding="utf-8"?>
-<configuration>
-  <system.webServer>
-    <rewrite>
-      <rules>
-        <rule name="DynamicContent" stopProcessing="true">
-          <match url=".*" />
-          <conditions logicalGrouping="MatchAll">
-            <add input="{REQUEST_FILENAME}" matchType="IsFile" negate="true" />
-            <add input="{REQUEST_FILENAME}" matchType="IsDirectory" negate="true" />
-          </conditions>
-          <action type="Rewrite" url="dist/index.cjs" />
-        </rule>
-      </rules>
-    </rewrite>
-    <httpErrors existingResponse="PassThrough" />
-  </system.webServer>
-</configuration>
-`;
-    fs.writeFileSync(webConfigPath, cleanConfig, "utf-8");
-  } catch (_err) {
-  }
-}
 async function main() {
-  patchWebConfig();
   boot("node", process.version, "| cwd =", process.cwd());
   boot("PORT env =", JSON.stringify(process.env.PORT ?? "(not set)"), "-> API_PORT =", env.API_PORT);
   boot("log file =", logFilePath ?? "(disabled)");

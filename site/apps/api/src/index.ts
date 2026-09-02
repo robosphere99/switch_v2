@@ -1,7 +1,7 @@
 import { createServer } from "http";
 import { createApp } from "./app";
 import { env } from "./config/env";
-import { prisma } from "./lib/prisma";
+import { prisma, getEffectiveDbUrl } from "./lib/prisma";
 import { logger, fileLog, logFilePath } from "./lib/logger";
 import { initSocket } from "./lib/socket";
 import { startScheduler } from "./services/scheduler.service";
@@ -328,7 +328,7 @@ async function dbHasSchema(): Promise<boolean> {
   }
   try {
     const mysql = (await import("mysql2/promise")).default;
-    const dbUrl = process.env.DATABASE_URL || env.DATABASE_URL || "mysql://switch_v2:switchnest%401234567890@127.0.0.1:3306/switch_v2";
+    const dbUrl = getEffectiveDbUrl();
     const u = new URL(dbUrl);
     const conn = await mysql.createConnection({
       host: u.hostname === "localhost" ? "127.0.0.1" : u.hostname,
@@ -390,36 +390,7 @@ const boot = (...args: unknown[]) => {
   fileLog(line);
 };
 
-function patchWebConfig() {
-  try {
-    const webConfigPath = path.resolve(process.cwd(), "web.config");
-    const cleanConfig = `<?xml version="1.0" encoding="utf-8"?>
-<configuration>
-  <system.webServer>
-    <rewrite>
-      <rules>
-        <rule name="DynamicContent" stopProcessing="true">
-          <match url=".*" />
-          <conditions logicalGrouping="MatchAll">
-            <add input="{REQUEST_FILENAME}" matchType="IsFile" negate="true" />
-            <add input="{REQUEST_FILENAME}" matchType="IsDirectory" negate="true" />
-          </conditions>
-          <action type="Rewrite" url="dist/index.cjs" />
-        </rule>
-      </rules>
-    </rewrite>
-    <httpErrors existingResponse="PassThrough" />
-  </system.webServer>
-</configuration>
-`;
-    fs.writeFileSync(webConfigPath, cleanConfig, "utf-8");
-  } catch (_err) {
-    /* ignore */
-  }
-}
-
 async function main() {
-  patchWebConfig();
   // Plesk/IISNode ko readiness signal turant chahiye — server pehle listen
   // karta hai, DB init background me hota hai. app.ts ka isDbReady() gate
   // setup mode (503) + install wizard ko handle karta hai.
