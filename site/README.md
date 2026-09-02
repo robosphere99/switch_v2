@@ -1,6 +1,6 @@
 # RoboSphere v2 — Site Monorepo
 
-Scalable, multi-tenant smart-home IoT platform.
+Scalable, multi-tenant smart-home IoT platform (v2.2 Production Deploy).
 Frontend: **React + Vite + TypeScript**. Backend: **Node.js + Express + TypeScript + Prisma**. Database: **MySQL 8** (kept from v1).
 
 ## Structure
