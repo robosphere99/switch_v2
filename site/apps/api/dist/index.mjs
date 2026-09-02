@@ -9355,7 +9355,7 @@ claimRouter.post("/", claimLimiter, async (req, res) => {
     }
     throw new AppError("CONFLICT", "This device was already activated by another user");
   }
-  if (!["delivered", "shipped"].includes(serial.status)) {
+  if (!["delivered", "shipped", "reserved", "available", "processing"].includes(serial.status)) {
     throw new AppError("CONFLICT", `This device is not yet ready to activate (status: ${serial.status})`);
   }
   const membership2 = await prisma.homeMember.findUnique({
@@ -9384,7 +9384,8 @@ claimRouter.post("/", claimLimiter, async (req, res) => {
         name: deviceName,
         serialCode: serial.serialCode,
         modelCode: serial.product.modelCode,
-        offline: true
+        offline: true,
+        updatedAt: /* @__PURE__ */ new Date()
       }
     });
     return espStub;
@@ -14722,6 +14723,10 @@ async function runLightMigrations() {
     await addCol("notifications", "cta_label", "VARCHAR(50) NULL");
     await addCol("home_members", "restricted", "BOOLEAN NOT NULL DEFAULT FALSE");
     await addCol("home_members", "daily_limit_minutes", "INT NULL");
+    await addCol("esp_devices", "serial_code", "VARCHAR(32) NULL");
+    await addCol("esp_devices", "model_code", "VARCHAR(16) NULL");
+    await addCol("esp_devices", "offline", "BOOLEAN NOT NULL DEFAULT TRUE");
+    await addCol("esp_devices", "updated_at", "DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)");
     await migration("alter orders.status to VARCHAR(32)", async () => {
       await prisma.$executeRawUnsafe("ALTER TABLE `orders` MODIFY COLUMN `status` VARCHAR(32) NOT NULL DEFAULT 'pending'");
     });

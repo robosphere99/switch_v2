@@ -375,6 +375,10 @@ async function runLightMigrations(): Promise<void> {
     await addCol("notifications", "cta_label", "VARCHAR(50) NULL");
     await addCol("home_members", "restricted", "BOOLEAN NOT NULL DEFAULT FALSE");
     await addCol("home_members", "daily_limit_minutes", "INT NULL");
+    await addCol("esp_devices", "serial_code", "VARCHAR(32) NULL");
+    await addCol("esp_devices", "model_code", "VARCHAR(16) NULL");
+    await addCol("esp_devices", "offline", "BOOLEAN NOT NULL DEFAULT TRUE");
+    await addCol("esp_devices", "updated_at", "DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)");
     await migration("alter orders.status to VARCHAR(32)", async () => {
       await prisma.$executeRawUnsafe("ALTER TABLE `orders` MODIFY COLUMN `status` VARCHAR(32) NOT NULL DEFAULT 'pending'");
     });
