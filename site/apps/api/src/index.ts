@@ -403,6 +403,19 @@ async function runLightMigrations(): Promise<void> {
         logger.info("✅ Migration: refresh_tokens table created");
       }
     });
+    // 15) users.push_device_toggles & push_system_alerts
+    await migration("users push_device_toggles & push_system_alerts", async () => {
+      const pdt = await prisma.$queryRaw<{ c: bigint }[]>`
+        SELECT COUNT(*) AS c FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'push_device_toggles'
+      `;
+      if (Number(pdt[0]?.c ?? 0) === 0) {
+        await prisma.$executeRawUnsafe(
+          "ALTER TABLE `users` ADD COLUMN `push_device_toggles` BOOLEAN NOT NULL DEFAULT TRUE, ADD COLUMN `push_system_alerts` BOOLEAN NOT NULL DEFAULT TRUE, ADD COLUMN `token_version` INT NOT NULL DEFAULT 0",
+        );
+        logger.info("✅ Migration: users.push_device_toggles & push_system_alerts added");
+      }
+    });
   } catch (err) {
     logger.warn("Light migration (esp serial unique) skip/fail", err instanceof Error ? err.message : String(err));
   }

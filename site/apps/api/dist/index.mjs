@@ -1762,25 +1762,31 @@ async function signup(input, deviceInfo, ipAddress) {
     throw new AppError("EMAIL_TAKEN", `Email '${input.email}' is already registered. Please log in or use another email.`, 409);
   }
   const password = await bcrypt.hash(input.password, 10);
-  const user = await prisma.$transaction(async (tx) => {
-    const created = await tx.user.create({
-      data: {
-        username: input.username,
-        email: input.email,
-        password
-      }
-    });
-    await tx.home.create({
-      data: {
-        name: input.homeName?.trim() || `${input.username}'s Home`,
-        ownerId: created.id,
-        members: {
-          create: { userId: created.id, role: "owner" }
+  let user;
+  try {
+    user = await prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: {
+          username: input.username,
+          email: input.email,
+          password
         }
-      }
+      });
+      await tx.home.create({
+        data: {
+          name: input.homeName?.trim() || `${input.username}'s Home`,
+          ownerId: created.id,
+          members: {
+            create: { userId: created.id, role: "owner" }
+          }
+        }
+      });
+      return created;
     });
-    return created;
-  });
+  } catch (err) {
+    logger.error("[signup] Error during user creation transaction", err instanceof Error ? err.stack : err);
+    throw err;
+  }
   return issueTokens(user, deviceInfo, ipAddress);
 }
 async function updateProfile(userId, input) {
@@ -14713,6 +14719,18 @@ async function runLightMigrations() {
           ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         `);
         logger.info("\u2705 Migration: refresh_tokens table created");
+      }
+    });
+    await migration("users push_device_toggles & push_system_alerts", async () => {
+      const pdt = await prisma.$queryRaw`
+        SELECT COUNT(*) AS c FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'push_device_toggles'
+      `;
+      if (Number(pdt[0]?.c ?? 0) === 0) {
+        await prisma.$executeRawUnsafe(
+          "ALTER TABLE `users` ADD COLUMN `push_device_toggles` BOOLEAN NOT NULL DEFAULT TRUE, ADD COLUMN `push_system_alerts` BOOLEAN NOT NULL DEFAULT TRUE, ADD COLUMN `token_version` INT NOT NULL DEFAULT 0"
+        );
+        logger.info("\u2705 Migration: users.push_device_toggles & push_system_alerts added");
       }
     });
   } catch (err) {
