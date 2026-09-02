@@ -416,6 +416,19 @@ async function runLightMigrations(): Promise<void> {
         logger.info("✅ Migration: users.push_device_toggles & push_system_alerts added");
       }
     });
+    // 16) home_members.joined_at
+    await migration("home_members.joined_at", async () => {
+      const ja = await prisma.$queryRaw<{ c: bigint }[]>`
+        SELECT COUNT(*) AS c FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'home_members' AND column_name = 'joined_at'
+      `;
+      if (Number(ja[0]?.c ?? 0) === 0) {
+        await prisma.$executeRawUnsafe(
+          "ALTER TABLE `home_members` ADD COLUMN `joined_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)",
+        );
+        logger.info("✅ Migration: home_members.joined_at added");
+      }
+    });
   } catch (err) {
     logger.warn("Light migration (esp serial unique) skip/fail", err instanceof Error ? err.message : String(err));
   }

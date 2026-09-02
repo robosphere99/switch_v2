@@ -1799,7 +1799,7 @@ async function signup(input, deviceInfo, ipAddress) {
           name: input.homeName?.trim() || `${input.username}'s Home`,
           ownerId: created.id,
           members: {
-            create: { userId: created.id, role: "owner" }
+            create: { userId: created.id, role: "owner", joinedAt: /* @__PURE__ */ new Date() }
           }
         }
       });
@@ -14753,6 +14753,18 @@ async function runLightMigrations() {
           "ALTER TABLE `users` ADD COLUMN `push_device_toggles` BOOLEAN NOT NULL DEFAULT TRUE, ADD COLUMN `push_system_alerts` BOOLEAN NOT NULL DEFAULT TRUE, ADD COLUMN `token_version` INT NOT NULL DEFAULT 0"
         );
         logger.info("\u2705 Migration: users.push_device_toggles & push_system_alerts added");
+      }
+    });
+    await migration("home_members.joined_at", async () => {
+      const ja = await prisma.$queryRaw`
+        SELECT COUNT(*) AS c FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'home_members' AND column_name = 'joined_at'
+      `;
+      if (Number(ja[0]?.c ?? 0) === 0) {
+        await prisma.$executeRawUnsafe(
+          "ALTER TABLE `home_members` ADD COLUMN `joined_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)"
+        );
+        logger.info("\u2705 Migration: home_members.joined_at added");
       }
     });
   } catch (err) {
