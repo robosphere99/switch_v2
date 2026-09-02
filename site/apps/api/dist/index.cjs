@@ -13465,7 +13465,6 @@ function createApp() {
   };
   app.use("/api", checkDbSetup);
   app.use("/api", apiRouter);
-  app.use("/", apiRouter);
   app.use("/firmware", import_express24.default.static(firmwareDir));
   app.use("/uploads", import_express24.default.static(uploadsDir));
   app.use("/mobile-app", import_express24.default.static(mobileAppDir));
@@ -13485,7 +13484,8 @@ function createApp() {
         }
       })
     );
-  } else if (import_node_fs4.default.existsSync(webDistAssets)) {
+  }
+  if (import_node_fs4.default.existsSync(webDistAssets)) {
     app.use(
       "/assets",
       import_express24.default.static(webDistAssets, {
@@ -13500,13 +13500,14 @@ function createApp() {
   }
   if (import_node_fs4.default.existsSync(apiRootHtml)) {
     app.use(import_express24.default.static(process.cwd()));
-    app.get(/^\/(?!api|firmware|uploads|mobile-app|assets|socket\.io).*/, (_req, res) => {
+    app.get(["/", "/login", "/signup", "/forgot-password", "/reset-password", "/support", "/verify-bill", "/dashboard*", "/admin*", "/shop*"], (_req, res) => {
       res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
       res.sendFile(apiRootHtml);
     });
-  } else if (import_node_fs4.default.existsSync(webDistHtml)) {
+  }
+  if (import_node_fs4.default.existsSync(webDistHtml)) {
     app.use(import_express24.default.static(webDist));
-    app.get(/^\/(?!api|firmware|uploads|mobile-app|assets|socket\.io).*/, (_req, res) => {
+    app.get(["/", "/login", "/signup", "/forgot-password", "/reset-password", "/support", "/verify-bill", "/dashboard*", "/admin*", "/shop*"], (_req, res) => {
       res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
       res.sendFile(webDistHtml);
     });
