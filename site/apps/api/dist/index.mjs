@@ -13476,20 +13476,22 @@ function createApp() {
       })
     );
   }
+  const sendSpaHtml = (_req, res) => {
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    if (fs12.existsSync(apiRootHtml)) {
+      res.sendFile(apiRootHtml);
+    } else if (fs12.existsSync(webDistHtml)) {
+      res.sendFile(webDistHtml);
+    }
+  };
   if (fs12.existsSync(apiRootHtml)) {
     app.use(express2.static(process.cwd()));
-    app.get(["/", "/login", "/signup", "/forgot-password", "/reset-password", "/support", "/verify-bill", "/dashboard*", "/admin*", "/shop*"], (_req, res) => {
-      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-      res.sendFile(apiRootHtml);
-    });
   }
   if (fs12.existsSync(webDistHtml)) {
     app.use(express2.static(webDist));
-    app.get(["/", "/login", "/signup", "/forgot-password", "/reset-password", "/support", "/verify-bill", "/dashboard*", "/admin*", "/shop*"], (_req, res) => {
-      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-      res.sendFile(webDistHtml);
-    });
   }
+  app.get(["/", "/login", "/signup", "/forgot-password", "/reset-password", "/support", "/verify-bill"], sendSpaHtml);
+  app.use(["/dashboard", "/admin", "/shop"], sendSpaHtml);
   app.use((_req, res) => {
     res.status(404).json({
       success: false,

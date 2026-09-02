@@ -13498,20 +13498,22 @@ function createApp() {
       })
     );
   }
+  const sendSpaHtml = (_req, res) => {
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    if (import_node_fs4.default.existsSync(apiRootHtml)) {
+      res.sendFile(apiRootHtml);
+    } else if (import_node_fs4.default.existsSync(webDistHtml)) {
+      res.sendFile(webDistHtml);
+    }
+  };
   if (import_node_fs4.default.existsSync(apiRootHtml)) {
     app.use(import_express24.default.static(process.cwd()));
-    app.get(["/", "/login", "/signup", "/forgot-password", "/reset-password", "/support", "/verify-bill", "/dashboard*", "/admin*", "/shop*"], (_req, res) => {
-      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-      res.sendFile(apiRootHtml);
-    });
   }
   if (import_node_fs4.default.existsSync(webDistHtml)) {
     app.use(import_express24.default.static(webDist));
-    app.get(["/", "/login", "/signup", "/forgot-password", "/reset-password", "/support", "/verify-bill", "/dashboard*", "/admin*", "/shop*"], (_req, res) => {
-      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-      res.sendFile(webDistHtml);
-    });
   }
+  app.get(["/", "/login", "/signup", "/forgot-password", "/reset-password", "/support", "/verify-bill"], sendSpaHtml);
+  app.use(["/dashboard", "/admin", "/shop"], sendSpaHtml);
   app.use((_req, res) => {
     res.status(404).json({
       success: false,
