@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
+import { safeStorage } from "../lib/safeStorage";
 
 
 export function OAuthConsent() {
@@ -21,7 +22,7 @@ export function OAuthConsent() {
 
     useEffect(() => {
         // In a real application, you'd fetch the user's homes from the API and populate the array
-        const savedHomes = JSON.parse(localStorage.getItem("homes") || "[]");
+        const savedHomes = JSON.parse(safeStorage.getItem("homes") || "[]");
         setHomes(savedHomes);
         if (savedHomes.length > 0) {
             setSelectedHome(savedHomes[0].id);
@@ -41,7 +42,7 @@ export function OAuthConsent() {
                 headers: {
                     "Content-Type": "application/json",
                     // Including authorization Bearer token natively if your app does it, else use API client
-                    "Authorization": `Bearer ${localStorage.getItem("accessToken")}`
+                    "Authorization": `Bearer ${safeStorage.getItem("accessToken")}`
                 },
                 body: JSON.stringify({
                     client_id: clientId,

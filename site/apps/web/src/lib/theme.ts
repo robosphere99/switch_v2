@@ -1,3 +1,5 @@
+import { safeStorage } from "./safeStorage";
+
 export type ThemeMode = "light" | "dark" | "system";
 
 const STORAGE_KEY = "theme";
@@ -9,7 +11,7 @@ function systemPrefersDark(): boolean {
 
 /** Saved preference — first visit pe OS ki setting follow karta hai (system). */
 export function getThemeMode(): ThemeMode {
-  const saved = localStorage.getItem(STORAGE_KEY);
+  const saved = safeStorage.getItem(STORAGE_KEY);
   return saved === "light" || saved === "dark" || saved === "system" ? saved : "system";
 }
 
@@ -54,7 +56,7 @@ export function applyTheme(): boolean {
 
 /** Set explicit mode (light/dark/system) and persist. Returns resolved dark state. */
 export function setThemeMode(mode: ThemeMode): boolean {
-  localStorage.setItem(STORAGE_KEY, mode);
+  safeStorage.setItem(STORAGE_KEY, mode);
   return apply(true);
 }
 
