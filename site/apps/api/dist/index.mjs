@@ -1598,6 +1598,7 @@ import fs14 from "node:fs";
 
 // src/middleware/errorHandler.ts
 import { ZodError } from "zod";
+import { Prisma } from "@prisma/client";
 
 // src/lib/response.ts
 function ok(res, data, status = 200) {
@@ -1629,8 +1630,16 @@ var errorHandler = (err, _req, res, _next) => {
   if (err instanceof AppError) {
     return fail(res, err.code, err.message, err.status, err.details);
   }
+  if (err instanceof Prisma.PrismaClientKnownRequestError) {
+    if (err.code === "P2002") {
+      return fail(res, "CONFLICT", "Duplicate entry detected", 409);
+    }
+    if (err.code === "P2025") {
+      return fail(res, "NOT_FOUND", "Record not found", 404);
+    }
+  }
   logger.error("Unhandled error", err instanceof Error ? err.stack : err);
-  return fail(res, "INTERNAL_ERROR", "Internal server error", 500);
+  return fail(res, "INTERNAL_ERROR", err instanceof Error ? err.message : "Internal server error", 500);
 };
 
 // src/lib/paths.ts
@@ -9377,7 +9386,27 @@ claimRouter.post("/", claimLimiter, async (req, res) => {
         warrantyExpiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1e3)
       }
     });
-    const espStub = await tx.espDevice.create({
+    const existingEsp = await tx.espDevice.findFirst({
+      where: {
+        OR: [
+          { macAddress: `PENDING-${serial.serialCode}` },
+          { serialCode: serial.serialCode }
+        ]
+      }
+    });
+    if (existingEsp) {
+      return tx.espDevice.update({
+        where: { id: existingEsp.id },
+        data: {
+          homeId,
+          name: deviceName,
+          serialCode: serial.serialCode,
+          modelCode: serial.product.modelCode,
+          updatedAt: /* @__PURE__ */ new Date()
+        }
+      });
+    }
+    return tx.espDevice.create({
       data: {
         homeId,
         macAddress: `PENDING-${serial.serialCode}`,
@@ -9388,7 +9417,6 @@ claimRouter.post("/", claimLimiter, async (req, res) => {
         updatedAt: /* @__PURE__ */ new Date()
       }
     });
-    return espStub;
   });
   await audit(req.user.sub, "shop.device.claim", {
     entity: "esp_device",

@@ -100,7 +100,29 @@ claimRouter.post("/", claimLimiter, async (req, res) => {
       },
     });
 
-    const espStub = await tx.espDevice.create({
+    const existingEsp = await tx.espDevice.findFirst({
+      where: {
+        OR: [
+          { macAddress: `PENDING-${serial.serialCode}` },
+          { serialCode: serial.serialCode },
+        ],
+      },
+    });
+
+    if (existingEsp) {
+      return tx.espDevice.update({
+        where: { id: existingEsp.id },
+        data: {
+          homeId,
+          name: deviceName,
+          serialCode: serial.serialCode,
+          modelCode: serial.product.modelCode,
+          updatedAt: new Date(),
+        },
+      });
+    }
+
+    return tx.espDevice.create({
       data: {
         homeId,
         macAddress: `PENDING-${serial.serialCode}`,
@@ -114,7 +136,6 @@ claimRouter.post("/", claimLimiter, async (req, res) => {
 
     // Sirf hardware board (EspDevice) create karte hain.
     // Logical devices user baad me khud create/map karega app/web se.
-    return espStub;
   });
 
   await audit(req.user!.sub, "shop.device.claim", {
