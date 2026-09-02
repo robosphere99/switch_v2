@@ -288,7 +288,10 @@ shopRouter.post("/orders/:id/pay/demo", requireAuth, async (req, res) => {
     throw new AppError("BAD_REQUEST", "COD order me online payment nahi hoti");
   }
   const ref = `DEMO-${Date.now()}`;
-  await prisma.order.update({ where: { id }, data: { paidAt: new Date(), paymentRef: ref } });
+  await prisma.order.update({
+    where: { id },
+    data: { paidAt: new Date(), paymentRef: ref, paymentStatus: "paid", status: "processing" },
+  });
 
   try {
     await updateOrderStatus(id, "processing");

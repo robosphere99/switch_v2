@@ -6279,6 +6279,12 @@ async function updateOrderStatus(orderId, status) {
     include: { items: true }
   });
   if (!order) throw new AppError("NOT_FOUND", "Order not found");
+  if (order.status === status) {
+    return prisma.order.findUniqueOrThrow({
+      where: { id: orderId },
+      include: { items: true, user: { select: { id: true, username: true, email: true } } }
+    });
+  }
   if (!(status in ORDER_STATUS_FLOW)) {
     throw new AppError("BAD_REQUEST", `Invalid status ${status}`);
   }
@@ -6345,7 +6351,8 @@ async function updateOrderStatus(orderId, status) {
     return tx.order.update({
       where: { id: order.id },
       data: {
-        status
+        status,
+        ...status !== "cancelled" ? { paymentStatus: "paid" } : {}
       },
       include: { items: true, user: { select: { id: true, username: true, email: true } } }
     });
@@ -9290,7 +9297,10 @@ shopRouter.post("/orders/:id/pay/demo", requireAuth, async (req, res) => {
     throw new AppError("BAD_REQUEST", "COD order me online payment nahi hoti");
   }
   const ref = `DEMO-${Date.now()}`;
-  await prisma.order.update({ where: { id }, data: { paidAt: /* @__PURE__ */ new Date(), paymentRef: ref } });
+  await prisma.order.update({
+    where: { id },
+    data: { paidAt: /* @__PURE__ */ new Date(), paymentRef: ref, paymentStatus: "paid", status: "processing" }
+  });
   try {
     await updateOrderStatus(id, "processing");
   } catch (err) {
@@ -14747,7 +14757,16 @@ async function runLightMigrations() {
     await addCol("notifications", "category", "VARCHAR(20) NOT NULL DEFAULT 'system'");
     await addCol("notifications", "cta_url", "VARCHAR(255) NULL");
     await addCol("notifications", "cta_label", "VARCHAR(50) NULL");
-    await addCol("home_members", "joined_at", "DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)");
+    await migration("fix pending orders with paymentRef", async () => {
+      const updatedCount = await prisma.$executeRawUnsafe(`
+        UPDATE orders
+        SET status = 'processing', payment_status = 'paid'
+        WHERE payment_ref IS NOT NULL AND status = 'pending'
+      `);
+      if (Number(updatedCount) > 0) {
+        logger.info(`\u2705 Migration: updated ${updatedCount} stuck pending orders to processing/paid`);
+      }
+    });
     await migration("auto-seed default products", async () => {
       const pc = await prisma.product.count();
       if (pc === 0) {
