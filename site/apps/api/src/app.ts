@@ -82,14 +82,14 @@ export function createApp() {
     next();
   });
 
-  app.get("/api/health", async (_req, res) => {
+  app.get(["/api/health", "/health"], async (_req, res) => {
     res.json({
       success: true,
       data: { status: "ok", ts: new Date().toISOString(), schema: await schemaDiag(), build: API_VERSION },
     });
   });
 
-  app.get("/api/version", (req, res) => {
+  app.get(["/api/version", "/version"], (req, res) => {
     const requestHost = req.get('host') || '192.168.1.36:4000';
     const protocol = req.protocol || 'http';
 
@@ -116,13 +116,13 @@ export function createApp() {
   });
 
   // Install routes hamesha available — setup mode me bhi.
-  app.use("/api/install", installRouter);
+  app.use(["/api/install", "/install"], installRouter);
 
   // API docs hamesha available — setup mode me bhi (DB nahi chahiye).
-  app.use("/api/docs", docsRouter);
+  app.use(["/api/docs", "/docs"], docsRouter);
 
   // Setup mode (DB install pending) — baaki saare routes 503.
-  app.use("/api", (req, res, next) => {
+  app.use(["/api", "/api/*"], (req, res, next) => {
     if (isDbReady()) return next();
     res.status(503).json({
       success: false,

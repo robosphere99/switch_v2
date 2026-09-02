@@ -13369,13 +13369,13 @@ function createApp() {
     });
     next();
   });
-  app.get("/api/health", async (_req, res) => {
+  app.get(["/api/health", "/health"], async (_req, res) => {
     res.json({
       success: true,
       data: { status: "ok", ts: (/* @__PURE__ */ new Date()).toISOString(), schema: await schemaDiag(), build: API_VERSION }
     });
   });
-  app.get("/api/version", (req, res) => {
+  app.get(["/api/version", "/version"], (req, res) => {
     const requestHost = req.get("host") || "192.168.1.36:4000";
     const protocol = req.protocol || "http";
     const latestVersion = "1.0.11";
@@ -13396,9 +13396,9 @@ function createApp() {
       }
     });
   });
-  app.use("/api/install", installRouter);
-  app.use("/api/docs", docsRouter);
-  app.use("/api", (req, res, next) => {
+  app.use(["/api/install", "/install"], installRouter);
+  app.use(["/api/docs", "/docs"], docsRouter);
+  app.use(["/api", "/api/*"], (req, res, next) => {
     if (isDbReady()) return next();
     res.status(503).json({
       success: false,
