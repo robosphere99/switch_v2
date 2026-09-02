@@ -161,6 +161,12 @@ export async function updateOrderStatus(orderId: number, status: string) {
     include: { items: true },
   });
   if (!order) throw new AppError("NOT_FOUND", "Order not found");
+  if (order.status === status) {
+    return prisma.order.findUniqueOrThrow({
+      where: { id: orderId },
+      include: { items: true, user: { select: { id: true, username: true, email: true } } },
+    });
+  }
   if (!(status in ORDER_STATUS_FLOW)) {
     throw new AppError("BAD_REQUEST", `Invalid status ${status}`);
   }
@@ -235,6 +241,7 @@ export async function updateOrderStatus(orderId: number, status: string) {
       where: { id: order.id },
       data: {
         status: status as "pending" | "processing" | "packed" | "shipped" | "delivered" | "cancelled",
+        ...(status !== "cancelled" ? { paymentStatus: "paid" } : {}),
       },
       include: { items: true, user: { select: { id: true, username: true, email: true } } },
     });

@@ -373,7 +373,16 @@ async function runLightMigrations(): Promise<void> {
     await addCol("notifications", "category", "VARCHAR(20) NOT NULL DEFAULT 'system'");
     await addCol("notifications", "cta_url", "VARCHAR(255) NULL");
     await addCol("notifications", "cta_label", "VARCHAR(50) NULL");
-    await addCol("home_members", "joined_at", "DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)");
+    await migration("fix pending orders with paymentRef", async () => {
+      const updatedCount = await prisma.$executeRawUnsafe(`
+        UPDATE orders
+        SET status = 'processing', payment_status = 'paid'
+        WHERE payment_ref IS NOT NULL AND status = 'pending'
+      `);
+      if (Number(updatedCount) > 0) {
+        logger.info(`✅ Migration: updated ${updatedCount} stuck pending orders to processing/paid`);
+      }
+    });
 
     // Auto-seed product catalog if empty
     await migration("auto-seed default products", async () => {
