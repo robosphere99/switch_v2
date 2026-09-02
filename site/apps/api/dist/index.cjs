@@ -14744,10 +14744,13 @@ async function runLightMigrations() {
     await addCol("notifications", "cta_label", "VARCHAR(50) NULL");
     await addCol("home_members", "restricted", "BOOLEAN NOT NULL DEFAULT FALSE");
     await addCol("home_members", "daily_limit_minutes", "INT NULL");
+    await migration("alter orders.status to VARCHAR(32)", async () => {
+      await prisma.$executeRawUnsafe("ALTER TABLE `orders` MODIFY COLUMN `status` VARCHAR(32) NOT NULL DEFAULT 'pending'");
+    });
     await migration("fix pending orders with paymentRef", async () => {
       const updatedCount = await prisma.$executeRawUnsafe(`
         UPDATE orders
-        SET status = 'processing', payment_status = 'paid'
+        SET status = 'processing', paymentStatus = 'paid'
         WHERE payment_ref IS NOT NULL AND status = 'pending'
       `);
       if (Number(updatedCount) > 0) {
