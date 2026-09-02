@@ -73,7 +73,7 @@ claimRouter.post("/", claimLimiter, async (req, res) => {
     }
     throw new AppError("CONFLICT", "This device was already activated by another user");
   }
-  if (!["delivered", "shipped"].includes(serial.status)) {
+  if (!["delivered", "shipped", "reserved", "available", "processing"].includes(serial.status)) {
     throw new AppError("CONFLICT", `This device is not yet ready to activate (status: ${serial.status})`);
   }
 
@@ -108,6 +108,7 @@ claimRouter.post("/", claimLimiter, async (req, res) => {
         serialCode: serial.serialCode,
         modelCode: serial.product.modelCode,
         offline: true,
+        updatedAt: new Date(),
       },
     });
 
