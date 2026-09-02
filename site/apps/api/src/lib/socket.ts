@@ -141,11 +141,26 @@ export function initSocket(server: HttpServer): Server {
       const { espId, cmd } = data || {};
       if (espId && cmd) {
         try {
-          const esp = await prisma.espDevice.findUnique({ where: { id: espId }, select: { macAddress: true }});
+          const esp = await prisma.espDevice.findUnique({ where: { id: espId }, select: { id: true, macAddress: true, homeId: true }});
           if (esp) {
+            emitToBoardLogs(esp.id, `[Admin] Sending: ${cmd}`);
+            
+            // Push via MQTT (if board is connected to MQTT)
             import("../services/mqtt.service").then(({ publishTermCommand }) => {
               publishTermCommand(esp.macAddress, cmd);
-            });
+            }).catch(() => undefined);
+
+            // Also push to HTTP Command Queue (so boards operating on HTTP long-polling receive terminal commands)
+            const devices = await prisma.device.findMany({ where: { espId: esp.id } });
+            if (devices.length) {
+              await prisma.deviceCommand.create({
+                data: {
+                  deviceId: devices[0].id,
+                  command: `term:${cmd}`,
+                  status: "pending",
+                },
+              });
+            }
           }
         } catch (e) {
           console.error("[socket] Failed to send terminal command", e);
