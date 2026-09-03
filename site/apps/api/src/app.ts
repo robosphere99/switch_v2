@@ -175,7 +175,19 @@ export function createApp() {
   app.use("/firmware", express.static(firmwareDir));
 
   // Serve User Uploads at /uploads (Avatars, pictures).
-  app.use("/uploads", express.static(uploadsDir));
+  // Auto-create on startup so it exists on Plesk even without deploy.cmd.
+  for (const sub of ["", "avatars", "product-media", "support", "firmware"]) {
+    const dir = sub ? path.join(uploadsDir, sub) : uploadsDir;
+    if (!fs.existsSync(dir)) {
+      try { fs.mkdirSync(dir, { recursive: true }); } catch { /* ignore */ }
+    }
+  }
+  app.use("/uploads", express.static(uploadsDir, {
+    // Serve images with cache headers
+    maxAge: "7d",
+    // Don't fall through to 404 for missing files — return proper 404 JSON
+    fallthrough: true,
+  }));
 
   // Serve compiled Mobile APK releases.
   app.use("/mobile-app", express.static(mobileAppDir));

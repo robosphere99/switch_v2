@@ -14,6 +14,15 @@ call node scripts\patch-webconfig.mjs 2>nul
 REM Logs dir ensure
 if not exist "%~dp0apps\logs" mkdir "%~dp0apps\logs"
 
+REM Uploads dir ensure (avatars, product images, support files)
+REM These folders are gitignored (user data) so we create them on every deploy
+if not exist "%~dp0apps\api\uploads" mkdir "%~dp0apps\api\uploads"
+if not exist "%~dp0apps\api\uploads\avatars" mkdir "%~dp0apps\api\uploads\avatars"
+if not exist "%~dp0apps\api\uploads\product-media" mkdir "%~dp0apps\api\uploads\product-media"
+if not exist "%~dp0apps\api\uploads\support" mkdir "%~dp0apps\api\uploads\support"
+if not exist "%~dp0apps\api\uploads\firmware" mkdir "%~dp0apps\api\uploads\firmware"
+echo [deploy] uploads dirs ensured
+
 REM App pool config dump
 set APPCMD=%windir%\System32\inetsrv\appcmd.exe
 call "%APPCMD%" list apppool /config > "%~dp0apps\logs\apppool.log" 2>&1
