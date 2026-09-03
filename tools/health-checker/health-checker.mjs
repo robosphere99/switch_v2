@@ -23,10 +23,19 @@ const OUTAGE_THRESHOLD = 2;            // itne consecutive fails = outage
 const FETCH_TIMEOUT_MS = 10_000;       // har request ka timeout
 const RECOVERY_MAX_MS = 30 * 60_000;   // recovery poll max 30 min, phir wapas 30s
 
-const TARGETS = [
-  { name: "api", url: "https://onlineswitch.bhartitechnical.com/api/health", expect: 200 },
-  { name: "web", url: "https://onlineswitch.bhartitechnical.com/", expect: 200 },
-];
+function resolveTargets(args = process.argv.slice(2)) {
+  const urlArg = args.find((a) => a.startsWith("http://") || a.startsWith("https://") || a.startsWith("--url="));
+  const custom = urlArg
+    ? urlArg.replace(/^--url=/, "").trim()
+    : process.env.TARGET_URL || process.env.SITE_URL || process.env.HEALTH_CHECK_URL;
+  const base = custom ? custom.replace(/\/+$/, "") : "https://onlineswitch.bhartitechnical.com";
+  return [
+    { name: "api", url: `${base}/api/health`, altUrl: `${base}/health`, expect: 200 },
+    { name: "web", url: `${base}/`, expect: 200 },
+  ];
+}
+
+const TARGETS = resolveTargets();
 
 import fs from "node:fs";
 import path from "node:path";
@@ -51,31 +60,82 @@ function appendLine(obj) {
   }
 }
 
-async function checkOnce(target) {
+function diagnose500(text = "", status = 500) {
+  if (status === 500) {
+    if (/500\.19/i.test(text) || /duplicate.*handler/i.test(text)) {
+      return "Plesk IIS duplicate handler (HTTP 500.19). Check if custom web.config was uploaded. Plesk generates its own web.config.";
+    }
+    if (/500\.1001/i.test(text) || /iisnode/i.test(text) || /Cannot find module/i.test(text)) {
+      return "iisnode startup failure (HTTP 500.1001). Check Application Startup File in Plesk (should be dist/index.cjs or dist/index.mjs) and verify node_modules.";
+    }
+    if (/Prisma/i.test(text) || /database/i.test(text) || /connect.*ECONNREFUSED/i.test(text)) {
+      return "Database connection failure. Verify DB_HOST, DB_USER, DB_PASS, DB_NAME in Plesk environment or site/.env.";
+    }
+  }
+  return null;
+}
+
+async function fetchWithDetails(url) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
   const t0 = Date.now();
   let status = null;
   let ok = false;
   let errType = null;
+  let details = null;
+  let tip = null;
+
   try {
-    const res = await fetch(target.url, {
+    const res = await fetch(url, {
       method: "GET",
       redirect: "follow",
       signal: ctrl.signal,
       headers: { "user-agent": "SwitchNestHealthMonitor/1.0" },
     });
     status = res.status;
-    ok = res.status === target.expect;
-    if (!ok) errType = `status_${res.status}`;
+    ok = res.status === 200;
+    if (!ok) {
+      errType = `status_${res.status}`;
+      try {
+        const text = await res.text();
+        if (text) {
+          try {
+            const json = JSON.parse(text);
+            details = json.error?.message || json.message || text.slice(0, 300);
+          } catch {
+            const titleMatch = text.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+            const h1Match = text.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+            const bodyClean = text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+            details = titleMatch ? titleMatch[1].trim() : h1Match ? h1Match[1].trim() : bodyClean.slice(0, 200);
+          }
+          tip = diagnose500(text, status);
+        }
+      } catch {
+        /* ignore text read */
+      }
+    }
   } catch (err) {
     errType = err.name === "AbortError" ? "timeout" : err.cause?.code || err.name || "error";
+    details = err.message || String(err);
+    if (/SELF_SIGNED|CERT_|certificate/i.test(details)) {
+      tip = "SSL Certificate error. Plesk SSL might be pending propagation or self-signed. Try http:// or install SSL in Plesk.";
+    }
     ok = false;
   } finally {
     clearTimeout(timer);
   }
   const ms = Date.now() - t0;
-  return { ok, status, ms, errType };
+  return { ok, status, ms, errType, details, tip };
+}
+
+async function checkOnce(target) {
+  let r = await fetchWithDetails(target.url);
+  // If api check got 404 and has altUrl, retry with altUrl
+  if (!r.ok && r.status === 404 && target.altUrl) {
+    const altR = await fetchWithDetails(target.altUrl);
+    if (altR.ok) r = altR;
+  }
+  return r;
 }
 
 /** Single check + log + console. */
@@ -89,6 +149,7 @@ async function runCheck(state, target) {
     status: r.status,
     ms: Math.round(r.ms),
     err: r.errType,
+    details: r.details || null,
   };
   appendLine(entry);
 
@@ -101,6 +162,12 @@ async function runCheck(state, target) {
     console.log(
       `[${entry.ts.slice(11, 19)}] ${target.name.padEnd(4)} FAIL  ${r.status ?? "-"}  ${entry.ms}ms  (${r.errType})  fail#${st.count}`,
     );
+    if (r.details) {
+      console.log(`       ↳ Error: ${r.details}`);
+    }
+    if (r.tip) {
+      console.log(`       💡 Tip: ${r.tip}`);
+    }
     if (st.count >= OUTAGE_THRESHOLD && !st.outageId) {
       st.outageId = `${now}`;
       appendLine({
@@ -111,6 +178,7 @@ async function runCheck(state, target) {
         failCount: st.count,
         lastStatus: r.status,
         lastErr: r.errType,
+        details: r.details || null,
       });
       console.log(`\n  🔴 OUTAGE START  ${target.name}  (${r.status ?? r.errType})  id=${st.outageId}\n`);
     }
@@ -220,24 +288,25 @@ async function printReport(args) {
 
 async function main() {
   const args = process.argv.slice(2);
+  const targets = resolveTargets(args);
 
   if (args.includes("--report")) return printReport(args);
 
   if (args.includes("--once")) {
     const state = { fail: {} };
-    for (const t of TARGETS) await runCheck(state, t);
+    for (const t of targets) await runCheck(state, t);
     process.exit(0);
   }
 
   console.log(`🚀 SwitchNest Health Monitor started ${new Date().toISOString()}`);
-  console.log(`   Targets: ${TARGETS.map((t) => `${t.name} → ${t.url}`).join("\n            ")}`);
+  console.log(`   Targets: ${targets.map((t) => `${t.name} → ${t.url}`).join("\n            ")}`);
   console.log(`   Interval: ${CHECK_INTERVAL_MS / 1000}s  (outage me ${RECOVERY_POLL_MS / 1000}s fast-poll)`);
   console.log(`   Logs: ${LOG_DIR}\n`);
 
   const state = { fail: {} };
   let lastOk = Date.now();
   const run = async () => {
-    for (const t of TARGETS) {
+    for (const t of targets) {
       const ok = await runCheck(state, t);
       if (ok) lastOk = Date.now();
     }

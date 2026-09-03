@@ -1,14 +1,35 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth";
+import { rateLimit } from "../middleware/rateLimit";
 import { prisma } from "../lib/prisma";
 import { AppError, ok } from "../lib/response";
+import { createNotificationWithEmail } from "../services/notification.service";
 
 export const warrantyRouter = Router();
+
+// Serial lookup (enumeration/brute-force) + claim spam se bachao — per IP.
+const statusLimiter = rateLimit({
+  name: "warranty:status",
+  windowMs: 60_000,
+  max: 30,
+  message: "Bahut zyada serial checks — thodi der baad try karo",
+});
+const claimLimiter = rateLimit({
+  name: "warranty:claim",
+  windowMs: 60 * 60_000,
+  max: 10,
+  message: "Bahut zyada claim attempts — 1 ghanta baad try karo",
+});
+const mineLimiter = rateLimit({
+  name: "warranty:mine",
+  windowMs: 60_000,
+  max: 60,
+});
 
 warrantyRouter.use(requireAuth);
 
 /** Serial + warranty status (claim karne se pehle check). */
-warrantyRouter.get("/status", async (req, res) => {
+warrantyRouter.get("/status", statusLimiter, async (req, res) => {
   const code = String(req.query.serial ?? "").trim().toUpperCase();
   if (!code) throw new AppError("BAD_REQUEST", "serial query required");
   const serial = await prisma.serialRegistry.findUnique({
@@ -30,7 +51,7 @@ warrantyRouter.get("/status", async (req, res) => {
 });
 
 /** Warranty claim file karo. */
-warrantyRouter.post("/", async (req, res) => {
+warrantyRouter.post("/", claimLimiter, async (req, res) => {
   const serialCode = String(req.body?.serialCode ?? "").trim().toUpperCase();
   const reason = String(req.body?.reason ?? "").trim();
   const description = String(req.body?.description ?? "").trim() || undefined;
@@ -71,6 +92,26 @@ warrantyRouter.post("/", async (req, res) => {
     return created;
   });
 
+  // User ko notification + EMAIL — claim receive hua.
+  try {
+    await createNotificationWithEmail(
+      req.user!.sub,
+      {
+        category: "system",
+        type: "info",
+        title: `🛡️ Warranty claim submitted (${serialCode})`,
+        body: `Aapki claim file ho gayi — team review kar ke status update karegi.`,
+      },
+      {
+        emailSubject: `🛡️ Warranty claim received — ${serialCode}`,
+        ctaUrl: "/warranty",
+        ctaLabel: "Claim status dekho",
+      },
+    );
+  } catch (err) {
+    console.error("[warranty] email failed", err);
+  }
+
   ok(res, {
     id: claim.id,
     serialCode,
@@ -82,7 +123,7 @@ warrantyRouter.post("/", async (req, res) => {
 });
 
 /** Meri saari claims + devices (warranty page ke liye). */
-warrantyRouter.get("/mine", async (req, res) => {
+warrantyRouter.get("/mine", mineLimiter, async (req, res) => {
   const [claims, serials] = await Promise.all([
     prisma.warrantyClaim.findMany({
       where: { userId: req.user!.sub },

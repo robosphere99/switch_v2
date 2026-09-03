@@ -1,6 +1,7 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { persist, createJSONStorage } from "zustand/middleware";
 import type { AuthUser } from "@robosphere/shared";
+import { safeStorage } from "../lib/safeStorage";
 
 interface AuthState {
   accessToken: string | null;
@@ -22,6 +23,9 @@ export const useAuthStore = create<AuthState>()(
       setUser: (user) => set({ user }),
       logout: () => set({ accessToken: null, refreshToken: null, user: null }),
     }),
-    { name: "robosphere-auth" },
+    {
+      name: "robosphere-auth",
+      storage: createJSONStorage(() => safeStorage),
+    },
   ),
 );

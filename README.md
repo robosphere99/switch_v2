@@ -9,10 +9,22 @@ Replacing the PHP v1 (`/c/xampp/htdocs/onlineswitch`) with a modern **React + No
 onlineswitch-v2/
 ├── site/                  ← the whole platform (monorepo: web + api + shared)
 ├── hardware/              ← ESP32 / PlatformIO firmware (RoboSphere-Dev)
+├── docs/                  ← project docs (context handoff, guides)
 ├── PROJECT_ANALYSIS.md    ← deep analysis of the PHP v1 project
 ├── ROADMAP.md             ← the rebuild plan (multi-tenant homes + admin + timers + AI)
+├── TESTING.md             ← verification checklist (leak monitor, password sync, instances)
 └── README.md
 ```
+
+## Docs
+
+- [`docs/SwitchNest-Project-Context.md`](./docs/SwitchNest-Project-Context.md) — **complete project context handoff** (idea + history + roadmap + gotchas). Kisi bhi AI agent/model ko yeh file do — wo poora project samajh ke suggestions de payega. Auto-refresh: `install-context-hook.bat` (har commit ke baad) ya `update-context.bat` (manual).
+- [`docs/PHASE4-REALTIME.md`](./docs/PHASE4-REALTIME.md) — Phase 4 WebSocket realtime ka concrete implementation plan (events, auth, edge cases, polling fallback).
+- [`PROJECT_ANALYSIS.md`](./PROJECT_ANALYSIS.md) — deep analysis of the legacy PHP v1.
+- [`ROADMAP.md`](./ROADMAP.md) — rebuild plan, phases, open questions.
+- [`START_GUIDE.md`](./START_GUIDE.md) — full local setup (XAMPP, firmware, flasher).
+- [`TESTING.md`](./TESTING.md) — verification checklist for recent fixes.
+
 
 ## Quick Start (fresh environment — pehli baar)
 
@@ -53,6 +65,13 @@ git push origin main          # → auto-deploy live
 ```
 
 > Plesk sirf `main` branch pe deploy karta hai — `dev` pushes webhook ko jaati hain par production restart nahi hota.
+
+**Plesk Git settings (production):** repo `switch_v2` · branch `main` · mode **Automatic** ·
+**Server path = domain root** (`\onlineswitch.bhartitechnical.com`) · **Additional deployment
+actions = `site\deploy.cmd`**. ⚠️ Server path ko sub-folder pe mat rakho (`...\site\apps\api`)
+— repo root wahan dump hokar **double-nesting** banata hai: web update hota hai par API kabhi
+nahi (chalta hua app flat `...\site\apps\api` pe hota hai). Fix = server path domain root.
+Details: `site/README.md` → Production Deployment.
 
 ## Status
 

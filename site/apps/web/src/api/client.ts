@@ -24,12 +24,68 @@ export function getAttachmentUrl(msg: {
   return `/api/support/attachment/${msg.id}?token=${encodeURIComponent(token)}`;
 }
 
-// On 401, clear the local session (refresh rotation comes in a later phase).
+let isRefreshing = false;
+let refreshSubscribers: ((token: string) => void)[] = [];
+
+function subscribeTokenRefresh(cb: (token: string) => void) {
+  refreshSubscribers.push(cb);
+}
+
+function onRefreshed(token: string) {
+  refreshSubscribers.forEach((cb) => cb(token));
+  refreshSubscribers = [];
+}
+
+// On 401, auto-refresh token if expired, or clean logout if session is invalid
 api.interceptors.response.use(
-  (res) => res,
-  (error) => {
-    if (error.response?.status === 401) {
-      useAuthStore.getState().logout();
+  (res) => {
+    // If IIS/iisnode returns an HTML error page with a 200 OK status, reject it!
+    if (typeof res.data === "string" && res.data.trim().startsWith("<")) {
+      return Promise.reject(new Error("API returned HTML instead of JSON. Server might be crashing."));
+    }
+    return res;
+  },
+  async (error) => {
+    const originalRequest = error.config;
+    const status = error.response?.status;
+    const url = originalRequest?.url ?? "";
+
+    if (status === 401 && !url.includes("/auth/login") && !url.includes("/auth/signup") && !url.includes("/auth/refresh")) {
+      const refreshToken = useAuthStore.getState().refreshToken;
+
+      if (refreshToken && !originalRequest._retry) {
+        originalRequest._retry = true;
+
+        if (!isRefreshing) {
+          isRefreshing = true;
+          try {
+            const refreshRes = await axios.post("/api/auth/refresh", { refreshToken });
+            if (refreshRes.data?.success && refreshRes.data.data) {
+              const { accessToken, refreshToken: newRefresh, user } = refreshRes.data.data;
+              useAuthStore.getState().setAuth({ accessToken, refreshToken: newRefresh || refreshToken, user });
+              isRefreshing = false;
+              onRefreshed(accessToken);
+              originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+              return api(originalRequest);
+            }
+          } catch {
+            isRefreshing = false;
+            useAuthStore.getState().logout();
+            return Promise.reject(error);
+          }
+        } else {
+          return new Promise((resolve) => {
+            subscribeTokenRefresh((token: string) => {
+              if (originalRequest.headers) {
+                originalRequest.headers.Authorization = `Bearer ${token}`;
+              }
+              resolve(api(originalRequest));
+            });
+          });
+        }
+      } else {
+        useAuthStore.getState().logout();
+      }
     }
     return Promise.reject(error);
   },
@@ -40,13 +96,13 @@ api.interceptors.response.use(
  * JSON error ko HTML page se replace kar deta hai — tab fallback message dekar
  * raw HTML ko UI me dikhne se rokta hai.
  */
-export function extractApiError(err: unknown): { status: number; message: string; code: string } {
+export function extractApiError(err: unknown): { status: number; message: string; code: string; details?: any } {
   const e = err as { response?: { status?: number; data?: unknown } };
   const status = e.response?.status ?? 0;
   const data = e.response?.data;
   if (data && typeof data === "object" && (data as { success?: boolean }).success === false) {
-    const apiErr = (data as { error?: { code?: string; message?: string } }).error;
-    if (apiErr?.message) return { status, message: apiErr.message, code: apiErr.code ?? "ERROR" };
+    const apiErr = (data as { error?: { code?: string; message?: string; details?: any } }).error;
+    if (apiErr?.message) return { status, message: apiErr.message, code: apiErr.code ?? "ERROR", details: apiErr.details };
   }
   if (status >= 400) {
     // App ka JSON error nahi mila (HTML/proxy page) — generic friendly message

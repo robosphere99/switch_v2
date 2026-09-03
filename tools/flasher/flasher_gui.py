@@ -9,8 +9,9 @@ Flash ESP32 relay boards and provision them for a specific order:
   3. Flash the published firmware (.bin from /firmware/firmware.bin)
   4. Provision via serial: WiFi + server URL + API key + serial code + model
   5. Relay self-test (each channel cycles on/off, reports OK/FAIL)
-  6. Mark serial as factory-tested on the server
-  7. Next board (batch mode)
+  6. Web server reach check (reboot ke baad AP/LAN IP pe HTTP-ping)
+  7. Mark serial as factory-tested on the server
+  8. Next board (batch mode)
 
 Requirements:  pip install requests pyserial esptool
 
@@ -27,6 +28,9 @@ import sys
 import threading
 import time
 import tkinter as tk
+import urllib.error
+import urllib.request
+import webbrowser
 from tkinter import messagebox, scrolledtext, ttk
 
 # Soft imports — missing dep ho to GUI crash na ho, friendly message dikhao.
@@ -43,6 +47,18 @@ except ImportError:
 MODELS = ["2CH", "4CH", "5CH", "6CH", "8CH", "4CH-IR", "FAN-DIM", "DIM-3S", "DIM-4S"]
 BAUD = 115200
 FLASH_ADDR = "0x10000"  # ESP32 app partition (standard PlatformIO layout)
+
+# Boot log me firmware inhe print karta hai (WiFiManager.cpp):
+#   AP IP : 192.168.4.1   (dual-mode AP — WiFi connect hone ke baad bhi ON)
+#   IP : 192.168.1.36     (LAN IP, jab board WiFi se connect hota hai)
+BOOT_IP_RE = re.compile(r"(?:AP IP|IP)\s*:\s*(\d{1,3}(?:\.\d{1,3}){3})")
+
+# Server mode presets — (label, API URL, web URL). Localhost testing se live
+# site pe switch karte waqt URL bhoolna band — ek click me dono set.
+SERVER_PRESETS = [
+    ("Live site", "https://onlineswitch.bhartitechnical.com", "https://onlineswitch.bhartitechnical.com"),
+    ("Localhost", "http://localhost:4000", "http://localhost:5173"),
+]
 
 INSTALL_CMD = "pip install requests pyserial esptool"
 
@@ -79,19 +95,37 @@ def find_com_ports():
 
 def detect_lan_ip():
     """Machine ka LAN IP — ESP server URL default ke liye (boards isi IP pe
-    heartbeat bhejte hain). No actual traffic — sirf route lookup."""
+    heartbeat bhejte hain). No actual traffic — sirf route lookup.
+
+    Multiple gateway candidates try karte hain (router ka IP pehle se pata
+    nahi hota — 192.168.1.x / 192.168.0.x / 10.x / 172.16.x sab ho sakte hain),
+    phir hostname resolution, phir hardcoded fallback."""
+    import socket
+    candidates = ["192.168.1.1", "192.168.0.1", "10.0.0.1", "172.16.0.1", "8.8.8.8"]
+    for target in candidates:
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.settimeout(1)
+            s.connect((target, 80))
+            ip = s.getsockname()[0]
+            s.close()
+            if ip and not ip.startswith("127."):
+                return ip
+        except Exception:
+            continue
+    # Fallback — hostname resolution se pehla non-loopback IPv4
     try:
-        import socket
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.connect(("192.168.1.1", 80))
-        ip = sock.getsockname()[0]
-        sock.close()
-        return ip
+        for ip in socket.gethostbyname_ex(socket.gethostname())[2]:
+            if ip and not ip.startswith("127."):
+                return ip
     except Exception:
-        return "192.168.1.100"
+        pass
+    return "192.168.1.100"
 
 
 class FlasherApp:
+    BOOT_IP_RE = re.compile(r"(?:AP IP|IP)\s*:\s*(\d{1,3}(?:\.\d{1,3}){3})")
+
     def __init__(self, root: tk.Tk):
         self.root = root
         root.title(f"RoboSphere Factory Flasher v{APP_VERSION}")
@@ -111,11 +145,18 @@ class FlasherApp:
         self.cur_order_no = ""       # display ke liye
         self.provision_data = {}     # fetched order ka data (WiFi + apiKey)
         self.generated_serials = []  # is order me pehle se generate serials
+        self.order_models = []       # fetched order ke available models (dropdown sirf yehi dikhaye)
+        self.board_index = 0         # order me kaunsa board (hotspot naam ka _N suffix)
+        self.monitor_on = False      # serial monitor inline toggle (on/off)
+        self.mon_ser = None          # monitor ke liye serial connection
+        self.mon_stop = None         # threading.Event — reader stop ke liye
+        self.mon_q = None            # queue.Queue — serial chunks
 
         # Startup dep auto-check — UI se pehle taaki banner bana sake
         self.missing_deps = check_deps()
 
         self._build_ui()
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         self._log("RoboSphere Factory Flasher ready.")
         if self.missing_deps:
             self._log(
@@ -132,8 +173,14 @@ class FlasherApp:
 
     def _build_ui(self):
         # ---- Dark theme (clam — full color control) ----
-        BG, PANEL, BORDER = "#0d1117", "#161b22", "#30363d"
-        FG, MUT, BLUE, GREEN = "#e6edf3", "#8b949e", "#1f6feb", "#238636"
+        BG = "#0f172a"      # slate-900 (deep blue)
+        PANEL = "#1e293b"   # slate-800
+        BORDER = "#334155"  # slate-700
+        FG = "#f8fafc"      # slate-50
+        MUT = "#94a3b8"     # slate-400
+        BLUE = "#3b82f6"    # blue-500
+        GREEN = "#10b981"   # emerald-500
+        
         style = ttk.Style()
         style.theme_use("clam")
         style.configure(".", background=BG, foreground=FG, fieldbackground=PANEL,
@@ -146,19 +193,25 @@ class FlasherApp:
                         lightcolor=BORDER, darkcolor=BORDER)
         style.configure("TLabelframe.Label", background=BG, foreground=BLUE,
                         font=("Segoe UI", 10, "bold"))
-        style.configure("TEntry", fieldbackground="#010409", foreground=FG, insertcolor=FG,
+        style.configure("TEntry", fieldbackground="#0f172a", foreground=FG, insertcolor=FG,
                         bordercolor=BORDER, padding=5)
-        style.configure("TCombobox", fieldbackground="#010409", foreground=FG, background=PANEL,
+        style.configure("TCombobox", fieldbackground="#0f172a", foreground=FG, background=PANEL,
                         arrowcolor=FG, bordercolor=BORDER, padding=5)
-        style.map("TCombobox", fieldbackground=[("readonly", "#010409")],
+        style.map("TCombobox", fieldbackground=[("readonly", "#0f172a")],
                   foreground=[("readonly", FG)], background=[("readonly", PANEL)])
+        
+        # Notebook Tab Style (Vibrant Blue when selected)
+        style.configure("TNotebook", background=BG, borderwidth=0)
+        style.configure("TNotebook.Tab", background=PANEL, foreground=MUT, padding=(12, 6), font=("Segoe UI", 10), borderwidth=0)
+        style.map("TNotebook.Tab", background=[("selected", BLUE)], foreground=[("selected", "#ffffff")])
+
         style.configure("TButton", background=PANEL, foreground=FG, bordercolor=BORDER,
                         padding=(12, 6))
-        style.map("TButton", background=[("active", BLUE), ("disabled", "#21262d")],
+        style.map("TButton", background=[("active", BLUE), ("disabled", "#1e293b")],
                   foreground=[("disabled", MUT)])
         style.configure("Primary.TButton", background=GREEN, foreground="#ffffff",
                         padding=(14, 7), font=("Segoe UI", 9, "bold"))
-        style.map("Primary.TButton", background=[("active", "#2ea043"), ("disabled", "#21262d")])
+        style.map("Primary.TButton", background=[("active", "#059669"), ("disabled", "#1e293b")])
 
         pad = {"padx": 6, "pady": 4}
 
@@ -187,26 +240,47 @@ class FlasherApp:
         row.columnconfigure(1, weight=3)
         row.columnconfigure(3, weight=1)
         row.columnconfigure(5, weight=1)
+        # Row 0 — original layout (cramped nahi): Site URL + creds + Login
         ttk.Label(row, text="Site URL").grid(row=0, column=0, sticky="w")
-        self.e_server = ttk.Entry(row, width=34)
+        self.e_server = ttk.Entry(row, width=30)
         self.e_server.insert(0, "https://onlineswitch.bhartitechnical.com")
         self.e_server.grid(row=0, column=1, padx=4)
         ttk.Label(row, text="Admin user").grid(row=0, column=2, sticky="w")
-        self.e_user = ttk.Entry(row, width=14)
+        self.e_user = ttk.Entry(row, width=12)
         self.e_user.insert(0, "admin")
         self.e_user.grid(row=0, column=3, padx=4)
         ttk.Label(row, text="Password").grid(row=0, column=4, sticky="w")
-        self.e_pass = ttk.Entry(row, width=14, show="*")
+        self.e_pass = ttk.Entry(row, width=12, show="*")
         self.e_pass.grid(row=0, column=5, padx=4)
         self.b_login = ttk.Button(row, text="Login", style="Primary.TButton", command=self.do_login)
         self.b_login.grid(row=0, column=6, padx=4)
         self.l_login = ttk.Label(row, text="Not logged in", foreground="orange")
         self.l_login.grid(row=0, column=7, padx=8)
-        ttk.Label(row, text="ESP Server URL (board ko dikhe)")\
-            .grid(row=1, column=0, sticky="w", pady=(6, 0))
-        self.e_esp_server = ttk.Entry(row, width=34)
-        self.e_esp_server.insert(0, f"http://{detect_lan_ip()}:4000")
-        self.e_esp_server.grid(row=1, column=1, padx=4, pady=(6, 0))
+        # Row 1 — Mode selector + Guide button (mode ke BAGAL me) + ESP server URL
+        ttk.Label(row, text="Mode").grid(row=1, column=0, sticky="w", pady=(6, 0))
+        self.cb_mode = ttk.Combobox(row, width=10, state="readonly",
+                                    values=[p[0] for p in SERVER_PRESETS])
+        self.cb_mode.set("Live site")
+        self.cb_mode.grid(row=1, column=1, padx=4, pady=(6, 0), sticky="w")
+        self.cb_mode.bind("<<ComboboxSelected>>", self.on_server_mode)
+        # ESP Server URL — sirf Localhost mode me dikhta hai;
+        # Live site pe auto-set hota hai (board seedha production server use karega).
+        self.lan_ip = detect_lan_ip()
+        self.l_esp_label = ttk.Label(row, text="ESP Server URL")
+        self.l_esp_label.grid(row=1, column=3, sticky="w", pady=(6, 0))
+        self.e_esp_server = ttk.Entry(row, width=30)
+        self.e_esp_server.insert(0, f"http://{self.lan_ip}:4000")
+        self.e_esp_server.grid(row=1, column=4, padx=4, pady=(6, 0))
+        self.b_refresh_lan = ttk.Button(row, text="⟳", width=3, command=self.refresh_lan_ip)
+        self.b_refresh_lan.grid(row=1, column=5, padx=(4, 0), pady=(6, 0))
+        self.l_esp_hint = ttk.Label(
+            row,
+            text=f"Detected LAN IP: {self.lan_ip} — boards isi pe connect honge",
+            foreground="#9ca3af",
+        )
+        self.l_esp_hint.grid(row=2, column=3, columnspan=3, sticky="w", pady=(2, 0))
+        # Live site pe auto-set + hide; initial state apply karo
+        self.on_server_mode()
 
         # Row 2 — order + device (wide fields — lamba order number ab pura dikhta hai)
         row = ttk.LabelFrame(f, text=" 2 · Order / Device ", padding=10)
@@ -222,15 +296,16 @@ class FlasherApp:
         self.l_orderinfo = ttk.Label(row, text="", foreground="#7ee787")
         self.l_orderinfo.grid(row=0, column=3, columnspan=4, padx=8, sticky="w")
 
-        ttk.Label(row, text="Serial code").grid(row=1, column=0, sticky="w", pady=2)
-        self.e_serial = ttk.Entry(row, width=22)
-        self.e_serial.grid(row=1, column=1, padx=4, pady=2, sticky="ew")
-        self.b_gen = ttk.Button(row, text="Generate", command=self.gen_serial)
-        self.b_gen.grid(row=1, column=2, padx=4, pady=2)
-        ttk.Label(row, text="Model").grid(row=1, column=3, sticky="w", pady=2, padx=(12, 0))
+        # Layout: Model LEFT, Serial + Generate RIGHT (order ke devices ke hisaab se)
+        ttk.Label(row, text="Model").grid(row=1, column=0, sticky="w", pady=2)
         self.cb_model = ttk.Combobox(row, values=MODELS, width=8, state="readonly")
         self.cb_model.set("4CH")
-        self.cb_model.grid(row=1, column=4, padx=4, pady=2)
+        self.cb_model.grid(row=1, column=1, padx=4, pady=2)
+        ttk.Label(row, text="Serial code").grid(row=1, column=2, sticky="w", pady=2, padx=(12, 0))
+        self.e_serial = ttk.Entry(row, width=22)
+        self.e_serial.grid(row=1, column=3, padx=4, pady=2, sticky="ew")
+        self.b_gen = ttk.Button(row, text="Generate", command=self.gen_serial)
+        self.b_gen.grid(row=1, column=4, padx=4, pady=2)
 
         ttk.Label(row, text="WiFi SSID").grid(row=2, column=0, sticky="w", pady=2)
         self.e_ssid = ttk.Entry(row, width=16)
@@ -254,22 +329,36 @@ class FlasherApp:
         self.b_refresh = ttk.Button(row, text="⟳", width=3, command=self.refresh_ports)
         self.b_refresh.grid(row=0, column=2, padx=2)
 
+        self.b_wipe = ttk.Button(row, text="0 · Fresh Start", command=self.do_wipe)
+        self.b_wipe.grid(row=0, column=3, padx=6)
         self.b_flash = ttk.Button(row, text="1 · Flash Firmware", command=self.do_flash)
-        self.b_flash.grid(row=0, column=3, padx=6)
+        self.b_flash.grid(row=0, column=4, padx=6)
         self.b_prov = ttk.Button(row, text="2 · Provision + Test", command=self.do_provision)
-        self.b_prov.grid(row=0, column=4, padx=6)
+        self.b_prov.grid(row=0, column=5, padx=6)
         self.b_mark = ttk.Button(row, text="3 · Mark Tested", command=self.do_mark)
-        self.b_mark.grid(row=0, column=5, padx=6)
+        self.b_mark.grid(row=0, column=6, padx=6)
+        self.b_monitor = ttk.Button(row, text="🔍 Serial Monitor", command=self.toggle_monitor)
+        self.b_monitor.grid(row=0, column=7, padx=6)
         self.b_next = ttk.Button(row, text="Next Board ▸", command=self.do_next)
-        self.b_next.grid(row=0, column=6, padx=6)
+        self.b_next.grid(row=0, column=8, padx=6)
         self.l_prog = ttk.Label(row, text="Idle", foreground="orange")
-        self.l_prog.grid(row=0, column=7, padx=8)
+        self.l_prog.grid(row=0, column=9, padx=8)
 
-        # Row 4 — log (resize pe expand)
-        row = ttk.LabelFrame(f, text=" Log ", padding=8)
-        row.grid(row=3, column=0, sticky="nsew", **pad)
+        # Row 3b/4 — Notebook for Log and Serial Monitor
+        self.nb = ttk.Notebook(f, padding=4)
+        self.nb.grid(row=3, column=0, sticky="nsew", **pad)
         f.rowconfigure(3, weight=1)
-        self.log = scrolledtext.ScrolledText(row, height=12, bg="#010409", fg="#e6edf3",
+
+        # Tab 1: Log
+        tab_log = ttk.Frame(self.nb)
+        self.nb.add(tab_log, text=" Flasher Log ")
+        
+        lbar = ttk.Frame(tab_log)
+        lbar.pack(fill="x", pady=2)
+        ttk.Button(lbar, text="Clear Log", command=self.do_clear_log).pack(side="right", padx=2)
+        ttk.Button(lbar, text="Copy Text", command=self.do_copy_log).pack(side="right", padx=2)
+
+        self.log = scrolledtext.ScrolledText(tab_log, height=12, bg="#010409", fg="#e6edf3",
                                              insertbackground="#e6edf3", relief="flat",
                                              font=("Consolas", 10))
         self.log.pack(fill="both", expand=True)
@@ -278,8 +367,47 @@ class FlasherApp:
         self.log.tag_configure("warn", foreground="#d29922")
         self.log.tag_configure("info", foreground="#58a6ff")
 
-        ttk.Label(f, text="Flow: 1) Flash  →  2) Provision + Relay test  →  3) Mark tested  →  Next board",
-                  style="Muted.TLabel").grid(row=4, column=0, sticky="w", padx=8, pady=(0, 2))
+        # Tab 2: Serial Monitor
+        self.mon_frame = ttk.Frame(self.nb)
+        self.nb.add(self.mon_frame, text=" Serial Monitor ")
+
+        mtop = ttk.Frame(self.mon_frame)
+        mtop.pack(fill="x", pady=2)
+        self.l_mon_state = ttk.Label(mtop, text="Not connected", style="Muted.TLabel")
+        self.l_mon_state.pack(side="left")
+        
+        self.var_autoscroll = tk.BooleanVar(value=True)
+        self.var_timestamp = tk.BooleanVar(value=False)
+        ttk.Checkbutton(mtop, text="Autoscroll", variable=self.var_autoscroll).pack(side="left", padx=10)
+        
+        def toggle_ts():
+            self.mon_out.tag_configure("ts", elide=not self.var_timestamp.get())
+            
+        ttk.Checkbutton(mtop, text="Show Timestamp", variable=self.var_timestamp, command=toggle_ts).pack(side="left", padx=10)
+        
+        ttk.Button(mtop, text="Clear Output", command=self.mon_clear).pack(side="right", padx=2)
+        ttk.Button(mtop, text="Copy Output", command=self.do_copy_mon).pack(side="right", padx=2)
+
+        self.mon_out = scrolledtext.ScrolledText(self.mon_frame, height=12, bg="#010409", fg="#e6edf3",
+                                                 insertbackground="#e6edf3", relief="flat",
+                                                 font=("Consolas", 10))
+        self.mon_out.pack(fill="both", expand=True)
+        self.mon_out.tag_configure("ok", foreground="#7ee787")
+        self.mon_out.tag_configure("err", foreground="#ff7b72")
+        self.mon_out.tag_configure("ts", foreground="#8b949e", elide=True)
+
+        mbar = ttk.Frame(self.mon_frame)
+        mbar.pack(fill="x", pady=(6, 0))
+        self.mon_cmd = ttk.Entry(mbar)
+        self.mon_cmd.pack(side="left", fill="x", expand=True, padx=8)
+        self.mon_cmd.bind("<Return>", lambda e: self.mon_send())
+        ttk.Button(mbar, text="Send", command=self.mon_send).pack(side="left", padx=2)
+
+        b_frame = ttk.Frame(f)
+        b_frame.grid(row=5, column=0, sticky="ew", padx=8, pady=(0, 2))
+        ttk.Label(b_frame, text="Flow: 1) Flash  →  2) Provision + Relay test  →  3) Mark tested  →  Next board",
+                  style="Muted.TLabel").pack(side="left")
+        ttk.Button(b_frame, text="📖 Guide", command=self.open_guide).pack(side="right")
 
     # ---------------- helpers ----------------
 
@@ -301,7 +429,8 @@ class FlasherApp:
     def set_busy(self, busy: bool):
         self.busy = busy
         self.l_prog.config(text="Busy…" if busy else "Idle", foreground="orange" if busy else "#7ee787")
-        for b in (self.b_flash, self.b_prov, self.b_mark, self.b_next, self.b_fetch, self.b_login):
+        for b in (self.b_flash, self.b_prov, self.b_mark, self.b_next, self.b_monitor,
+                  self.b_fetch, self.b_login):
             b.config(state="disabled" if busy else "normal")
 
     def refresh_ports(self):
@@ -328,6 +457,72 @@ class FlasherApp:
         return body.get("data")
 
     # ---------------- actions ----------------
+
+    def on_server_mode(self, _event=None):
+        """Mode switch — Live site ↔ Localhost.
+
+        Live site  → ESP server URL auto production hai, box HIDE.
+        Localhost  → ESP server URL = LAN IP, box SHOW (editable)."""
+        label = self.cb_mode.get()
+        preset = next((p for p in SERVER_PRESETS if p[0] == label), None)
+        if not preset:
+            return
+        _, api_url, web_url = preset
+        self.e_server.delete(0, "end")
+        self.e_server.insert(0, api_url)
+
+        is_live = label != "Localhost"
+        esp = api_url if is_live else f"http://{detect_lan_ip()}:4000"
+        self.e_esp_server.delete(0, "end")
+        self.e_esp_server.insert(0, esp)
+
+        # Live site pe ESP server box chhupa do (auto hai, user ko dikhega nahi)
+        # Localhost pe dikha do (user ko pata hona chahiye boards kahan jayenge)
+        grid_kw = {"row": 1, "column": 3, "sticky": "w", "pady": (6, 0)}
+        if is_live:
+            self.l_esp_label.grid_forget()
+            self.e_esp_server.grid_forget()
+            self.b_refresh_lan.grid_forget()
+            self.l_esp_hint.config(
+                text=f"ESP server: {api_url} (board production server use karega)",
+            )
+        else:
+            self.l_esp_label.grid(**grid_kw)
+            self.e_esp_server.grid(row=1, column=4, padx=4, pady=(6, 0))
+            self.b_refresh_lan.grid(row=1, column=5, padx=(4, 0), pady=(6, 0))
+            self.l_esp_hint.config(
+                text=f"Detected LAN IP: {self.lan_ip} — boards isi pe connect honge",
+            )
+        self._log(f"Mode: {label} — API {api_url} · ESP server {esp}", "info")
+        self._log(f"Guide: {web_url}/admin/flasher-guide (📖 Guide se kholega)", "info")
+
+    def refresh_lan_ip(self):
+        """LAN IP dobara detect karo (WiFi change / IP renew hone pe) — ESP
+        server field + hint update, sirf Localhost mode me (live pe field
+        manual hai)."""
+        self.lan_ip = detect_lan_ip()
+        self.l_esp_hint.config(
+            text=f"Detected LAN IP: {self.lan_ip} — boards isi pe connect honge",
+        )
+        if self.cb_mode.get() == "Localhost":
+            self.e_esp_server.delete(0, "end")
+            self.e_esp_server.insert(0, f"http://{self.lan_ip}:4000")
+        self._log(f"LAN IP detect: {self.lan_ip}", "info")
+
+    def open_guide(self):
+        """Admin ke Flasher Guide page ko browser me kholo — kya bharna hai
+        field-by-field (current mode ke hisaab se web URL)."""
+        server = self.e_server.get().strip().rstrip("/")
+        if "localhost" in server or "127.0.0.1" in server:
+            web = "http://localhost:5173"
+        else:
+            web = server
+        url = f"{web}/admin/flasher-guide"
+        try:
+            webbrowser.open(url)
+            self._log(f"Guide khola: {url}", "ok")
+        except Exception as e:
+            self._log(f"Guide open FAIL: {e} — browser me khud kholo: {url}", "err")
 
     def do_install_deps(self):
         """Missing deps ko pip se install karo (background) — fresh env me bhi bina crash ke."""
@@ -418,6 +613,29 @@ class FlasherApp:
         except Exception as e:
             self._log(f"Serial generate FAIL: {e}", "err")
 
+    def _gen_apikey_worker(self):
+        """Order fetch pe API key nahi mili (buyer ka home nahi) to server pe
+        create karo — userId/homeId pe permanently bind hota hai."""
+        try:
+            data = self.provision_data or {}
+            uid = (data.get("user") or {}).get("id")
+            if not uid:
+                raise RuntimeError("order me user nahi mila")
+            kd = self.api("POST", "/api/admin/api-keys", json={
+                "userId": uid,
+                "label": f"factory-order-{self.cur_order_no or self.cur_order_id}",
+            })
+            plain = (kd or {}).get("apiKey") or ""
+            if not plain:
+                raise RuntimeError("server ne API key wapas nahi bheja")
+            self.provision_data["apiKey"] = plain
+            self.root.after(0, lambda k=plain: (self.e_apikey.delete(0, "end"),
+                                                self.e_apikey.insert(0, k),
+                                                self.l_prog.config(text="API key ✓", foreground="#7ee787")))
+            self._log(f"API key generated (server): {plain[:8]}… — user se bind", "ok")
+        except Exception as e:
+            self._log(f"API key generate FAIL: {e}", "err")
+
     def do_fetch(self):
         if self.busy:
             return
@@ -446,6 +664,15 @@ class FlasherApp:
                 self.cur_order_no = data.get("orderNumber") or ""
                 self.generated_serials = []
                 boards = len(self.order_items)
+                self.board_index = 1  # pehla board
+                # Model dropdown me sirf order ke available devices (puri MODELS list nahi)
+                models = []
+                for it in self.order_items:
+                    m = it.get("modelCode")
+                    if m and m not in models:
+                        models.append(m)
+                self.order_models = models
+                self.root.after(0, lambda ms=models: self.cb_model.configure(values=ms or MODELS))
                 self._fill_item(self.order_items[0])
                 self.root.after(0, lambda d=data, n=boards: self.l_orderinfo.config(
                     text=f"#{d['orderNumber']} · buyer {d['user']['username']} · {n} board(s) · {d['status']}"))
@@ -468,12 +695,23 @@ class FlasherApp:
         self.e_ssid.delete(0, "end")
         if data.get("wifiSsid"):
             self.e_ssid.insert(0, data["wifiSsid"])
+        else:
+            # Order-time WiFi nahi diya → default factory WiFi auto-fill
+            self.e_ssid.insert(0, "Robo_lab")
+            self._log("WiFi order me nahi tha — default 'Robo_lab' auto-fill", "info")
         self.e_wpass.delete(0, "end")
         if data.get("wifiPassword"):
             self.e_wpass.insert(0, data["wifiPassword"])
+        else:
+            self.e_wpass.insert(0, "Robosphere")
+            self._log("WiFi pass order me nahi tha — default 'Robosphere' auto-fill", "info")
         self.e_apikey.delete(0, "end")
         if data.get("apiKey"):
             self.e_apikey.insert(0, data["apiKey"])
+        elif self.cur_order_id:
+            # Order me key nahi mili (buyer ka home nahi) → GUI me hi generate + server pe create
+            self._log("API key order me nahi mila — server se generate ho raha hai…", "info")
+            threading.Thread(target=self._gen_apikey_worker, daemon=True).start()
         self.cur_serial = item.get("serialCode") or ""
         # Har naye board ke liye fresh serial server se (order-linked).
         # Item serialCode pehla serial hi dikhata hai — jo pehle generate ho
@@ -491,6 +729,7 @@ class FlasherApp:
             self._log("Queue khali hai — pehle order fetch karo (ya manual bharo)", "warn")
             return
         self.order_items.pop(0)
+        self.board_index += 1  # agla board (hotspot _N suffix)
         if self.order_items:
             self._fill_item(self.order_items[0])
             left = len(self.order_items)
@@ -548,15 +787,125 @@ class FlasherApp:
                 if line:
                     self._log("  " + line)
 
-    def do_flash(self):
+    def do_wipe(self):
         if self.busy:
             return
-        if requests is None:
-            self._log(f"Flash disabled — requests missing. Install: {INSTALL_CMD}", "err")
+        if self.monitor_on:
+            messagebox.showwarning("Serial Monitor",
+                                   "Serial Monitor ON hai — Close Serial Monitor dabao, phir Fresh Start karo (port busy hai)")
+            return
+        if not messagebox.askyesno(
+            "Confirm — Fresh Start",
+            "Kya aap सचमुच ESP flash ko wipe karna chahte hain?\n\nYeh current firmware aur NVS configs clear kar dega aur 'blink' flash karega."
+        ):
+            self._log("Fresh Start cancelled", "warn")
             return
         self.set_busy(True)
         def work():
             try:
+                port = self._com()
+                self._log(f"Absolute Factory Erase (esptool) on {port}…", "info")
+                self._run_esptool(["--port", port, "--baud", "115200", "erase_flash"])
+                self._log("Erase OK. Ab Blink code upload ho raha hai...", "info")
+                
+                # Fetch blink_full.bin (contains bootloader + partitions + app)
+                import os
+                local_path = os.path.join(os.path.dirname(__file__), "..", "..", "hardware", "firmware", "blink_full.bin")
+                bin_path = "blink_full.bin"
+                got_blink = False
+
+                if os.path.exists(local_path):
+                    import shutil
+                    shutil.copy(local_path, bin_path)
+                    got_blink = True
+                else:
+                    base = self.e_server.get().rstrip("/") + "/firmware/"
+                    r = requests.get(base + "blink_full.bin", timeout=15)
+                    if r.status_code == 200:
+                        with open(bin_path, "wb") as fh:
+                            fh.write(r.content)
+                        got_blink = True
+
+                if got_blink:
+                    self._log("Blink mila. Flashing FULL image at 0x0...", "info")
+                    self._run_esptool(["--port", port, "--baud", "115200", "write_flash", "0x0", bin_path])
+                    self._log("✅ Fresh Start Complete! Board is wiped and blinking.", "ok")
+                    self.root.after(0, lambda: self.l_prog.config(text="Wiped ✓ (Blinking)", foreground="#7ee787"))
+                else:
+                    self._log("✅ Fresh Start (Wipe) Complete, lekin blink_full.bin server pe nahi mila. Board fir bhi naya jaisa ho gaya hai.", "ok")
+                    self.root.after(0, lambda: self.l_prog.config(text="Wiped ✓", foreground="#7ee787"))
+                
+                time.sleep(1)
+            except Exception as e:
+                self._log(f"Fresh Start FAIL: {e}", "err")
+            finally:
+                self.root.after(0, lambda: self.set_busy(False))
+        threading.Thread(target=work, daemon=True).start()
+
+
+    def do_flash(self):
+        if self.busy:
+            return
+        if self.monitor_on:
+            messagebox.showwarning("Serial Monitor",
+                                   "Serial Monitor ON hai — Close Serial Monitor dabao, phir Flash karo (port busy hai)")
+            return
+        if requests is None:
+            self._log(f"Flash disabled — requests missing. Install: {INSTALL_CMD}", "err")
+            return
+        model_confirm = self.cb_model.get().strip()
+        serial_now = self.e_serial.get().strip()
+        apikey_now = self.e_apikey.get().strip()
+        order_no = getattr(self, 'cur_order_no', None) or self.e_order.get().strip()
+        if not messagebox.askyesno(
+            "Confirm Board — Flash",
+            f"Are you sure yeh {model_confirm} board hai?\n\n"
+            f"Order  : {order_no}\n"
+            f"Model  : {model_confirm}\n"
+            f"Serial : {serial_now or '(khali — flash se pehle generate + bind hoga)'}\n"
+            f"API key: {apikey_now[:12] + '…' if apikey_now else '(khali — flash se pehle create + bind hoga)'}\n\n"
+            "OK pe serial + API key is order ke user se permanently bind ho jayega, phir flash shuru hoga.",
+        ):
+            self._log("Flash cancelled (confirmation me No)", "warn")
+            return
+        self.set_busy(True)
+        def work():
+            nonlocal serial_now, apikey_now
+            try:
+                self._log("Flashing firmware.bin …", "info")
+                try:
+                    fw_stat = os.stat("firmware.bin")
+                    fw_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(fw_stat.st_mtime))
+                    self._log(f"Firmware Build Time: {fw_time}", "info")
+                except Exception:
+                    pass
+                # Permanent bind — serial + API key order ke user se (confirm ke baad)
+                if not serial_now and self.cur_order_id:
+                    self._log("Serial khali — server se generate + order se bind ho raha hai…", "info")
+                    sd = self.api("POST", f"/api/admin/orders/{self.cur_order_id}/serials/generate")
+                    code = (sd or {}).get("serialCode")
+                    if code:
+                        serial_now = code
+                        self.root.after(0, lambda c=code: (self.e_serial.delete(0, "end"), self.e_serial.insert(0, c)))
+                        self._log(f"Serial bound: {code}", "ok")
+                if not serial_now:
+                    raise RuntimeError("Serial code required — generate nahi hua, flash roka gaya")
+                if not apikey_now:
+                    uid = (self.provision_data or {}).get("user", {}).get("id")
+                    if uid:
+                        self._log("API key khali — server pe create + user se bind ho raha hai…", "info")
+                        kd = self.api("POST", "/api/admin/api-keys", json={
+                            "userId": uid,
+                            "label": f"factory-order-{order_no or self.cur_order_id}",
+                        })
+                        plain = (kd or {}).get("apiKey")
+                        if plain:
+                            apikey_now = plain
+                            self.root.after(0, lambda k=plain: (self.e_apikey.delete(0, "end"), self.e_apikey.insert(0, k)))
+                            self._log(f"API key bound: {plain[:8]}…", "ok")
+                if not apikey_now:
+                    raise RuntimeError("API key required — create nahi hua, flash roka gaya")
+                self._log(f"BIND ok — serial {serial_now[:14]}… · api key {apikey_now[:8]}…", "ok")
                 port = self._com()
                 # Model-specific file pehle try karo (firmware-4ch.bin), fallback firmware.bin
                 model = self.cb_model.get().strip().lower()
@@ -643,6 +992,10 @@ class FlasherApp:
                 return buf
         return buf
 
+    # Firmware banner — v1 me "Robosphere", naye firmware me "SwitchNest".
+    # Dono accept karo taaki purane + naye dono builds provision ho sakein.
+    FIRMWARE_BANNERS = ("Robosphere IoT Firmware", "SwitchNest IoT Firmware")
+
     def _wait_banner(self, timeout=20):
         deadline = time.time() + timeout
         buf = ""
@@ -650,12 +1003,149 @@ class FlasherApp:
             chunk = self.ser.read(256).decode(errors="replace")
             if chunk:
                 buf += chunk
-            if "Robosphere IoT Firmware" in buf:
+            if any(b in buf for b in self.FIRMWARE_BANNERS):
                 return buf
         return buf
 
+    def _verify_hotspot(self, expected_name, expected_password, timeout=6):
+        """Factory quality check — board ka saved AP naam/password sticker ke
+        hotspot naam se match hona chahiye (config export parse karke).
+        Export mila nahi (purana firmware) → WARN; mismatch → FAIL (quality gate)."""
+        self.ser.reset_input_buffer()
+        self.ser.write(b"export\n")
+        self._log("> export  (hotspot verify)", "info")
+        deadline = time.time() + timeout
+        buf = ""
+        while time.time() < deadline:
+            chunk = self.ser.read(256).decode(errors="replace")
+            if chunk:
+                buf += chunk
+            if "CONFIG EXPORT END" in buf:
+                break
+        m = re.search(r"CONFIG EXPORT\s*=+(.*?)CONFIG EXPORT END", buf, re.S)
+        if not m:
+            self._log("Hotspot verify: export response nahi mila — purana firmware ho sakta hai (skip, manual monitor se check karo)", "warn")
+            return False
+        body = m.group(1).strip()
+        start, end = body.find("{"), body.rfind("}")
+        if start < 0 or end <= start:
+            self._log("Hotspot verify: export me JSON nahi mila — skip", "warn")
+            return False
+        try:
+            cfg = json.loads(body[start:end + 1])
+        except Exception as e:
+            self._log(f"Hotspot verify: export parse fail ({e}) — skip", "warn")
+            return False
+        ap = cfg.get("ap") or {}
+        got_name = (ap.get("name") or "").strip()
+        got_pass = (ap.get("password") or "").strip()
+        if got_name != expected_name or got_pass != expected_password:
+            raise RuntimeError(
+                "Hotspot MISMATCH — board: '%s' / '%s…', expected: '%s' / '%s…'"
+                % (got_name, got_pass[:4], expected_name, expected_password[:4])
+            )
+        self._log(f"Hotspot verify OK — AP '{got_name}' sticker se match ✓ (password = serial)", "ok")
+        return True
+
+    # ---- webserver reach check (quality gate) ----
+
+    def _read_boot_ips(self, timeout=15):
+        """finish (reboot) ke baad serial se boot logs padho — AP IP / LAN IP
+        lines parse karke set return karo. Board ko reboot hone me ~2-3s lagta
+        hai, isliye serial reopen + read window (max `timeout` sec)."""
+        ips = set()
+        try:
+            port = self._com()
+            ser = serial.Serial(port, BAUD, timeout=0.3)
+            ser.reset_input_buffer()
+        except Exception as e:
+            self._log(f"Webserver check: serial reopen fail ({e}) — sirf 192.168.4.1 try hoga", "warn")
+            return ips
+        ap_seen_at = None
+        try:
+            deadline = time.time() + timeout
+            buf = ""
+            while time.time() < deadline:
+                try:
+                    chunk = ser.read(256).decode(errors="replace")
+                except Exception:
+                    break
+                if not chunk:
+                    continue
+                buf += chunk
+                for m in self.BOOT_IP_RE.finditer(buf):
+                    ips.add(m.group(1))
+                if "192.168.4.1" in ips:
+                    if ap_seen_at is None:
+                        ap_seen_at = time.time()
+                    # AP IP aa gaya — LAN IP ke liye thoda aur wait, phir aage
+                    if len(ips) > 1 or time.time() - ap_seen_at > 5:
+                        break
+        finally:
+            try:
+                ser.close()
+            except Exception:
+                pass
+        return ips
+
+    def _http_status(self, ip, timeout=2.5):
+        """HTTP GET — webserver UP hai to status code (4xx/5xx bhi = server
+        response de raha hai), unreachable/unresponsive to None."""
+        try:
+            with urllib.request.urlopen(f"http://{ip}/", timeout=timeout) as r:
+                return r.status
+        except urllib.error.HTTPError as e:
+            return e.code
+        except Exception:
+            return None
+
+    def _check_webserver(self):
+        """Provision+reboot ke baad board ka webserver HTTP-ping (quality check).
+        AP (192.168.4.1) dual-mode me HAMESHA ON hota hai — par PC ko board ke
+        hotspot ya same LAN pe hona chahiye. LAN IP boot logs se parse karke
+        bhi try hota hai. Result GUI log me dikhta hai (provision fail nahi —
+        network topology ke karan false-negative ho sakta hai)."""
+        self._log("Webserver check — board reboot ho raha hai, boot logs se IP dhoondh rahe hain…", "info")
+        boot_ips = self._read_boot_ips(15)
+        lan_ips = sorted(ip for ip in boot_ips if ip != "192.168.4.1")
+        if lan_ips:
+            self._log(f"Boot logs: AP 192.168.4.1 · LAN {', '.join(lan_ips)}", "info")
+        elif "192.168.4.1" in boot_ips:
+            self._log("Boot logs: sirf AP 192.168.4.1 mila (board WiFi se connect nahi hua / slow hai)", "info")
+        else:
+            self._log("Boot logs me IP line nahi mili — serial window miss hui, sirf 192.168.4.1 try karenge", "warn")
+
+        results = []  # (label, http status)
+        # AP pe retries — board ko boot hone + webserver start hone me time lagta hai
+        for attempt in range(6):
+            code = self._http_status("192.168.4.1", timeout=2)
+            if code is not None:
+                results.append(("http://192.168.4.1/ (AP)", code))
+                break
+            if attempt < 5:
+                time.sleep(2)
+        for ip in lan_ips:
+            code = self._http_status(ip, timeout=2.5)
+            if code is not None:
+                results.append((f"http://{ip}/ (LAN)", code))
+
+        if results:
+            detail = " · ".join(f"{label} → {code}" for label, code in results)
+            self._log(f"✅ Web server reachable — {detail}", "ok")
+            return True
+        self._log(
+            "❌ Web server unreachable — PC board ke hotspot (192.168.4.1) ya same LAN "
+            "pe connected hona chahiye. Serial Monitor kholo + RESET dabao, boot logs me "
+            "AP IP / IP browser me daal ke manually check karo.", "warn"
+        )
+        return False
+
     def do_provision(self):
         if self.busy:
+            return
+        if self.monitor_on:
+            messagebox.showwarning("Serial Monitor",
+                                   "Serial Monitor ON hai — Close Serial Monitor dabao, phir Provision karo (port busy hai)")
             return
         if serial is None:
             messagebox.showerror("pyserial", "pip install pyserial")
@@ -684,18 +1174,66 @@ class FlasherApp:
                 self._open_ser()
                 self._log("Waiting for board…", "info")
                 banner = self._wait_banner(25)
-                if "Robosphere IoT Firmware" not in banner:
-                    raise RuntimeError("Board nahi mila — firmware flashed hai? Cable/baud check karo")
+                if not any(b in banner for b in self.FIRMWARE_BANNERS):
+                    raise RuntimeError(
+                        "Board nahi mila — firmware flashed hai? Cable/baud check karo"
+                        + (f" (serial pe: {banner[-80:]!r})" if banner.strip() else "")
+                    )
                 self._log("Board detected ✓", "ok")
+
+                # Zero-Trust Unlock for Fresh firmware
+                self._send_cmd("unlock robosphere_admin_99", echo=False)
 
                 r = self._send_cmd(f"setwifi {ssid} {wpass}")
                 self._check_ok(r, "setwifi")
                 r = self._send_cmd(f"setserver {esp_url} {apikey}")
                 self._check_ok(r, "setserver")
+
+                # Wait for board to settle after setserver (WiFi reconnect can take time)
+                self._log("Waiting for board to settle...", "info")
+                time.sleep(3)
+
+                # Hotspot naming: UserName_OrderID-last-letters (+ _N agar order
+                # me multiple devices) — sticker ke naam se match. Password = serial key.
+                username = (self.provision_data or {}).get("user", {}).get("username", "")
+                order_no = self.cur_order_no or ""
+                hotspot = ""
+                if username and order_no:
+                    hotspot = f"{username}_{order_no[-6:]}"
+                    if len(self.order_items) > 1:
+                        hotspot += f"_{self.board_index}"
+                if not hotspot and serial_code:
+                    hotspot = f"SwitchNest-{serial_code}"
+                if hotspot:
+                    # Retry setapname up to 3 times (board AP init can be slow)
+                    for attempt in range(3):
+                        r = self._send_cmd(f"setapname {hotspot}", timeout=15)
+                        if "[OK]" in r:
+                            self._check_ok(r, "setapname")
+                            break
+                        if attempt < 2:
+                            self._log(f"setapname retry {attempt+2}/3...", "warn")
+                            time.sleep(2)
+                    else:
+                        self._check_ok(r, "setapname")  # raise on final failure
+                    self._log(f"Hotspot: {hotspot} (password = serial key)", "info")
+                r = self._send_cmd(f"setappass {serial_code}")
+                self._check_ok(r, "setappass")
+
                 r = self._send_cmd(f"setserial {serial_code}")
                 self._check_ok(r, "setserial")
                 r = self._send_cmd(f"setmodel {model}")
                 self._check_ok(r, "setmodel")
+
+                import secrets
+                self.cur_console_pass = secrets.token_hex(4)
+                self._log(f"Generated console password (zero-trust): {self.cur_console_pass}", "info")
+                r = self._send_cmd(f"setconsolepass {self.cur_console_pass}")
+                self._check_ok(r, "setconsolepass")
+
+                # Factory quality check: board ka saved hotspot sticker se match
+                # (export JSON parse — naam + password dono verify, mismatch = FAIL).
+                self._verify_hotspot(hotspot, serial_code)
 
                 # relay self-test — board jaldi reboot kare isse pehle
                 self._log("Relay self-test…", "info")
@@ -712,8 +1250,12 @@ class FlasherApp:
                 self._log("Config complete — finishing (reboot)…", "info")
                 self._send_cmd("finish", expect=("Restarting",), timeout=5)
                 self._close_ser()
+                # Web server reachability check removed as it produces inaccurate results
+                # depending on whether the PC can reach the end-user's LAN network.
                 self._log(f"Provisioning OK → {serial_code} ({model}) | WiFi: {ssid} | server: {esp_url}", "ok")
-                self.root.after(0, lambda: self.l_prog.config(text="Provisioned ✓", foreground="#7ee787"))
+                self.root.after(0, lambda: self.l_prog.config(
+                    text="Provisioned ✓",
+                    foreground="#7ee787"))
             except Exception as e:
                 self._log(f"Provision FAIL: {e}", "err")
                 self._close_ser()
@@ -724,6 +1266,8 @@ class FlasherApp:
     def _check_ok(self, reply, cmd):
         if "ERR" in reply and "[OK]" not in reply:
             raise RuntimeError(f"{cmd} rejected: {reply.strip()[-200:]}")
+        if "Unknown command" in reply:
+            raise RuntimeError(f"{cmd} Failed! The board is running old firmware without this command. PLEASE CLICK '1 - Flash Firmware' first.")
         self._log(f"{cmd} ✓", "ok")
 
     def do_mark(self):
@@ -736,14 +1280,137 @@ class FlasherApp:
         self.set_busy(True)
         def work():
             try:
-                data = self.api("POST", f"/api/admin/serials/{code}/mark-tested")
-                self._log(f"Marked tested: {data['serialCode']} (server OK)", "ok")
+                payload = {"consolePassword": getattr(self, "cur_console_pass", None)}
+                data = self.api("POST", f"/api/admin/serials/{code}/mark-tested", json=payload)
+                self._log(f"Marked tested: {data['serialCode']} (server OK with password sync)", "ok")
                 self.root.after(0, lambda: self.l_prog.config(text="Tested ✓", foreground="#7ee787"))
             except Exception as e:
                 self._log(f"Mark FAIL: {e}", "err")
             finally:
                 self.root.after(0, lambda: self.set_busy(False))
         threading.Thread(target=work, daemon=True).start()
+
+    # ---------------- serial monitor (inline toggle) ----------------
+
+    def toggle_monitor(self):
+        """Serial Monitor on/off — button hi toggle hai. ON pe output niche
+        panel me dikhta hai aur button 'Close Serial Monitor' ban jata hai."""
+        if self.busy:
+            return
+        if self.monitor_on:
+            self.stop_monitor()
+        else:
+            self.start_monitor()
+
+    def start_monitor(self):
+        if serial is None:
+            messagebox.showerror("pyserial", "Serial monitor ke liye pyserial chahiye.\n\npip install pyserial")
+            return
+        port = self.cb_port.get().strip()
+        if not port:
+            messagebox.showwarning("COM port", "Pehle COM port choose karo (⟳ se refresh)")
+            return
+        try:
+            self.mon_ser = serial.Serial(port, BAUD, timeout=0.3)
+            self.mon_ser.reset_input_buffer()
+        except Exception as e:
+            self._log(f"Serial monitor FAIL ({port}): {e}", "err")
+            return
+        self.monitor_on = True
+        self.mon_stop = threading.Event()
+        self.mon_q = queue.Queue()
+        self.b_monitor.config(text="⏹ Close Serial Monitor")
+        self.l_mon_state.config(text=f"● {port} @ {BAUD} — live", foreground="#7ee787")
+        self.nb.select(self.mon_frame)
+        self.mon_out.delete("1.0", "end")
+        self._mon_write(f"[monitor] {port} @ {BAUD} open — board ka output yahan aayega.\n")
+        self._mon_write("[monitor] Board pe RESET dabao (boot logs: AP SSID / AP IP / IP) ya niche command bhejo (e.g. help).\n", "ok")
+        self._log(f"Serial monitor ON — {port} @ {BAUD}", "ok")
+        threading.Thread(target=self._mon_reader, daemon=True).start()
+        self.root.after(100, self._drain_mon)
+
+    def stop_monitor(self):
+        self.monitor_on = False
+        if self.mon_stop:
+            self.mon_stop.set()
+        if self.mon_ser:
+            try:
+                self.mon_ser.close()
+            except Exception:
+                pass
+            self.mon_ser = None
+        self.b_monitor.config(text="🔍 Serial Monitor")
+        self.l_mon_state.config(text="Not connected")
+        self._log("Serial monitor OFF — port release", "info")
+        self.nb.select(0)
+
+    def _mon_write(self, text, tag=None):
+        ts = time.strftime("[%H:%M:%S] ")
+        
+        # When text comes in, we want every newline to also have a timestamp prefix if it's multiple lines.
+        # But _mon_reader is yielding line by line anyway.
+        # However, _mon_write is also used by static string insertions like f"[monitor] ... open".
+        if text.strip('\r\n'):
+            self.mon_out.insert("end", ts, "ts")
+            self.mon_out.insert("end", text, tag or ())
+        else:
+            self.mon_out.insert("end", text, tag or ())
+            
+        if self.var_autoscroll.get():
+            self.mon_out.see("end")
+
+    def _mon_reader(self):
+        while not self.mon_stop.is_set():
+            try:
+                line = self.mon_ser.readline()
+                if line:
+                    line_str = line.decode(errors="replace")
+                    self.mon_q.put(line_str)
+            except Exception as e:
+                self.mon_q.put(f"\n[monitor] read error: {e}\n")
+                break
+
+    def _drain_mon(self):
+        if not self.monitor_on:
+            return
+        try:
+            while True:
+                self._mon_write(self.mon_q.get_nowait())
+        except queue.Empty:
+            pass
+        self.root.after(100, self._drain_mon)
+
+    def mon_send(self):
+        if not self.monitor_on or self.mon_ser is None:
+            return
+        cmd = self.mon_cmd.get().strip()
+        if not cmd:
+            return
+        self.mon_cmd.delete(0, "end")
+        try:
+            self.mon_ser.write((cmd + "\n").encode())
+            self._mon_write(f"> {cmd}\n", "ok")
+        except Exception as e:
+            self._mon_write(f"[monitor] send fail: {e}\n", "err")
+
+    def mon_clear(self):
+        self.mon_out.delete("1.0", "end")
+
+    def do_clear_log(self):
+        self.log.delete("1.0", "end")
+
+    def do_copy_log(self):
+        self.root.clipboard_clear()
+        self.root.clipboard_append(self.log.get("1.0", "end"))
+
+    def do_copy_mon(self):
+        self.root.clipboard_clear()
+        self.root.clipboard_append(self.mon_out.get("1.0", "end"))
+
+    def on_close(self):
+        """App band karte waqt monitor port bhi release karo (koi zombie nahi)."""
+        self.stop_monitor()
+        self.root.destroy()
 
 
 def main():

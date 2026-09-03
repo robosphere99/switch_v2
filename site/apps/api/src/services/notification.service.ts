@@ -1,5 +1,6 @@
 import { prisma } from "../lib/prisma";
 import { emitToUser } from "../lib/socket";
+import { sendNotificationEmail } from "../lib/email.service";
 import type { Prisma } from "@prisma/client";
 import {
   buildNotificationDraft,
@@ -52,6 +53,57 @@ export async function createNotification(userId: number, input: CreateNotificati
     },
   });
   emitToUser(userId, "notification:new", notification);
+
+  import("./push.service").then(({ sendPushToUser }) => {
+    let plaintext = input.body || "";
+    try {
+      const p = JSON.parse(plaintext);
+      if (p.t) plaintext = p.t;
+    } catch { /* parse ignore */ }
+    let pushCat: "device" | "system" | "support" | "power" | "order" | "promo" | "security" = "system";
+    const c = (input.category as string) ?? "system";
+    if (c === "auth" || c === "security") pushCat = "security";
+    else if (c === "shop" || c === "order") pushCat = "order";
+    else if (c === "hardware" || c === "offline") pushCat = "power";
+    else if (c === "support") pushCat = "support";
+    else if (c === "promo") pushCat = "promo";
+    else if (c === "device") pushCat = "device";
+    
+    sendPushToUser(userId, input.title, plaintext, undefined, pushCat);
+  }).catch(console.error);
+
+  return notification;
+}
+
+/**
+ * In-app notification + best-effort EMAIL (Phase 6) — order, warranty, offline
+ * alerts ke liye. Email kabhi fail nahi karta (SMTP na ho to silent skip).
+ */
+export async function createNotificationWithEmail(
+  userId: number,
+  input: CreateNotificationInput,
+  opts: { emailSubject?: string; emailBody?: string; ctaUrl?: string; ctaLabel?: string } = {},
+) {
+  const notification = await createNotification(userId, input);
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, username: true },
+    });
+    if (user?.email) {
+      await sendNotificationEmail({
+        to: user.email,
+        userName: user.username,
+        title: opts.emailSubject ?? input.title,
+        body: opts.emailBody ?? input.body ?? input.title,
+        ctaUrl: opts.ctaUrl,
+        ctaLabel: opts.ctaLabel,
+      });
+    }
+  } catch (err) {
+    // Email failure se notification/order kabhi fail na ho.
+    console.error(`[notify+email] email failed for user ${userId}:`, err instanceof Error ? err.message : err);
+  }
   return notification;
 }
 
@@ -96,11 +148,23 @@ export async function listNotifications(userId: number, args: ListNotificationsA
 /** Ek notification delete karo (sirf apna). */
 export async function remove(userId: number, notificationId: number) {
   await prisma.notification.deleteMany({ where: { id: notificationId, userId } });
+  emitToUser(userId, "notification:deleted", { id: notificationId });
+  return { ok: true };
+}
+
+export async function removeAll(userId: number) {
+  await prisma.notification.deleteMany({ where: { userId } });
+  emitToUser(userId, "notification:updated", { all: true });
   return { ok: true };
 }
 
 export async function unreadCount(userId: number) {
-  return prisma.notification.count({ where: { userId, readAt: null } });
+  try {
+    const count = await prisma.notification.count({ where: { userId, readAt: null } });
+    return { unread: count };
+  } catch (_err) {
+    return { unread: 0 };
+  }
 }
 
 export async function markRead(userId: number, notificationId: number) {
@@ -108,6 +172,7 @@ export async function markRead(userId: number, notificationId: number) {
     where: { id: notificationId, userId },
     data: { readAt: new Date() },
   });
+  emitToUser(userId, "notification:updated", { id: notificationId });
   return { ok: true };
 }
 
@@ -116,5 +181,6 @@ export async function markAllRead(userId: number) {
     where: { userId, readAt: null },
     data: { readAt: new Date() },
   });
+  emitToUser(userId, "notification:updated", { all: true });
   return { ok: true };
 }

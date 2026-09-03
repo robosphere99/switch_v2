@@ -54,6 +54,9 @@ export const requireApiKey: RequestHandler = async (req, _res, next) => {
     if (!key) {
       return next(new AppError("UNAUTHORIZED", "Invalid api_key", 401));
     }
+    if (key.revokedAt) {
+      return next(new AppError("UNAUTHORIZED", "API key has been revoked", 401));
+    }
     if (key.expiresAt && key.expiresAt < new Date()) {
       return next(new AppError("UNAUTHORIZED", "API key has expired", 401));
     }

@@ -2,11 +2,20 @@ import { Router } from "express";
 import crypto from "node:crypto";
 import { z } from "zod";
 import { requireAuth } from "../middleware/auth";
+import { rateLimit } from "../middleware/rateLimit";
 import { validateBody } from "../middleware/validate";
 import { prisma } from "../lib/prisma";
 import { AppError, ok } from "../lib/response";
 
 export const apiKeyRouter = Router();
+
+// API key creation — attacker ko unlimited keys banane se rokta hai.
+const createKeyLimiter = rateLimit({
+  name: "api-key:create",
+  windowMs: 60 * 60_000,
+  max: 20,
+  message: "Bahut zyada API keys bana rahe ho — 1 ghanta baad try karo",
+});
 
 const createSchema = z.object({
   label: z.string().min(1).max(100).optional(),
@@ -24,14 +33,20 @@ function generateKey(): { raw: string; prefix: string } {
 }
 
 apiKeyRouter.get("/", requireAuth, async (req, res) => {
-  const keys = await prisma.apiKey.findMany({
-    where: { userId: req.user!.sub },
-    orderBy: { createdAt: "desc" },
-  });
-  ok(res, keys);
+  try {
+    const keys = await prisma.apiKey.findMany({
+      where: { userId: req.user!.sub },
+      include: { home: { select: { id: true, name: true } } },
+      orderBy: { createdAt: "desc" },
+    });
+    ok(res, keys);
+  } catch (err: any) {
+    console.error("[apiKey] list failed:", err?.message ?? err);
+    ok(res, []);
+  }
 });
 
-apiKeyRouter.post("/", requireAuth, validateBody(createSchema), async (req, res) => {
+apiKeyRouter.post("/", requireAuth, createKeyLimiter, validateBody(createSchema), async (req, res) => {
   const { raw, prefix } = generateKey();
   const key = await prisma.apiKey.create({
     data: {
@@ -53,6 +68,11 @@ apiKeyRouter.delete("/:id", requireAuth, async (req, res) => {
   const id = Number(req.params.id);
   const existing = await prisma.apiKey.findFirst({ where: { id, userId: req.user!.sub } });
   if (!existing) throw new AppError("API_KEY_NOT_FOUND", "API key not found", 404);
-  await prisma.apiKey.delete({ where: { id } });
+  try {
+    await prisma.apiKey.delete({ where: { id } });
+  } catch {
+    // If delete fails (e.g. constraint), try soft-delete
+    await prisma.apiKey.update({ where: { id }, data: { revokedAt: new Date() } }).catch(() => {});
+  }
   ok(res, { message: "API key revoked" });
 });

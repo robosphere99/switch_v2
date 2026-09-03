@@ -315,3 +315,92 @@ export async function sendSupportReplyEmail(opts: {
 
   return sendEmail({ to: opts.to, subject, text, html });
 }
+
+/**
+ * Generic notification email — in-app notification ka email version.
+ * Site settings se siteName/siteUrl leke text + HTML compose karta hai.
+ * SMTP configured nahi to skip (kabhi throw nahi).
+ */
+export async function sendNotificationEmail(opts: {
+  to: string;
+  userName: string;
+  title: string;
+  body?: string;
+  /** Optional CTA link (order page, dashboard...) */
+  ctaUrl?: string;
+  ctaLabel?: string;
+  siteName?: string;
+}): Promise<EmailResult> {
+  const s = await getSiteSettings().catch(() => null);
+  const siteName = opts.siteName || s?.siteName || "SwitchNest";
+  const siteUrl = (s?.siteUrl || "").replace(/\/$/, "");
+  const subject = `${siteName} — ${opts.title}`;
+  const bodyText = opts.body?.trim() ? opts.body.trim() : "";
+
+  const text = [
+    `Namaste ${opts.userName},`,
+    "",
+    opts.title,
+    bodyText ? "" : undefined,
+    bodyText,
+    opts.ctaUrl ? `\nYahan dekho: ${opts.ctaUrl}` : undefined,
+    "",
+    siteUrl ? `— ${siteName} Team · ${siteUrl}` : `— ${siteName} Team`,
+  ]
+    .filter((l): l is string => Boolean(l))
+    .join("\n");
+
+  const html = `
+    <div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;padding:24px">
+      <h2 style="color:#2563eb;margin:0 0 8px">${siteName}</h2>
+      <p style="font-size:15px;color:#333">Namaste <b>${opts.userName}</b>,</p>
+      <h3 style="margin:8px 0;color:#111">${opts.title}</h3>
+      ${bodyText ? `<p style="font-size:15px;color:#333;white-space:pre-wrap">${bodyText.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c] as string)}</p>` : ""}
+      ${opts.ctaUrl ? `<p style="margin:20px 0"><a href="${opts.ctaUrl}" style="background:#2563eb;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600">${opts.ctaLabel ?? "Dekho"}</a></p>` : ""}
+      <p style="font-size:13px;color:#888;margin-top:24px">— ${siteName} Team${siteUrl ? ` · <a href="${siteUrl}" style="color:#888">${siteUrl}</a>` : ""}</p>
+    </div>
+  `.trim();
+
+  return sendEmail({ to: opts.to, subject, text, html });
+}
+
+/** Forgot-password link email — token ke saath reset page (30 min valid). */
+export async function sendPasswordResetEmail(opts: {
+  to: string;
+  userName: string;
+  resetUrl: string;
+  siteName?: string;
+}): Promise<EmailResult> {
+  const siteName = opts.siteName || "SwitchNest";
+  const subject = `🔑 ${siteName} — Password reset`;
+
+  const text = [
+    `Namaste ${opts.userName},`,
+    "",
+    `Aapne ${siteName} pe password reset maanga hai.`,
+    "",
+    opts.resetUrl
+      ? `Password reset karne ke liye ye link 30 min ke andar kholo:`
+      : "Password reset karne ke liye app ke Login page pe 'Forgot password?' ka link use karo.",
+    opts.resetUrl || "",
+    "",
+    "Agar aapne ye request nahi bheji to is email ko ignore kar do — aapka password change nahi hoga.",
+    "",
+    `— ${siteName} Team`,
+  ]
+    .filter((l) => l !== "")
+    .join("\n");
+
+  const html = `
+    <div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;padding:24px">
+      <h2 style="color:#2563eb;margin:0 0 16px">${siteName}</h2>
+      <p style="font-size:15px;color:#333">Namaste <b>${opts.userName}</b>,</p>
+      <p style="font-size:15px;color:#333">Aapne <b>${siteName}</b> pe password reset maanga hai. Ye link <b>30 min</b> ke liye valid hai:</p>
+      ${opts.resetUrl ? `<p style="margin:20px 0"><a href="${opts.resetUrl}" style="background:#2563eb;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600">Password Reset karo</a></p>` : `<p style="font-size:15px;color:#333">Password reset karne ke liye app ke Login page pe 'Forgot password?' ka link use karo.</p>`}
+      <p style="font-size:13px;color:#888">Agar aapne ye request nahi bheji to is email ko ignore kar do — aapka password change nahi hoga.</p>
+      <p style="font-size:13px;color:#888;margin-top:24px">— ${siteName} Team</p>
+    </div>
+  `.trim();
+
+  return sendEmail({ to: opts.to, subject, text, html });
+}

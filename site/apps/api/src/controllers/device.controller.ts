@@ -32,11 +32,63 @@ export async function setStatus(req: Request, res: Response) {
   ok(res, device);
 }
 
+export async function bulkSetStatus(req: Request, res: Response) {
+  const updated = await deviceService.bulkSetStatus({
+    homeId: Number(req.params.homeId),
+    actorId: req.user!.sub,
+    deviceIds: req.body.deviceIds,
+    status: req.body.status,
+  });
+  ok(res, updated);
+}
+
+export async function restart(req: Request, res: Response) {
+  const device = await deviceService.sendDeviceCommand({
+    homeId: Number(req.params.homeId),
+    deviceId: Number(req.params.deviceId),
+    actorId: req.user!.sub,
+    command: "reboot",
+    logType: "remote_restart",
+    logMessage: "Remote restart requested",
+  });
+  ok(res, device);
+}
+
+export async function setWifi(req: Request, res: Response) {
+  const ssid = String(req.body.ssid).trim();
+  const pass = String(req.body.password ?? "");
+  const device = await deviceService.sendDeviceCommand({
+    homeId: Number(req.params.homeId),
+    deviceId: Number(req.params.deviceId),
+    actorId: req.user!.sub,
+    command: `setwifi:${ssid}|${pass}`,
+    logType: "remote_wifi",
+    logMessage: `Remote WiFi set: ${ssid}`,
+  });
+  ok(res, device);
+}
+
+export async function setLed(req: Request, res: Response) {
+  const enabled = req.body.enabled === true;
+  const esp = await deviceService.setEspLed({
+    homeId: Number(req.params.homeId),
+    espId: Number(req.params.espId),
+    actorId: req.user!.sub,
+    enabled,
+  });
+  ok(res, esp);
+}
+
 export async function update(req: Request, res: Response) {
   const device = await deviceService.updateDevice(
     Number(req.params.homeId),
     Number(req.params.deviceId),
-    { name: req.body.name, roomId: req.body.roomId },
+    {
+      name: req.body.name,
+      roomId: req.body.roomId,
+      espId: req.body.espId,
+      channel: req.body.channel
+    },
   );
   ok(res, device);
 }

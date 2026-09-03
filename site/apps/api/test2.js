@@ -1,0 +1,1 @@
+const { PrismaClient } = require('@prisma/client'); const prisma = new PrismaClient(); prisma.(UPDATE User SET push_device_toggles = 1 WHERE id = 1).then(console.log).catch(console.error).finally(()=>prisma.());

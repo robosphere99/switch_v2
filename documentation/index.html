@@ -1,0 +1,1140 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SwitchNest — Developer Documentation</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet" />
+    <script src="marked.min.js"></script>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --surface: #1e293b;
+            --surface2: #273548;
+            --border: #334155;
+            --text: #f1f5f9;
+            --muted: #94a3b8;
+            --accent: #3b82f6;
+            --accent-glow: rgba(59, 130, 246, 0.15);
+            --green: #10b981;
+            --purple: #a78bfa;
+            --orange: #fb923c;
+            --pink: #f472b6;
+            --yellow: #fbbf24;
+            --sidebar-w: 280px;
+        }
+
+        [data-theme="light"] {
+            --bg: #f8fafc;
+            --surface: #ffffff;
+            --surface2: #f1f5f9;
+            --border: #e2e8f0;
+            --text: #0f172a;
+            --muted: #64748b;
+            --accent-glow: rgba(59, 130, 246, 0.08);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* ── SIDEBAR ── */
+        #sidebar {
+            width: var(--sidebar-w);
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            flex-shrink: 0;
+            overflow: hidden;
+        }
+
+        .logo {
+            padding: 20px 20px 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .logo-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: linear-gradient(135deg, var(--accent), var(--purple));
+            color: white;
+            font-weight: 700;
+            font-size: 15px;
+            padding: 6px 12px;
+            border-radius: 10px;
+            letter-spacing: -0.3px;
+        }
+
+        .logo-sub {
+            color: var(--muted);
+            font-size: 11px;
+            margin-top: 6px;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        /* Search */
+        .search-box {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .search-box input {
+            width: 100%;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 8px 12px 8px 34px;
+            color: var(--text);
+            font-size: 13px;
+            font-family: inherit;
+            outline: none;
+            transition: border-color 0.2s;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%2394a3b8' viewBox='0 0 16 16'%3E%3Cpath d='M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001q.044.06.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1 1 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: 10px center;
+        }
+
+        .search-box input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+
+        .search-box input::placeholder {
+            color: var(--muted);
+        }
+
+        /* Nav list */
+        #nav-list {
+            overflow-y: auto;
+            flex: 1;
+            padding: 8px 0;
+            scrollbar-width: thin;
+            scrollbar-color: var(--border) transparent;
+        }
+
+        .nav-section-label {
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--muted);
+            padding: 12px 16px 4px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 16px;
+            cursor: pointer;
+            border-radius: 0;
+            transition: background 0.15s;
+            font-size: 13.5px;
+            color: var(--muted);
+            border-left: 3px solid transparent;
+            text-decoration: none;
+            position: relative;
+        }
+
+        .nav-item:hover {
+            background: var(--surface2);
+            color: var(--text);
+        }
+
+        .nav-item.active {
+            background: var(--accent-glow);
+            color: var(--accent);
+            border-left-color: var(--accent);
+            font-weight: 500;
+        }
+
+        .nav-item .nav-icon {
+            font-size: 16px;
+            width: 20px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+
+        .nav-item .nav-num {
+            font-size: 10px;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 1px 5px;
+            color: var(--muted);
+            font-family: 'JetBrains Mono', monospace;
+            margin-left: auto;
+        }
+
+        .nav-item.active .nav-num {
+            background: var(--accent-glow);
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .sidebar-footer {
+            padding: 12px 16px;
+            border-top: 1px solid var(--border);
+            font-size: 11px;
+            color: var(--muted);
+        }
+
+        /* ── MAIN CONTENT ── */
+        #main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Top bar */
+        #topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 28px;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+
+        #topbar-title {
+            font-size: 15px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        #topbar-title .page-icon {
+            font-size: 20px;
+        }
+
+        .topbar-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .copy-btn {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            color: var(--muted);
+            padding: 6px 14px;
+            border-radius: 7px;
+            font-size: 12px;
+            cursor: pointer;
+            font-family: inherit;
+            transition: all 0.2s;
+        }
+
+        .copy-btn:hover {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: white;
+        }
+
+        .version-badge {
+            background: linear-gradient(135deg, var(--green), #059669);
+            color: white;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 4px 10px;
+            border-radius: 20px;
+            letter-spacing: 0.3px;
+        }
+
+        /* Content area */
+        #content-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 36px 48px;
+            scrollbar-width: thin;
+            scrollbar-color: var(--border) transparent;
+        }
+
+        /* Home screen */
+        #home-screen {
+            max-width: 900px;
+        }
+
+        .hero {
+            background: linear-gradient(135deg, var(--surface) 0%, rgba(59, 130, 246, 0.08) 100%);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 40px;
+            margin-bottom: 32px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: -40px;
+            right: -40px;
+            width: 200px;
+            height: 200px;
+            background: radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        .hero h1 {
+            font-size: 32px;
+            font-weight: 800;
+            letter-spacing: -1px;
+            background: linear-gradient(135deg, var(--text) 0%, var(--accent) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 10px;
+        }
+
+        .hero p {
+            color: var(--muted);
+            font-size: 16px;
+            line-height: 1.7;
+            max-width: 600px;
+        }
+
+        .hero-stats {
+            display: flex;
+            gap: 24px;
+            margin-top: 24px;
+            flex-wrap: wrap;
+        }
+
+        .stat-pill {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 8px 16px;
+            font-size: 13px;
+        }
+
+        .stat-pill span:first-child {
+            color: var(--accent);
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .stat-pill span:last-child {
+            color: var(--muted);
+            margin-left: 6px;
+        }
+
+        .doc-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 16px;
+        }
+
+        .doc-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .doc-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--card-color, var(--accent));
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .doc-card:hover {
+            border-color: var(--card-color, var(--accent));
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+        }
+
+        .doc-card:hover::before {
+            opacity: 1;
+        }
+
+        .card-icon {
+            font-size: 28px;
+            margin-bottom: 10px;
+            display: block;
+        }
+
+        .card-title {
+            font-size: 15px;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+
+        .card-desc {
+            font-size: 12px;
+            color: var(--muted);
+            line-height: 1.5;
+        }
+
+        .card-kb {
+            font-size: 11px;
+            color: var(--muted);
+            margin-top: 10px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Markdown content */
+        #md-content {
+            display: none;
+            max-width: 860px;
+        }
+
+        .md-body {
+            line-height: 1.75;
+        }
+
+        .md-body h1 {
+            font-size: 30px;
+            font-weight: 800;
+            letter-spacing: -0.8px;
+            background: linear-gradient(135deg, var(--text) 0%, var(--accent) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 8px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+            margin-top: 0;
+        }
+
+        .md-body h2 {
+            font-size: 21px;
+            font-weight: 700;
+            margin-top: 40px;
+            margin-bottom: 14px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border);
+            letter-spacing: -0.4px;
+        }
+
+        .md-body h3 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-top: 28px;
+            margin-bottom: 10px;
+            color: var(--accent);
+        }
+
+        .md-body h4 {
+            font-size: 14px;
+            font-weight: 600;
+            margin-top: 20px;
+            margin-bottom: 8px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .md-body p {
+            margin-bottom: 14px;
+            color: var(--text);
+        }
+
+        .md-body a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        .md-body a:hover {
+            text-decoration: underline;
+        }
+
+        .md-body ul,
+        .md-body ol {
+            margin: 10px 0 14px 24px;
+        }
+
+        .md-body li {
+            margin-bottom: 5px;
+            color: var(--text);
+        }
+
+        .md-body li::marker {
+            color: var(--accent);
+        }
+
+        .md-body code {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 2px 6px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            color: var(--pink);
+        }
+
+        .md-body pre {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 20px;
+            overflow-x: auto;
+            margin: 16px 0;
+            position: relative;
+        }
+
+        .md-body pre code {
+            background: none;
+            border: none;
+            padding: 0;
+            font-size: 13px;
+            color: var(--text);
+        }
+
+        .md-body blockquote {
+            border-left: 3px solid var(--accent);
+            margin: 16px 0;
+            padding: 12px 16px;
+            background: var(--accent-glow);
+            border-radius: 0 8px 8px 0;
+            font-size: 14px;
+            color: var(--muted);
+        }
+
+        .md-body table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+            font-size: 14px;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .md-body th {
+            background: var(--surface2);
+            color: var(--text);
+            font-weight: 600;
+            padding: 10px 14px;
+            text-align: left;
+            border-bottom: 2px solid var(--border);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .md-body td {
+            padding: 9px 14px;
+            border-bottom: 1px solid var(--border);
+            color: var(--text);
+        }
+
+        .md-body tr:hover td {
+            background: var(--surface2);
+        }
+
+        .md-body td code {
+            font-size: 12px;
+        }
+
+        .md-body hr {
+            border: none;
+            border-top: 1px solid var(--border);
+            margin: 28px 0;
+        }
+
+        /* Search results */
+        #search-results {
+            display: none;
+            max-width: 860px;
+        }
+
+        .sr-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 16px;
+        }
+
+        .sr-item {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 16px 20px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: border-color 0.15s;
+        }
+
+        .sr-item:hover {
+            border-color: var(--accent);
+        }
+
+        .sr-item-title {
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 4px;
+        }
+
+        .sr-item-context {
+            font-size: 13px;
+            color: var(--muted);
+        }
+
+        .sr-item-context mark {
+            background: var(--accent-glow);
+            color: var(--accent);
+            border-radius: 2px;
+        }
+
+        .sr-empty {
+            color: var(--muted);
+            font-size: 14px;
+            padding: 20px 0;
+        }
+
+        /* Loading */
+        .loading {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--muted);
+            font-size: 14px;
+            padding: 40px 0;
+        }
+
+        .spinner {
+            width: 18px;
+            height: 18px;
+            border: 2px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 3px;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            #sidebar {
+                display: none;
+            }
+
+            #content-area {
+                padding: 20px;
+            }
+        }
+
+        /* Animations */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(8px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .animate-in {
+            animation: fadeIn 0.3s ease;
+        }
+
+        @media print {
+
+            #sidebar,
+            #topbar {
+                display: none !important;
+            }
+
+            #content-area {
+                padding: 0 !important;
+                overflow: visible !important;
+                height: auto !important;
+            }
+
+            body {
+                height: auto !important;
+                overflow: visible !important;
+                background: white;
+                color: black;
+            }
+
+            #main {
+                display: block !important;
+                overflow: visible !important;
+            }
+
+            .copy-btn {
+                display: none !important;
+            }
+
+            .md-body h1,
+            .md-body h2,
+            .md-body h3,
+            .md-body p,
+            .md-body li {
+                color: black !important;
+                -webkit-text-fill-color: black !important;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- SIDEBAR -->
+    <nav id="sidebar">
+        <div class="logo">
+            <div class="logo-badge">⚡ SwitchNest</div>
+            <div class="logo-sub">Developer Documentation · v2</div>
+        </div>
+
+        <div class="search-box">
+            <input type="text" id="search-input" placeholder="Search docs…" autocomplete="off" />
+        </div>
+
+        <div id="nav-list">
+            <div class="nav-section-label">General</div>
+            <a class="nav-item active" data-page="home">
+                <span class="nav-icon">🏠</span> Overview
+            </a>
+
+            <div class="nav-section-label">Documentation</div>
+
+            <a class="nav-item" data-page="api" data-file="1-API-DOCUMENTATION.md">
+                <span class="nav-icon">🌐</span> REST API
+                <span class="nav-num">1</span>
+            </a>
+            <a class="nav-item" data-page="hardware" data-file="2-HARDWARE-DOCUMENTATION.md">
+                <span class="nav-icon">🔧</span> Hardware & Firmware
+                <span class="nav-num">2</span>
+            </a>
+            <a class="nav-item" data-page="mobile" data-file="3-MOBILE-APP-DOCUMENTATION.md">
+                <span class="nav-icon">📱</span> Mobile App
+                <span class="nav-num">3</span>
+            </a>
+            <a class="nav-item" data-page="git" data-file="4-GIT-LOG-HISTORY.md">
+                <span class="nav-icon">📜</span> Git History
+                <span class="nav-num">4</span>
+            </a>
+            <a class="nav-item" data-page="flasher" data-file="5-FLASHER-GUI-DOCUMENTATION.md">
+                <span class="nav-icon">🔨</span> Flasher GUI
+                <span class="nav-num">5</span>
+            </a>
+            <a class="nav-item" data-page="admin" data-file="6-ADMIN-FEATURES-DOCUMENTATION.md">
+                <span class="nav-icon">🛡️</span> Admin Features
+                <span class="nav-num">6</span>
+            </a>
+            <a class="nav-item" data-page="user" data-file="7-USER-FEATURES-DOCUMENTATION.md">
+                <span class="nav-icon">👤</span> User Features
+                <span class="nav-num">7</span>
+            </a>
+            <a class="nav-item" data-page="promo" data-file="8-FEATURES-PROMOTION.md">
+                <span class="nav-icon">🚀</span> Features & Promo
+                <span class="nav-num">8</span>
+            </a>
+            <a class="nav-item" data-page="report" data-file="9-PROJECT-STATUS-REPORT.md">
+                <span class="nav-icon">📋</span> Project Status
+                <span class="nav-num">9</span>
+            </a>
+            <a class="nav-item" data-page="portfolio" data-file="Portfolio-Summary.md">
+                <span class="nav-icon">💼</span> Portfolio Summary
+                <span class="nav-num">10</span>
+            </a>
+        </div>
+
+        <div class="sidebar-footer">
+            📦 SwitchNest v2 · August 2026 · 280+ commits
+        </div>
+    </nav>
+
+    <!-- MAIN -->
+    <main id="main">
+        <!-- Top bar -->
+        <div id="topbar">
+            <div id="topbar-title">
+                <span class="page-icon" id="page-icon">🏠</span>
+                <span id="page-title">Documentation Overview</span>
+            </div>
+            <div class="topbar-actions">
+                <span class="version-badge">v2 · Production</span>
+                <button class="copy-btn" id="theme-toggle-btn" onclick="toggleTheme()"
+                    title="Toggle Light/Dark Theme">☀️ Light Mode</button>
+                <button class="copy-btn" id="print-pdf-btn" style="display:none;" onclick="window.print()">🖨️ Print
+                    PDF</button>
+                <button class="copy-btn" id="copy-md-btn" style="display:none;" onclick="copyMarkdown()">📋 Copy
+                    Markdown</button>
+            </div>
+        </div>
+
+        <!-- Content -->
+        <div id="content-area">
+
+            <!-- Home screen -->
+            <div id="home-screen" class="animate-in">
+                <div class="hero">
+                    <h1>⚡ SwitchNest Docs</h1>
+                    <p>Complete technical documentation for the SwitchNest smart home IoT platform — covering APIs,
+                        hardware firmware, mobile app, factory tooling, and everything in between.</p>
+                    <div class="hero-stats">
+                        <div class="stat-pill"><span>280+</span><span>Git Commits</span></div>
+                        <div class="stat-pill"><span>120+</span><span>API Endpoints</span></div>
+                        <div class="stat-pill"><span>21</span><span>DB Tables</span></div>
+                        <div class="stat-pill"><span>9</span><span>Phases Done</span></div>
+                        <div class="stat-pill"><span>5</span><span>Board Models</span></div>
+                    </div>
+                </div>
+
+                <div class="doc-grid">
+                    <div class="doc-card" style="--card-color:#3b82f6"
+                        onclick="loadPage('api','1-API-DOCUMENTATION.md','🌐','REST API Reference')">
+                        <span class="card-icon">🌐</span>
+                        <div class="card-title">REST API Reference</div>
+                        <div class="card-desc">All 120+ endpoints, auth flow, JWT, Socket.IO events, database schema
+                            overview.</div>
+                        <div class="card-kb">1-API-DOCUMENTATION.md · 12.4 KB</div>
+                    </div>
+                    <div class="doc-card" style="--card-color:#10b981"
+                        onclick="loadPage('hardware','2-HARDWARE-DOCUMENTATION.md','🔧','Hardware & Firmware')">
+                        <span class="card-icon">🔧</span>
+                        <div class="card-title">Hardware & Firmware</div>
+                        <div class="card-desc">ESP32 firmware arch, MQTT payloads, serial commands, pin layout, OTA
+                            flow, zero-trust security.</div>
+                        <div class="card-kb">2-HARDWARE-DOCUMENTATION.md · 10.6 KB</div>
+                    </div>
+                    <div class="doc-card" style="--card-color:#a78bfa"
+                        onclick="loadPage('mobile','3-MOBILE-APP-DOCUMENTATION.md','📱','Mobile App')">
+                        <span class="card-icon">📱</span>
+                        <div class="card-title">Mobile App</div>
+                        <div class="card-desc">React Native + Expo app — screens, navigation, realtime, e-commerce,
+                            setup instructions.</div>
+                        <div class="card-kb">3-MOBILE-APP-DOCUMENTATION.md · 8.4 KB</div>
+                    </div>
+                    <div class="doc-card" style="--card-color:#f472b6"
+                        onclick="loadPage('git','4-GIT-LOG-HISTORY.md','📜','Git History')">
+                        <span class="card-icon">📜</span>
+                        <div class="card-title">Git History & Phases</div>
+                        <div class="card-desc">Phase timeline, recent 20 commits table, branch strategy, CI/CD workflow.
+                        </div>
+                        <div class="card-kb">4-GIT-LOG-HISTORY.md · 9.8 KB</div>
+                    </div>
+                    <div class="doc-card" style="--card-color:#fb923c"
+                        onclick="loadPage('flasher','5-FLASHER-GUI-DOCUMENTATION.md','🔨','Flasher GUI')">
+                        <span class="card-icon">🔨</span>
+                        <div class="card-title">Flasher GUI</div>
+                        <div class="card-desc">Factory provisioning tool — 9-step flow, UI layout, serial protocol,
+                            error troubleshooting.</div>
+                        <div class="card-kb">5-FLASHER-GUI-DOCUMENTATION.md · 10.4 KB</div>
+                    </div>
+                    <div class="doc-card" style="--card-color:#f59e0b"
+                        onclick="loadPage('admin','6-ADMIN-FEATURES-DOCUMENTATION.md','🛡️','Admin Features')">
+                        <span class="card-icon">🛡️</span>
+                        <div class="card-title">Admin Features</div>
+                        <div class="card-desc">All 12 admin tabs, order → delivery flow, fleet monitoring,
+                            troubleshooting guide.</div>
+                        <div class="card-kb">6-ADMIN-FEATURES-DOCUMENTATION.md · 9.4 KB</div>
+                    </div>
+                    <div class="doc-card" style="--card-color:#34d399"
+                        onclick="loadPage('user','7-USER-FEATURES-DOCUMENTATION.md','👤','User Features')">
+                        <span class="card-icon">👤</span>
+                        <div class="card-title">User Features</div>
+                        <div class="card-desc">End-user how-to guide — devices, schedules, family, shop, AI assistant,
+                            Google/Alexa.</div>
+                        <div class="card-kb">7-USER-FEATURES-DOCUMENTATION.md · 9.5 KB</div>
+                    </div>
+                    <div class="doc-card" style="--card-color:#818cf8"
+                        onclick="loadPage('promo','8-FEATURES-PROMOTION.md','🚀','Features & Promo')">
+                        <span class="card-icon">🚀</span>
+                        <div class="card-title">Features for Publicity</div>
+                        <div class="card-desc">Complete feature list for promotion — all completed features, roadmap,
+                            technical excellence.</div>
+                        <div class="card-kb">8-FEATURES-PROMOTION.md · 8.2 KB</div>
+                    </div>
+                    <div class="doc-card" style="--card-color:#38bdf8"
+                        onclick="loadPage('report','9-PROJECT-STATUS-REPORT.md','📋','Project Status')">
+                        <span class="card-icon">📋</span>
+                        <div class="card-title">Project Status Report</div>
+                        <div class="card-desc">Executive summary, phase completion table, metrics, repo structure,
+                            deployment state.</div>
+                        <div class="card-kb">9-PROJECT-STATUS-REPORT.md · 11.3 KB</div>
+                    </div>
+                    <div class="doc-card" style="--card-color:#10b981"
+                        onclick="loadPage('portfolio','Portfolio-Summary.md','💼','Portfolio Summary')">
+                        <span class="card-icon">💼</span>
+                        <div class="card-title">Portfolio Summary</div>
+                        <div class="card-desc">High-level technical overview of SwitchNest for interviews and HR,
+                            skipping internal secrets.</div>
+                        <div class="card-kb">Portfolio-Summary.md · 4.8 KB</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Markdown content view -->
+            <div id="md-content" class="animate-in">
+                <div id="md-body" class="md-body"></div>
+            </div>
+
+            <!-- Search results -->
+            <div id="search-results" class="animate-in">
+                <div class="sr-title" id="sr-title">Search Results</div>
+                <div id="sr-body"></div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Data -->
+    <script src="docs-data.js"></script>
+    <script>
+        // ─── State ───────────────────────────────────────────────────────────────
+        const docs = [
+            { page: 'api', file: '1-API-DOCUMENTATION.md', icon: '🌐', title: 'REST API Reference' },
+            { page: 'hardware', file: '2-HARDWARE-DOCUMENTATION.md', icon: '🔧', title: 'Hardware & Firmware' },
+            { page: 'mobile', file: '3-MOBILE-APP-DOCUMENTATION.md', icon: '📱', title: 'Mobile App' },
+            { page: 'git', file: '4-GIT-LOG-HISTORY.md', icon: '📜', title: 'Git History' },
+            { page: 'flasher', file: '5-FLASHER-GUI-DOCUMENTATION.md', icon: '🔨', title: 'Flasher GUI' },
+            { page: 'admin', file: '6-ADMIN-FEATURES-DOCUMENTATION.md', icon: '🛡️', title: 'Admin Features' },
+            { page: 'user', file: '7-USER-FEATURES-DOCUMENTATION.md', icon: '👤', title: 'User Features' },
+            { page: 'promo', file: '8-FEATURES-PROMOTION.md', icon: '🚀', title: 'Features & Promo' },
+            { page: 'report', file: '9-PROJECT-STATUS-REPORT.md', icon: '📋', title: 'Project Status Report' },
+            { page: 'portfolio', file: 'Portfolio-Summary.md', icon: '💼', title: 'Portfolio Summary' },
+        ];
+
+        let currentMd = '';
+
+        // ─── Navigation ──────────────────────────────────────────────────────────
+        document.querySelectorAll('.nav-item[data-page]').forEach(el => {
+            el.addEventListener('click', () => {
+                const page = el.dataset.page;
+                const icon = el.querySelector('.nav-icon').textContent;
+                const title = el.textContent.replace(icon, '').replace(/\d+$/, '').trim();
+                if (page === 'home') showHome();
+                else loadPage(page, icon, title);
+            });
+        });
+
+        function setActive(page) {
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+            const target = document.querySelector(`.nav-item[data-page="${page}"]`);
+            if (target) target.classList.add('active');
+        }
+
+        function showHome() {
+            document.getElementById('home-screen').style.display = 'block';
+            document.getElementById('md-content').style.display = 'none';
+            document.getElementById('search-results').style.display = 'none';
+            document.getElementById('page-icon').textContent = '🏠';
+            document.getElementById('page-title').textContent = 'Documentation Overview';
+            document.getElementById('copy-md-btn').style.display = 'none';
+            document.getElementById('print-pdf-btn').style.display = 'none';
+            setActive('home');
+
+            if (window.location.hash !== '#home' && window.location.hash !== '') {
+                history.replaceState(null, null, '#home');
+            }
+        }
+
+        function loadPage(page, icon, title) {
+            setActive(page);
+            if (window.location.hash !== '#' + page) {
+                history.pushState(null, null, '#' + page);
+            }
+            document.getElementById('home-screen').style.display = 'none';
+            document.getElementById('search-results').style.display = 'none';
+            document.getElementById('page-icon').textContent = icon;
+            document.getElementById('page-title').textContent = title;
+            document.getElementById('copy-md-btn').style.display = 'inline-block';
+            document.getElementById('print-pdf-btn').style.display = 'inline-block';
+
+            const mdEl = document.getElementById('md-content');
+            const bodyEl = document.getElementById('md-body');
+            mdEl.style.display = 'block';
+
+            if (!window.DOCS || !window.DOCS[page]) {
+                bodyEl.innerHTML = `<p style="color:#f87171">❌ Could not load content. Run build-data.ps1 first.</p>`;
+                return;
+            }
+
+            currentMd = window.DOCS[page];
+            bodyEl.innerHTML = marked.parse(currentMd);
+            mdEl.classList.remove('animate-in');
+            void mdEl.offsetWidth;
+            mdEl.classList.add('animate-in');
+            document.getElementById('content-area').scrollTop = 0;
+        }
+
+        function copyMarkdown() {
+            if (!currentMd) return;
+            navigator.clipboard.writeText(currentMd).then(() => {
+                const btn = document.getElementById('copy-md-btn');
+                btn.textContent = '✅ Copied!';
+                setTimeout(() => btn.textContent = '📋 Copy Markdown', 2000);
+            });
+        }
+
+        // ─── Search ──────────────────────────────────────────────────────────────
+        let searchTimeout;
+
+        document.getElementById('search-input').addEventListener('input', (e) => {
+            clearTimeout(searchTimeout);
+            const q = e.target.value.trim();
+            if (!q) {
+                if (document.getElementById('search-results').style.display === 'block') showHome();
+                return;
+            }
+            searchTimeout = setTimeout(() => doSearch(q), 300);
+        });
+
+        function doSearch(query) {
+            document.getElementById('home-screen').style.display = 'none';
+            document.getElementById('md-content').style.display = 'none';
+            const srEl = document.getElementById('search-results');
+            srEl.style.display = 'block';
+            document.getElementById('page-icon').textContent = '🔍';
+            document.getElementById('page-title').textContent = `Search: "${query}"`;
+            document.getElementById('copy-md-btn').style.display = 'none';
+            document.getElementById('print-pdf-btn').style.display = 'none';
+            setActive('');
+
+            if (!window.DOCS) return;
+
+            const results = [];
+            const lq = query.toLowerCase();
+
+            for (const d of docs) {
+                const text = window.DOCS[d.page] || '';
+                const lines = text.split('\n');
+                const matches = [];
+                for (let i = 0; i < lines.length; i++) {
+                    if (lines[i].toLowerCase().includes(lq)) {
+                        const ctx = lines.slice(Math.max(0, i - 1), i + 2).join(' ').slice(0, 200);
+                        matches.push({ line: i, ctx });
+                    }
+                }
+                if (matches.length > 0) {
+                    results.push({ doc: d, matches: matches.slice(0, 3) });
+                }
+            }
+
+            const bodyEl = document.getElementById('sr-body');
+            document.getElementById('sr-title').textContent = results.length
+                ? `Found in ${results.length} document${results.length > 1 ? 's' : ''}`
+                : 'No results found';
+
+            if (!results.length) {
+                bodyEl.innerHTML = `<p class="sr-empty">No matches for "<strong>${query}</strong>". Try different keywords.</p>`;
+                return;
+            }
+
+            bodyEl.innerHTML = results.map(r => `
+      <div class="sr-item" onclick="loadPage('${r.doc.page}','${r.doc.file}','${r.doc.icon}','${r.doc.title}')">
+        <div class="sr-item-title">${r.doc.icon} ${r.doc.title}</div>
+        ${r.matches.map(m => `
+          <div class="sr-item-context">${escapeHtml(m.ctx).replace(
+                new RegExp(escapeRegex(query), 'gi'),
+                s => `<mark>${s}</mark>`
+            )}</div>
+        `).join('')}
+      </div>
+    `).join('');
+        }
+
+        function escapeHtml(s) {
+            return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        function escapeRegex(s) {
+            return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+
+        // ─── marked.js config ────────────────────────────────────────────────────
+        function toggleTheme() {
+            const body = document.documentElement;
+            const isLight = body.getAttribute('data-theme') === 'light';
+            if (isLight) {
+                body.removeAttribute('data-theme');
+                localStorage.setItem('docs-theme', 'dark');
+                document.getElementById('theme-toggle-btn').innerHTML = '☀️ Light Mode';
+            } else {
+                body.setAttribute('data-theme', 'light');
+                localStorage.setItem('docs-theme', 'light');
+                document.getElementById('theme-toggle-btn').innerHTML = '🌙 Dark Mode';
+            }
+        }
+
+        if (localStorage.getItem('docs-theme') === 'light') {
+            document.documentElement.setAttribute('data-theme', 'light');
+            document.addEventListener('DOMContentLoaded', () => {
+                document.getElementById('theme-toggle-btn').innerHTML = '🌙 Dark Mode';
+            });
+        }
+
+        // ─── Routing ─────────────────────────────────────────────────────────────
+        function handleHash() {
+            const hash = window.location.hash.replace('#', '');
+            if (!hash || hash === 'home') {
+                showHome();
+                return;
+            }
+            const doc = docs.find(d => d.page === hash);
+            if (doc) {
+                loadPage(doc.page, doc.icon, doc.title);
+            } else {
+                showHome();
+            }
+        }
+        window.addEventListener('popstate', handleHash);
+        document.addEventListener('DOMContentLoaded', handleHash);
+
+        marked.setOptions({
+            breaks: true,
+            gfm: true,
+        });
+    </script>
+</body>
+
+</html>

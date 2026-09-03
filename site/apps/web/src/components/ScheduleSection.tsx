@@ -9,11 +9,12 @@ import {
   type ScheduleWithDevice,
 } from "../api/schedules";
 
+// User-facing labels — cron ko normal users ke saamne "advanced" hi dikhao.
 const TYPE_LABELS: Record<string, string> = {
-  once: "Once",
-  daily: "Daily",
-  weekly: "Weekly",
-  cron: "Cron",
+  once: "One time",
+  daily: "Every day",
+  weekly: "Every week",
+  cron: "Custom (advanced)",
 };
 
 function formatDate(iso: string | null | undefined): string {

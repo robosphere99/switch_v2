@@ -1,10 +1,25 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth";
+import { rateLimit } from "../middleware/rateLimit";
 import { prisma } from "../lib/prisma";
 import { AppError, ok } from "../lib/response";
 import { audit } from "../services/audit.service";
 
 export const claimRouter = Router();
+
+// Serial brute-force / guessing se bachao — per IP. Claim ek heavy write
+// (serial registry + device + audit), isliye hourly limit tight rakhi hai.
+const claimLimiter = rateLimit({
+  name: "claim:create",
+  windowMs: 60 * 60_000,
+  max: 20,
+  message: "Bahut zyada claim attempts — 1 ghanta baad try karo",
+});
+const claimHomesLimiter = rateLimit({
+  name: "claim:homes",
+  windowMs: 60_000,
+  max: 60,
+});
 
 claimRouter.use(requireAuth);
 
@@ -32,13 +47,13 @@ async function claimableHomes(userId: number) {
   });
 }
 
-claimRouter.get("/homes", async (req, res) => {
+claimRouter.get("/homes", claimHomesLimiter, async (req, res) => {
   const homes = await claimableHomes(req.user!.sub);
   ok(res, homes.map((h) => h.home));
 });
 
 /** POST /api/claim  { serialCode, homeId } */
-claimRouter.post("/", async (req, res) => {
+claimRouter.post("/", claimLimiter, async (req, res) => {
   const serialCode = String(req.body?.serialCode ?? "").trim().toUpperCase();
   const homeId = Number(req.body?.homeId);
   if (!serialCode) throw new AppError("BAD_REQUEST", "Serial code is required");
@@ -53,9 +68,12 @@ claimRouter.post("/", async (req, res) => {
   if (!serial) throw new AppError("NOT_FOUND", "Unknown serial code — check the sticker on the box");
 
   if (serial.status === "claimed") {
-    throw new AppError("CONFLICT", `This device was already activated by ${serial.userId ? "another user" : "someone"}`);
+    if (serial.userId === req.user!.sub) {
+      throw new AppError("CONFLICT", "This device is already activated in your home — check your Devices/Boards");
+    }
+    throw new AppError("CONFLICT", "This device was already activated by another user");
   }
-  if (!["delivered", "shipped"].includes(serial.status)) {
+  if (!["delivered", "shipped", "reserved", "available", "processing"].includes(serial.status)) {
     throw new AppError("CONFLICT", `This device is not yet ready to activate (status: ${serial.status})`);
   }
 
@@ -81,27 +99,54 @@ claimRouter.post("/", async (req, res) => {
         warrantyExpiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
       },
     });
-    return tx.device.create({
-      data: {
-        homeId,
-        name: deviceName,
-        type,
-        status: "off",
-        serialNumber: serial.serialCode,
-        createdBy: req.user!.sub,
+
+    const existingEsp = await tx.espDevice.findFirst({
+      where: {
+        OR: [
+          { macAddress: `PENDING-${serial.serialCode}` },
+          { serialCode: serial.serialCode },
+        ],
       },
     });
+
+    if (existingEsp) {
+      return tx.espDevice.update({
+        where: { id: existingEsp.id },
+        data: {
+          homeId,
+          name: deviceName,
+          serialCode: serial.serialCode,
+          modelCode: serial.product.modelCode,
+          updatedAt: new Date(),
+        },
+      });
+    }
+
+    return tx.espDevice.create({
+      data: {
+        homeId,
+        macAddress: `PENDING-${serial.serialCode}`,
+        name: deviceName,
+        serialCode: serial.serialCode,
+        modelCode: serial.product.modelCode,
+        offline: true,
+        updatedAt: new Date(),
+      },
+    });
+
+    // Sirf hardware board (EspDevice) create karte hain.
+    // Logical devices user baad me khud create/map karega app/web se.
   });
 
   await audit(req.user!.sub, "shop.device.claim", {
-    entity: "device",
+    entity: "esp_device",
     entityId: device.id,
     meta: { serialCode, homeId, model: serial.product.modelCode },
   });
 
   ok(res, {
     claimed: true,
-    device: { id: device.id, name: device.name, type },
+    device: { id: device.id, name: device.name, type: "custom" },
     serialCode,
     homeId,
   }, 201);

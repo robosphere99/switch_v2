@@ -85,10 +85,29 @@ for (const p of CANDIDATES) {
   }
 }
 
-if (!found) {
-  console.log("[patch-webconfig] web.config nahi mila — skip (koi change nahi)");
-  process.exit(0);
-}
+const target = path.resolve(process.cwd(), "web.config");
+const cleanRewriteConfig = `<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <system.webServer>
+    <rewrite>
+      <rules>
+        <rule name="DynamicContent" stopProcessing="true">
+          <match url=".*" />
+          <conditions logicalGrouping="MatchAll">
+            <add input="{REQUEST_FILENAME}" matchType="IsFile" negate="true" />
+            <add input="{REQUEST_FILENAME}" matchType="IsDirectory" negate="true" />
+          </conditions>
+          <action type="Rewrite" url="dist/index.cjs" />
+        </rule>
+      </rules>
+    </rewrite>
+    <httpErrors existingResponse="PassThrough" />
+  </system.webServer>
+</configuration>
+`;
+fs.writeFileSync(target, cleanRewriteConfig, "utf-8");
+console.log(`[patch-webconfig] Synced clean rewrite web.config at ${target}`);
+process.exit(0);
 
 const original = fs.readFileSync(found, "utf-8");
 const patched = patch(original);

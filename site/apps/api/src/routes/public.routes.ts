@@ -2,16 +2,138 @@ import { Router } from "express";
 import { prisma } from "../lib/prisma";
 import { AppError, ok } from "../lib/response";
 import { optionalAuth, requireAuth } from "../middleware/auth";
+import { rateLimit } from "../middleware/rateLimit";
 import { getRequestStats } from "../lib/requestTracker";
 import { audit } from "../services/audit.service";
 import { getPublicSiteSettings } from "../services/siteSettings.service";
+import { verifyBillToken } from "../lib/billVerify";
+
+import path from "path";
+import fs from "fs";
 
 export const publicRouter = Router();
 
-// Site-wide public settings (brand color, contact info) — login se pehle bhi
-// chahiye taaki theme + support details har jagah consistent rahe.
-publicRouter.get("/site-settings", async (_req, res) => {
-  ok(res, await getPublicSiteSettings());
+// Serve Android APK
+publicRouter.get("/apk", (req, res) => {
+  const apkPath = path.resolve(process.cwd(), "../mobile/android/app/build/outputs/apk/debug/app-debug.apk");
+  if (fs.existsSync(apkPath)) {
+    res.download(apkPath, "SwitchNest.apk");
+  } else {
+    res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "APK not built yet." } });
+  }
+});
+
+// Public endpoints — spam / flood / abuser se bachao (per IP).
+// Chatbot (rule-based, thoda DB) — har minute max 20.
+const assistantLimiter = rateLimit({
+  name: "public:assistant",
+  windowMs: 60_000,
+  max: 20,
+  message: "Bahut zyada messages — thodi der baad try karo",
+});
+const adminAssistantLimiter = rateLimit({
+  name: "public:assistant-admin",
+  windowMs: 60_000,
+  max: 30,
+  message: "Bahut zyada messages — thodi der baad try karo",
+});
+// Contact form — spam protection (DB row + email pe jaata hai).
+const contactLimiter = rateLimit({
+  name: "public:contact",
+  windowMs: 60 * 60_000,
+  max: 5,
+  message: "Bahut zyada contact messages — 1 ghanta baad try karo",
+});
+const supportFormLimiter = rateLimit({
+  name: "public:support-form",
+  windowMs: 60 * 60_000,
+  max: 10,
+  message: "Bahut zyada support messages — 1 ghanta baad try karo",
+});
+// Cheap GETs — runaway loop se bachne ke liye bas defensive.
+const siteSettingsLimiter = rateLimit({
+  name: "public:site-settings",
+  windowMs: 60_000,
+  max: 120,
+});
+const mySupportLimiter = rateLimit({
+  name: "public:my-support",
+  windowMs: 60_000,
+  max: 60,
+});
+
+publicRouter.get("/site-settings", siteSettingsLimiter, async (_req, res) => {
+  try {
+    const settings = await getPublicSiteSettings();
+    ok(res, settings);
+  } catch (_err) {
+    ok(res, {
+      siteName: "SwitchNest",
+      supportEmail: "support@switchnest.in",
+      supportPhone: "+91 98765 43210",
+      supportAddress: "SwitchNest Labs, Noida, UP",
+      supportHours: "24/7 Support",
+      brandColor: "#0284c7",
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Bill genuineness verify — bill QR scan karne pe khulta hai (public, bina
+// login). HMAC-signed token se sirf asli bill verify hota hai; fake bill ka
+// QR kabhi pass nahi hoga. Serial factory-tested status bhi yahin dikhta hai.
+// ---------------------------------------------------------------------------
+const verifyBillLimiter = rateLimit({
+  name: "public:verify-bill",
+  windowMs: 60_000,
+  max: 120,
+  message: "Bahut zyada verify requests — thodi der baad try karo",
+});
+
+publicRouter.get("/verify/bill/:token", verifyBillLimiter, async (req, res) => {
+  const payload = verifyBillToken(typeof req.params.token === "string" ? req.params.token : "");
+  if (!payload) {
+    return ok(res, { verified: false, reason: "invalid_token" });
+  }
+  const order = await prisma.order.findUnique({
+    where: { id: payload.orderId },
+    include: {
+      items: { orderBy: { id: "asc" } },
+      user: { select: { username: true } },
+      serials: {
+        include: { product: { select: { name: true, modelCode: true } } },
+        orderBy: { id: "asc" },
+      },
+    },
+  });
+  if (!order) return ok(res, { verified: false, reason: "not_found" });
+
+  const items = order.items.map((i) => ({
+    productName: i.productName,
+    quantity: i.quantity,
+    price: i.price.toString(),
+    serialCode: i.serialCode,
+  }));
+  const serials = order.serials.map((s) => ({
+    serialCode: s.serialCode,
+    modelCode: s.product.modelCode,
+    status: s.status,
+    tested: Boolean(s.testedAt),
+    testedAt: s.testedAt,
+    claimedAt: s.claimedAt,
+    warrantyStatus: s.warrantyStatus,
+  }));
+  ok(res, {
+    verified: true,
+    orderNumber: order.orderNumber,
+    createdAt: order.createdAt,
+    status: order.status,
+    paymentStatus: order.paymentStatus,
+    totalAmount: order.totalAmount.toString(),
+    buyer: { name: order.shippingName, username: order.user?.username ?? null },
+    items,
+    serials,
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -149,7 +271,7 @@ function detectNeed(text: string, products: Array<{ id: number; name: string; mo
   return null;
 }
 
-publicRouter.post("/assistant", optionalAuth, async (req, res) => {
+publicRouter.post("/assistant", assistantLimiter, optionalAuth, async (req, res) => {
   const text = String(req.body?.message ?? "").trim();
   if (!text) return ok(res, { reply: "Kuch likho — e.g. '4 lights control karne hain' ya 'dimmer chahiye'.", chips: CHIPS });
 
@@ -300,8 +422,8 @@ async function adminLiveStats(): Promise<AdminLiveStats> {
     apiKeys,
   ] = await Promise.all([
     prisma.user.count(),
-    prisma.user.count({ where: { lastLoginAt: { gte: dayAgo } } }),
-    prisma.user.count({ where: { lastLoginAt: { gte: fiveMinAgo } } }),
+    Promise.resolve(0), // lastLoginAt column not yet on production DB
+    Promise.resolve(0), // lastLoginAt column not yet on production DB
     prisma.home.count(),
     prisma.device.count(),
     prisma.device.count({ where: { lastSeen: { gte: dayAgo } } }),
@@ -395,7 +517,7 @@ async function adminAssistantReply(text: string): Promise<{ reply: string; produ
   };
 }
 
-publicRouter.post("/assistant/admin", requireAuth, async (req, res) => {
+publicRouter.post("/assistant/admin", adminAssistantLimiter, requireAuth, async (req, res) => {
   if (req.user!.role !== "system_admin") {
     throw new AppError("FORBIDDEN", "Admin access required", 403);
   }
@@ -406,7 +528,7 @@ publicRouter.post("/assistant/admin", requireAuth, async (req, res) => {
 // Public contact / feedback form
 // ---------------------------------------------------------------------------
 
-publicRouter.post("/contact", async (req, res) => {
+publicRouter.post("/contact", contactLimiter, async (req, res) => {
   const name = String(req.body?.name ?? "").trim().slice(0, 100);
   const email = String(req.body?.email ?? "").trim().slice(0, 120) || null;
   const phone = String(req.body?.phone ?? "").trim().slice(0, 20) || null;
@@ -424,7 +546,7 @@ publicRouter.post("/contact", async (req, res) => {
 });
 
 /** Logged-in user apni support tickets. */
-publicRouter.get("/support/my", requireAuth, async (req, res) => {
+publicRouter.get("/support/my", mySupportLimiter, requireAuth, async (req, res) => {
   const msgs = await prisma.contactMessage.findMany({
     where: { userId: req.user!.sub },
     orderBy: { createdAt: "desc" },
@@ -437,7 +559,7 @@ publicRouter.get("/support/my", requireAuth, async (req, res) => {
 // Authenticated support — logged-in users apne account se hi contact karein
 // ---------------------------------------------------------------------------
 
-publicRouter.post("/support", requireAuth, async (req, res) => {
+publicRouter.post("/support", supportFormLimiter, requireAuth, async (req, res) => {
   const subject = String(req.body?.subject ?? "Support").trim().slice(0, 150);
   const message = String(req.body?.message ?? "").trim();
   const phone = String(req.body?.phone ?? "").trim().slice(0, 20) || null;

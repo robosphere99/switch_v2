@@ -186,6 +186,11 @@ export interface AuthUser {
   email: string;
   role: UserRole;
   themePref: string | null;
+  avatarUrl: string | null;
+  dob: string | null;
+  gender: string | null;
+  phone: string | null;
+  address: string | null;
 }
 
 export interface AccessTokenPayload {
@@ -195,10 +200,30 @@ export interface AccessTokenPayload {
   role: UserRole;
   /** Token version — password change / suspend pe bump hota hai, purane tokens turant invalid. */
   ver: number;
+  sid?: number;
 }
 
 export interface LoginResponse {
   accessToken: string;
   refreshToken: string;
   user: AuthUser;
+  sessionId?: number;
+  tokens?: {
+    accessToken: string;
+    refreshToken: string;
+  };
+}
+
+// ---------- Realtime (Socket.IO) ----------
+
+export * from "./realtime";
+
+// ---------- Analytics (Phase 6) ----------
+
+export interface UsageAnalytics {
+  days: number;
+  totals: { toggles: number; onMs: number };
+  togglesPerDay: { date: string; count: number }[];
+  perDevice: { deviceId: number; name: string; toggles: number; onMs: number }[];
+  perMember: { userId: number | null; username: string; toggles: number }[];
 }

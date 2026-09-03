@@ -3,7 +3,7 @@ import { HOME_MEMBER_ROLES, type HomeMemberRole } from "@robosphere/shared";
 import { prisma } from "../lib/prisma";
 import { AppError } from "../lib/response";
 
-const ROLE_INDEX = Object.fromEntries(HOME_MEMBER_ROLES.map((r, i) => [r, i])) as Record<
+const ROLE_INDEX = Object.fromEntries(HOME_MEMBER_ROLES.map((r: string, i: number) => [r, i])) as Record<
   HomeMemberRole,
   number
 >;

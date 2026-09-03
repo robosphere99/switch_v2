@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 import {
   getInstallStatus,
   testInstallDb,
@@ -36,11 +37,11 @@ export function Install() {
   const [done, setDone] = useState(false);
 
   // DB form
-  const [dbHost, setDbHost] = useState("localhost");
+  const [dbHost, setDbHost] = useState("127.0.0.1");
   const [dbPort, setDbPort] = useState("3306");
-  const [dbUser, setDbUser] = useState("root");
-  const [dbPass, setDbPass] = useState("");
-  const [dbName, setDbName] = useState("switchnest");
+  const [dbUser, setDbUser] = useState("switch_v2");
+  const [dbPass, setDbPass] = useState("switchnest@1234567890");
+  const [dbName, setDbName] = useState("switch_v2");
   const [dbTesting, setDbTesting] = useState(false);
   const [dbTested, setDbTested] = useState(false);
   const [serverVersion, setServerVersion] = useState("");
@@ -48,6 +49,11 @@ export function Install() {
   // Tables step
   const [schemaBusy, setSchemaBusy] = useState(false);
   const [schemaDone, setSchemaDone] = useState(false);
+
+  // Password visibility toggles
+  const [showDbPass, setShowDbPass] = useState(false);
+  const [showAdmPass, setShowAdmPass] = useState(false);
+  const [showAdmConfirm, setShowAdmConfirm] = useState(false);
 
   // Admin form
   const [admUsername, setAdmUsername] = useState("admin");
@@ -140,7 +146,12 @@ export function Install() {
       });
       setStep(4);
       setDone(true);
-      setTimeout(() => window.location.reload(), 2500);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("switchnest_installed", "true");
+      }
+      setTimeout(() => {
+        window.location.href = "/login";
+      }, 2000);
     } catch (err: unknown) {
       const anyErr = err as { response?: { data?: { error?: { message?: string } } } };
       setError(anyErr.response?.data?.error?.message ?? "Setup complete nahi ho paya — details check karo");
@@ -232,14 +243,24 @@ export function Install() {
                 </div>
                 <div>
                   <label className={labelCls}>Password</label>
-                  <input
-                    className={inputCls}
-                    type="password"
-                    value={dbPass}
-                    onChange={(e) => setDbPass(e.target.value)}
-                    placeholder="••••••••"
-                    autoComplete="new-password"
-                  />
+                  <div className="relative">
+                    <input
+                      className={inputCls}
+                      type={showDbPass ? "text" : "password"}
+                      value={dbPass}
+                      onChange={(e) => setDbPass(e.target.value)}
+                      placeholder="••••••••"
+                      autoComplete="new-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowDbPass(!showDbPass)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                      tabIndex={-1}
+                    >
+                      {showDbPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
                 </div>
                 <div className="col-span-2">
                   <label className={labelCls}>Database name (naya nahi hai to ban jayega)</label>
@@ -326,27 +347,47 @@ export function Install() {
                 </div>
                 <div>
                   <label className={labelCls}>Password</label>
-                  <input
-                    className={inputCls}
-                    type="password"
-                    value={admPass}
-                    onChange={(e) => setAdmPass(e.target.value)}
-                    placeholder="Min 6 characters"
-                    autoComplete="new-password"
-                    required
-                  />
+                  <div className="relative">
+                    <input
+                      className={inputCls}
+                      type={showAdmPass ? "text" : "password"}
+                      value={admPass}
+                      onChange={(e) => setAdmPass(e.target.value)}
+                      placeholder="Min 6 characters"
+                      autoComplete="new-password"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowAdmPass(!showAdmPass)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                      tabIndex={-1}
+                    >
+                      {showAdmPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label className={labelCls}>Confirm password</label>
-                  <input
-                    className={inputCls}
-                    type="password"
-                    value={admConfirm}
-                    onChange={(e) => setAdmConfirm(e.target.value)}
-                    placeholder="Same password"
-                    autoComplete="new-password"
-                    required
-                  />
+                  <div className="relative">
+                    <input
+                      className={inputCls}
+                      type={showAdmConfirm ? "text" : "password"}
+                      value={admConfirm}
+                      onChange={(e) => setAdmConfirm(e.target.value)}
+                      placeholder="Same password"
+                      autoComplete="new-password"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowAdmConfirm(!showAdmConfirm)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
+                      tabIndex={-1}
+                    >
+                      {showAdmConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

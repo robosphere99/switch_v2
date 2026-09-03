@@ -1,6 +1,7 @@
 import { prisma } from "../lib/prisma";
 import { AppError } from "../lib/response";
 import type { DeviceStatus, ScheduleType } from "@robosphere/shared";
+import { emitToHome } from "../lib/socket";
 
 // ---------- Cron matching (minimal 5-field: minute hour day-of-month month day-of-week) ----------
 
@@ -49,12 +50,18 @@ export function parseCron(expr: string): CronFields {
   if (parts.length !== 5) {
     throw new AppError("BAD_REQUEST", "Cron must have 5 fields: minute hour day-of-month month day-of-week");
   }
+  const dow = parseField(parts[4], 0, 6);
+  // Standard cron: 7 == 0 (Sunday) — explicit 7 ko Sunday me normalize.
+  if (dow.has(7)) {
+    dow.delete(7);
+    dow.add(0);
+  }
   return {
     minutes: parseField(parts[0], 0, 59),
     hours: parseField(parts[1], 0, 23),
     dom: parseField(parts[2], 1, 31),
     months: parseField(parts[3], 1, 12),
-    dow: parseField(parts[4], 0, 7),
+    dow,
   };
 }
 
@@ -133,9 +140,9 @@ export async function createSchedule(input: CreateScheduleInput) {
   // Defensive: stale prisma client pe check skip
   const membership = prisma.deviceAccess
     ? await prisma.homeMember.findUnique({
-        where: { homeId_userId: { homeId: input.homeId, userId: input.actorId } },
-        select: { restricted: true },
-      })
+      where: { homeId_userId: { homeId: input.homeId, userId: input.actorId } },
+      select: { restricted: true },
+    })
     : null;
   if (membership?.restricted && prisma.deviceAccess) {
     const granted = await prisma.deviceAccess.findUnique({
@@ -154,7 +161,7 @@ export async function createSchedule(input: CreateScheduleInput) {
   }
   const nextRun = computeNextRun({ type: input.type, runAt, cron: input.cron ?? null });
 
-  return prisma.schedule.create({
+  const created = await prisma.schedule.create({
     data: {
       deviceId: input.deviceId,
       createdBy: input.actorId,
@@ -165,6 +172,9 @@ export async function createSchedule(input: CreateScheduleInput) {
       nextRun,
     },
   });
+
+  emitToHome(input.homeId, 'schedule:sync', { scheduleId: created.id, type: 'create' });
+  return created;
 }
 
 export async function listSchedules(homeId: number) {
@@ -179,12 +189,23 @@ export async function listSchedules(homeId: number) {
 export async function updateSchedule(
   homeId: number,
   scheduleId: number,
+  actorId: number,
   input: { action?: DeviceStatus; enabled?: boolean; runAt?: string | null; cron?: string | null },
 ) {
   const existing = await prisma.schedule.findFirst({
     where: { id: scheduleId, device: { homeId } },
   });
   if (!existing) throw new AppError("NOT_FOUND", "Schedule not found", 404);
+
+  if (existing.createdBy !== actorId) {
+    const membership = await prisma.homeMember.findUnique({
+      where: { homeId_userId: { homeId, userId: actorId } },
+      select: { role: true },
+    });
+    if (!membership || (membership.role !== "owner" && membership.role !== "admin")) {
+      throw new AppError("FORBIDDEN", "Only the creator or an Admin can modify this routine.", 403);
+    }
+  }
 
   const action = input.action ?? existing.action;
   const type = existing.type;
@@ -196,17 +217,32 @@ export async function updateSchedule(
       ? existing.nextRun
       : computeNextRun({ type, runAt, cron, from: new Date() });
 
-  return prisma.schedule.update({
+  const updatedRecord = await prisma.schedule.update({
     where: { id: scheduleId },
     data: { action, runAt, cron, nextRun, enabled: input.enabled ?? existing.enabled },
   });
+
+  emitToHome(homeId, 'schedule:sync', { scheduleId, type: 'update' });
+  return updatedRecord;
 }
 
-export async function deleteSchedule(homeId: number, scheduleId: number) {
+export async function deleteSchedule(homeId: number, scheduleId: number, actorId: number) {
   const existing = await prisma.schedule.findFirst({
     where: { id: scheduleId, device: { homeId } },
   });
   if (!existing) throw new AppError("NOT_FOUND", "Schedule not found", 404);
+
+  if (existing.createdBy !== actorId) {
+    const membership = await prisma.homeMember.findUnique({
+      where: { homeId_userId: { homeId, userId: actorId } },
+      select: { role: true },
+    });
+    if (!membership || (membership.role !== "owner" && membership.role !== "admin")) {
+      throw new AppError("FORBIDDEN", "Only the creator or an Admin can delete this routine.", 403);
+    }
+  }
   await prisma.schedule.delete({ where: { id: scheduleId } });
+
+  emitToHome(homeId, 'schedule:sync', { scheduleId, type: 'delete' });
   return { deleted: true };
 }

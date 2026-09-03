@@ -1,6 +1,6 @@
 import { prisma } from "../lib/prisma";
 import { createNotification } from "./notification.service";
-import { emitToHome } from "../lib/socket";
+import { emitDeviceUpdated } from "../lib/socket";
 import { fileLog } from "../lib/logger";
 
 /**
@@ -13,9 +13,8 @@ let timer: NodeJS.Timeout | null = null;
 let running = false;
 
 export function startFamilySafety() {
-  if (timer) return;
-  timer = setInterval(() => void runSafetyCheck(), CHECK_INTERVAL_MS);
-  fileLog("[family-safety] monitor started (60s)");
+  // Obsolete: dailyLimitMinutes mathematically repurposed to 'toggles per minute' rate limiting.
+  // The daily usage cron task is permanently deactivated.
 }
 
 export function stopFamilySafety() {
@@ -81,7 +80,7 @@ async function autoOffDevice(deviceId: number, homeId: number) {
     }),
   ]);
   const updated = await prisma.device.findUnique({ where: { id: deviceId } });
-  if (updated) emitToHome(homeId, "device:updated", updated);
+  if (updated) await emitDeviceUpdated(homeId, updated.id);
 }
 
 export async function runSafetyCheck(): Promise<void> {

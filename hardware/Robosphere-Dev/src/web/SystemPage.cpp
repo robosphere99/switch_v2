@@ -1,123 +1,104 @@
 #include "web/SystemPage.h"
 #include "web/UI.h"
 
-String formatUptime(uint32_t sec)
-{
-    uint32_t d = sec / 86400;
-    sec %= 86400;
+String formatUptime(uint32_t sec) {
+  uint32_t d = sec / 86400;
+  sec %= 86400;
 
-    uint32_t h = sec / 3600;
-    sec %= 3600;
+  uint32_t h = sec / 3600;
+  sec %= 3600;
 
-    uint32_t m = sec / 60;
-    sec %= 60;
+  uint32_t m = sec / 60;
+  sec %= 60;
 
-    String s;
+  String s;
 
-    if (d)
-        s += String(d) + "d ";
+  if (d)
+    s += String(d) + "d ";
 
-    if (h)
-        s += String(h) + "h ";
+  if (h)
+    s += String(h) + "h ";
 
-    if (m)
-        s += String(m) + "m ";
+  if (m)
+    s += String(m) + "m ";
 
-    s += String(sec) + "s";
+  s += String(sec) + "s";
 
-    return s;
+  return s;
 }
 
-String SystemPage(
-    const String &board,
-    const String &firmware,
-    const String &ip,
-    uint32_t uptime,
-    uint32_t freeHeap,
-    const String &date,
-    const String &time,
-    const String &day,
-    bool synced,
-    const String &currentVersion,
-    const String &latestVersion,
-    const String &otaStatus,
-    const String &releaseNotes,
-    int otaProgress,
-    const String &otaUrl,
-    bool ledEnabled)
-{
-    String html;
+String SystemPage(const String &board, const String &serial,
+                  const String &firmware, const String &ip, uint32_t uptime,
+                  uint32_t freeHeap, const String &date, const String &time,
+                  const String &day, bool synced, const String &currentVersion,
+                  const String &latestVersion, const String &otaStatus,
+                  const String &releaseNotes, int otaProgress,
+                  const String &otaUrl, bool ledEnabled) {
+  String html;
 
-    html += uiHead("System - SwitchNest IoT");
+  html += uiHead("System - SwitchNest IoT");
 
-    html += uiNav("/system");
+  html += uiNav("/system");
 
-    html += R"rawliteral(
+  html += R"rawliteral(
 <div class="card wide">
 <h2>System</h2>
 
 <h3 class="sectionTitle">🖥 Device Info</h3>
 )rawliteral";
 
-    html += "<div class='info'><b>Board</b><span>" + board + "</span></div>";
-    html += "<div class='info'><b>Firmware</b><span>" + firmware + "</span></div>";
-    html += "<div class='info'><b>IP</b><span>" + ip + "</span></div>";
-    html += "<div class='info'><b>Uptime</b><span>" + formatUptime(uptime) + "</span></div>";
-    html += "<div class='info'><b>Free Heap</b><span>" + String(freeHeap / 1024) + " KB</span></div>";
+  html += "<div class='info'><b>Board</b><span>" + board + "</span></div>";
+  html += "<div class='info'><b>Serial Code</b><span>" +
+          (serial.length() ? serial : "Not set (factory)") + "</span></div>";
+  html += "<p class='hint'>Serial Code is unique — yeh board ka lifetime "
+          "identity hai. Device aapke account se isi se linked hota hai.</p>";
+  html +=
+      "<div class='info'><b>Firmware</b><span>" + firmware + "</span></div>";
+  html += "<div class='info'><b>IP</b><span>" + ip + "</span></div>";
+  html += "<div class='info'><b>Uptime</b><span>" + formatUptime(uptime) +
+          "</span></div>";
+  html += "<div class='info'><b>Free Heap</b><span>" + String(freeHeap / 1024) +
+          " KB</span></div>";
 
-    html += "<div class='info'><b>Date</b><span id='date'>" + date + "</span></div>";
-    html += "<div class='info'><b>Time</b><span id='time'>" + time + "</span></div>";
-    html += "<div class='info'><b>Day</b><span id='day'>" + day + "</span></div>";
+  html +=
+      "<div class='info'><b>Date</b><span id='date'>" + date + "</span></div>";
+  html +=
+      "<div class='info'><b>Time</b><span id='time'>" + time + "</span></div>";
+  html += "<div class='info'><b>Day</b><span id='day'>" + day + "</span></div>";
 
-    html += "<div class='info'><b>Time Sync</b><span>";
-    html += synced ? "✅ Yes" : "❌ No";
-    html += "</span></div>";
+  html += "<div class='info'><b>Time Sync</b><span>";
+  html += synced ? "✅ Yes" : "❌ No";
+  html += "</span></div>";
 
-    html += R"rawliteral(
-<h3 class="sectionTitle">💡 Status LED</h3>
-<p class="hint">Board ki status LED — connectivity blinks dikhata hai. Chaho toh band kar do (raat me dim light pasand nahi aati).</p>
-<div class="btn-row">
-)rawliteral";
-    if (ledEnabled)
-    {
-        html += "<span class=\"badge-green\">🟢 LED ON</span> ";
-        html += "<button class=\"orange\" onclick=\"toggleLed(false)\">🔴 Turn Off</button>";
-    }
-    else
-    {
-        html += "<span class=\"badge-red\">⚫ LED OFF</span> ";
-        html += "<button class=\"green\" onclick=\"toggleLed(true)\">🟢 Turn On</button>";
-    }
-    html += R"rawliteral(
-</div>
-<div id="ledResult"></div>
+  // Status LED UI completely offloaded to the Web Dashboard (thin client)
 
+  html += R"rawliteral(
 <h3 class="sectionTitle">📦 Firmware Update (OTA)</h3>
 
 <div class="info"><b>Current Version</b><span id="currentVersion">)rawliteral";
-    html += currentVersion;
-    html += R"rawliteral(</span></div>
+  html += currentVersion;
+  html += R"rawliteral(</span></div>
 
 <div class="info"><b>Latest Version</b><span id="latestVersion">)rawliteral";
-    html += latestVersion;
-    html += R"rawliteral(</span></div>
+  html += latestVersion;
+  html += R"rawliteral(</span></div>
 
 <div class="info"><b>Status</b><span id="otaStatus">)rawliteral";
-    html += otaStatus;
-    html += R"rawliteral(</span></div>
+  html += otaStatus;
+  html += R"rawliteral(</span></div>
 
 <div class="info"><b>Release Notes</b><div class="notes" id="releaseNotes">)rawliteral";
-    html += releaseNotes;
-    html += R"rawliteral(</div></div>
+  html += releaseNotes;
+  html += R"rawliteral(</div></div>
 
 <progress id="progressBar" value=")rawliteral";
-    html += String(otaProgress);
-    html += R"rawliteral(" max="100"></progress>
+  html += String(otaProgress);
+  html += R"rawliteral(" max="100"></progress>
 
 <div id="progressText" style="text-align:center;margin-top:5px;">)rawliteral";
-    html += String(otaProgress);
-    html += "%";
-    html += R"rawliteral(</div>
+  html += String(otaProgress);
+  html += "%";
+  html += R"rawliteral(</div>
 
 <div class="btn-row">
 <button class="blue" onclick="checkOTA()">🔍 Check Update</button>
@@ -198,24 +179,7 @@ function downloadConfig()
 }
 
 
-    async function toggleLed(on)
-    {
-        const res = await fetch("/system/led", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ enabled: on })
-        });
-        const data = await res.json().catch(() => ({}));
-        if (data.success)
-        {
-            location.reload();
-        }
-        else
-        {
-            document.getElementById("ledResult").innerHTML =
-            '<p style="color:red">Failed to toggle LED</p>';
-        }
-    }
+
 
     async function uploadConfig()
 {
@@ -368,8 +332,8 @@ else
 // OTA URL input ko saved URL se prefill karo
 (function(){
     var saved = ")rawliteral";
-    html += otaUrl;
-    html += R"rawliteral(";
+  html += otaUrl;
+  html += R"rawliteral(";
     if(saved && saved.length > 0){
         document.getElementById("otaUrl").value = saved;
     }
@@ -492,7 +456,7 @@ async function startOTA()
 </script>
 )rawliteral";
 
-    html += uiEnd();
+  html += uiEnd();
 
-    return html;
+  return html;
 }

@@ -1,5 +1,6 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { persist, createJSONStorage } from "zustand/middleware";
+import { safeStorage } from "../lib/safeStorage";
 
 export interface CartItem {
   productId: number;
@@ -48,6 +49,9 @@ export const useCartStore = create<CartState>()(
       count: () => get().items.reduce((sum, i) => sum + i.quantity, 0),
       total: () => get().items.reduce((sum, i) => sum + i.price * i.quantity, 0),
     }),
-    { name: "robosphere-cart" },
+    {
+      name: "robosphere-cart",
+      storage: createJSONStorage(() => safeStorage),
+    },
   ),
 );

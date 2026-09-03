@@ -25,6 +25,11 @@ export const firmwareDir = repoRoot
   ? path.join(repoRoot, "hardware", "firmware")
   : path.resolve(process.cwd(), "../../../hardware/firmware");
 
+/** <repo>/mobile-app — hosting Android APK releases for OTA updates. */
+export const mobileAppDir = repoRoot
+  ? path.join(repoRoot, "mobile-app")
+  : path.resolve(process.cwd(), "../../../mobile-app");
+
 /** <repo>/hardware/attachments — support chat files (DB me sirf path, blobs yahan disk pe).
  *  Firmware ki tarah Plesk pe writable. Gitignore me hai (user data — commit nahi hota). */
 export const attachmentDir = repoRoot
@@ -35,3 +40,14 @@ export const attachmentDir = repoRoot
 export const webDist = repoRoot
   ? path.join(repoRoot, "site", "apps", "web", "dist")
   : path.resolve(process.cwd(), "../../apps/web/dist");
+
+/** <repo>/site/apps/api/public/swagger-ui — vendored Swagger UI assets (CDN-free,
+ *  helmet ke CSP `script-src 'self'` ke saath kaam karta hai). */
+export const swaggerUiDir = repoRoot
+  ? path.join(repoRoot, "site", "apps", "api", "public", "swagger-ui")
+  : path.resolve(process.cwd(), "public/swagger-ui");
+
+/** <repo>/site/apps/api/uploads — avatars and user uploaded assets. */
+export const uploadsDir = repoRoot
+  ? path.join(repoRoot, "site", "apps", "api", "uploads")
+  : path.resolve(process.cwd(), "uploads");

@@ -2,13 +2,12 @@
 
 #include <Arduino.h>
 
-#include "core/BoardManager.h"
-#include "core/RelayManager.h"
-#include "core/DimmerManager.h"
-#include "core/MappingManager.h"
-#include "core/ApiManager.h"
-#include "preferences/PreferencesManager.h"
 #include "Config.h"
+#include "core/ApiManager.h"
+#include "core/BoardManager.h"
+#include "core/DimmerManager.h"
+#include "core/RelayManager.h"
+#include "preferences/PreferencesManager.h"
 
 static bool lastState[8];
 static unsigned long debounceStart[8];
@@ -48,49 +47,26 @@ void update() {
       currentState = digitalRead(BoardManager::getSwitchPin(i));
 
       if (currentState != lastState[i]) {
-        // MOMENTARY (push button): sirf press (LOW edge) pe toggle — release ignore
-        // TOGGLE (wall switch): har position change pe toggle — dono edges kaam karte hain
-        bool trigger = (switchMode == SWITCH_MODE_TOGGLE) || (currentState == LOW);
+        // Hardcoding standard toggle (wall switch) behavior.
+        // Har position change pe toggle hoga (dono edges kaam karenge),
+        // overriding software preferences.
+        bool trigger = true;
 
         if (trigger) {
-          Serial.println();
-          Serial.println("========== SWITCH ==========");
-
-          Serial.print("Relay : ");
-          Serial.println(i);
-
           if (DimmerManager::isDimmer()) {
-            // Dimmer model: switch step cycle karta hai (off->33->66->100 etc.)
             uint8_t step = DimmerManager::cycle(i);
-            Serial.print("Dimmer Step : ");
-            Serial.println(step);
-            Serial.print("Dimmer Percent : ");
-            Serial.println(DimmerManager::getStepPercent(i));
+            Serial.printf("[SWITCH] Dimmer %d -> Step %d (%d%%)\n", i, step,
+                          DimmerManager::getStepPercent(i));
           } else {
             RelayManager::toggle(i);
           }
 
           bool state = RelayManager::getState(i);
+          int channel = i + 1; // 1-indexed channel
 
-          Serial.print("Relay State : ");
-          Serial.println(state ? "ON" : "OFF");
-
-          int deviceId = MappingManager::getDeviceIdByRelay(i);
-
-          Serial.print("Device ID : ");
-          Serial.println(deviceId);
-
-          if (deviceId != -1) {
-            // Debounced batch push — short interval ke updates ek saath jaate hain
-            bool ok = ApiManager::queueDeviceUpdate(
-              deviceId,
-              state);
-
-            Serial.print("API : ");
-            Serial.println(ok ? "QUEUED" : "FAILED");
-          }
-
-          Serial.println("============================");
+          bool ok = ApiManager::queueDeviceUpdate(channel, state);
+          Serial.printf("[SWITCH] Channel %d -> %s (API: %s)\n", channel,
+                        state ? "ON" : "OFF", ok ? "QUEUED" : "FAILED");
         }
 
         lastState[i] = currentState;
@@ -99,4 +75,4 @@ void update() {
   }
 }
 
-}
+} // namespace SwitchManager

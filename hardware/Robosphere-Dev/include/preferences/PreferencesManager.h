@@ -2,89 +2,96 @@
 
 #include <Preferences.h>
 
-namespace PreferencesManager
-{
-    bool begin();
+namespace PreferencesManager {
+bool begin();
 
-    bool isConfigured();
+bool isConfigured();
 
-    void setConfigured(bool status);
+void setConfigured(bool status);
 
-    void saveWiFi(const String& ssid, const String& password);
+void saveWiFi(const String &ssid, const String &password);
 
-    String getWiFiSSID();
+String getWiFiSSID();
 
-    String getWiFiPassword();
+String getWiFiPassword();
 
-    void saveAdmin(const String& username, const String& password);
+void saveAdmin(const String &username, const String &password);
 
-    String getAdminUsername();
+String getAdminUsername();
 
-    String getAdminPassword();
+String getAdminPassword();
 
-    void saveServer(const String& url, const String& apiKey);
+void saveServer(const String &url, const String &apiKey);
 
-    String getServerURL();
+String getServerURL();
 
-    String getApiKey();
+String getApiKey();
 
-    void saveOTAURL(const String& url);
+void saveKeyInvalid(bool invalid);
 
-    String getOTAURL();
+bool isKeyInvalid();
 
-    void saveAPName(const String& name);
+void saveOTAURL(const String &url);
 
-    String getAPName();
+String getOTAURL();
 
-    void saveAPPassword(const String& password);
+void saveAPName(const String &name);
 
-    String getAPPassword();
+String getAPName();
 
-    // Dual-mode: WiFi connect hone ke baad bhi AP ON rahe (default true)
-    void saveAPKeepEnabled(bool enabled);
+void saveAPPassword(const String &password);
 
-    bool getAPKeepEnabled();
+String getAPPassword();
 
-    void putInt(const char* key, int value);
+// Dual-mode: WiFi connect hone ke baad bhi AP ON rahe (default true)
+void saveAPKeepEnabled(bool enabled);
 
-    int getInt(const char* key, int defaultValue = -1);
+bool getAPKeepEnabled();
 
-    void factoryReset();
+void putInt(const char *key, int value);
 
-    bool putBool(const char* key, bool value);
+int getInt(const char *key, int defaultValue = -1);
 
-    bool getBool(const char* key, bool defaultValue = false);
+void factoryReset();
 
-    String exportConfiguration();
+bool putBool(const char *key, bool value);
 
-    bool importConfiguration(const String &json);
+bool getBool(const char *key, bool defaultValue = false);
 
-    bool validateConfiguration(const String &json);
+String exportConfiguration();
 
-    void saveStatusLedMapping(int deviceId);
+bool importConfiguration(const String &json);
 
-    int getStatusLedMapping();
+bool validateConfiguration(const String &json);
 
-    void saveSwitchMode(int mode);
+void saveStatusLedMapping(int deviceId);
 
-    int getSwitchMode();
+int getStatusLedMapping();
 
-    // Status LED: false = user ne band kiya (no blinks at all)
-    void saveLedEnabled(bool enabled);
+void saveSwitchMode(int mode);
 
-    bool getLedEnabled();
+int getSwitchMode();
 
-    // Status LED: false = user ne band kiya (no blinks at all)
-    void saveLedEnabled(bool enabled);
+// Status LED: false = user ne band kiya (no blinks at all)
+void saveLedEnabled(bool enabled);
 
-    bool getLedEnabled();
+bool getLedEnabled();
 
-    void saveSerialCode(const String& code);
+// Status LED: false = user ne band kiya (no blinks at all)
+void saveLedEnabled(bool enabled);
 
-    String getSerialCode();
+bool getLedEnabled();
 
-    void saveModelCode(const String& code);
+void saveSerialCode(const String &code);
 
-    String getModelCode();
-    
-}
+String getSerialCode();
+
+void saveModelCode(const String &code);
+
+String getModelCode();
+
+void saveConsolePassword(const String &password);
+
+String getConsolePassword();
+
+} // namespace PreferencesManager

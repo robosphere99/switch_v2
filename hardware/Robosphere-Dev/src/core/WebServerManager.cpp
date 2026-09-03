@@ -1,30 +1,29 @@
-#include "core/TimeManager.h"
-#include "web/WiFiPage.h"
-#include "core/WiFiScanner.h"
-#include "web/SystemPage.h"
-#include "core/BoardManager.h"
-#include "core/DeviceManager.h"
-#include "core/MappingManager.h"
-#include <Arduino.h>
-#include <WiFi.h>
-#include <WebServer.h>
-#include <ESP.h>
-#include "core/OTAManager.h"
-#include "Config.h"
-#include "core/Logger.h"
-#include "preferences/PreferencesManager.h"
-#include "core/LedManager.h"
 #include "core/WebServerManager.h"
-#include "web/DashboardPage.h"
-#include "core/WiFiManager.h"
-#include "web/ServerPage.h"
-#include <HTTPClient.h>
+#include "Config.h"
 #include "core/ApiManager.h"
-#include "core/DeviceManager.h"
-#include "core/StatusManager.h"
+#include "core/BoardManager.h"
+#include "core/DimmerManager.h"
+#include "core/LedManager.h"
+#include "core/Logger.h"
+#include "core/OTAManager.h"
 #include "core/RelayManager.h"
+#include "core/StatusManager.h"
+#include "core/TimeManager.h"
+#include "core/WiFiManager.h"
+#include "core/WiFiScanner.h"
+#include "preferences/PreferencesManager.h"
+#include "web/DashboardPage.h"
+#include "web/ServerPage.h"
+#include "web/SystemPage.h"
 #include "web/UI.h"
 #include "web/UIResources.h"
+#include "web/WiFiPage.h"
+#include <Arduino.h>
+#include <ESP.h>
+#include <HTTPClient.h>
+#include <WebServer.h>
+#include <WiFi.h>
+
 WebServer server(80);
 
 // ==================================================
@@ -35,149 +34,127 @@ WebServer server(80);
 #define MAX_SESSIONS 4
 #define SESSION_TIMEOUT_MS 3600000UL // 1 hour inactivity
 
-struct Session
-{
-    char token[33];
-    unsigned long lastSeen;
-    bool active;
+struct Session {
+  char token[33];
+  unsigned long lastSeen;
+  bool active;
 };
 
 Session sessions[MAX_SESSIONS] = {};
 
-String generateSessionToken()
-{
-    String token = "";
-    bool unique = false;
+String generateSessionToken() {
+  String token = "";
+  bool unique = false;
 
-    while (!unique)
-    {
-        token = "";
+  while (!unique) {
+    token = "";
 
-        for (int i = 0; i < 32; i++)
-        {
-            token += String((uint8_t)esp_random() % 16, HEX);
-        }
-
-        unique = true;
-
-        for (int i = 0; i < MAX_SESSIONS; i++)
-        {
-            if (sessions[i].active && strcmp(sessions[i].token, token.c_str()) == 0)
-            {
-                unique = false;
-                break;
-            }
-        }
+    for (int i = 0; i < 32; i++) {
+      token += String((uint8_t)esp_random() % 16, HEX);
     }
 
-    return token;
+    unique = true;
+
+    for (int i = 0; i < MAX_SESSIONS; i++) {
+      if (sessions[i].active && strcmp(sessions[i].token, token.c_str()) == 0) {
+        unique = false;
+        break;
+      }
+    }
+  }
+
+  return token;
 }
 
-void purgeExpiredSessions()
-{
-    unsigned long now = millis();
+void purgeExpiredSessions() {
+  unsigned long now = millis();
 
-    for (int i = 0; i < MAX_SESSIONS; i++)
-    {
-        if (sessions[i].active && (now - sessions[i].lastSeen > SESSION_TIMEOUT_MS))
-        {
-            sessions[i].active = false;
-        }
+  for (int i = 0; i < MAX_SESSIONS; i++) {
+    if (sessions[i].active &&
+        (now - sessions[i].lastSeen > SESSION_TIMEOUT_MS)) {
+      sessions[i].active = false;
     }
+  }
 }
 
-String createSession()
-{
-    purgeExpiredSessions();
+String createSession() {
+  purgeExpiredSessions();
 
-    String token = generateSessionToken();
-    int slot = -1;
+  String token = generateSessionToken();
+  int slot = -1;
 
-    for (int i = 0; i < MAX_SESSIONS; i++)
-    {
-        if (!sessions[i].active)
-        {
-            slot = i;
-            break;
-        }
+  for (int i = 0; i < MAX_SESSIONS; i++) {
+    if (!sessions[i].active) {
+      slot = i;
+      break;
     }
+  }
 
-    if (slot == -1)
-    {
-        // Saare slots full — sabse purani session overwrite
-        slot = 0;
+  if (slot == -1) {
+    // Saare slots full — sabse purani session overwrite
+    slot = 0;
 
-        for (int i = 1; i < MAX_SESSIONS; i++)
-        {
-            if (sessions[i].lastSeen < sessions[slot].lastSeen)
-            {
-                slot = i;
-            }
-        }
+    for (int i = 1; i < MAX_SESSIONS; i++) {
+      if (sessions[i].lastSeen < sessions[slot].lastSeen) {
+        slot = i;
+      }
     }
+  }
 
-    strncpy(sessions[slot].token, token.c_str(), 32);
-    sessions[slot].token[32] = '\0';
-    sessions[slot].lastSeen = millis();
-    sessions[slot].active = true;
+  strncpy(sessions[slot].token, token.c_str(), 32);
+  sessions[slot].token[32] = '\0';
+  sessions[slot].lastSeen = millis();
+  sessions[slot].active = true;
 
-    return token;
+  return token;
 }
 
-void destroySession(const String &token)
-{
-    for (int i = 0; i < MAX_SESSIONS; i++)
-    {
-        if (sessions[i].active && strcmp(sessions[i].token, token.c_str()) == 0)
-        {
-            sessions[i].active = false;
-            return;
-        }
+void destroySession(const String &token) {
+  for (int i = 0; i < MAX_SESSIONS; i++) {
+    if (sessions[i].active && strcmp(sessions[i].token, token.c_str()) == 0) {
+      sessions[i].active = false;
+      return;
     }
+  }
 }
 
-String getCookieSessionToken()
-{
-    String cookie = server.header("Cookie");
-    int idx = cookie.indexOf("session=");
+String getCookieSessionToken() {
+  String cookie = server.header("Cookie");
+  int idx = cookie.indexOf("session=");
 
-    if (idx < 0)
-        return "";
+  if (idx < 0)
+    return "";
 
-    String rest = cookie.substring(idx + 8);
-    int end = rest.indexOf(';');
+  String rest = cookie.substring(idx + 8);
+  int end = rest.indexOf(';');
 
-    if (end >= 0)
-        rest = rest.substring(0, end);
+  if (end >= 0)
+    rest = rest.substring(0, end);
 
-    rest.trim();
+  rest.trim();
 
-    return rest;
+  return rest;
 }
 
-bool isValidSession(const String &token)
-{
-    if (token.length() != 32)
-        return false;
-
-    unsigned long now = millis();
-
-    for (int i = 0; i < MAX_SESSIONS; i++)
-    {
-        if (sessions[i].active && strcmp(sessions[i].token, token.c_str()) == 0)
-        {
-            if (now - sessions[i].lastSeen > SESSION_TIMEOUT_MS)
-            {
-                sessions[i].active = false;
-                return false;
-            }
-
-            sessions[i].lastSeen = now;
-            return true;
-        }
-    }
-
+bool isValidSession(const String &token) {
+  if (token.length() != 32)
     return false;
+
+  unsigned long now = millis();
+
+  for (int i = 0; i < MAX_SESSIONS; i++) {
+    if (sessions[i].active && strcmp(sessions[i].token, token.c_str()) == 0) {
+      if (now - sessions[i].lastSeen > SESSION_TIMEOUT_MS) {
+        sessions[i].active = false;
+        return false;
+      }
+
+      sessions[i].lastSeen = now;
+      return true;
+    }
+  }
+
+  return false;
 }
 
 void handleRoot();
@@ -195,17 +172,16 @@ void handleSystem();
 void handleSystemLed();
 void handleWiFi();
 void handleWiFiSave();
-bool checkLogin()
-{
-    String token = getCookieSessionToken();
+bool checkLogin() {
+  String token = getCookieSessionToken();
 
-    if (!token.isEmpty() && isValidSession(token))
-        return true;
+  if (!token.isEmpty() && isValidSession(token))
+    return true;
 
-    server.sendHeader("Location", "/");
-    server.send(303);
+  server.sendHeader("Location", "/");
+  server.send(303);
 
-    return false;
+  return false;
 }
 
 void handleRoot() {
@@ -480,10 +456,8 @@ async function scanWifi()
   }
 
   // Dashboard (temporary)
-  server.send(
-    200,
-    "text/html",
-    "<h1>SwitchNest IoT</h1><h2>Device Configured Successfully</h2>");
+  server.send(200, "text/html",
+              "<h1>SwitchNest IoT</h1><h2>Device Configured Successfully</h2>");
 }
 void handleLogin() {
   String html;
@@ -492,6 +466,12 @@ void handleLogin() {
 
   html += uiAuthBegin();
 
+  // Default credentials pre-fill karo (user ko dikh jaaye kya dalna hai)
+  String defUser = PreferencesManager::getAdminUsername();
+  defUser.replace("&", "&amp;");
+  defUser.replace("<", "&lt;");
+  defUser.replace(">", "&gt;");
+
   html += R"rawliteral(
 <div class="glass auth-card">
 <div class="logo">⚡</div>
@@ -499,12 +479,25 @@ void handleLogin() {
 <p class="sub">Smart Switch Controller</p>
 <form action="/login" method="POST">
 <label>Username</label>
-<input type="text" name="username" placeholder="Username" required>
+<input type="text" name="username" placeholder="Username" value=")rawliteral";
+  html += defUser;
+  html += R"rawliteral(" required>
 <label>Password</label>
-<input type="password" name="password" placeholder="Password" required>
+<div class="pw-wrap">
+<input type="password" name="password" id="pw" placeholder="Password" required>
+<button type="button" class="pw-toggle" id="pwToggle" aria-label="Show password">👁</button>
+</div>
+<p class="hint" style="margin-top:4px;font-size:11px;opacity:0.6">Default: admin / admin</p>
 <button type="submit">Login</button>
 </form>
 </div>
+<script>
+document.getElementById('pwToggle').addEventListener('click',function(){
+  var i=document.getElementById('pw');
+  i.type=(i.type==='password')?'text':'password';
+  this.textContent=(i.type==='password')?'👁':'🙈';
+});
+</script>
 )rawliteral";
 
   html += uiEnd();
@@ -519,7 +512,11 @@ void handleSave() {
   String wifiPass = server.arg("wifi_pass");
 
   // Setup page se hi server URL + API key — ek hi baar mein sab configure
-  PreferencesManager::saveServer(server.arg("server_url"), server.arg("api_key"));
+  PreferencesManager::saveServer(server.arg("server_url"),
+                                 server.arg("api_key"));
+
+  // Naya key setup se aaya — provisioning mode clear
+  PreferencesManager::saveKeyInvalid(false);
 
   PreferencesManager::saveAdmin(adminUser, adminPass);
   PreferencesManager::saveWiFi(wifiSSID, wifiPass);
@@ -528,9 +525,11 @@ void handleSave() {
   String html;
   html += uiHead("Configuration Saved");
   html += uiAuthBegin();
-  html += "<div class='glass auth-card msg-card ok'><div class='msg-icon'>✅</div>";
+  html +=
+      "<div class='glass auth-card msg-card ok'><div class='msg-icon'>✅</div>";
   html += "<h2>Configuration Saved</h2>";
-  html += "<p class='msg-sub'>Device restarting... WiFi connect hoga aur AP (192.168.4.1) bhi ON rahega — kisi bhi jagah se khul jayega.</p>";
+  html += "<p class='msg-sub'>Device restarting... WiFi connect hoga aur AP "
+          "(192.168.4.1) bhi ON rahega — kisi bhi jagah se khul jayega.</p>";
   html += "</div>";
   html += uiEnd();
 
@@ -544,7 +543,8 @@ void handleLoginPost() {
   String username = server.arg("username");
   String password = server.arg("password");
 
-  if (username == PreferencesManager::getAdminUsername() && password == PreferencesManager::getAdminPassword()) {
+  if (username == PreferencesManager::getAdminUsername() &&
+      password == PreferencesManager::getAdminPassword()) {
     String token = createSession();
 
     server.sendHeader("Set-Cookie", "session=" + token + "; Path=/; HttpOnly");
@@ -556,7 +556,8 @@ void handleLoginPost() {
     String html;
     html += uiHead("Login Failed");
     html += uiAuthBegin();
-    html += "<div class='glass auth-card msg-card err'><div class='msg-icon'>❌</div>";
+    html += "<div class='glass auth-card msg-card err'><div "
+            "class='msg-icon'>❌</div>";
     html += "<h2>Invalid Credentials</h2>";
     html += "<p class='msg-sub'>Username ya password galat hai.</p>";
     html += "<button onclick=\"location.href='/'\">← Try Again</button>";
@@ -566,459 +567,218 @@ void handleLoginPost() {
     server.send(200, "text/html", html);
   }
 }
-void handleDashboard()
-{
-    if (!checkLogin())
-        return;
+void handleDashboard() {
+  if (!checkLogin())
+    return;
 
-    String html = DashboardPage(
-        WiFiManager::getIP(),
-        PreferencesManager::getWiFiSSID(),
-        FIRMWARE_VERSION,
-        DeviceManager::getCount(),
-        MappingManager::getMappedCount(),
-        BoardManager::getRelayCount(),
-        BoardManager::getBoard()->name,
-        WiFi.status() == WL_CONNECTED,
-        WiFiManager::isSetupAccessPoint(),
-        WiFiManager::isDualMode(),
-        WiFiManager::getAPIP(),
-        WiFiManager::getAPSSID(),
-        WiFiManager::getHostname()
-    );
+  String html = DashboardPage(
+      WiFiManager::getIP(), PreferencesManager::getWiFiSSID(), FIRMWARE_VERSION,
+      0, 0, BoardManager::getRelayCount(), BoardManager::getBoard()->name,
+      WiFi.status() == WL_CONNECTED, WiFiManager::isSetupAccessPoint(),
+      WiFiManager::isDualMode(), WiFiManager::getAPIP(),
+      WiFiManager::getAPSSID(), WiFiManager::getHostname());
 
-    server.send(
-        200,
-        "text/html",
-        html
-    );
-}
-void handleMapping()
-{
-    if (!checkLogin())
-        return;
-    Serial.print("Devices : ");
-    Serial.println(DeviceManager::getCount());
-    String html = "";
-
-    html += uiHead("Relay Mapping");
-
-    html += uiNav("/mapping");
-
-    html += "<div class='card wide'>";
-
-    html += "<h2>Output Mapping</h2>";
-
-    html += "<p class='hint'>Har relay ko server se aaye device se map karo — dashboard pe relay card usi device ka naam dikhayega. Server page se devices download karna mat bhoolna.</p>";
-
-    html += "<form method='POST' action='/mapping/save'>";
-
-    if (DeviceManager::getCount() == 0)
-    {
-        html += "<div class='notes'>⚠️ Koi device available nahi. Pehle <a href='/server'>Server page</a> se devices download karo.</div>";
-    }
-
-    html += "<h3 class='sectionTitle'>Relays</h3>";
-
-    for(uint8_t channel = 0; channel < BoardManager::getRelayCount(); channel++)
-{
-    html += "<div class='map-row'>";
-
-    html += "<span class='badge'>R";
-    html += String(channel + 1);
-    html += "</span>";
-
-    html += "<select name='relay";
-    html += String(channel);
-    html += "'>";
-
-    html += "<option value='-1'>-- Not Mapped --</option>";
-
-    for(int i = 0; i < DeviceManager::getCount(); i++)
-    {
-        Device *device = DeviceManager::getDevice(i);
-
-        if(device == nullptr)
-         continue;
-
-        html += "<option value='";
-        html += String(device->id);
-        html += "'";
-
-        if(MappingManager::getMapping(channel) == device->id)
-        {
-            html += " selected";
-        }
-
-        html += ">";
-
-        html += device->name;
-
-        html += "</option>";
-    }
-
-    html += "</select>";
-
-    html += "</div>";
+  server.send(200, "text/html", html);
 }
 
-    html += "<h3 class='sectionTitle'>Status LED</h3>";
-
-    html += "<div class='map-row'>";
-
-    html += "<span class='badge'>LED</span>";
-
-    html += "<select name='status_led'>";
-
-    html += "<option value='-1'>-- Not Mapped --</option>";
-
-    for(int i=0;i<DeviceManager::getCount();i++)
-{
-    Device *device = DeviceManager::getDevice(i);
-
-    if(device==nullptr)
-        continue;
-
-    html += "<option value='";
-    html += device->id;
-    html += "'";
-
-    if(PreferencesManager::getStatusLedMapping()==device->id)
-        html += " selected";
-
-    html += ">";
-
-    html += device->name;
-
-    html += "</option>";
+void handleServer() {
+  if (!checkLogin())
+    return;
+  server.send(200, "text/html",
+              ServerPage(PreferencesManager::getServerURL(),
+                         PreferencesManager::getApiKey()));
 }
+void handleServerSave() {
+  if (!checkLogin())
+    return;
+  PreferencesManager::saveServer(server.arg("server_url"),
+                                 server.arg("api_key"));
 
-    html += "</select>";
+  // Naya key save hua — provisioning mode clear. Sync turant resume hoga.
+  if (PreferencesManager::isKeyInvalid()) {
+    PreferencesManager::saveKeyInvalid(false);
+    LedManager::setMode(LedManager::HEARTBEAT);
+    Serial.println("Key updated — provisioning mode cleared, sync resuming");
+  }
 
-    html += "</div>";
-
-    html += "<h3 class='sectionTitle'>🎛 Switch Mode</h3>";
-
-    html += "<div class='map-row'>";
-    html += "<span class='badge'>SW</span>";
-    html += "<select name='switch_mode'>";
-    html += "<option value='0'";
-
-    if (PreferencesManager::getSwitchMode() == SWITCH_MODE_MOMENTARY)
-        html += " selected";
-
-    html += ">Push Button (momentary)</option>";
-    html += "<option value='1'";
-
-    if (PreferencesManager::getSwitchMode() == SWITCH_MODE_TOGGLE)
-        html += " selected";
-
-    html += ">Wall Switch (toggle)</option>";
-    html += "</select>";
-    html += "</div>";
-    html += "<p class='hint'>Push Button: dabane pe relay toggle hota hai (release ignore). Wall Switch: har flip pe toggle — dono directions kaam karte hain.</p>";
-
-    html += "<div class='btn-row'>";
-    html += "<button type='submit'>💾 Save Mapping</button>";
-    html += "<button type='button' class='ghost' onclick=\"location.href='/dashboard'\">Cancel</button>";
-    html += "</div>";
-
-    html += "</form>";
-
-    html += uiEnd();
-
-server.send(200, "text/html", html);
+  server.sendHeader("Location", "/dashboard");
+  server.send(303);
 }
+void handleServerTest() {
+  if (!checkLogin())
+    return;
 
-void handleMappingSave()
-{
-    if (!checkLogin())
-        return;
+  // testConnection() skips backoff (manual trigger) — download devices on
+  // success
+  if (ApiManager::testConnection()) {
+    // Also sync device list
+    ApiManager::downloadDevices();
 
-    Serial.println("========== FORM ==========");
-
-    for(uint8_t channel = 0; channel < BoardManager::getRelayCount(); channel++)
-    {
-        String field = "relay" + String(channel);
-
-        Serial.print(field);
-        Serial.print(" : ");
-        Serial.println(server.arg(field));
-
-        int deviceId = server.arg(field).toInt();
-
-        MappingManager::setMapping(channel, deviceId);
-    }
-
-    MappingManager::save();
-    PreferencesManager::saveStatusLedMapping(server.arg("status_led").toInt());
-    PreferencesManager::saveSwitchMode(server.arg("switch_mode").toInt());
-    String html;
-
-    html += uiHead("Mapping Saved");
-    html += uiAuthBegin();
-    html += "<div class='glass auth-card msg-card ok'><div class='msg-icon'>✅</div>";
-    html += "<h2>Mapping Saved</h2>";
-    html += "<p class='msg-sub'>Relay mapping update ho gaya.</p>";
-    html += "<div class='btn-row'><button onclick=\"location.href='/mapping'\">↩ Mapping</button>";
-    html += "<button class='ghost' onclick=\"location.href='/dashboard'\">Dashboard</button></div>";
-    html += "</div>";
-    html += uiEnd();
-
-    server.send(200, "text/html", html);
-}
-
-void handleServer()
-{
-    if (!checkLogin())
-        return;
-    server.send(
-        200,
-        "text/html",
-        ServerPage(
-            PreferencesManager::getServerURL(),
-            PreferencesManager::getApiKey()
-        )
-    );
-}
-void handleServerSave()
-{
-    if (!checkLogin())
-        return;
-    PreferencesManager::saveServer(
-        server.arg("server_url"),
-        server.arg("api_key")
-    );
-
-    server.sendHeader("Location", "/dashboard");
-    server.send(303);
-}
-void handleServerTest()
-{
-    if (!checkLogin())
-        return;
-
-    if (ApiManager::downloadDevices())
-    {
-        String json = "{\"success\":true,\"message\":\"Connection OK\",\"count\":";
-        json += String(DeviceManager::getCount());
-        json += "}";
-        server.send(200, "application/json", json);
-    }
-    else
-    {
-        server.send(200, "application/json",
-            "{\"success\":false,\"message\":\"Connection failed — URL/key check karo\"}");
-    }
-}
-
-void handleLogout()
-{
-    String token = getCookieSessionToken();
-
-    if (!token.isEmpty())
-        destroySession(token);
-
-    server.sendHeader("Set-Cookie", "session=; Path=/; Max-Age=0");
-    server.sendHeader("Location", "/");
-    server.send(303);
-}
-
-void handleDownloadDevices()
-{
-    if (!checkLogin())
-        return;
-
-    if (ApiManager::downloadDevices())
-    {
-        String json = "{\"success\":true,\"message\":\"Devices downloaded\",\"count\":";
-        json += String(DeviceManager::getCount());
-        json += "}";
-        server.send(200, "application/json", json);
-    }
-    else
-    {
-        server.send(200, "application/json",
-            "{\"success\":false,\"message\":\"Download failed\"}");
-    }
-}
-
-void handleSystem()
-{
-    if(!checkLogin())
-        return;
-
-    server.send(
-        200,
-        "text/html",
-        SystemPage(
-            BoardManager::getBoard()->name,
-            FIRMWARE_VERSION,
-            WiFi.localIP().toString(),
-            millis()/1000,
-            ESP.getFreeHeap(),
-
-            TimeManager::getDate(),
-            TimeManager::getTime(),
-            TimeManager::getDay(),
-            TimeManager::isSynced(),
-
-            OTAManager::getCurrentVersion(),
-            OTAManager::getLatestVersion(),
-            OTAManager::getStatus(),
-            OTAManager::getReleaseNotes(),
-            OTAManager::getProgress(),
-            PreferencesManager::getOTAURL(),
-            LedManager::isEnabled()
-        )
-    );
-}
-
-void handleSystemLed()
-{
-    if(!checkLogin())
-        return;
-
-    // JSON body: { "enabled": true/false }
-    String body = server.arg("plain");
-
-    bool enabled = true;
-
-    if (body.indexOf("\"enabled\":false") >= 0)
-        enabled = false;
-
-    LedManager::setUserEnabled(enabled);
-
-    String json = "{\"success\":true,\"ledEnabled\":";
-    json += enabled ? "true" : "false";
-    json += "}";
+    String json =
+        "{\"success\":true,\"message\":\"Connection OK\",\"count\":0}";
     server.send(200, "application/json", json);
+  } else {
+    server.send(200, "application/json",
+                "{\"success\":false,\"message\":\"Connection failed — URL/key "
+                "check karo\"}");
+  }
 }
 
-void handleWiFi()
-{
-    if(!checkLogin())
-        return;
+void handleLogout() {
+  String token = getCookieSessionToken();
 
-    server.send(
-        200,
-        "text/html",
-        WiFiPage(
-            PreferencesManager::getWiFiSSID(),
-            WiFiScanner::getNetworkOptions()
-        )
-    );
+  if (!token.isEmpty())
+    destroySession(token);
+
+  server.sendHeader("Set-Cookie", "session=; Path=/; Max-Age=0");
+  server.sendHeader("Location", "/");
+  server.send(303);
 }
 
-void handleWiFiSave()
-{
-    if(!checkLogin())
-        return;
+void handleDownloadDevices() {
+  if (!checkLogin())
+    return;
 
-    String ssid =
-        server.arg("wifi_ssid");
+  if (ApiManager::downloadDevices()) {
+    String json =
+        "{\"success\":true,\"message\":\"Devices downloaded\",\"count\":0}";
+    server.send(200, "application/json", json);
+  } else {
+    server.send(200, "application/json",
+                "{\"success\":false,\"message\":\"Download failed\"}");
+  }
+}
 
-    String password =
-        server.arg("wifi_password");
+void handleSystem() {
+  if (!checkLogin())
+    return;
 
-    PreferencesManager::saveWiFi(
-        ssid,
-        password
-    );
+  server.send(
+      200, "text/html",
+      SystemPage(BoardManager::getBoard()->name,
+                 PreferencesManager::getSerialCode(), FIRMWARE_VERSION,
+                 WiFi.localIP().toString(), millis() / 1000, ESP.getFreeHeap(),
 
-    String html;
-    html += uiHead("WiFi Saved");
-    html += uiAuthBegin();
-    html += "<div class='glass auth-card msg-card ok'><div class='msg-icon'>📶</div>";
-    html += "<h2>WiFi Saved</h2>";
-    html += "<p class='msg-sub'>Device restarting... naye network se connect hone ka wait karo.</p>";
-    html += "</div>";
-    html += uiEnd();
+                 TimeManager::getDate(), TimeManager::getTime(),
+                 TimeManager::getDay(), TimeManager::isSynced(),
 
-    server.send(200, "text/html", html);
+                 OTAManager::getCurrentVersion(),
+                 OTAManager::getLatestVersion(), OTAManager::getStatus(),
+                 OTAManager::getReleaseNotes(), OTAManager::getProgress(),
+                 PreferencesManager::getOTAURL(), LedManager::isEnabled()));
+}
 
-    delay(1500);
+void handleSystemLed() {
+  if (!checkLogin())
+    return;
 
-    ESP.restart();
+  // JSON body: { "enabled": true/false }
+  String body = server.arg("plain");
+
+  bool enabled = true;
+
+  if (body.indexOf("\"enabled\":false") >= 0)
+    enabled = false;
+
+  LedManager::setUserEnabled(enabled);
+
+  String json = "{\"success\":true,\"ledEnabled\":";
+  json += enabled ? "true" : "false";
+  json += "}";
+  server.send(200, "application/json", json);
+}
+
+void handleWiFi() {
+  if (!checkLogin())
+    return;
+
+  server.send(200, "text/html",
+              WiFiPage(PreferencesManager::getWiFiSSID(),
+                       WiFiScanner::getNetworkOptions(),
+                       PreferencesManager::getAPName(),
+                       PreferencesManager::getAPPassword()));
+}
+
+void handleWiFiSave() {
+  if (!checkLogin())
+    return;
+
+  String ssid = server.arg("wifi_ssid");
+
+  String password = server.arg("wifi_password");
+
+  // Hotspot (AP) edit — user login karke apna AP naam/password change kar sakta
+  // hai.
+  String apName = server.arg("ap_name");
+  String apPassword = server.arg("ap_password");
+
+  PreferencesManager::saveWiFi(ssid, password);
+  PreferencesManager::saveAPName(apName);
+  PreferencesManager::saveAPPassword(apPassword);
+
+  String html;
+  html += uiHead("Settings Saved");
+  html += uiAuthBegin();
+  html +=
+      "<div class='glass auth-card msg-card ok'><div class='msg-icon'>📶</div>";
+  html += "<h2>Settings Saved</h2>";
+  html += "<p class='msg-sub'>WiFi + Hotspot saved. Device restarting... naye "
+          "network se connect hone ka wait karo.</p>";
+  html += "</div>";
+  html += uiEnd();
+
+  server.send(200, "text/html", html);
+
+  delay(1500);
+
+  ESP.restart();
 }
 
 namespace WebServerManager {
 
-void begin()
-{
-    server.on("/", HTTP_GET, handleRoot);
+void begin() {
+  server.on("/", HTTP_GET, handleRoot);
 
-    server.on("/save", HTTP_POST, handleSave);
+  server.on("/save", HTTP_POST, handleSave);
 
-    server.on("/login", HTTP_POST, handleLoginPost);
+  server.on("/login", HTTP_POST, handleLoginPost);
 
-    server.on("/dashboard", HTTP_GET, handleDashboard);
+  server.on("/dashboard", HTTP_GET, handleDashboard);
 
-    server.on("/server", HTTP_GET, handleServer);
+  server.on("/server", HTTP_GET, handleServer);
 
-    server.on("/server/download", HTTP_GET, handleDownloadDevices);
+  server.on("/server/download", HTTP_GET, handleDownloadDevices);
 
-    server.on("/mapping", HTTP_GET, handleMapping);
+  server.on("/server/save", HTTP_POST, handleServerSave);
 
-    server.on("/mapping/save", HTTP_POST, handleMappingSave);
-
-    server.on("/server/save", HTTP_POST, handleServerSave);
-
-    server.on("/server/test", HTTP_GET, handleServerTest);
-    server.on("/status", HTTP_GET, []()
-{
+  server.on("/server/test", HTTP_GET, handleServerTest);
+  server.on("/status", HTTP_GET, []() {
     if (!checkLogin())
-        return;
+      return;
 
-    server.send(200,
-                "application/json",
-                StatusManager::getJson());
-});
-    server.on("/relay/toggle", HTTP_POST, []()
-{
+    server.send(200, "application/json", StatusManager::getJson());
+  });
+  server.on("/relay/toggle", HTTP_POST, []() {
     if (!checkLogin())
-        return;
+      return;
 
     int index = server.arg("index").toInt();
 
-    if (index < 0 || index >= BoardManager::getRelayCount())
-    {
-        server.send(400, "application/json",
-                    "{\"success\":false,\"message\":\"Invalid Relay Index\"}");
-        return;
+    if (index < 0 || index >= BoardManager::getRelayCount()) {
+      server.send(400, "application/json",
+                  "{\"success\":false,\"message\":\"Invalid Relay Index\"}");
+      return;
     }
 
     RelayManager::toggle(index);
 
     bool state = RelayManager::getState(index);
 
-    int deviceId = MappingManager::getDeviceIdByRelay(index);
+    int channel = index + 1;
 
-    bool pushed = true;
+    bool pushed = ApiManager::queueDeviceUpdate(channel, state);
 
-    if (deviceId != -1)
-    {
-        // Server ko state push karo (physical switch jaisa hi)
-        // Debounced batch queue — short interval ke updates ek saath jaate hain
-        pushed = ApiManager::queueDeviceUpdate(deviceId, state);
-    }
-
-    // Mapped device ka naam — dashboard card update ke liye
     String deviceName = "";
-
-    if (deviceId != -1)
-    {
-        for (int d = 0; d < DeviceManager::getCount(); d++)
-        {
-            Device *device = DeviceManager::getDevice(d);
-
-            if (device != nullptr && device->id == deviceId)
-            {
-                deviceName = device->name;
-                break;
-            }
-        }
-    }
 
     String json = "{\"success\":true,\"index\":";
     json += String(index);
@@ -1031,167 +791,140 @@ void begin()
     json += "\"}";
 
     server.send(200, "application/json", json);
-});
-    server.on("/logout", HTTP_GET, handleLogout);
-    server.on("/system", HTTP_GET, handleSystem);
-    server.on("/system/led", HTTP_POST, handleSystemLed);
-    server.on("/wifi", HTTP_GET, handleWiFi);
-    server.on("/wifi/save", HTTP_POST, handleWiFiSave);
-    server.on("/config/export", HTTP_GET, []()
-{
+  });
+  server.on("/logout", HTTP_GET, handleLogout);
+  server.on("/system", HTTP_GET, handleSystem);
+  server.on("/system/led", HTTP_POST, handleSystemLed);
+  server.on("/wifi", HTTP_GET, handleWiFi);
+  server.on("/wifi/save", HTTP_POST, handleWiFiSave);
+  server.on("/config/export", HTTP_GET, []() {
     if (!checkLogin())
-        return;
+      return;
 
     String json = PreferencesManager::exportConfiguration();
 
     String fileName = server.arg("name");
 
-if(fileName.isEmpty())
-    fileName = "SwitchNest_Config";
+    if (fileName.isEmpty())
+      fileName = "SwitchNest_Config";
 
-server.sendHeader(
-    "Content-Disposition",
-    "attachment; filename=\"" +
-    fileName +
-    ".json\""
-);
+    server.sendHeader("Content-Disposition",
+                      "attachment; filename=\"" + fileName + ".json\"");
 
-server.send(
-    200,
-    "application/json",
-    json
-);
-});
-    server.on("/config/import", HTTP_POST, []()
-{
+    server.send(200, "application/json", json);
+  });
+  server.on("/config/import", HTTP_POST, []() {
     if (!checkLogin())
-        return;
+      return;
 
     String json = server.arg("plain");
 
-    if(json.length() == 0)
-    {
-        server.send(400, "application/json",
-                    "{\"success\":false,\"message\":\"Empty Body\"}");
-        return;
+    if (json.length() == 0) {
+      server.send(400, "application/json",
+                  "{\"success\":false,\"message\":\"Empty Body\"}");
+      return;
     }
 
-    if(!PreferencesManager::validateConfiguration(json))
-    {
-        server.send(400, "application/json",
-                    "{\"success\":false,\"message\":\"Invalid Configuration\"}");
-        return;
+    if (!PreferencesManager::validateConfiguration(json)) {
+      server.send(400, "application/json",
+                  "{\"success\":false,\"message\":\"Invalid Configuration\"}");
+      return;
     }
 
-    if(!PreferencesManager::importConfiguration(json))
-    {
-        server.send(500, "application/json",
-                    "{\"success\":false,\"message\":\"Import Failed\"}");
-        return;
+    if (!PreferencesManager::importConfiguration(json)) {
+      server.send(500, "application/json",
+                  "{\"success\":false,\"message\":\"Import Failed\"}");
+      return;
     }
 
     server.send(200, "application/json",
                 "{\"success\":true,\"message\":\"Configuration Imported\"}");
     delay(2000);
     ESP.restart();
-});
-    server.on("/restart", HTTP_GET, []()
-{
+  });
+  server.on("/restart", HTTP_GET, []() {
     if (!checkLogin())
-        return;
+      return;
 
-    server.send(
-        200,
-        "text/html",
-        "<h2>Restarting Device...</h2>"
-    );
+    server.send(200, "text/html", "<h2>Restarting Device...</h2>");
 
     delay(1000);
 
     ESP.restart();
-});
+  });
 
-server.on("/reset", HTTP_GET, []()
-{
+  server.on("/reset", HTTP_GET, []() {
     if (!checkLogin())
-        return;
+      return;
 
     PreferencesManager::factoryReset();
 
-    server.send(
-        200,
-        "text/html",
-        "<h2>Factory Reset Complete.<br>Restarting Device...</h2>"
-    );
+    server.send(200, "text/html",
+                "<h2>Factory Reset Complete.<br>Restarting Device...</h2>");
 
     delay(2000);
 
     ESP.restart();
-});
+  });
 
-server.on("/wifi/scan", HTTP_GET, []()
-{
-    // Setup mode (device configured nahi) mein bina login ke scan allowed — setup page isi pe depend karta hai
+  server.on("/wifi/scan", HTTP_GET, []() {
+    // Setup mode (device configured nahi) mein bina login ke scan allowed —
+    // setup page isi pe depend karta hai
     if (PreferencesManager::isConfigured() && !checkLogin())
-        return;
+      return;
 
     int n = WiFi.scanNetworks();
 
     String json = "[";
 
-bool first = true;
+    bool first = true;
 
-for(int i=0;i<n;i++)
-{
-    String ssid = WiFi.SSID(i);
+    for (int i = 0; i < n; i++) {
+      String ssid = WiFi.SSID(i);
 
-    if(ssid=="")
+      if (ssid == "")
         continue;
 
-    bool duplicate=false;
+      bool duplicate = false;
 
-    for(int j=0;j<i;j++)
-    {
-        if(WiFi.SSID(j)==ssid)
-        {
-            duplicate=true;
-            break;
+      for (int j = 0; j < i; j++) {
+        if (WiFi.SSID(j) == ssid) {
+          duplicate = true;
+          break;
         }
-    }
+      }
 
-    if(duplicate)
+      if (duplicate)
         continue;
 
-    if(!first)
+      if (!first)
         json += ",";
 
-    first = false;
+      first = false;
 
-    json += "{";
-    json += "\"ssid\":\"" + ssid + "\",";
-    json += "\"rssi\":" + String(WiFi.RSSI(i));
-    json += "}";
-}
+      json += "{";
+      json += "\"ssid\":\"" + ssid + "\",";
+      json += "\"rssi\":" + String(WiFi.RSSI(i));
+      json += "}";
+    }
 
-json+="]";
+    json += "]";
 
-    server.send(200,"application/json",json);
-});
+    server.send(200, "application/json", json);
+  });
 
-server.on("/ota/check", HTTP_GET, []()
-{
+  server.on("/ota/check", HTTP_GET, []() {
     if (!checkLogin())
-        return;
+      return;
 
     OTAManager::checkUpdate();
 
-    server.send(200,"text/plain","OK");
-});
+    server.send(200, "text/plain", "OK");
+  });
 
-server.on("/ota/update", HTTP_POST, []()
-{
+  server.on("/ota/update", HTTP_POST, []() {
     if (!checkLogin())
-        return;
+      return;
 
     server.send(200, "application/json",
                 "{\"success\":true,\"message\":\"OTA Started\"}");
@@ -1199,13 +932,13 @@ server.on("/ota/update", HTTP_POST, []()
     delay(100);
 
     OTAManager::startUpdate();
-});
+  });
 
-// Dashboard se firmware URL save karo (NVS mein persist — default check URL ban jata hai)
-server.on("/ota/seturl", HTTP_POST, []()
-{
+  // Dashboard se firmware URL save karo (NVS mein persist — default check URL
+  // ban jata hai)
+  server.on("/ota/seturl", HTTP_POST, []() {
     if (!checkLogin())
-        return;
+      return;
 
     String url = server.arg("url");
     url.trim();
@@ -1222,92 +955,82 @@ server.on("/ota/seturl", HTTP_POST, []()
     json += "\"}";
 
     server.send(200, "application/json", json);
-});
+  });
 
-// Seedha .bin URL se update — ghar pe installed device ko kahin se bhi update karne ke liye
-server.on("/ota/update-url", HTTP_POST, []()
-{
+  // Seedha .bin URL se update — ghar pe installed device ko kahin se bhi update
+  // karne ke liye
+  server.on("/ota/update-url", HTTP_POST, []() {
     if (!checkLogin())
-        return;
+      return;
 
     String url = server.arg("url");
     url.trim();
 
-    if (url.isEmpty())
-    {
-        server.send(200, "application/json",
-                    "{\"success\":false,\"message\":\"URL empty\"}");
-        return;
+    if (url.isEmpty()) {
+      server.send(200, "application/json",
+                  "{\"success\":false,\"message\":\"URL empty\"}");
+      return;
     }
 
     server.send(200, "application/json",
-                "{\"success\":true,\"message\":\"OTA Started from URL — device restart hogi\"}");
+                "{\"success\":true,\"message\":\"OTA Started from URL — device "
+                "restart hogi\"}");
 
     delay(100);
 
     OTAManager::startUpdateFromURL(url);
-});
+  });
 
-server.on("/ota/status", HTTP_GET, []()
-{
+  server.on("/ota/status", HTTP_GET, []() {
     if (!checkLogin())
-        return;
+      return;
 
-    String json="{ ";
+    String json = "{ ";
 
-    json+="\"current\":\"";
-    json+=OTAManager::getCurrentVersion();
-    json+="\",";
+    json += "\"current\":\"";
+    json += OTAManager::getCurrentVersion();
+    json += "\",";
 
-    json+="\"latest\":\"";
-    json+=OTAManager::getLatestVersion();
-    json+="\",";
+    json += "\"latest\":\"";
+    json += OTAManager::getLatestVersion();
+    json += "\",";
 
-    json+="\"progress\":";
-    json+=String(OTAManager::getProgress());
-    json+=",";
+    json += "\"progress\":";
+    json += String(OTAManager::getProgress());
+    json += ",";
 
-    json+="\"status\":\"";
-    json+=OTAManager::getStatus();
-    json+="\",";
+    json += "\"status\":\"";
+    json += OTAManager::getStatus();
+    json += "\",";
 
-    json+="\"releaseNotes\":\"";
-    json+=OTAManager::getReleaseNotes();
-    json+="\",";
+    json += "\"releaseNotes\":\"";
+    json += OTAManager::getReleaseNotes();
+    json += "\",";
 
-    json+="\"available\":";
-    json+=OTAManager::isUpdateAvailable()?"true":"false";
+    json += "\"available\":";
+    json += OTAManager::isUpdateAvailable() ? "true" : "false";
 
-    json+="}";
+    json += "}";
 
-    server.send(200,"application/json",json);
-});
+    server.send(200, "application/json", json);
+  });
 
+  // Session cookie ko request headers mein collect karne ke liye zaroori hai
+  // (ESP32 WebServer default mein sirf Authorization header collect karta hai)
+  const char *headerKeys[] = {"Cookie"};
+  server.collectHeaders(headerKeys, 1);
 
-    // Session cookie ko request headers mein collect karne ke liye zaroori hai
-    // (ESP32 WebServer default mein sirf Authorization header collect karta hai)
-    const char *headerKeys[] = {"Cookie"};
-    server.collectHeaders(headerKeys, 1);
+  // Shared UI resources (glassmorphism design system + theme JS)
+  server.on("/style.css", HTTP_GET,
+            []() { server.send(200, "text/css", STYLE_CSS); });
+  server.on("/app.js", HTTP_GET,
+            []() { server.send(200, "application/javascript", APP_JS); });
 
-    // Shared UI resources (glassmorphism design system + theme JS)
-    server.on("/style.css", HTTP_GET, []()
-{
-    server.send(200, "text/css", STYLE_CSS);
-});
-    server.on("/app.js", HTTP_GET, []()
-{
-    server.send(200, "application/javascript", APP_JS);
-});
+  server.begin();
 
-    server.begin();
-
-    Logger::success("Web Server Started");
+  Logger::success("Web Server Started");
 }
 
-void update() {
-  server.handleClient();
-}
+void update() { server.handleClient(); }
 
-
-
-}
+} // namespace WebServerManager

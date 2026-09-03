@@ -4,7 +4,12 @@ import bcrypt from "bcryptjs";
 const prisma = new PrismaClient();
 
 async function main() {
-  const password = await bcrypt.hash("admin123", 10);
+  // Admin/demo password — site/.env (ADMIN_PASSWORD) se, warna default.
+  // npm run db:seed dotenv -e ../../.env ke saath chalta hai, isliye env
+  // me set kiya hua password yahan milta hai (admin change ho to seed bhi
+  // same value use kare).
+  const adminPassword = process.env.ADMIN_PASSWORD || "admin123";
+  const password = await bcrypt.hash(adminPassword, 10);
 
   const admin = await prisma.user.upsert({
     where: { email: "admin@robosphere.local" },
@@ -68,8 +73,8 @@ async function main() {
   }
 
   console.log("✅ Seeded:");
-  console.log(`   Admin: admin@robosphere.local / admin123`);
-  console.log(`   Demo:  demo@robosphere.local / admin123`);
+  console.log(`   Admin: admin@robosphere.local / ${adminPassword}`);
+  console.log(`   Demo:  demo@robosphere.local / ${adminPassword}`);
 
   await seedProducts();
 }

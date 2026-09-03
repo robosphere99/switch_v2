@@ -159,7 +159,7 @@ python flasher_gui.py
 
 | Role | Email | Password |
 |------|-------|----------|
-| **Admin** | `admin@robosphere.local` | `admin123` |
+| **Admin** | `admin@robosphere.local` | `site/.env` ki `ADMIN_PASSWORD` (default `admin123`; site pe profile se change ho to .env auto-sync hota hai) |
 | **Buyer (4CH device wala)** | `testbut2@robosphere.local` | `123456` |
 | Demo user | `demo@robosphere.local` | `demo123` |
 | OTA demo admin | `ota-demo@robosphere.local` | — |
@@ -216,3 +216,86 @@ git pull origin main
 git merge dev
 git push origin main          # → webhook → Plesk → auto-deploy live
 ```
+
+**Plesk pe ek baar setup (production):** Plesk → Git → `switch_v2` → Deployment settings:
+
+| Setting | Value |
+|---|---|
+| Branch | `main` |
+| Deployment mode | **Automatic** |
+| **Server path** | `\onlineswitch.bhartitechnical.com` (domain root) |
+| Enable additional deployment actions | ✅ |
+| Deploy actions | `site\deploy.cmd` |
+
+> ⚠️ **Server path gotcha:** `...\site\apps\api` jaise sub-path mat do — repo root wahan
+> dump hota hai → double-nesting (`site/apps/api/site/apps/api/...`) → web update hoti hai
+> par **API kabhi nahi**. Server path = domain root hona chahiye (repo ka `site/` wahan
+> `...\site\` pe land karta hai, jahan app actually chalti hai).
+>
+> Verify: `GET https://onlineswitch.bhartitechnical.com/api/health` → `data.build` (live code
+> version) · Admin → Diagnostics → "LAST CODE UPDATE" card (deploy.json marker).
+
+**"LAST CODE UPDATE" card — commit 3-layer fallback (kabhi blank nahi):**
+
+| Source | Kya hai | Kab use hota hai |
+|---|---|---|
+| **deploy.json marker** | deploy.cmd → `scripts/deploy-marker.mjs` — deploy-time SHA (exact), `source: github/git/build` | **Primary** (deploy ke time likha) |
+| **build-commit.json** | `dist/build-commit.json` (build:prod generate, git me committed) — running code khud batata hai kis commit se bana | marker wipe/na ho to fallback |
+| **latest** | GitHub API se current main commit | last-resort display fallback |
+
+> ⚠️ `build-commit.json` hamesha **parent commit** embed karta hai (build commit se
+> pehle hota hai) — isliye marker (deploy-time SHA) ko priority di jati hai. Marker
+> `source="build"` ho (GitHub down tha deploy pe) to sync compare skip hota hai —
+> jhuta "lagging" alarm nahi aata.
+
+---
+
+## 🔍 Deploy sync health check (lost-push detection)
+
+`GET /api/admin/deploy-info` → `sync` field main pe push vs live site compare karta hai:
+
+| Status | Matlab | Panel me |
+|---|---|---|
+| `synced` | live == main | ✅ normal |
+| `pending` | naya push, deploy window me (<5 min) | 🔵 "⏳ Deploying…" banner |
+| `lagging` | commit 5+ min purana, live piche — **lost webhook / failed deploy** | 🟠 amber banner + Redeliver hint |
+| `unknown` | GitHub API unreachable / data unsure | safe — koi jhuta alarm nahi |
+
+Admin panel (Overview + Logs tab) 60s pe auto-refresh hota hai — banner wahi dikhta hai.
+
+> **GITHUB_TOKEN (recommended):** server ke unauthenticated GitHub API calls shared IP pe
+> 60 req/hr rate-limit hote hain → `latest`/`ci`/marker fail hokar `unknown` dikhate hain.
+> Fix: GitHub → Settings → Developer settings → Personal access tokens (repo scope) →
+> **Plesk → Node.js → Environment variables → `GITHUB_TOKEN` = <token>** → Restart App.
+> Code token support bhejta hai (`fetchCiStatus`/`fetchLatestMain`/`deploy-marker.mjs`).
+
+---
+
+## 🆘 Troubleshooting — webhook deploy nahi hua (lost delivery)
+
+**Symptom:** push ke baad CI **green** (GitHub Actions chala) par live site **purana** rehta
+hai (web + API dono). Matlab webhook delivery GitHub → Plesk ke beech lost ho gayi.
+
+1. **Verify (pehle confirm karo site purani hai):**
+   ```bash
+   curl -s https://onlineswitch.bhartitechnical.com/ | grep -oE 'index-[A-Za-z0-9_-]+\.js'
+   # live hash ko repo ke site/apps/web/dist/index.html se compare karo
+   ```
+2. **Redeliver (sabse clean):** GitHub → repo → **Settings → Webhooks → Recent Deliveries**
+   → failed delivery → **Redeliver** → ~1 min me site update honi chahiye.
+3. **Ya empty-commit re-trigger:**
+   ```bash
+   git commit --allow-empty -m "deploy: re-trigger (webhook)" && git push origin main
+   ```
+   Naya push event webhook dobara fire karta hai (is repo me 2 baar isi se fix hua).
+4. **Webhook endpoint alive check** (204 = theek):
+   ```bash
+   curl -sS -o /dev/null -w "%{http_code}\n" -X POST \
+     "https://p4302.bom1.stableserver.net:8443/modules/git/public/web-hook.php?uuid=4ed40897-d0b5-d0e3-7410-fd16c9adf47f" \
+     -H "Content-Type: application/json" -d '{"zen":"test"}'
+   ```
+5. **Marker wipe** (ghabrao nahi): `deploy.json` untracked hai — Plesk deploy kabhi-kabhi
+   wipe kar deta hai. build-commit.json + latest fallback se card bhar jata hai; agle
+   deploy pe marker dobara likha jata hai.
+6. **Agar baar-baar ho:** Plesk → Git → Deployment log me error dekho, ya hosting
+   support ko "webhook deliveries intermittently lost" batao.

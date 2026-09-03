@@ -1,0 +1,121 @@
+import { api, extractApiError } from './client';
+
+export interface Product {
+    id: number;
+    name: string;
+    modelCode: string;
+    relayCount: number;
+    price: string;
+    description: string | null;
+    features: Record<string, unknown> | null;
+    imageUrl: string | null;
+    active: boolean;
+    stockCount?: number;
+    rating?: number;
+    totalReviews?: number;
+    media?: Array<{ id: number; url: string; type: string }>;
+}
+
+export interface OrderItem {
+    id: number;
+    orderId: number;
+    productId: number;
+    productName: string;
+    price: string;
+    quantity: number;
+    serialCode: string | null;
+}
+
+export interface Order {
+    id: number;
+    orderNumber: string;
+    status: "pending" | "paid" | "shipped" | "delivered" | "cancelled";
+    paymentMethod: "cod" | "upi" | "manual";
+    paymentStatus: string;
+    totalAmount: string;
+    createdAt: string;
+    items: OrderItem[];
+}
+
+export async function getProducts(): Promise<Product[]> {
+    const { data } = await api.get('/shop/products');
+    const API_BASE = api.defaults.baseURL?.replace('/api', '') || '';
+    return data.data.map((p: Product) => ({
+        ...p,
+        imageUrl: p.imageUrl && p.imageUrl.startsWith('/') ? API_BASE + p.imageUrl : p.imageUrl,
+        media: p.media ? p.media.map(m => ({
+            ...m,
+            url: m.url.startsWith('/') ? API_BASE + m.url : m.url
+        })) : []
+    }));
+}
+
+export async function createOrder(payload: {
+    items: Array<{ productId: number; quantity: number }>;
+    shipping: { name: string; phone: string; address: string };
+    wifi?: { ssid: string; password: string };
+    paymentMethod: "cod" | "upi" | "manual";
+}): Promise<Order> {
+    const { data } = await api.post('/shop/orders', payload);
+    return data.data;
+}
+
+export async function getMyOrders(): Promise<Order[]> {
+    const { data } = await api.get('/shop/orders');
+    return data.data;
+}
+
+export async function cancelOrder(id: number): Promise<void> {
+    await api.post(`/shop/orders/${id}/cancel`);
+}
+
+export async function demoPay(orderId: number): Promise<{ paid: boolean; status: string; paymentRef?: string }> {
+    const { data } = await api.post(`/shop/orders/${orderId}/pay/demo`);
+    return data.data;
+}
+
+export interface PayIntent {
+    mode: "razorpay" | "demo";
+    razorpayOrderId?: string;
+    keyId?: string;
+    upiIntent?: string;
+    amount: number;
+    note?: string;
+}
+
+export async function initiatePayment(orderId: number): Promise<PayIntent> {
+    const { data } = await api.post(`/shop/orders/${orderId}/pay`);
+    return data.data;
+}
+
+export async function verifyPayment(orderId: number, payload: { razorpayOrderId: string; razorpayPaymentId: string; razorpaySignature: string }) {
+    const { data } = await api.post(`/shop/orders/${orderId}/pay/verify`, payload);
+    return data.data;
+}
+
+export async function getClaimHomes(): Promise<Array<{ id: number; name: string }>> {
+    try {
+        const { data } = await api.get('/claim/homes');
+        return data.data;
+    } catch (e) {
+        throw extractApiError(e);
+    }
+}
+
+export async function claimDevice(serialCode: string, homeId: number): Promise<{ device: { id: number; name: string }; serialCode: string }> {
+    try {
+        const { data } = await api.post('/claim', { serialCode, homeId });
+        return data.data;
+    } catch (e) {
+        throw extractApiError(e);
+    }
+}
+
+export async function getCurrentWifiSsid(): Promise<string | null> {
+    const { data } = await api.get('/shop/wifi/current');
+    return data.data.ssid;
+}
+
+export async function addProductReview(productId: number, payload: { rating: number, comment?: string }): Promise<void> {
+    await api.post(`/shop/products/${productId}/reviews`, payload);
+}

@@ -1,9 +1,12 @@
 import { Router } from "express";
 import { z } from "zod";
 import * as deviceController from "../controllers/device.controller";
+import { ok } from "../lib/response";
 import { requireAuth } from "../middleware/auth";
 import { requireHomeMember } from "../middleware/requireRole";
 import { validateBody, validateParams } from "../middleware/validate";
+import { getUsageAnalytics } from "../services/analytics.service";
+import { getAutomationSuggestions } from "../services/automation.service";
 
 export const deviceRouter = Router();
 
@@ -11,6 +14,11 @@ const idParams = z.object({ homeId: z.coerce.number().int().positive() });
 const deviceParams = z.object({
   homeId: z.coerce.number().int().positive(),
   deviceId: z.coerce.number().int().positive(),
+});
+
+const espParams = z.object({
+  homeId: z.coerce.number().int().positive(),
+  espId: z.coerce.number().int().positive(),
 });
 
 const createSchema = z.object({
@@ -21,10 +29,21 @@ const createSchema = z.object({
 });
 
 const statusSchema = z.object({ status: z.enum(["on", "off"]) });
+const wifiSchema = z.object({
+  ssid: z.string().min(1).max(64),
+  password: z.string().max(64).optional().or(z.literal("")),
+});
+const ledSchema = z.object({ enabled: z.boolean() });
+const bulkStatusSchema = z.object({
+  deviceIds: z.array(z.number().int().positive()).min(1).max(50),
+  status: z.enum(["on", "off"]),
+});
 const espNameSchema = z.object({ name: z.string().min(1).max(60) });
 const updateSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   roomId: z.coerce.number().int().positive().nullable().optional(),
+  espId: z.coerce.number().int().positive().nullable().optional(),
+  channel: z.coerce.number().int().min(0).max(16).nullable().optional(),
 });
 
 deviceRouter.get(
@@ -41,6 +60,14 @@ deviceRouter.post(
   requireHomeMember("admin"),
   validateBody(createSchema),
   deviceController.create,
+);
+deviceRouter.post(
+  "/:homeId/devices/bulk-status",
+  requireAuth,
+  validateParams(idParams),
+  requireHomeMember("member"),
+  validateBody(bulkStatusSchema),
+  deviceController.bulkSetStatus,
 );
 deviceRouter.patch(
   "/:homeId/devices/:deviceId",
@@ -73,6 +100,36 @@ deviceRouter.delete(
   deviceController.remove,
 );
 
+/** Remote restart — ESP ko reboot command (online board, 1-2s me restart). */
+deviceRouter.post(
+  "/:homeId/devices/:deviceId/restart",
+  requireAuth,
+  validateParams(deviceParams),
+  requireHomeMember("member"),
+  deviceController.restart,
+);
+
+/** Remote WiFi set — ESP ka WiFi badlo (setwifi + restart). Galat WiFi pe board
+ *  offline ho jayega — phir physical reset (dual-mode AP 192.168.4.1 se fix). */
+deviceRouter.post(
+  "/:homeId/devices/:deviceId/wifi",
+  requireAuth,
+  validateParams(deviceParams),
+  requireHomeMember("member"),
+  validateBody(wifiSchema),
+  deviceController.setWifi,
+);
+
+/** Status LED on/off — site se, firmware NVS me persist (restart pe yaad rahe). */
+deviceRouter.post(
+  "/:homeId/esp/:espId/led",
+  requireAuth,
+  validateParams(espParams),
+  requireHomeMember("member"),
+  validateBody(ledSchema),
+  deviceController.setLed,
+);
+
 /** User apne home ke ESP board ka naam rename karo (unique naam rule). */
 deviceRouter.post(
   "/:homeId/devices/:deviceId/ota",
@@ -89,4 +146,27 @@ deviceRouter.patch(
   requireHomeMember("admin"),
   validateBody(espNameSchema),
   deviceController.renameEsp,
+);
+
+/** Usage analytics — device_logs se (toggles/day, on-time per device, per member). */
+deviceRouter.get(
+  "/:homeId/analytics/usage",
+  requireAuth,
+  validateParams(idParams),
+  requireHomeMember("viewer"),
+  async (req, res) => {
+    const days = Math.min(Math.max(Number(req.query.days) || 7, 1), 90);
+    ok(res, await getUsageAnalytics(Number(req.params.homeId), days));
+  },
+);
+
+/** Phase 7 — usage patterns se automation suggestions (viewer+ dekh sakta hai). */
+deviceRouter.get(
+  "/:homeId/automations/suggestions",
+  requireAuth,
+  validateParams(idParams),
+  requireHomeMember("viewer"),
+  async (req, res) => {
+    ok(res, await getAutomationSuggestions(Number(req.params.homeId)));
+  },
 );

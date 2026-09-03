@@ -16,8 +16,18 @@ export async function signup(input: SignupInput): Promise<ApiResponse<LoginRespo
 export async function login(input: {
   usernameEmail: string;
   password: string;
+  revokeOtherSessions?: boolean;
 }): Promise<ApiResponse<LoginResponse>> {
   const { data } = await api.post<ApiResponse<LoginResponse>>("/auth/login", input);
+  return data;
+}
+
+export async function revokeUnauth(input: {
+  usernameEmail: string;
+  password: string;
+  sessionId: number;
+}): Promise<ApiResponse<any[]>> {
+  const { data } = await api.post<ApiResponse<any[]>>("/auth/revoke-unauth", input);
   return data;
 }
 
@@ -26,7 +36,28 @@ export async function updateProfile(input: {
   email?: string;
   currentPassword?: string;
   newPassword?: string;
+  avatarUrl?: string | null;
+  dob?: string | null;
+  gender?: string | null;
+  phone?: string | null;
+  address?: string | null;
 }): Promise<ApiResponse<AuthUser>> {
   const { data } = await api.patch<ApiResponse<AuthUser>>("/auth/me", input);
+  return data;
+}
+
+export async function forgotPassword(email: string): Promise<ApiResponse<{ sent: true }>> {
+  const { data } = await api.post<ApiResponse<{ sent: true }>>("/auth/forgot-password", { email });
+  return data;
+}
+
+export async function resetPassword(
+  token: string,
+  newPassword: string,
+): Promise<ApiResponse<{ message: string }>> {
+  const { data } = await api.post<ApiResponse<{ message: string }>>("/auth/reset-password", {
+    token,
+    newPassword,
+  });
   return data;
 }

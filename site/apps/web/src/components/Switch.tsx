@@ -5,29 +5,33 @@ export function Switch({
   checked,
   onChange,
   disabled,
+  pending,
   label,
 }: {
   checked: boolean;
   onChange: () => void;
   disabled?: boolean;
+  /** True = command bheji gayi, ESP confirm nahi hua abhi — pulse + disabled. */
+  pending?: boolean;
   /** Accessibility ke liye (screen reader). */
   label?: string;
 }) {
+  const blocked = disabled || pending;
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
-      aria-label={label}
+      aria-label={pending ? `${label ?? ""} (pending)` : label}
       onClick={onChange}
-      disabled={disabled}
-      className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 dark:focus-visible:ring-offset-night-800 ${
+      disabled={blocked}
+      className={`relative inline-flex h-8 w-14 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 dark:focus-visible:ring-offset-night-800 ${
         checked ? "bg-brand" : "bg-gray-300 dark:bg-night-600"
-      } ${disabled ? "cursor-wait opacity-60" : ""}`}
+      } ${pending ? "animate-pulse" : ""} ${blocked ? "cursor-wait opacity-60" : ""}`}
     >
       <span
-        className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform duration-300 ${
-          checked ? "translate-x-6" : "translate-x-1"
+        className={`inline-block h-6 w-6 transform rounded-full bg-white shadow-md transition-transform duration-300 ${
+          checked ? "translate-x-7" : "translate-x-1"
         }`}
       />
     </button>

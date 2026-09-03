@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import jwt from "jsonwebtoken";
 import { requireAuth } from "../middleware/auth";
+import { rateLimit } from "../middleware/rateLimit";
 import { validateBody } from "../middleware/validate";
 import { prisma } from "../lib/prisma";
 import { AppError, ok } from "../lib/response";
@@ -11,8 +12,46 @@ import { saveAttachment, readAttachmentFile, deleteAttachmentFile } from "../lib
 import { sendSupportReplyEmail } from "../lib/email.service";
 import { env } from "../config/env";
 import type { AccessTokenPayload } from "@robosphere/shared";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
+import { attachmentDir } from "../lib/paths";
 
 export const supportRouter = Router();
+
+try {
+  if (!fs.existsSync(attachmentDir)) {
+    fs.mkdirSync(attachmentDir, { recursive: true });
+  }
+} catch (e) {}
+
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, attachmentDir),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname) || '';
+    const safeName = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9_-]/g, '');
+    cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}-${safeName}${ext}`);
+  }
+});
+
+const upload = multer({ 
+  storage, 
+  limits: { fileSize: 50 * 1024 * 1024 } // 50MB
+});
+
+// Support chat spam / flood se bachao — message send per IP.
+const userSendLimiter = rateLimit({
+  name: "support:user-send",
+  windowMs: 60_000,
+  max: 10,
+  message: "Bahut fast messages bhej rahe ho — thodi der ruk kar bhejo",
+});
+const adminSendLimiter = rateLimit({
+  name: "support:admin-send",
+  windowMs: 60_000,
+  max: 30,
+  message: "Bahut fast messages bhej rahe ho — thodi der ruk kar bhejo",
+});
 
 /** Attachment validation — photo/invoice/screenshot, max ~2MB. */
 const MAX_ATTACHMENT_BYTES = 2 * 1024 * 1024;
@@ -96,6 +135,48 @@ async function isMuted(viewerId: number, peerUserId: number): Promise<boolean> {
 
 // ---------- Admin side ----------
 
+/**
+ * Admin: kisi bhi user ko dhoondo — naya chat shuru karne ke liye (user ne
+ * pehle support me message nahi kiya ho to bhi). Username/email se search,
+ * saath me thread info (kitne messages hain, aakhri kab).
+ */
+supportRouter.get("/admin/users", requireAuth, async (req, res) => {
+  if (req.user!.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
+  const q = String(req.query.q ?? "").trim().toLowerCase();
+  if (q.length < 2) return ok(res, { users: [] });
+  const users = await prisma.user.findMany({
+    where: {
+      OR: [{ username: { contains: q } }, { email: { contains: q } }],
+    },
+    select: {
+      id: true,
+      username: true,
+      email: true,
+      role: true,
+      status: true,
+      createdAt: true,
+
+    },
+    orderBy: { createdAt: "desc" },
+    take: 25,
+  });
+  const info = await supportModel().groupBy({
+    by: ["userId"],
+    where: { userId: { in: users.map((u) => u.id) }, deletedAt: null },
+    _count: { _all: true },
+    _max: { createdAt: true },
+  });
+  const infoMap = new Map(info.map((m) => [m.userId, { count: m._count._all, lastAt: m._max.createdAt }]));
+  ok(
+    res,
+    users.map((u) => ({
+      ...u,
+      messageCount: infoMap.get(u.id)?.count ?? 0,
+      lastMessageAt: infoMap.get(u.id)?.lastAt ?? null,
+    })),
+  );
+});
+
 /** Admin: kisi user ka poora support thread. */
 supportRouter.get("/admin/messages", requireAuth, async (req, res) => {
   const userId = Number(req.query.userId);
@@ -130,7 +211,7 @@ const adminSendSchema = z
   });
 
 /** Admin: user ko support message bhejo → user ko notification + realtime. */
-supportRouter.post("/admin/messages", requireAuth, validateBody(adminSendSchema), async (req, res) => {
+supportRouter.post("/admin/messages", requireAuth, adminSendLimiter, validateBody(adminSendSchema), async (req, res) => {
   if (req.user!.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
   const { userId, message } = req.body;
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, username: true, email: true } });
@@ -165,7 +246,9 @@ supportRouter.post("/admin/messages", requireAuth, validateBody(adminSendSchema)
       body: JSON.stringify({ u: req.user!.sub, t: message.slice(0, 200) }),
     });
   }
+  // Sender (Admin) aur Recipient (User) dono ko emit karo taaki dono ke multi-session sync ho
   emitToUser(userId, "support:new", { senderRole: "admin", message: created });
+  emitToUser(req.user!.sub, "support:new", { senderRole: "admin", message: created });
 
   // Email notification — user ko jab admin reply kare (SMTP configured ho to; nahi to skip)
   if (user.email) {
@@ -211,7 +294,7 @@ const userSendSchema = z
     refineAttachment(d, ctx);
   });
 
-supportRouter.post("/messages", requireAuth, validateBody(userSendSchema), async (req, res) => {
+supportRouter.post("/messages", requireAuth, userSendLimiter, validateBody(userSendSchema), async (req, res) => {
   const userId = req.user!.sub;
   const created = await supportModel().create({
     data: {
@@ -250,6 +333,97 @@ supportRouter.post("/messages", requireAuth, validateBody(userSendSchema), async
     }
     emitToUser(admin.id, "support:new", { senderRole: "user", message: created });
   }
+
+  // Sender (User) ko bhi emit karo taaki uske web/mobile dono devices sync ho jayen
+  emitToUser(userId, "support:new", { senderRole: "user", message: created });
+
+  ok(res, created, 201);
+});
+
+// New media upload endpoint for USER
+supportRouter.post("/messages/media", requireAuth, userSendLimiter, upload.single('file'), async (req, res) => {
+  const userId = req.user!.sub;
+  const message = req.body.message || '';
+
+  if (!req.file && !message) {
+    throw new AppError("VALIDATION_ERROR", "Message or file required", 400);
+  }
+
+  const created = await supportModel().create({
+    data: {
+      userId,
+      senderRole: "user",
+      senderName: req.user!.username,
+      message: message,
+      attachmentName: req.file?.originalname ?? null,
+      attachmentType: req.file?.mimetype ?? null,
+      attachmentData: null,
+      attachmentPath: req.file?.filename ?? null, 
+      readByUser: true,
+      readByAdmin: false,
+    },
+  });
+
+  const admin = await prisma.user.findFirst({
+    where: { role: "system_admin" },
+    select: { id: true },
+    orderBy: { id: "asc" },
+  });
+  if (admin) {
+    if (!(await isMuted(admin.id, req.user!.sub))) {
+      await createNotification(admin.id, {
+        category: "support",
+        type: "info",
+        title: "📲 User ne support me media bheja",
+        body: JSON.stringify({ u: req.user!.sub, t: "Media file uploaded" }),
+      });
+    }
+    emitToUser(admin.id, "support:new", { senderRole: "user", message: created });
+  }
+  emitToUser(userId, "support:new", { senderRole: "user", message: created });
+
+  ok(res, created, 201);
+});
+
+// New media upload endpoint for ADMIN
+supportRouter.post("/admin/messages/media", requireAuth, adminSendLimiter, upload.single('file'), async (req, res) => {
+  if (req.user!.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
+  const userId = Number(req.body.userId);
+  const message = req.body.message || '';
+
+  if (!Number.isInteger(userId) || userId <= 0) throw new AppError("VALIDATION_ERROR", "Valid userId required", 400);
+  if (!req.file && !message) throw new AppError("VALIDATION_ERROR", "Message or file required", 400);
+
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, username: true, email: true } });
+  if (!user) throw new AppError("NOT_FOUND", "User not found", 404);
+
+  const created = await supportModel().create({
+    data: {
+      userId,
+      senderRole: "admin",
+      senderName: req.user!.username,
+      message: message,
+      attachmentName: req.file?.originalname ?? null,
+      attachmentType: req.file?.mimetype ?? null,
+      attachmentData: null,
+      attachmentPath: req.file?.filename ?? null,
+      readByUser: false,
+      readByAdmin: true,
+    },
+  });
+
+  if (!(await isMuted(userId, req.user!.sub))) {
+    await createNotification(userId, {
+      category: "support",
+      type: "info",
+      title: "🎧 Support ne media bheja",
+      body: JSON.stringify({ u: req.user!.sub, t: "Media file sent" }),
+    });
+  }
+
+  emitToUser(userId, "support:new", { senderRole: "admin", message: created });
+  emitToUser(req.user!.sub, "support:new", { senderRole: "admin", message: created });
+
   ok(res, created, 201);
 });
 
@@ -297,8 +471,7 @@ supportRouter.get("/attachment/:id", async (req, res) => {
  * count nahi hote — warna badge kabhi hat hi na (user delete kare to bhi badha rahta tha).
  */
 supportRouter.get("/admin/unread-count", requireAuth, async (req, res) => {
-  if (req.user!.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
-  // Defensive: agar Prisma client purana generate hua ho (model missing) to crash mat karo.
+  if (req.user!.role !== "system_admin") return ok(res, { unread: 0 });
   if (!prisma.supportMessage) return ok(res, { unread: 0 });
   const groups = await supportModel().groupBy({
     by: ["userId"],
@@ -351,9 +524,9 @@ supportRouter.get("/admin/conversations", requireAuth, async (req, res) => {
   const users =
     userIds.length > 0
       ? await prisma.user.findMany({
-          where: { id: { in: userIds } },
-          select: { id: true, username: true, email: true },
-        })
+        where: { id: { in: userIds } },
+        select: { id: true, username: true, email: true },
+      })
       : [];
   const userMap = new Map(users.map((u) => [u.id, u]));
   const conversations = [...byUser.entries()]
@@ -415,7 +588,7 @@ supportRouter.get("/admin/context", requireAuth, async (req, res) => {
       role: true,
       status: true,
       createdAt: true,
-      lastLoginAt: true,
+
     },
   });
   if (!user) throw new AppError("NOT_FOUND", "User not found", 404);
@@ -458,40 +631,40 @@ supportRouter.get("/admin/context", requireAuth, async (req, res) => {
   const [devices, esps] =
     homeIds.length > 0
       ? await Promise.all([
-          prisma.device.findMany({
-            where: { homeId: { in: homeIds } },
-            select: {
-              id: true,
-              name: true,
-              type: true,
-              status: true,
-              serialNumber: true,
-              offline: true,
-              lastSeen: true,
-              room: { select: { name: true } },
-              home: { select: { name: true } },
-            },
-            orderBy: { name: "asc" },
-            take: 100,
-          }),
-          prisma.espDevice.findMany({
-            where: { homeId: { in: homeIds } },
-            select: {
-              id: true,
-              name: true,
-              macAddress: true,
-              serialCode: true,
-              modelCode: true,
-              firmwareVersion: true,
-              offline: true,
-              ipAddress: true,
-              lastSeen: true,
-              home: { select: { name: true } },
-            },
-            orderBy: { id: "asc" },
-            take: 50,
-          }),
-        ])
+        prisma.device.findMany({
+          where: { homeId: { in: homeIds } },
+          select: {
+            id: true,
+            name: true,
+            type: true,
+            status: true,
+            serialNumber: true,
+            offline: true,
+            lastSeen: true,
+            room: { select: { name: true } },
+            home: { select: { name: true } },
+          },
+          orderBy: { name: "asc" },
+          take: 100,
+        }),
+        prisma.espDevice.findMany({
+          where: { homeId: { in: homeIds } },
+          select: {
+            id: true,
+            name: true,
+            macAddress: true,
+            serialCode: true,
+            modelCode: true,
+            firmwareVersion: true,
+            offline: true,
+            ipAddress: true,
+            lastSeen: true,
+            home: { select: { name: true } },
+          },
+          orderBy: { id: "asc" },
+          take: 50,
+        }),
+      ])
       : [[], []];
 
   ok(res, {

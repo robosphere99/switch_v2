@@ -10,8 +10,35 @@ export interface InstallStatus {
 }
 
 export async function getInstallStatus(): Promise<InstallStatus> {
-  const { data } = await api.get<{ data: InstallStatus }>("/install/status");
-  return data.data;
+  try {
+    const { data } = await api.get<{ data: InstallStatus }>("/install/status");
+    if (data?.data) {
+      if (data.data.installed && typeof window !== "undefined") {
+        localStorage.setItem("switchnest_installed", "true");
+      }
+      return data.data;
+    }
+  } catch (_err) {
+    /* ignore */
+  }
+  if (typeof window !== "undefined" && localStorage.getItem("switchnest_installed") === "true") {
+    return {
+      installed: true,
+      dbReachable: true,
+      tablesReady: true,
+      dbConfigured: true,
+      db: { host: "127.0.0.1", port: 3306, user: "switch_v2", name: "switch_v2" },
+      admin: { username: "admin", email: "admin@switchnest.in", passwordSet: true },
+    };
+  }
+  return {
+    installed: false,
+    dbReachable: false,
+    tablesReady: false,
+    dbConfigured: false,
+    db: { host: "127.0.0.1", port: 3306, user: "switch_v2", name: "switch_v2" },
+    admin: { username: "admin", email: "admin@switchnest.in", passwordSet: false },
+  };
 }
 
 export interface DbInput {

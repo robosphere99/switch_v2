@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileText, Home, KeyRound, LayoutDashboard, Lightbulb, MessageSquare, RadioTower, ScrollText, Settings, ShoppingCart, Users, type LucideIcon } from "lucide-react";
+import { FileText, Home, KeyRound, LayoutDashboard, Lightbulb, MessageSquare, RadioTower, ScrollText, Settings, ShoppingCart, Users, Wrench, type LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
@@ -31,21 +31,28 @@ import {
   getAdminLogs,
   getAdminDiagnostics,
   getDeployInfo,
+  type DeployInfo,
   getDeviceSupport,
   adminSetDeviceStatus,
   clearDeviceCommands,
   getEspHistory,
   findAnything,
-} from "../api/admin";import MemoryTrendChart from "../components/MemoryTrendChart";
+  createUser,
+  resetUserPassword,
+  sendResetEmail,
+} from "../api/admin"; import MemoryTrendChart from "../components/MemoryTrendChart";
 
 import { Modal } from "../components/Modal";
 import { AdminShop } from "../components/AdminShop";
 import { AdminSupport } from "../components/AdminSupport";
 import { AdminSettings } from "../components/AdminSettings";
 import { SupportChatModal } from "../components/SupportChatModal";
+import { AdminFlasherGuide } from "../components/AdminFlasherGuide";
+import { BoardTerminalModal } from "../components/BoardTerminalModal";
 import { getSocket } from "../lib/socket";
+import { extractApiError } from "../api/client";
 
-type Tab = "overview" | "users" | "homes" | "devices" | "ota" | "shop" | "keys" | "audit" | "logs" | "support" | "settings";
+type Tab = "overview" | "users" | "homes" | "devices" | "ota" | "shop" | "keys" | "audit" | "logs" | "support" | "settings" | "flasher";
 
 const TABS: Array<{ id: Tab; label: string; icon: LucideIcon }> = [
   { id: "overview", label: "Overview", icon: LayoutDashboard },
@@ -60,6 +67,7 @@ const TABS: Array<{ id: Tab; label: string; icon: LucideIcon }> = [
   { id: "audit", label: "Audit Log", icon: ScrollText },
   { id: "logs", label: "Logs", icon: FileText },
   { id: "settings", label: "Settings", icon: Settings },
+  { id: "flasher", label: "Flasher Guide", icon: Wrench },
 ];
 
 function Badge({ children, color }: { children: React.ReactNode; color: string }) {
@@ -79,6 +87,34 @@ function fmtUptime(sec: number): string {
   return `${s2}s`;
 }
 
+/** CI status badge + details — deploy info cards me (Overview + Logs). */
+function CiStrip({ ci }: { ci: NonNullable<DeployInfo["ci"]> }) {
+  const badge =
+    ci.status === "pass" ? (
+      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 font-semibold text-emerald-500">🟢 pass</span>
+    ) : ci.status === "fail" ? (
+      <span className="inline-flex items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 font-semibold text-red-400">🔴 fail</span>
+    ) : ci.status === "pending" ? (
+      <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 font-semibold text-amber-500">🟡 running</span>
+    ) : (
+      <span className="inline-flex items-center gap-1 rounded-full bg-gray-500/15 px-2 py-0.5 font-semibold text-gray-400">⚪ unknown</span>
+    );
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-gray-200 pt-3 text-xs">
+      <span className="font-bold uppercase tracking-wide text-gray-500">CI</span>
+      {badge}
+      {ci.workflow && <span className="text-gray-500">· {ci.workflow}</span>}
+      {ci.runId && <span className="font-mono text-gray-500">· run #{ci.runId}</span>}
+      {ci.updatedAt && (
+        <span className="text-gray-500">
+          · {new Date(ci.updatedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
+        </span>
+      )}
+      {ci.reason && <span className="text-amber-500">· {ci.reason}</span>}
+    </div>
+  );
+}
+
 export function Admin() {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<Tab>("overview");
@@ -90,6 +126,14 @@ export function Admin() {
   const [findQ, setFindQ] = useState("");
   const [findIdx, setFindIdx] = useState(0);
   const [chatUser, setChatUser] = useState<{ id: number; username: string } | null>(null);
+  // New user form
+  const [showNewUserForm, setShowNewUserForm] = useState(false);
+  const [newUserForm, setNewUserForm] = useState({ username: "", email: "", password: "", role: "user" as string });
+  const [newUserMsg, setNewUserMsg] = useState<string | null>(null);
+  // Reset password modal
+  const [resetPwUser, setResetPwUser] = useState<{ id: number; username: string } | null>(null);
+  const [resetPw, setResetPw] = useState("");
+  const [resetPwMsg, setResetPwMsg] = useState<string | null>(null);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   // Support inbox — notification deep-link se khulta hai (/admin?tab=support&user=<id>)
@@ -171,6 +215,7 @@ export function Admin() {
   const [fwNotes, setFwNotes] = useState("");
   const [otaMsg, setOtaMsg] = useState<string | null>(null);
   const [histFor, setHistFor] = useState<number | null>(null);
+  const [termEsp, setTermEsp] = useState<{ id: number; mac: string } | null>(null);
 
   const stats = useQuery({ queryKey: ["admin-stats"], queryFn: getStats, refetchInterval: 15_000 });
   const users = useQuery({ queryKey: ["admin-users", q], queryFn: () => listUsers(q || undefined), refetchInterval: 15_000 });
@@ -190,8 +235,8 @@ export function Admin() {
   const deployInfo = useQuery({
     queryKey: ["admin-deploy-info"],
     queryFn: getDeployInfo,
-    enabled: tab === "logs",
-    refetchInterval: tab === "logs" ? 60_000 : false,
+    enabled: tab === "logs" || tab === "overview",
+    refetchInterval: tab === "logs" || tab === "overview" ? 60_000 : false,
   });
   const devices = useQuery({ queryKey: ["admin-devices", q], queryFn: () => listAllDevices(q || undefined), refetchInterval: 10_000 });
   const keys = useQuery({ queryKey: ["admin-keys"], queryFn: listAllApiKeys, refetchInterval: 30_000 });
@@ -220,6 +265,36 @@ export function Admin() {
     mutationFn: deleteUser,
     onSuccess: invalidate,
   });
+  const createUserM = useMutation({
+    mutationFn: createUser,
+    onSuccess: (r) => {
+      invalidate();
+      if (r.success) {
+        setNewUserMsg(`✅ User "${r.data.username}" ban gaya`);
+        setShowNewUserForm(false);
+        setNewUserForm({ username: "", email: "", password: "", role: "user" });
+      }
+    },
+    onError: (err) => setNewUserMsg(`❌ ${extractApiError(err).message}`),
+  });
+  const resetPasswordM = useMutation({
+    mutationFn: ({ id, password }: { id: number; password: string }) => resetUserPassword(id, password),
+    onSuccess: (r) => {
+      invalidate();
+      if (r.success) {
+        setResetPwMsg(r.data.message);
+        setTimeout(() => { setResetPwUser(null); setResetPw(""); setResetPwMsg(null); }, 1500);
+      }
+    },
+    onError: () => setResetPwMsg("❌ Password reset fail"),
+  });
+  const sendResetEmailM = useMutation({
+    mutationFn: sendResetEmail,
+    onSuccess: (r) => {
+      if (r.success) alert(r.data.message);
+    },
+    onError: () => alert("❌ Reset email bhejne me fail"),
+  });
   const setHomeStatusM = useMutation({
     mutationFn: ({ id, status }: { id: number; status: "active" | "suspended" }) => setHomeStatus(id, status),
     onSuccess: invalidate,
@@ -244,6 +319,7 @@ export function Admin() {
     mutationFn: pushOta,
     onSuccess: invalidate,
   });
+
   const pushAllM = useMutation({
     mutationFn: pushOtaAll,
     onSuccess: invalidate,
@@ -322,19 +398,19 @@ export function Admin() {
   const s = stats.data?.success ? stats.data.data : null;
   const statCards = s
     ? [
-        { label: "Total Users", value: s.users, icon: "👤", sub: `${s.activeToday} active today · ${s.newUsers7d} new (7d)` },
-        { label: "Revenue", value: `₹${s.revenueTotal.toLocaleString("en-IN")}`, icon: "💰", sub: `₹${s.revenueThisMonth.toLocaleString("en-IN")} this month` },
-        { label: "Orders", value: s.orders, icon: "🛒", sub: `${s.pendingOrders} pending · ${s.ordersToday} today` },
-        { label: "Homes", value: s.homes, icon: "🏠", sub: "platform-wide" },
-        { label: "Devices", value: s.devices, icon: "💡", sub: `${s.onlineDevices} online now` },
-        { label: "ESP Boards", value: `${s.espBoards - s.offlineBoards}/${s.espBoards}`, icon: "📡", sub: `${s.offlineBoards} offline` },
-        { label: "API Requests (24h)", value: s.requests.last24h.toLocaleString("en-IN"), icon: "📨", sub: `${s.requests.today.toLocaleString("en-IN")} today · ${s.requests.total.toLocaleString("en-IN")} all-time` },
-        { label: "Support Messages", value: s.supportMessages, icon: "🛠️", sub: `${s.contactMessages} contact msgs` },
-        { label: "Pending Commands", value: s.pendingCommands, icon: "⚡", sub: "awaiting ESP32" },
-        { label: "API Keys", value: s.apiKeys, icon: "🔑", sub: "device access" },
-        { label: "Audit Events", value: s.auditCount, icon: "📜", sub: "tracked actions" },
-        { label: "ESP Logs (24h)", value: s.deviceLogs24h.toLocaleString("en-IN"), icon: "🗄️", sub: "device activity" },
-      ]
+      { label: "Total Users", value: s.users, icon: "👤", sub: `${s.activeToday} active today · ${s.newUsers7d} new (7d)` },
+      { label: "Revenue", value: `₹${s.revenueTotal.toLocaleString("en-IN")}`, icon: "💰", sub: `₹${s.revenueThisMonth.toLocaleString("en-IN")} this month` },
+      { label: "Orders", value: s.orders, icon: "🛒", sub: `${s.pendingOrders} pending · ${s.ordersToday} today` },
+      { label: "Homes", value: s.homes, icon: "🏠", sub: "platform-wide" },
+      { label: "Devices", value: s.devices, icon: "💡", sub: `${s.onlineDevices} online now` },
+      { label: "ESP Boards", value: `${s.espBoards - s.offlineBoards}/${s.espBoards}`, icon: "📡", sub: `${s.offlineBoards} offline` },
+      { label: "API Requests (24h)", value: s.requests.last24h.toLocaleString("en-IN"), icon: "📨", sub: `${s.requests.today.toLocaleString("en-IN")} today · ${s.requests.total.toLocaleString("en-IN")} all-time` },
+      { label: "Support Messages", value: s.supportMessages, icon: "🛠️", sub: `${s.contactMessages} contact msgs` },
+      { label: "Pending Commands", value: s.pendingCommands, icon: "⚡", sub: "awaiting ESP32" },
+      { label: "API Keys", value: s.apiKeys, icon: "🔑", sub: "device access" },
+      { label: "Audit Events", value: s.auditCount, icon: "📜", sub: "tracked actions" },
+      { label: "ESP Logs (24h)", value: s.deviceLogs24h.toLocaleString("en-IN"), icon: "🗄️", sub: "device activity" },
+    ]
     : [];
 
   return (
@@ -440,11 +516,10 @@ export function Admin() {
                                   onMouseEnter={() => setGsIdx(idx)}
                                   onClick={() => jump(sec.tab)}
                                   ref={active ? (el) => { if (el) el.scrollIntoView({ block: "nearest" }); } : undefined}
-                                  className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition ${
-                                    active
-                                      ? "bg-brand/20 text-brand"
-                                      : "text-gray-700 hover:bg-night-800 hover:text-brand"
-                                  }`}
+                                  className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition ${active
+                                    ? "bg-brand/20 text-brand"
+                                    : "text-gray-700 hover:bg-night-800 hover:text-brand"
+                                    }`}
                                 >
                                   <span className="truncate font-medium">
                                     {(item as { name?: string; username?: string; orderNumber?: string; serialCode?: string }).name ??
@@ -471,18 +546,17 @@ export function Admin() {
       </div>
 
       {/* Tabs */}
-      <div className="mb-8 flex flex-wrap gap-2">
+      <div className="mb-8 flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
         {TABS.map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`rounded-lg border px-4 py-2 text-sm font-semibold transition ${
-              tab === t.id
-                ? "border-brand bg-brand/20 text-brand"
-                : "border-gray-200 bg-night-800 text-gray-600 hover:border-gray-500"
-            }`}
+            className={`flex shrink-0 items-center gap-2 rounded-xl border px-4 py-2.5 text-[13px] font-semibold transition ${tab === t.id
+              ? "border-brand bg-brand/10 text-brand outline-none ring-2 ring-brand/20"
+              : "border-gray-200 bg-night-800 text-gray-600 hover:bg-gray-50 dark:border-night-600 dark:bg-night-900 dark:text-gray-400 dark:hover:bg-night-800"
+              }`}
           >
-            <t.icon className="h-4 w-4" />
+            <t.icon className="h-[18px] w-[18px] opacity-80" />
             {t.label}
           </button>
         ))}
@@ -490,6 +564,21 @@ export function Admin() {
 
       {tab === "overview" && (
         <div>
+          {stats.data?.success && stats.data.data.leak?.leaking && stats.data.data.leak.detail && (
+            <div className="mb-6 rounded-xl border border-red-500/40 bg-red-500/10 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="font-semibold text-red-400">🧠 Memory leak detected!</h2>
+                <span className="rounded-full bg-red-500/20 px-2 py-0.5 text-xs font-semibold text-red-300">
+                  PID {stats.data.data.leak.detail.pid} · +{Math.round(stats.data.data.leak.detail.growthPct)}%
+                </span>
+              </div>
+              <p className="mt-1 text-sm text-gray-300">
+                RSS +{stats.data.data.leak.detail.growthPct.toFixed(0)}% in last {stats.data.data.leak.detail.spanH.toFixed(1)}h (
+                {stats.data.data.leak.detail.rssFirst.toFixed(0)} → {stats.data.data.leak.detail.rssLast.toFixed(0)} MB) — process consistently
+                badh raha hai. Logs tab me leak monitor + incident history dekh sakte ho.
+              </p>
+            </div>
+          )}
           <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {statCards.map((c) => (
               <div key={c.label} className="rounded-xl border border-gray-200 bg-night-800 p-6">
@@ -500,6 +589,81 @@ export function Admin() {
               </div>
             ))}
           </div>
+
+          {/* Deploy info — last code update (Overview pe bhi, Logs tab jaisa) */}
+          {(deployInfo.data?.success || deployInfo.isFetching) && (
+            <div className="mb-8 rounded-xl border border-emerald-500/30 bg-night-800 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-bold uppercase text-emerald-500">🚀 Last code update</p>
+                {deployInfo.data?.success && deployInfo.data.data.deployedAt && (
+                  <span className="text-[11px] text-gray-500">
+                    {new Date(deployInfo.data.data.deployedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
+                  </span>
+                )}
+              </div>
+              {deployInfo.data?.success && deployInfo.data.data.sync?.status === "lagging" && (
+                <div className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-600">
+                  ⚠️ <b>Deploy lagging</b> — main pe{" "}
+                  <span className="font-mono font-semibold">{deployInfo.data.data.sync.latestCommit?.slice(0, 7)}</span>{" "}
+                  {deployInfo.data.data.sync.ageMin !== null && `${deployInfo.data.data.sync.ageMin} min`} pehle push hua, par live site abhi bhi{" "}
+                  <span className="font-mono font-semibold">{deployInfo.data.data.sync.deployedCommit?.slice(0, 7)}</span> pe hai. Webhook delivery check karo — GitHub → Settings → Webhooks → Recent Deliveries → Redeliver.
+                </div>
+              )}
+              {deployInfo.data?.success && deployInfo.data.data.sync?.status === "local" && (
+                <div className="mt-3 rounded-lg border border-gray-500/40 bg-night-900 px-3 py-2 text-xs text-gray-400">
+                  🖥️ <b>Local dev mode</b> — running code{" "}
+                  <span className="font-mono font-semibold">{deployInfo.data.data.sync.deployedCommit?.slice(0, 7)}</span>{" "}
+                  (git checkout) · GitHub main{" "}
+                  <span className="font-mono font-semibold">{deployInfo.data.data.sync.latestCommit?.slice(0, 7)}</span>{" "}
+                  pe hai. Production deploy milestone pe hoga — abhi koi action nahi chahiye.
+                </div>
+              )}
+              {deployInfo.data?.success && deployInfo.data.data.sync?.status === "pending" && (
+                <div className="mt-3 rounded-lg border border-blue-500/40 bg-blue-500/10 px-3 py-2 text-xs text-blue-400">
+                  ⏳ <b>Deploying…</b> latest commit{" "}
+                  <span className="font-mono font-semibold">{deployInfo.data.data.sync.latestCommit?.slice(0, 7)}</span> abhi push hua hai — auto-deploy live hone me ~1 min lagta hai.
+                </div>
+              )}
+              {deployInfo.data?.success ? (
+                <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Commit</p>
+                    <p className="mt-0.5 font-mono text-xs font-semibold text-night-950">
+                      {(deployInfo.data.data.sync?.deployedCommit || deployInfo.data.data.git?.commit || deployInfo.data.data.latest?.commit || "—").slice(0, 12)}
+                      {deployInfo.data.data.git?.commit && deployInfo.data.data.marker?.commit && deployInfo.data.data.git.commit !== deployInfo.data.data.marker.commit
+                        ? " ⚠️ mismatch"
+                        : deployInfo.data.data.sync?.status === "lagging" && deployInfo.data.data.marker?.commit && deployInfo.data.data.latest?.commit && deployInfo.data.data.marker.commit !== deployInfo.data.data.latest.commit
+                          ? " ⚠️ behind main"
+                          : ""}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Branch</p>
+                    <p className="mt-0.5 font-semibold text-night-950">
+                      {deployInfo.data.data.git?.branch || deployInfo.data.data.marker?.branch || deployInfo.data.data.latest?.branch || "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">API started</p>
+                    <p className="mt-0.5 font-semibold text-night-950">
+                      {deployInfo.data.data.startedAt
+                        ? new Date(deployInfo.data.data.startedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
+                        : "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Status</p>
+                    <p className="mt-0.5 font-semibold text-night-950">
+                      {deployInfo.data.data.deployedAt ? "✅ Deployed" : "ℹ️ No deploy marker yet"}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <p className="mt-2 text-xs text-gray-600">Loading deploy info…</p>
+              )}
+              {deployInfo.data?.success && deployInfo.data.data.ci && <CiStrip ci={deployInfo.data.data.ci} />}
+            </div>
+          )}
 
           {/* 7-day trend — signups, orders, revenue */}
           {(() => {
@@ -621,73 +785,215 @@ export function Admin() {
       )}
 
       {tab === "users" && (
-        <div className="rounded-xl border border-gray-200 bg-night-800 p-5">
-          <h2 className="mb-4 font-semibold">
-            Users <span className="text-sm font-normal text-gray-500">({users.data?.success ? users.data.data.length : "…"})</span>
-          </h2>
-          <div className="space-y-2">
+        <div className="rounded-xl border border-gray-200 bg-night-800 p-4 sm:p-5">
+          {/* Header + search + New User button */}
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="font-semibold">
+              Users <span className="text-sm font-normal text-gray-500">({users.data?.success ? users.data.data.length : "…"})</span>
+            </h2>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => { setShowNewUserForm((v) => !v); setNewUserMsg(null); }}
+                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+              >
+                {showNewUserForm ? "✕ Cancel" : "+ New User"}
+              </button>
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="🔍 Search users..."
+                className="w-full rounded-lg border border-brand/20 bg-night-900 px-3 py-2 text-sm outline-none focus:border-brand sm:w-64"
+              />
+            </div>
+          </div>
+
+          {/* New User Form */}
+          {showNewUserForm && (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                setNewUserMsg(null);
+                createUserM.mutate(newUserForm);
+              }}
+              className="mb-6 grid gap-3 rounded-xl border border-emerald-500/30 bg-night-900 p-5 sm:grid-cols-2"
+            >
+              <input
+                required
+                placeholder="Username *"
+                value={newUserForm.username}
+                onChange={(e) => setNewUserForm((f) => ({ ...f, username: e.target.value }))}
+                className="rounded border border-night-600 bg-night-800 px-3 py-2 text-sm"
+              />
+              <input
+                required
+                type="email"
+                placeholder="Email *"
+                value={newUserForm.email}
+                onChange={(e) => setNewUserForm((f) => ({ ...f, email: e.target.value }))}
+                className="rounded border border-night-600 bg-night-800 px-3 py-2 text-sm"
+              />
+              <input
+                required
+                type="password"
+                placeholder="Password * (min 6 chars)"
+                minLength={6}
+                value={newUserForm.password}
+                onChange={(e) => setNewUserForm((f) => ({ ...f, password: e.target.value }))}
+                className="rounded border border-night-600 bg-night-800 px-3 py-2 text-sm"
+              />
+              <select
+                value={newUserForm.role}
+                onChange={(e) => setNewUserForm((f) => ({ ...f, role: e.target.value }))}
+                className="rounded border border-night-600 bg-night-800 px-3 py-2 text-sm"
+              >
+                <option value="user">User</option>
+                <option value="system_admin">System Admin</option>
+              </select>
+              <button
+                type="submit"
+                className="rounded-lg bg-emerald-600 px-4 py-2 font-semibold text-white hover:bg-emerald-700 sm:col-span-2"
+              >
+                Create User
+              </button>
+              {newUserMsg && <p className="sm:col-span-2 text-xs text-gray-400">{newUserMsg}</p>}
+            </form>
+          )}
+
+          {/* User cards */}
+          <div className="space-y-3">
             {users.data?.success &&
               users.data.data.map((u) => (
-                <div key={u.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 bg-night-900 px-4 py-2.5 text-sm">
-                  <div>
-                    <span className="font-semibold">{u.username}</span>
-                    <span className="ml-2 text-xs text-gray-500">{u.email}</span>
-                    <span className="ml-2 text-xs text-gray-600">
-                      {u._count.ownedHomes} homes · {u._count.memberships} memberships
-                    </span>
-                    <span className={`ml-2 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${
-                      u.role === "system_admin" ? "border-purple-500/40 text-purple-400" : "border-gray-300 text-gray-500"
-                    }`}>
-                      {u.role}
-                    </span>
-                    <span className={`ml-2 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${
-                      u.status === "active" ? "border-emerald-500/40 text-emerald-400" : "border-red-500/40 text-red-400"
-                    }`}>
-                      {u.status}
-                    </span>
+                <div key={u.id} className="overflow-hidden rounded-xl border border-gray-200 bg-night-900">
+                  {/* ── Top row: avatar + identity + badges ── */}
+                  <div className="flex items-start gap-3 px-4 py-3">
+                    {/* Avatar circle */}
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand/10 text-sm font-bold text-brand">
+                      {u.username.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-semibold text-white">{u.username}</span>
+                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${u.role === "system_admin" ? "border-purple-500/40 text-purple-400" : "border-gray-300 text-gray-500"
+                          }`}>
+                          {u.role}
+                        </span>
+                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${u.status === "active" ? "border-emerald-500/40 text-emerald-400" : "border-red-500/40 text-red-400"
+                          }`}>
+                          {u.status}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 truncate text-xs text-gray-500">{u.email}</p>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3">
+
+                  {/* ── Stats row ── */}
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-gray-200/50 px-4 py-2 text-[11px] text-gray-500 dark:border-night-600">
+                    <span>🏠 {u._count.ownedHomes} homes</span>
+                    <span>👥 {u._count.memberships} memberships</span>
+                    <span>📅 joined {new Date(u.createdAt).toLocaleDateString()}</span>
+                    {u.lastLoginAt && (
+                      <span>🕐 last login {new Date(u.lastLoginAt).toLocaleDateString()}</span>
+                    )}
+                  </div>
+
+                  {/* ── Action buttons ── */}
+                  <div className="flex flex-wrap items-center gap-2 border-t border-gray-200/50 px-4 py-2.5 dark:border-night-600">
                     <button
                       onClick={() => selectSupportUser(u.id)}
-                      className="rounded-lg border border-brand/40 bg-brand/10 px-2.5 py-1 text-xs font-semibold text-brand transition hover:bg-brand/20"
-                      title={`${u.username} se seedha support chat kholo (feedback / contact support)`}
+                      className="inline-flex items-center gap-1 rounded-lg border border-brand/40 bg-brand/10 px-3 py-1.5 text-xs font-semibold text-brand transition hover:bg-brand/20"
+                      title={`${u.username} se seedha support chat kholo`}
                     >
                       💬 Message
                     </button>
-                    <span className="text-[11px] text-gray-500">
-                      joined {new Date(u.createdAt).toLocaleDateString()}
-                      {u.lastLoginAt ? ` · last ${new Date(u.lastLoginAt).toLocaleDateString()}` : ""}
-                    </span>
                     <button
                       onClick={() => role.mutate({ id: u.id, r: u.role === "system_admin" ? "user" : "system_admin" })}
-                      className="text-xs font-semibold text-purple-400 hover:text-purple-300"
+                      className="inline-flex items-center gap-1 rounded-lg border border-purple-500/30 bg-purple-500/10 px-3 py-1.5 text-xs font-semibold text-purple-400 transition hover:bg-purple-500/20"
                       title="Toggle admin role"
                     >
-                      {u.role === "system_admin" ? "Demote" : "Make admin"}
+                      {u.role === "system_admin" ? "⬇ Demote" : "⬆ Make admin"}
                     </button>
                     <button
                       onClick={() => setStatus.mutate({ id: u.id, status: u.status === "active" ? "suspended" : "active" })}
-                      className={`text-xs font-semibold ${
-                        u.status === "active" ? "text-amber-600 hover:text-amber-600" : "text-emerald-400 hover:text-emerald-300"
-                      }`}
+                      className={`inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${u.status === "active"
+                        ? "border-amber-500/30 bg-amber-500/10 text-amber-500 hover:bg-amber-500/20"
+                        : "border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
+                        }`}
                     >
-                      {u.status === "active" ? "Suspend" : "Activate"}
+                      {u.status === "active" ? "🚫 Suspend" : "✅ Activate"}
+                    </button>
+                    <button
+                      onClick={() => { setResetPwUser({ id: u.id, username: u.username }); setResetPw(""); setResetPwMsg(null); }}
+                      className="inline-flex items-center gap-1 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-500 transition hover:bg-amber-500/20"
+                      title="Set new password directly (bypass email)"
+                    >
+                      🔑 Reset Password
+                    </button>
+                    <button
+                      onClick={() => sendResetEmailM.mutate(u.id)}
+                      className="inline-flex items-center gap-1 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-xs font-semibold text-blue-400 transition hover:bg-blue-500/20"
+                      title="Send password reset email to user"
+                    >
+                      📧 Send Reset Email
                     </button>
                     <button
                       onClick={() => {
-                        if (confirm(`Delete user "${u.username}"? All their data will be removed.`)) delUser.mutate(u.id);
+                        if (confirm(`Delete user \"${u.username}\"? All their data will be removed.`)) delUser.mutate(u.id);
                       }}
-                      className="text-xs font-semibold text-red-400 hover:text-red-600"
+                      className="ml-auto inline-flex items-center gap-1 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-400 transition hover:bg-red-500/20"
                     >
-                      🗑️
+                      🗑️ Delete
                     </button>
                   </div>
                 </div>
               ))}
             {users.data?.success && users.data.data.length === 0 && (
-              <p className="text-sm text-gray-500">No users match the search.</p>
+              <p className="py-8 text-center text-sm text-gray-500">No users match the search. 😕</p>
             )}
           </div>
+
+          {/* Reset Password Modal */}
+          {resetPwUser && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setResetPwUser(null)}>
+              <div
+                className="w-full max-w-md rounded-2xl border border-amber-500/30 bg-night-800 p-6 shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h3 className="mb-4 text-lg font-bold">🔑 Reset Password — {resetPwUser.username}</h3>
+                <input
+                  type="password"
+                  placeholder="Naya password (min 6 chars)"
+                  minLength={6}
+                  value={resetPw}
+                  onChange={(e) => { setResetPw(e.target.value); setResetPwMsg(null); }}
+                  className="mb-4 w-full rounded border border-night-600 bg-night-900 px-3 py-2 text-sm"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && resetPw.length >= 6) {
+                      resetPasswordM.mutate({ id: resetPwUser.id, password: resetPw });
+                    }
+                  }}
+                />
+                {resetPwMsg && (
+                  <p className="mb-3 text-xs text-emerald-400">{resetPwMsg}</p>
+                )}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => resetPasswordM.mutate({ id: resetPwUser.id, password: resetPw })}
+                    disabled={resetPw.length < 6}
+                    className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+                  >
+                    Set Password
+                  </button>
+                  <button
+                    onClick={() => setResetPwUser(null)}
+                    className="rounded-lg bg-night-700 px-4 py-2 text-sm font-semibold text-gray-300 hover:bg-night-600"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -705,9 +1011,8 @@ export function Admin() {
                     <span className="ml-2 text-xs text-gray-500">
                       owner: {h.owner.username} · {h._count.devices} devices · {h._count.members} members · {h._count.rooms} rooms
                     </span>
-                    <span className={`ml-2 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${
-                      h.status === "active" ? "border-emerald-500/40 text-emerald-400" : "border-red-500/40 text-red-400"
-                    }`}>
+                    <span className={`ml-2 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${h.status === "active" ? "border-emerald-500/40 text-emerald-400" : "border-red-500/40 text-red-400"
+                      }`}>
                       {h.status}
                     </span>
                   </div>
@@ -721,9 +1026,8 @@ export function Admin() {
                     </button>
                     <button
                       onClick={() => setHomeStatusM.mutate({ id: h.id, status: h.status === "active" ? "suspended" : "active" })}
-                      className={`text-xs font-semibold ${
-                        h.status === "active" ? "text-amber-600 hover:text-amber-600" : "text-emerald-400 hover:text-emerald-300"
-                      }`}
+                      className={`text-xs font-semibold ${h.status === "active" ? "text-amber-600 hover:text-amber-600" : "text-emerald-400 hover:text-emerald-300"
+                        }`}
                     >
                       {h.status === "active" ? "Suspend" : "Activate"}
                     </button>
@@ -765,9 +1069,8 @@ export function Admin() {
                         #{d.id} · {d.type}
                         {d.room ? ` · ${d.room.name}` : ""} · home: {d.home.name} ({d.home.owner.username})
                       </span>
-                      <span className={`ml-2 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${
-                        d.status === "on" ? "border-emerald-500/40 text-emerald-400" : "border-gray-300 text-gray-500"
-                      }`}>
+                      <span className={`ml-2 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${d.status === "on" ? "border-emerald-500/40 text-emerald-400" : "border-gray-300 text-gray-500"
+                        }`}>
                         {d.status}
                       </span>
                       {d.serialNumber && <span className="ml-2 text-[10px] text-gray-600">S/N {d.serialNumber}</span>}
@@ -990,9 +1293,8 @@ export function Admin() {
                       <div>
                         <span className="font-mono font-semibold">{v.version}</span>
                         <span
-                          className={`ml-2 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${
-                            v.isCurrent ? "border-emerald-500/40 text-emerald-400" : "border-gray-300 text-gray-500"
-                          }`}
+                          className={`ml-2 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${v.isCurrent ? "border-emerald-500/40 text-emerald-400" : "border-gray-300 text-gray-500"
+                            }`}
                         >
                           {v.isCurrent ? "current" : "old"}
                         </span>
@@ -1064,251 +1366,255 @@ export function Admin() {
                   {esp.data?.success &&
                     esp.data.data.esps.map((espRow) => (
                       <>
-                      <tr key={espRow.id} className="border-b border-gray-200 align-top">
-                        <td className="py-2 pr-3">
-                          <div className="flex items-center gap-2 font-medium">
-                            {espRow.name ?? "ESP"}
-                            <button
-                              title="Board ka naam badlo"
-                              onClick={() => {
-                                const cur = espRow.name ?? "ESP";
-                                const next = window.prompt("ESP board ka naam:", cur);
-                                if (next && next.trim() && next.trim() !== cur) {
-                                  renameM.mutate({ id: espRow.id, name: next.trim() }, {
-                                    onSuccess: (r) => r.success && setOtaMsg(`Board renamed → ${r.data.name}`),
-                                  });
-                                }
-                              }}
-                              className="rounded border border-gray-300 px-1.5 py-0.5 text-[10px] text-gray-500 hover:border-brand/40 hover:text-brand"
-                            >
-                              ✏️
-                            </button>
-                          </div>
-                          <div className="font-mono text-[10px] text-gray-500">{espRow.macAddress}</div>
-                          <div className="mt-0.5 flex items-center gap-1 text-[10px] text-gray-500">
-                            <span>📶</span>
-                            <span>{espRow.ssid ?? "—"}</span>
-                          </div>
-                          {espRow.serialCode && (
-                            <div className="mt-0.5 flex items-center gap-1.5">
-                              <span className="rounded bg-brand/20 px-1.5 py-0.5 font-mono text-[10px] font-bold text-brand">
-                                {espRow.serialCode}
-                              </span>
-                              {espRow.modelCode && (
-                                <span className="rounded bg-night-700 px-1.5 py-0.5 text-[10px] text-gray-500">
-                                  {espRow.modelCode}
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </td>
-                        <td className="py-2 pr-3">
-                          <div className="text-gray-600">{espRow.home.name}</div>
-                          <div className="mt-0.5 flex items-center gap-1.5">
-                            <span className="font-mono text-[10px] text-gray-500" title="API key prefix (full key sirf issue ke waqt dikhta hai)">
-                              🔑 {espRow.home.apiKeys?.[0]?.keyPrefix ?? "no key"}
-                            </span>
-                            <button
-                              onClick={() => issueKeyM.mutate(espRow.id)}
-                              disabled={issueKeyM.isPending}
-                              title="Fresh API key issue — user ko support ke liye de sakte ho"
-                              className="rounded border border-gray-300 px-1.5 py-0.5 text-[10px] text-gray-500 hover:border-brand/40 hover:text-brand disabled:opacity-50"
-                            >
-                              {issueKeyM.isPending ? "…" : "🔑 New"}
-                            </button>
-                          </div>
-                        </td>
-                        <td className="py-2 pr-3">
-                          <div className="flex flex-wrap gap-1">
-                            {espRow.devices.length === 0 && (
-                              <span className="text-xs text-gray-600">—</span>
-                            )}
-                            {espRow.devices.map((dev) => (
-                              <span
-                                key={dev.id}
-                                title={`${dev.room?.name ?? ""} · ${dev.status.toUpperCase()}`}
-                                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] ${
-                                  dev.status === "on"
-                                    ? "border-emerald-500/40 text-emerald-400"
-                                    : "border-gray-300 text-gray-500"
-                                }`}
-                              >
-                                <span
-                                  className={`inline-block h-1.5 w-1.5 rounded-full ${
-                                    dev.status === "on" ? "bg-emerald-400" : "bg-gray-600"
-                                  }`}
-                                />
-                                {dev.name}
-                              </span>
-                            ))}
-                          </div>
-                        </td>
-                        <td className="py-2 pr-3">
-                          {espRow.ipAddress ? (
-                            <span className="inline-flex items-center gap-1.5">
-                              <a
-                                href={`http://${espRow.ipAddress}`}
-                                onClick={(e) => handleIpClick(e, espRow)}
-                                title={`Open ${espRow.ipAddress} (ESP web panel)`}
-                                className="font-mono text-xs text-brand underline decoration-dotted underline-offset-2 hover:text-brand"
-                              >
-                                {espRow.ipAddress}
-                              </a>
-                              {probes[espRow.id]?.state === "probing" && (
-                                <span
-                                  title="Checking reachability…"
-                                  className="inline-block h-3 w-3 animate-spin rounded-full border border-brand/40 border-t-brand"
-                                />
-                              )}
-                              {probes[espRow.id]?.state === "ok" && (
-                                <span
-                                  title={`Reachable (${probes[espRow.id].latencyMs}ms)`}
-                                  className="text-[10px] text-emerald-400"
-                                >
-                                  ●
-                                </span>
-                              )}
-                              {probes[espRow.id]?.state === "fail" && (
-                                <Badge color="border-red-500/40 text-red-400">ESP offline</Badge>
-                              )}
-                            </span>
-                          ) : (
-                            <span className="font-mono text-xs text-brand">—</span>
-                          )}
-                        </td>
-                        <td className="py-2 pr-3">
-                          {espRow.firmwareVersion ?? "—"}
-                          {espRow.otaPendingVersion && (
-                            <Badge color="border-amber-500/40 text-amber-600">⏳ v{espRow.otaPendingVersion}</Badge>
-                          )}
-                          {(() => {
-                            const ota =
-                              liveOta[espRow.id] ??
-                              (espRow.otaStatus ? { progress: espRow.otaProgress ?? 0, status: espRow.otaStatus } : null);
-                            if (!ota || ota.status === "complete") {
-                              return ota?.status === "complete" ? (
-                                <div className="mt-1 text-[10px] text-amber-600">✓ Flashed — rebooting…</div>
-                              ) : null;
-                            }
-                            if (ota.status === "failed") {
-                              return <Badge color="border-red-500/40 text-red-400">OTA failed</Badge>;
-                            }
-                            return (
-                              <div className="mt-1">
-                                <div className="flex items-center gap-2">
-                                  <div className="h-1.5 w-24 overflow-hidden rounded-full bg-gray-100">
-                                    <div
-                                      className="h-full rounded-full bg-brand transition-all"
-                                      style={{ width: `${ota.progress}%` }}
-                                    />
-                                  </div>
-                                  <span className="text-[10px] text-brand">{ota.progress}%</span>
-                                </div>
-                                <span className="text-[10px] text-gray-500">
-                                  {ota.status === "downloading" ? "Downloading…" : "Flashing…"}
-                                </span>
-                              </div>
-                            );
-                          })()}
-                        </td>
-                        <td className="py-2 pr-3">
-                          <Badge
-                            color={!espRow.offline ? "border-emerald-500/40 text-emerald-400" : "border-red-500/40 text-red-400"}
-                          >
-                            {!espRow.offline ? "ONLINE" : "OFFLINE"}
-                          </Badge>
-                        </td>
-                        <td className="py-2 pr-3 text-xs text-gray-500">
-                          {espRow.lastSeen ? new Date(espRow.lastSeen).toLocaleString() : "—"}
-                        </td>
-                        <td className="py-2 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              onClick={() => setHistFor(histFor === espRow.id ? null : espRow.id)}
-                              title="Rename history dekho"
-                              className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-500 hover:border-brand/40 hover:text-brand"
-                            >
-                              🕓
-                            </button>
-                            <button
-                              onClick={() => {
-                                const cur = fw.data?.success ? fw.data.data.current?.version : null;
-                                if (!cur) {
-                                  alert("No firmware published yet — upload a .bin first.");
-                                  return;
-                                }
-                                if (espRow.devices.length === 0) {
-                                  alert("This board has no linked devices yet — waiting for its first heartbeat.");
-                                  return;
-                                }
-                                if (confirm(`Push firmware ${cur} to "${espRow.name ?? espRow.macAddress}"?`)) {
-                                  pushOtaM.mutate(espRow.devices[0].id, {
-                                    onSuccess: (r) => r.success && setOtaMsg(r.data.message),
-                                  });
-                                }
-                              }}
-                              disabled={pushOtaM.isPending}
-                              className="rounded border border-brand/40 px-2.5 py-1 text-xs font-semibold text-brand hover:bg-brand/10 disabled:opacity-50"
-                            >
-                              📤 Push
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                      {histFor === espRow.id && (
-                        <tr className="border-b border-gray-200 bg-night-900/60">
-                          <td colSpan={8} className="px-4 py-3">
-                            <div className="mb-2 flex items-center justify-between">
-                              <span className="text-xs font-bold uppercase tracking-wide text-gray-500">
-                                🕓 Rename history — {espRow.name ?? espRow.macAddress}
-                              </span>
+                        <tr key={espRow.id} className="border-b border-gray-200 align-top">
+                          <td className="py-2 pr-3">
+                            <div className="flex items-center gap-2 font-medium">
+                              {espRow.name ?? "ESP"}
                               <button
-                                onClick={() => setHistFor(null)}
-                                className="text-[10px] text-gray-500 hover:text-gray-600"
+                                title="Board ka naam badlo"
+                                onClick={() => {
+                                  const cur = espRow.name ?? "ESP";
+                                  const next = window.prompt("ESP board ka naam:", cur);
+                                  if (next && next.trim() && next.trim() !== cur) {
+                                    renameM.mutate({ id: espRow.id, name: next.trim() }, {
+                                      onSuccess: (r) => r.success && setOtaMsg(`Board renamed → ${r.data.name}`),
+                                    });
+                                  }
+                                }}
+                                className="rounded border border-gray-300 px-1.5 py-0.5 text-[10px] text-gray-500 hover:border-brand/40 hover:text-brand"
                               >
-                                ✕ close
+                                ✏️
                               </button>
                             </div>
-                            {espHist.isLoading && <p className="text-xs text-gray-500">Loading…</p>}
-                            {espHist.data?.success && espHist.data.data.length === 0 && (
-                              <p className="text-xs text-gray-500">Koi rename nahi hua abhi tak.</p>
-                            )}
-                            {espHist.data?.success && espHist.data.data.length > 0 && (
-                              <div className="flex flex-col gap-2">
-                                {espHist.data.data.map((ev) => (
-                                  <div
-                                    key={ev.id}
-                                    className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-night-800 px-3 py-2 text-xs"
-                                  >
-                                    <span
-                                      className={`rounded px-1.5 py-0.5 font-mono text-[10px] font-bold ${
-                                        ev.action === "admin.esp.rename"
-                                          ? "bg-amber-500/15 text-amber-600"
-                                          : "bg-brand/15 text-brand"
-                                      }`}
-                                    >
-                                      {ev.action === "admin.esp.rename" ? "ADMIN" : "USER"}
-                                    </span>
-                                    <span className="text-gray-600">
-                                      <span className="text-gray-500 line-through decoration-gray-600">
-                                        {ev.meta?.from ?? "—"}
-                                      </span>
-                                      {" → "}
-                                      <span className="font-semibold text-night-950">{ev.meta?.to ?? "—"}</span>
-                                    </span>
-                                    <span className="text-gray-500">
-                                      by {ev.actor?.username ?? "system"}
-                                    </span>
-                                    <span className="ml-auto font-mono text-[10px] text-gray-500">
-                                      {new Date(ev.createdAt).toLocaleString()}
-                                    </span>
-                                  </div>
-                                ))}
+                            <div className="font-mono text-[10px] text-gray-500">{espRow.macAddress}</div>
+                            <div className="mt-0.5 flex items-center gap-1 text-[10px] text-gray-500">
+                              <span>📶</span>
+                              <span>{espRow.ssid ?? "—"}</span>
+                            </div>
+                            {espRow.serialCode && (
+                              <div className="mt-0.5 flex items-center gap-1.5">
+                                <span className="rounded bg-brand/20 px-1.5 py-0.5 font-mono text-[10px] font-bold text-brand">
+                                  {espRow.serialCode}
+                                </span>
+                                {espRow.modelCode && (
+                                  <span className="rounded bg-night-700 px-1.5 py-0.5 text-[10px] text-gray-500">
+                                    {espRow.modelCode}
+                                  </span>
+                                )}
                               </div>
                             )}
                           </td>
+                          <td className="py-2 pr-3">
+                            <div className="text-gray-600">{espRow.home.name}</div>
+                            <div className="mt-0.5 flex items-center gap-1.5">
+                              <span className="font-mono text-[10px] text-gray-500" title="API key prefix (full key sirf issue ke waqt dikhta hai)">
+                                🔑 {espRow.home.apiKeys?.[0]?.keyPrefix ?? "no key"}
+                              </span>
+                              <button
+                                onClick={() => issueKeyM.mutate(espRow.id)}
+                                disabled={issueKeyM.isPending}
+                                title="Fresh API key issue — user ko support ke liye de sakte ho"
+                                className="rounded border border-gray-300 px-1.5 py-0.5 text-[10px] text-gray-500 hover:border-brand/40 hover:text-brand disabled:opacity-50"
+                              >
+                                {issueKeyM.isPending ? "…" : "🔑 New"}
+                              </button>
+                            </div>
+                          </td>
+                          <td className="py-2 pr-3">
+                            <div className="flex flex-wrap gap-1">
+                              {espRow.devices.length === 0 && (
+                                <span className="text-xs text-gray-600">—</span>
+                              )}
+                              {espRow.devices.map((dev) => (
+                                <span
+                                  key={dev.id}
+                                  title={`${dev.room?.name ?? ""} · ${dev.status.toUpperCase()}`}
+                                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] ${dev.status === "on"
+                                    ? "border-emerald-500/40 text-emerald-400"
+                                    : "border-gray-300 text-gray-500"
+                                    }`}
+                                >
+                                  <span
+                                    className={`inline-block h-1.5 w-1.5 rounded-full ${dev.status === "on" ? "bg-emerald-400" : "bg-gray-600"
+                                      }`}
+                                  />
+                                  {dev.name}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="py-2 pr-3">
+                            {espRow.ipAddress ? (
+                              <span className="inline-flex items-center gap-1.5">
+                                <a
+                                  href={`http://${espRow.ipAddress}`}
+                                  onClick={(e) => handleIpClick(e, espRow)}
+                                  title={`Open ${espRow.ipAddress} (ESP web panel)`}
+                                  className="font-mono text-xs text-brand underline decoration-dotted underline-offset-2 hover:text-brand"
+                                >
+                                  {espRow.ipAddress}
+                                </a>
+                                {probes[espRow.id]?.state === "probing" && (
+                                  <span
+                                    title="Checking reachability…"
+                                    className="inline-block h-3 w-3 animate-spin rounded-full border border-brand/40 border-t-brand"
+                                  />
+                                )}
+                                {probes[espRow.id]?.state === "ok" && (
+                                  <span
+                                    title={`Reachable (${probes[espRow.id].latencyMs}ms)`}
+                                    className="text-[10px] text-emerald-400"
+                                  >
+                                    ●
+                                  </span>
+                                )}
+                                {probes[espRow.id]?.state === "fail" && (
+                                  <Badge color="border-red-500/40 text-red-400">ESP offline</Badge>
+                                )}
+                              </span>
+                            ) : (
+                              <span className="font-mono text-xs text-brand">—</span>
+                            )}
+                          </td>
+                          <td className="py-2 pr-3">
+                            {espRow.firmwareVersion ?? "—"}
+                            {espRow.otaPendingVersion && (
+                              <Badge color="border-amber-500/40 text-amber-600">⏳ v{espRow.otaPendingVersion}</Badge>
+                            )}
+                            {(() => {
+                              const ota =
+                                liveOta[espRow.id] ??
+                                (espRow.otaStatus ? { progress: espRow.otaProgress ?? 0, status: espRow.otaStatus } : null);
+                              if (!ota || ota.status === "complete") {
+                                return ota?.status === "complete" ? (
+                                  <div className="mt-1 text-[10px] text-amber-600">✓ Flashed — rebooting…</div>
+                                ) : null;
+                              }
+                              if (ota.status === "failed") {
+                                return <Badge color="border-red-500/40 text-red-400">OTA failed</Badge>;
+                              }
+                              return (
+                                <div className="mt-1">
+                                  <div className="flex items-center gap-2">
+                                    <div className="h-1.5 w-24 overflow-hidden rounded-full bg-gray-100">
+                                      <div
+                                        className="h-full rounded-full bg-brand transition-all"
+                                        style={{ width: `${ota.progress}%` }}
+                                      />
+                                    </div>
+                                    <span className="text-[10px] text-brand">{ota.progress}%</span>
+                                  </div>
+                                  <span className="text-[10px] text-gray-500">
+                                    {ota.status === "downloading" ? "Downloading…" : "Flashing…"}
+                                  </span>
+                                </div>
+                              );
+                            })()}
+                          </td>
+                          <td className="py-2 pr-3">
+                            <Badge
+                              color={!espRow.offline ? "border-emerald-500/40 text-emerald-400" : "border-red-500/40 text-red-400"}
+                            >
+                              {!espRow.offline ? "ONLINE" : "OFFLINE"}
+                            </Badge>
+                          </td>
+                          <td className="py-2 pr-3 text-xs text-gray-500">
+                            {espRow.lastSeen ? new Date(espRow.lastSeen).toLocaleString() : "—"}
+                          </td>
+                          <td className="py-2 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => setHistFor(histFor === espRow.id ? null : espRow.id)}
+                                title="Rename history dekho"
+                                className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-500 hover:border-brand/40 hover:text-brand"
+                              >
+                                🕓
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setTermEsp({ id: espRow.id, mac: espRow.macAddress })}
+                                className="rounded border border-green-500/40 px-2 py-1 text-xs font-semibold text-green-500 hover:bg-green-500/10"
+                              >
+                                {">_"}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const cur = fw.data?.success ? fw.data.data.current?.version : null;
+                                  if (!cur) {
+                                    alert("No firmware published yet — upload a .bin first.");
+                                    return;
+                                  }
+                                  if (espRow.devices.length === 0) {
+                                    alert("This board has no linked devices yet — waiting for its first heartbeat.");
+                                    return;
+                                  }
+                                  if (confirm(`Push firmware ${cur} to "${espRow.name ?? espRow.macAddress}"?`)) {
+                                    pushOtaM.mutate(espRow.devices[0].id, {
+                                      onSuccess: (r) => r.success && setOtaMsg(r.data.message),
+                                    });
+                                  }
+                                }}
+                                disabled={pushOtaM.isPending}
+                                className="rounded border border-brand/40 px-2.5 py-1 text-xs font-semibold text-brand hover:bg-brand/10 disabled:opacity-50"
+                              >
+                                📤 Push
+                              </button>
+                            </div>
+                          </td>
                         </tr>
-                      )}
+                        {histFor === espRow.id && (
+                          <tr className="border-b border-gray-200 bg-night-900/60">
+                            <td colSpan={8} className="px-4 py-3">
+                              <div className="mb-2 flex items-center justify-between">
+                                <span className="text-xs font-bold uppercase tracking-wide text-gray-500">
+                                  🕓 Rename history — {espRow.name ?? espRow.macAddress}
+                                </span>
+                                <button
+                                  onClick={() => setHistFor(null)}
+                                  className="text-[10px] text-gray-500 hover:text-gray-600"
+                                >
+                                  ✕ close
+                                </button>
+                              </div>
+                              {espHist.isLoading && <p className="text-xs text-gray-500">Loading…</p>}
+                              {espHist.data?.success && espHist.data.data.length === 0 && (
+                                <p className="text-xs text-gray-500">Koi rename nahi hua abhi tak.</p>
+                              )}
+                              {espHist.data?.success && espHist.data.data.length > 0 && (
+                                <div className="flex flex-col gap-2">
+                                  {espHist.data.data.map((ev) => (
+                                    <div
+                                      key={ev.id}
+                                      className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-night-800 px-3 py-2 text-xs"
+                                    >
+                                      <span
+                                        className={`rounded px-1.5 py-0.5 font-mono text-[10px] font-bold ${ev.action === "admin.esp.rename"
+                                          ? "bg-amber-500/15 text-amber-600"
+                                          : "bg-brand/15 text-brand"
+                                          }`}
+                                      >
+                                        {ev.action === "admin.esp.rename" ? "ADMIN" : "USER"}
+                                      </span>
+                                      <span className="text-gray-600">
+                                        <span className="text-gray-500 line-through decoration-gray-600">
+                                          {ev.meta?.from ?? "—"}
+                                        </span>
+                                        {" → "}
+                                        <span className="font-semibold text-night-950">{ev.meta?.to ?? "—"}</span>
+                                      </span>
+                                      <span className="text-gray-500">
+                                        by {ev.actor?.username ?? "system"}
+                                      </span>
+                                      <span className="ml-auto font-mono text-[10px] text-gray-500">
+                                        {new Date(ev.createdAt).toLocaleString()}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        )}
                       </>
                     ))}
                   {esp.data?.success && esp.data.data.esps.length === 0 && (
@@ -1402,29 +1708,54 @@ export function Admin() {
             {(deployInfo.data?.success || deployInfo.isFetching) && (
               <div className="mb-4 rounded-lg border border-emerald-500/30 bg-night-900 p-3">
                 <p className="mb-2 text-xs font-bold uppercase text-emerald-500">🚀 Last code update</p>
+                {deployInfo.data?.success && deployInfo.data.data.sync?.status === "lagging" && (
+                  <div className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-600">
+                    ⚠️ <b>Deploy lagging</b> — main pe{" "}
+                    <span className="font-mono font-semibold">{deployInfo.data.data.sync.latestCommit?.slice(0, 7)}</span>{" "}
+                    {deployInfo.data.data.sync.ageMin !== null && `${deployInfo.data.data.sync.ageMin} min`} pehle push hua, par live site abhi bhi{" "}
+                    <span className="font-mono font-semibold">{deployInfo.data.data.sync.deployedCommit?.slice(0, 7)}</span> pe hai. Webhook delivery check karo — GitHub → Settings → Webhooks → Recent Deliveries → Redeliver.
+                  </div>
+                )}
+                {deployInfo.data?.success && deployInfo.data.data.sync?.status === "local" && (
+                  <div className="mt-2 rounded-lg border border-gray-500/40 bg-night-900 px-3 py-2 text-xs text-gray-400">
+                    🖥️ <b>Local dev mode</b> — running code{" "}
+                    <span className="font-mono font-semibold">{deployInfo.data.data.sync.deployedCommit?.slice(0, 7)}</span>{" "}
+                    (git checkout) · GitHub main{" "}
+                    <span className="font-mono font-semibold">{deployInfo.data.data.sync.latestCommit?.slice(0, 7)}</span>{" "}
+                    pe hai. Production deploy milestone pe hoga — abhi koi action nahi chahiye.
+                  </div>
+                )}
+                {deployInfo.data?.success && deployInfo.data.data.sync?.status === "pending" && (
+                  <div className="mt-2 rounded-lg border border-blue-500/40 bg-blue-500/10 px-3 py-2 text-xs text-blue-400">
+                    ⏳ <b>Deploying…</b> latest commit{" "}
+                    <span className="font-mono font-semibold">{deployInfo.data.data.sync.latestCommit?.slice(0, 7)}</span> abhi push hua hai — auto-deploy live hone me ~1 min lagta hai.
+                  </div>
+                )}
                 {deployInfo.data?.success ? (
                   <div className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
                     <div>
                       <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Deployed at</p>
                       <p className="mt-0.5 font-semibold text-night-950">
-                        {deployInfo.data.data.marker?.deployedAt
-                          ? new Date(deployInfo.data.data.marker.deployedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
+                        {deployInfo.data.data.deployedAt
+                          ? new Date(deployInfo.data.data.deployedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
                           : "—"}
                       </p>
                     </div>
                     <div>
                       <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Commit</p>
                       <p className="mt-0.5 font-mono text-xs font-semibold text-night-950">
-                        {(deployInfo.data.data.git?.commit || deployInfo.data.data.marker?.commit || "—").slice(0, 12)}
+                        {(deployInfo.data.data.sync?.deployedCommit || deployInfo.data.data.git?.commit || deployInfo.data.data.latest?.commit || "—").slice(0, 12)}
                         {deployInfo.data.data.git?.commit && deployInfo.data.data.marker?.commit && deployInfo.data.data.git.commit !== deployInfo.data.data.marker.commit
                           ? " ⚠️ mismatch"
-                          : ""}
+                          : deployInfo.data.data.sync?.status === "lagging" && deployInfo.data.data.marker?.commit && deployInfo.data.data.latest?.commit && deployInfo.data.data.marker.commit !== deployInfo.data.data.latest.commit
+                            ? " ⚠️ behind main"
+                            : ""}
                       </p>
                     </div>
                     <div>
                       <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Branch</p>
                       <p className="mt-0.5 font-semibold text-night-950">
-                        {deployInfo.data.data.git?.branch || deployInfo.data.data.marker?.branch || "—"}
+                        {deployInfo.data.data.git?.branch || deployInfo.data.data.marker?.branch || deployInfo.data.data.latest?.branch || "—"}
                       </p>
                     </div>
                     <div>
@@ -1439,6 +1770,7 @@ export function Admin() {
                 ) : (
                   <p className="text-xs text-gray-600">Loading deploy info…</p>
                 )}
+                {deployInfo.data?.success && deployInfo.data.data.ci && <CiStrip ci={deployInfo.data.data.ci} />}
               </div>
             )}
 
@@ -1462,12 +1794,78 @@ export function Admin() {
             </div>
 
             {diag.data?.success && (
-              <div className="mb-4">
-                <MemoryTrendChart
-                  series={diag.data.data.hbSeries ?? []}
-                  currentPid={diag.data.data.process.pid}
-                />
-              </div>
+              <>
+                <div className="mb-4">
+                  <MemoryTrendChart
+                    series={diag.data.data.hbSeries ?? []}
+                    currentPid={diag.data.data.process.pid}
+                  />
+                </div>
+
+                <div className={`rounded-xl border p-5 ${diag.data.data.leak?.leaking ? "border-red-500/40 bg-red-500/5" : "border-gray-200 bg-night-800"}`}>
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <h2 className="font-semibold">🧠 Leak Monitor</h2>
+                    {diag.data.data.leak?.leaking && diag.data.data.leak.detail ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 font-semibold text-red-400">
+                        🔴 LEAK — PID {diag.data.data.leak.detail.pid} · +{Math.round(diag.data.data.leak.detail.growthPct)}%
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 font-semibold text-emerald-500/90">
+                        🟢 No leak ({diag.data.data.leak?.thresholdPct ?? 20}% / {diag.data.data.leak?.windowH ?? 4}h window)
+                      </span>
+                    )}
+                  </div>
+                  {diag.data.data.leak?.leaking && diag.data.data.leak.detail && (
+                    <div className="mb-3 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                      <div className="rounded-lg border border-gray-200 bg-night-900 px-3 py-2">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Growth</p>
+                        <p className="mt-0.5 font-semibold text-red-400">+{diag.data.data.leak.detail.growthPct.toFixed(1)}%</p>
+                      </div>
+                      <div className="rounded-lg border border-gray-200 bg-night-900 px-3 py-2">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Window</p>
+                        <p className="mt-0.5 font-semibold text-night-950">{diag.data.data.leak.detail.spanH.toFixed(1)}h</p>
+                      </div>
+                      <div className="rounded-lg border border-gray-200 bg-night-900 px-3 py-2">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">RSS first → last</p>
+                        <p className="mt-0.5 font-semibold text-night-950">
+                          {diag.data.data.leak.detail.rssFirst.toFixed(0)} → {diag.data.data.leak.detail.rssLast.toFixed(0)} MB
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-gray-200 bg-night-900 px-3 py-2">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Process</p>
+                        <p className="mt-0.5 font-mono text-xs font-semibold text-night-950">pid {diag.data.data.leak.detail.pid}</p>
+                      </div>
+                    </div>
+                  )}
+                  <p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-gray-500">
+                    🚨 Incidents ({diag.data.data.leak?.incidents.length ?? 0})
+                  </p>
+                  <div className="space-y-1.5">
+                    {(diag.data.data.leak?.incidents ?? []).length === 0 && (
+                      <p className="text-xs text-gray-500">No leak incidents recorded — memory stable.</p>
+                    )}
+                    {(diag.data.data.leak?.incidents ?? [])
+                      .slice()
+                      .reverse()
+                      .map((inc, i) => (
+                        <div key={i} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 bg-night-900 px-3 py-1.5 text-xs">
+                          <span>
+                            {inc.type === "leak_start" ? (
+                              <span className="font-semibold text-red-400">🔴 leak start</span>
+                            ) : (
+                              <span className="font-semibold text-emerald-500">🟢 leak end</span>
+                            )}
+                            {inc.pid != null && <span className="ml-1 text-gray-500">· pid {String(inc.pid)}</span>}
+                            {inc.growthPct != null && <span className="ml-1 text-gray-500">· +{String(inc.growthPct)}%</span>}
+                          </span>
+                          <span className="text-gray-500">
+                            {new Date(String(inc.ts)).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
+                          </span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              </>
             )}
 
             {diag.data?.success && (
@@ -1595,114 +1993,113 @@ export function Admin() {
           </div>
 
           <div className="rounded-xl border border-gray-200 bg-night-800 p-5">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="font-semibold">
-              🪵 System Logs{" "}
-              <span className="text-sm font-normal text-gray-500">
-                {logs.data?.success ? `${logs.data.data.totalLines} lines` : "…"}
-              </span>
-            </h2>
-            <div className="flex items-center gap-3 text-xs text-gray-500">
-              {logs.data?.success && logs.data.data.path && (
-                <span className="max-w-[420px] truncate" title={logs.data.data.path}>
-                  {logs.data.data.path}
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="font-semibold">
+                🪵 System Logs{" "}
+                <span className="text-sm font-normal text-gray-500">
+                  {logs.data?.success ? `${logs.data.data.totalLines} lines` : "…"}
                 </span>
-              )}
-              <button
-                onClick={async () => {
-                  if (!logs.data?.success) return;
-                  try {
-                    await navigator.clipboard.writeText(
-                      logs.data.data.lines.join(String.fromCharCode(10)),
-                    );
-                    setCopied(true);
-                    setTimeout(() => setCopied(false), 1500);
-                  } catch {
-                    /* clipboard blocked — ignore */
-                  }
-                }}
-                className="rounded-lg border border-gray-300 px-3 py-1 text-xs font-semibold hover:bg-gray-100"
-              >
-                {copied ? "✅ Copied" : "📋 Copy"}
-              </button>
-              <button
-                onClick={() => {
-                  if (!logs.data?.success) return;
-                  const blob = new Blob([logs.data.data.lines.join(String.fromCharCode(10))], {
-                    type: "text/plain",
-                  });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = "switchnest-app.log.txt";
-                  a.click();
-                  URL.revokeObjectURL(url);
-                }}
-                className="rounded-lg border border-gray-300 px-3 py-1 text-xs font-semibold hover:bg-gray-100"
-              >
-                ⬇️ .txt
-              </button>
-              <button
-                onClick={() => queryClient.invalidateQueries({ queryKey: ["admin-logs"] })}
-                className="rounded-lg border border-gray-300 px-3 py-1 text-xs font-semibold hover:bg-gray-100"
-              >
-                🔄 Refresh
-              </button>
+              </h2>
+              <div className="flex items-center gap-3 text-xs text-gray-500">
+                {logs.data?.success && logs.data.data.path && (
+                  <span className="max-w-[420px] truncate" title={logs.data.data.path}>
+                    {logs.data.data.path}
+                  </span>
+                )}
+                <button
+                  onClick={async () => {
+                    if (!logs.data?.success) return;
+                    try {
+                      await navigator.clipboard.writeText(
+                        logs.data.data.lines.join(String.fromCharCode(10)),
+                      );
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 1500);
+                    } catch {
+                      /* clipboard blocked — ignore */
+                    }
+                  }}
+                  className="rounded-lg border border-gray-300 px-3 py-1 text-xs font-semibold hover:bg-gray-100"
+                >
+                  {copied ? "✅ Copied" : "📋 Copy"}
+                </button>
+                <button
+                  onClick={() => {
+                    if (!logs.data?.success) return;
+                    const blob = new Blob([logs.data.data.lines.join(String.fromCharCode(10))], {
+                      type: "text/plain",
+                    });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = "switchnest-app.log.txt";
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                  className="rounded-lg border border-gray-300 px-3 py-1 text-xs font-semibold hover:bg-gray-100"
+                >
+                  ⬇️ .txt
+                </button>
+                <button
+                  onClick={() => queryClient.invalidateQueries({ queryKey: ["admin-logs"] })}
+                  className="rounded-lg border border-gray-300 px-3 py-1 text-xs font-semibold hover:bg-gray-100"
+                >
+                  🔄 Refresh
+                </button>
+              </div>
             </div>
-          </div>
 
-          {logs.data?.success && logs.data.data.crashes.length > 0 && (
-            <div className="mb-3 rounded-lg border border-red-500/40 bg-red-950/40 p-3">
-              <p className="mb-1 text-xs font-bold uppercase text-red-400">
-                ⚠️ Crash / Error lines ({logs.data.data.crashes.length} unique)
-              </p>
-              <div className="max-h-40 space-y-1 overflow-auto">
-                {logs.data.data.crashes.map((c, i) => (
-                  <div key={i} className="flex items-start gap-2 rounded bg-black/40 px-2 py-1">
-                    <span
-                      className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${
-                        c.count > 1 ? "bg-red-500/25 text-red-300" : "bg-gray-500/25 text-gray-400"
-                      }`}
-                      title={`${c.count} baar repeat hua`}
-                    >
-                      ×{c.count}
-                    </span>
-                    <pre className="whitespace-pre-wrap text-xs leading-relaxed text-red-400">{c.line}</pre>
+            {logs.data?.success && logs.data.data.crashes.length > 0 && (
+              <div className="mb-3 rounded-lg border border-red-500/40 bg-red-950/40 p-3">
+                <p className="mb-1 text-xs font-bold uppercase text-red-400">
+                  ⚠️ Crash / Error lines ({logs.data.data.crashes.length} unique)
+                </p>
+                <div className="max-h-40 space-y-1 overflow-auto">
+                  {logs.data.data.crashes.map((c, i) => (
+                    <div key={i} className="flex items-start gap-2 rounded bg-black/40 px-2 py-1">
+                      <span
+                        className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${c.count > 1 ? "bg-red-500/25 text-red-300" : "bg-gray-500/25 text-gray-400"
+                          }`}
+                        title={`${c.count} baar repeat hua`}
+                      >
+                        ×{c.count}
+                      </span>
+                      <pre className="whitespace-pre-wrap text-xs leading-relaxed text-red-400">{c.line}</pre>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {logs.data?.success && logs.data.data.iisnodeLogs.length > 0 && (
+              <div className="mb-3 space-y-2">
+                <p className="text-xs font-bold uppercase text-amber-600">
+                  🧩 iisnode logs — native crash dump yahan milta hai ({logs.data.data.iisnodeLogs.length})
+                </p>
+                {logs.data.data.iisnodeLogs.map((f) => (
+                  <div key={f.path} className="rounded-lg border border-amber-500/30 bg-amber-950/20 p-2">
+                    <p className="mb-1 text-[11px] text-amber-600">
+                      {f.name} · {(f.size / 1024).toFixed(1)} KB
+                    </p>
+                    <pre className="max-h-32 overflow-auto whitespace-pre-wrap font-mono text-[10px] text-amber-200/80">
+                      {f.lines.join(String.fromCharCode(10))}
+                    </pre>
                   </div>
                 ))}
               </div>
-            </div>
-          )}
+            )}
 
-          {logs.data?.success && logs.data.data.iisnodeLogs.length > 0 && (
-            <div className="mb-3 space-y-2">
-              <p className="text-xs font-bold uppercase text-amber-600">
-                🧩 iisnode logs — native crash dump yahan milta hai ({logs.data.data.iisnodeLogs.length})
+            <div className="rounded-lg border border-gray-200 bg-black/60 p-3">
+              <pre className="h-[60vh] overflow-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-emerald-300">
+                {logs.data?.success ? logs.data.data.lines.join(String.fromCharCode(10)) : "Loading…"}
+              </pre>
+            </div>
+            {logs.isError && (
+              <p className="mt-2 text-sm text-red-400">
+                Log load failed: {logs.error instanceof Error ? logs.error.message : String(logs.error)}
               </p>
-              {logs.data.data.iisnodeLogs.map((f) => (
-                <div key={f.path} className="rounded-lg border border-amber-500/30 bg-amber-950/20 p-2">
-                  <p className="mb-1 text-[11px] text-amber-600">
-                    {f.name} · {(f.size / 1024).toFixed(1)} KB
-                  </p>
-                  <pre className="max-h-32 overflow-auto whitespace-pre-wrap font-mono text-[10px] text-amber-200/80">
-                    {f.lines.join(String.fromCharCode(10))}
-                  </pre>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="rounded-lg border border-gray-200 bg-black/60 p-3">
-            <pre className="h-[60vh] overflow-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-emerald-300">
-              {logs.data?.success ? logs.data.data.lines.join(String.fromCharCode(10)) : "Loading…"}
-            </pre>
+            )}
           </div>
-          {logs.isError && (
-            <p className="mt-2 text-sm text-red-400">
-              Log load failed: {logs.error instanceof Error ? logs.error.message : String(logs.error)}
-            </p>
-          )}
-        </div>
         </div>
       )}
 
@@ -1768,11 +2165,10 @@ export function Admin() {
                           setFindOpen(false);
                         }}
                         ref={active ? (el) => { if (el) el.scrollIntoView({ block: "nearest" }); } : undefined}
-                        className={`flex flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition ${
-                          active
-                            ? "bg-brand/20 text-brand"
-                            : "text-gray-700 hover:bg-night-800 hover:text-brand"
-                        }`}
+                        className={`flex flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition ${active
+                          ? "bg-brand/20 text-brand"
+                          : "text-gray-700 hover:bg-night-800 hover:text-brand"
+                          }`}
                       >
                         <span className="truncate font-medium">{findTitle(row.label, item)}</span>
                         <span className="ml-auto truncate text-[10px] text-gray-500">
@@ -1807,11 +2203,22 @@ export function Admin() {
 
       {tab === "settings" && <AdminSettings />}
 
+      {tab === "flasher" && <AdminFlasherGuide />}
+
       {chatUser && (
         <SupportChatModal
           userId={chatUser.id}
           username={chatUser.username}
           onClose={() => setChatUser(null)}
+        />
+      )}
+
+      {termEsp && (
+        <BoardTerminalModal
+          espId={termEsp.id}
+          mac={termEsp.mac}
+          isOpen={!!termEsp}
+          onClose={() => setTermEsp(null)}
         />
       )}
     </div>
@@ -1886,6 +2293,22 @@ function DeviceSupportPanel({ deviceId }: { deviceId: number }) {
             <Info label="SSID" value={d.esp.ssid ?? "—"} />
             <Info label="Model" value={d.esp.modelCode ?? "—"} />
             <Info label="Serial" value={d.esp.serialCode ?? "—"} />
+            <div className="flex flex-col">
+              <span className="text-gray-500 uppercase font-semibold">Console PW</span>
+              <span className="font-mono flex flex-wrap items-center gap-2">
+                {d.esp.consolePassword ?? "—"}
+                <button
+                  type="button"
+                  onClick={() => window.confirm("NVS me naya password burn karein?") && (queryClient.fetchQuery({ queryKey: ["do-rotate"] }).then(() => {
+                    import("../api/admin").then(api => api.rotateConsolePassword(d.esp!.id).then(() => queryClient.invalidateQueries({ queryKey: ["admin-device-support", deviceId] })));
+                  }))}
+                  className="rounded px-1.5 py-0.5 text-[10px] uppercase font-bold border border-brand/50 text-brand hover:bg-brand/10 disabled:opacity-50"
+                  disabled={!!d.esp.offline}
+                >
+                  Rotate
+                </button>
+              </span>
+            </div>
             <Info label="IP" value={d.esp.ipAddress ?? "—"} />
             <Info label="FW" value={d.esp.firmwareVersion ?? "—"} />
             <Info label="Board last seen" value={d.esp.lastSeen ? new Date(d.esp.lastSeen).toLocaleString() : "—"} />
@@ -1913,9 +2336,8 @@ function DeviceSupportPanel({ deviceId }: { deviceId: number }) {
                 {d.esp.devices.map((dv, i) => (
                   <div
                     key={dv.id}
-                    className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 ${
-                      dv.status === "on" ? "border-emerald-500/40 bg-emerald-500/10" : "border-gray-200 bg-night-900"
-                    }`}
+                    className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 ${dv.status === "on" ? "border-emerald-500/40 bg-emerald-500/10" : "border-gray-200 bg-night-900"
+                      }`}
                   >
                     <span className="text-[10px] font-bold text-gray-500">R{i}</span>
                     <span className="text-xs font-semibold text-gray-600">{dv.name}</span>

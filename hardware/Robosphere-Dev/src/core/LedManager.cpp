@@ -32,13 +32,11 @@ bool begin()
 void update()
 {
     if(!ledEnabled){
-    if(currentMode != SETUP &&
-       currentMode != SERVER_ERROR &&
-       currentMode != ON)
-    {
-        digitalWrite(STATUS_LED_PIN, LOW);
-        return;
-    }
+        if(currentMode != SETUP)
+        {
+            digitalWrite(STATUS_LED_PIN, LOW);
+            return;
+        }
     }
     unsigned long now = millis();
 

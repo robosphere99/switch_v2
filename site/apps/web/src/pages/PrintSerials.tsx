@@ -6,6 +6,16 @@ import { useAuthStore } from "../stores/auth";
 
 const STATUSES = ["available", "reserved", "shipped", "delivered", "claimed"] as const;
 
+// Hotspot naam: UserName_OrderID-last-6-letters (+ device number agar order me
+// multiple devices ho). Order nahi hai to serial-derived fallback.
+function hotspotName(row: SerialRow): string {
+  const u = row.user?.username ?? "";
+  const on = row.order?.orderNumber ?? "";
+  let name = u && on ? `${u}_${on.slice(-6)}` : `SwitchNest-${row.serialCode}`;
+  if (row.orderIdx && row.orderTotal && row.orderTotal > 1) name += `_${row.orderIdx}`;
+  return name;
+}
+
 function Sticker({ row, productName, origin }: { row: SerialRow; productName: string; origin: string }) {
   const [qr, setQr] = useState<string | null>(null);
   const activateUrl = `${origin}/activate?serial=${row.serialCode}`;
@@ -35,14 +45,20 @@ function Sticker({ row, productName, origin }: { row: SerialRow; productName: st
       </div>
       <div className="sticker-model">{productName}</div>
       <div className="sticker-body">
-        <div className="sticker-code">{row.serialCode}</div>
+        <div>
+          <div className="sticker-code">{row.serialCode}</div>
+          <div className="sticker-hotspot">
+            <div><span className="sticker-hl">Hotspot</span> {hotspotName(row)}</div>
+            <div><span className="sticker-hl">Password</span> {row.serialCode}</div>
+          </div>
+        </div>
         {qr ? (
           <img src={qr} alt={row.serialCode} className="sticker-qr" />
         ) : (
           <div className="sticker-qr sticker-qr-empty">QR</div>
         )}
       </div>
-      <div className="sticker-foot">Scan to activate · SwitchNest IoT</div>
+      <div className="sticker-foot">Scan to activate · Hotspot password = serial key · SwitchNest IoT</div>
     </div>
   );
 }
@@ -123,6 +139,9 @@ export function PrintSerials() {
         .sticker-code { font-family: Consolas, monospace; font-weight: 700; font-size: 16px; letter-spacing: 0.5px; }
         .sticker-qr { width: 74px; height: 74px; }
         .sticker-qr-empty { display: flex; align-items: center; justify-content: center; background: #eee; color: #999; font-size: 10px; }
+        .sticker-hotspot { margin-top: 6px; font-size: 9px; color: #222; line-height: 1.4; }
+        .sticker-hotspot div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
+        .sticker-hl { display: inline-block; min-width: 52px; font-weight: 800; color: #333; }
         .sticker-foot { font-size: 8px; color: #666; margin-top: 4px; text-align: right; }
         .print-hint { color: rgb(var(--night-500)); font-size: 12px; margin-bottom: 12px; }
         @media print {

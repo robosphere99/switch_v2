@@ -1,6 +1,25 @@
 import type { ApiResponse, User, UserStatus, Home } from "@robosphere/shared";
 import { api } from "./client";
 
+export interface LeakState {
+  running: boolean;
+  startedAt: string;
+  lastCheckedAt: string | null;
+  leaking: boolean;
+  detail: {
+    pid: number;
+    growthPct: number;
+    spanH: number;
+    rssFirst: number;
+    rssLast: number;
+    firstTs: string;
+    lastTs: string;
+  } | null;
+  thresholdPct: number;
+  windowH: number;
+  incidents: Array<Record<string, unknown>>;
+}
+
 export interface AdminStats {
   users: number;
   homes: number;
@@ -26,6 +45,7 @@ export interface AdminStats {
   usersByDay: Record<string, number>;
   ordersByDay: Record<string, number>;
   revenueByDay: Record<string, number>;
+  leak: LeakState | null;
 }
 
 export interface AdminUser {
@@ -102,7 +122,7 @@ export interface GlobalSearchResult {
 export async function globalSearch(q: string): Promise<ApiResponse<GlobalSearchResult>> {
   const { data } = await api.get<ApiResponse<GlobalSearchResult>>("/admin/search", { params: { q } });
   return data;
-}export async function getStats(): Promise<ApiResponse<AdminStats>> {
+} export async function getStats(): Promise<ApiResponse<AdminStats>> {
   const { data } = await api.get<ApiResponse<AdminStats>>("/admin/stats");
   return data;
 }
@@ -122,10 +142,19 @@ export interface SiteSettingsPayload {
   smtpPass?: string;
   smtpFrom?: string;
   smtpSecure?: boolean;
+  /** AI assistant config — UI se (env ke bajaye). Blank key = purana rakho. */
+  aiProvider?: "openai" | "gemini" | "ollama" | "";
+  aiApiKey?: string;
+  aiBaseUrl?: string;
+  aiModel?: string;
+  supportTicketMediaRetentionDays?: number;
+  chatHistoryRetentionDays?: number;
+  deviceTelemetryRetentionDays?: number;
 }
 
 export interface AdminSettings extends SiteSettingsPayload {
   smtpPassSet: boolean;
+  aiApiKeySet: boolean;
 }
 
 export async function getAdminSettings(): Promise<ApiResponse<AdminSettings>> {
@@ -141,6 +170,12 @@ export async function updateAdminSettings(patch: SiteSettingsPayload): Promise<A
 /** SMTP test mail — admin ke email pe. */
 export async function testAdminEmail(): Promise<ApiResponse<{ sent: boolean }>> {
   const { data } = await api.post("/admin/settings/test-email");
+  return data;
+}
+
+/** AI config test — chhota completion call, sahi chalta hai ya nahi. */
+export async function testAdminAi(): Promise<ApiResponse<{ ok: boolean; reply?: string; provider?: string; model?: string }>> {
+  const { data } = await api.post("/admin/settings/ai-test");
   return data;
 }
 
@@ -161,6 +196,21 @@ export async function setUserRole(id: number, role: "user" | "system_admin"): Pr
 
 export async function deleteUser(id: number): Promise<ApiResponse<{ deleted: boolean }>> {
   const { data } = await api.delete<ApiResponse<{ deleted: boolean }>>(`/admin/users/${id}`);
+  return data;
+}
+
+export async function createUser(payload: { username: string; email: string; password: string; role?: string }): Promise<ApiResponse<AdminUser>> {
+  const { data } = await api.post<ApiResponse<AdminUser>>("/admin/users", payload);
+  return data;
+}
+
+export async function resetUserPassword(id: number, password: string): Promise<ApiResponse<{ reset: boolean; message: string }>> {
+  const { data } = await api.post<ApiResponse<{ reset: boolean; message: string }>>(`/admin/users/${id}/reset-password`, { password });
+  return data;
+}
+
+export async function sendResetEmail(id: number): Promise<ApiResponse<{ sent: boolean; message: string }>> {
+  const { data } = await api.post<ApiResponse<{ sent: boolean; message: string }>>(`/admin/users/${id}/send-reset-email`);
   return data;
 }
 
@@ -381,6 +431,7 @@ export interface AdminDiagnostics {
       end?: { ts: string; durationSec: number; recoveredStatus?: number | null } | null;
     }>;
   };
+  leak: LeakState | null;
 }
 
 export async function getAdminDiagnostics(): Promise<ApiResponse<AdminDiagnostics>> {
@@ -388,9 +439,31 @@ export async function getAdminDiagnostics(): Promise<ApiResponse<AdminDiagnostic
   return data;
 }
 
+export interface DeploySync {
+  /** `local` = dev machine (git checkout) GitHub main se aage hai — alarm nahi. */
+  status: "synced" | "pending" | "lagging" | "local" | "unknown";
+  deployedCommit: string | null;
+  deployedSource?: "marker" | "git" | "build" | null;
+  latestCommit: string | null;
+  ageMin: number | null;
+  since: string | null;
+}
+
 export interface DeployInfo {
   marker: { deployedAt?: string; commit?: string; branch?: string } | null;
   git: { commit: string; branch: string } | null;
+  build: { commit: string; builtAt: string } | null;
+  deployedAt: string | null;
+  latest: { commit: string; branch: string; ts: string } | null;
+  sync: DeploySync | null;
+  ci: {
+    status: "pass" | "fail" | "pending" | "unknown";
+    runId?: number;
+    workflow?: string;
+    createdAt?: string;
+    updatedAt?: string;
+    reason?: string;
+  } | null;
   processUptimeSec: number;
   startedAt: string;
 }
@@ -427,6 +500,7 @@ export interface AdminDeviceSupport {
     ssid: string | null;
     serialCode: string | null;
     modelCode: string | null;
+    consolePassword: string | null;
     ipAddress: string | null;
     firmwareVersion: string | null;
     lastSeen: string | null;
@@ -448,6 +522,12 @@ export async function getDeviceSupport(id: number): Promise<ApiResponse<AdminDev
 /** Admin se device ON/OFF (support ke liye) — command enqueue karta hai, board next poll pe apply karega. */
 export async function adminSetDeviceStatus(id: number, status: "on" | "off"): Promise<ApiResponse<{ id: number; status: string }>> {
   const { data } = await api.post<ApiResponse<{ id: number; status: string }>>(`/admin/devices/${id}/status`, { status });
+  return data;
+}
+
+/** Admin: rotate console password for an ESP */
+export async function rotateConsolePassword(id: number): Promise<ApiResponse<{ id: number; newPass: string }>> {
+  const { data } = await api.post<ApiResponse<{ id: number; newPass: string }>>(`/admin/esp/${id}/rotate-console-password`);
   return data;
 }
 
@@ -749,5 +829,15 @@ export interface ResetResult {
 /** Danger zone — admin power: site reset (data = test data clear; factory = sab clear + setup mode). */
 export async function resetSite(mode: "data" | "factory"): Promise<ApiResponse<ResetResult>> {
   const { data } = await api.post("/admin/reset", { mode, confirm: "RESET" });
+  return data;
+}
+
+export async function updateOrderStatus(id: number, status: string): Promise<ApiResponse<unknown>> {
+  const { data } = await api.patch(`/admin/orders/${id}/status`, { status });
+  return data;
+}
+
+export async function updateOrderPaymentStatus(id: number, paymentStatus: string): Promise<ApiResponse<unknown>> {
+  const { data } = await api.patch(`/admin/orders/${id}/payment-status`, { paymentStatus });
   return data;
 }

@@ -27,6 +27,15 @@ export interface SiteSettings {
   smtpPass: string; // encrypted at rest
   smtpFrom: string;
   smtpSecure: boolean;
+  // AI assistant — provider/key/model (UI se, env ke bajaye); public pe strip
+  aiProvider: string; // openai | gemini | ollama | "" (off → rule-based)
+  aiApiKey: string; // encrypted at rest
+  aiBaseUrl: string; // empty → provider default
+  aiModel: string;
+  // Data Retention Settings
+  supportTicketMediaRetentionDays: number;
+  chatHistoryRetentionDays: number;
+  deviceTelemetryRetentionDays: number;
 }
 
 export const DEFAULT_SITE_SETTINGS: SiteSettings = {
@@ -45,6 +54,13 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   smtpPass: "",
   smtpFrom: "",
   smtpSecure: false,
+  aiProvider: "",
+  aiApiKey: "",
+  aiBaseUrl: "",
+  aiModel: "",
+  supportTicketMediaRetentionDays: 90, // Defaults to 3 months
+  chatHistoryRetentionDays: 90,
+  deviceTelemetryRetentionDays: 180, // Defaults to 6 months for ML analysis (Hot Storage)
 };
 
 const KEY = "site_settings";
@@ -61,10 +77,16 @@ export async function getSiteSettings(): Promise<SiteSettings> {
   return DEFAULT_SITE_SETTINGS;
 }
 
-/** Public endpoint ke liye — SMTP credentials kabhi public nahi. */
-export async function getPublicSiteSettings(): Promise<Omit<SiteSettings, "smtpHost" | "smtpPort" | "smtpUser" | "smtpPass" | "smtpFrom" | "smtpSecure">> {
+/** Public endpoint ke liye — SMTP + AI credentials kabhi public nahi. */
+export async function getPublicSiteSettings(): Promise<
+  Omit<SiteSettings, "smtpHost" | "smtpPort" | "smtpUser" | "smtpPass" | "smtpFrom" | "smtpSecure" | "aiProvider" | "aiApiKey" | "aiBaseUrl" | "aiModel">
+> {
   const s = await getSiteSettings();
-  const { smtpHost: _h, smtpPort: _p, smtpUser: _u, smtpPass: _pp, smtpFrom: _f, smtpSecure: _sc, ...pub } = s;
+  const {
+    smtpHost: _h, smtpPort: _p, smtpUser: _u, smtpPass: _pp, smtpFrom: _f, smtpSecure: _sc,
+    aiProvider: _ap, aiApiKey: _ak, aiBaseUrl: _ab, aiModel: _am,
+    ...pub
+  } = s;
   return pub;
 }
 
@@ -75,6 +97,11 @@ export async function updateSiteSettings(patch: Partial<SiteSettings>): Promise<
   if (patch.smtpPass !== undefined) {
     if (patch.smtpPass) next.smtpPass = encryptSecret(patch.smtpPass);
     else next.smtpPass = current.smtpPass;
+  }
+  // aiApiKey: blank = purana rakho; naya aaye to encrypt
+  if (patch.aiApiKey !== undefined) {
+    if (patch.aiApiKey) next.aiApiKey = encryptSecret(patch.aiApiKey);
+    else next.aiApiKey = current.aiApiKey;
   }
   await prisma.appMeta.upsert({
     where: { key: KEY },

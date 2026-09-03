@@ -1,4 +1,4 @@
-import type { ApiResponse, Device, DeviceStatus, DeviceType } from "@robosphere/shared";
+import type { ApiResponse, Device, DeviceStatus, DeviceType, UsageAnalytics } from "@robosphere/shared";
 import { api } from "./client";
 
 export interface CreateDeviceInput {
@@ -42,10 +42,55 @@ export async function setDeviceStatus(
   return data;
 }
 
+/** Remote restart — ESP reboot (online board, 1-2s me). */
+export async function restartDevice(homeId: number, deviceId: number): Promise<ApiResponse<Device>> {
+  const { data } = await api.post<ApiResponse<Device>>(`/homes/${homeId}/devices/${deviceId}/restart`);
+  return data;
+}
+
+/** Remote WiFi set — ESP ka WiFi badlo (setwifi + restart). */
+export async function setDeviceWifi(
+  homeId: number,
+  deviceId: number,
+  ssid: string,
+  password: string,
+): Promise<ApiResponse<Device>> {
+  const { data } = await api.post<ApiResponse<Device>>(`/homes/${homeId}/devices/${deviceId}/wifi`, {
+    ssid,
+    password,
+  });
+  return data;
+}
+
+/** Status LED on/off — site se, firmware NVS persist (restart pe yaad rahe). */
+export async function setEspLed(
+  homeId: number,
+  espId: number,
+  enabled: boolean,
+): Promise<ApiResponse<MyBoard>> {
+  const { data } = await api.post<ApiResponse<MyBoard>>(
+    `/homes/${homeId}/esp/${espId}/led`,
+    { enabled },
+  );
+  return data;
+}
+
+export async function bulkSetDeviceStatus(
+  homeId: number,
+  deviceIds: number[],
+  status: DeviceStatus,
+): Promise<ApiResponse<Device[]>> {
+  const { data } = await api.post<ApiResponse<Device[]>>(
+    `/homes/${homeId}/devices/bulk-status`,
+    { deviceIds, status },
+  );
+  return data;
+}
+
 export async function updateDevice(
   homeId: number,
   deviceId: number,
-  patch: { name?: string; roomId?: number | null },
+  patch: { name?: string; roomId?: number | null; espId?: number | null; channel?: number | null },
 ): Promise<ApiResponse<Device>> {
   const { data } = await api.patch<ApiResponse<Device>>(
     `/homes/${homeId}/devices/${deviceId}`,
@@ -76,6 +121,39 @@ export async function renameEsp(
   return data;
 }
 
+export async function getUsageAnalytics(
+  homeId: number,
+  days = 7,
+): Promise<ApiResponse<UsageAnalytics>> {
+  const { data } = await api.get<ApiResponse<UsageAnalytics>>(
+    `/homes/${homeId}/analytics/usage?days=${days}`,
+  );
+  return data;
+}
+
+export interface AutomationSuggestion {
+  deviceId: number;
+  deviceName: string;
+  type: "daily";
+  time: string;
+  action: "on" | "off";
+  confidence: number;
+  days: number;
+  reason: string;
+  /** Demo — usage data na ho to sample suggestions */
+  demo?: boolean;
+}
+
+/** Phase 7 — usage patterns se automation suggestions. */
+export async function getAutomationSuggestions(
+  homeId: number,
+): Promise<ApiResponse<AutomationSuggestion[]>> {
+  const { data } = await api.get<ApiResponse<AutomationSuggestion[]>>(
+    `/homes/${homeId}/automations/suggestions`,
+  );
+  return data;
+}
+
 export async function getDeviceLogs(
   homeId: number,
   deviceId: number,
@@ -93,6 +171,20 @@ export interface MyBoardDevice {
   status: "on" | "off";
   offline: boolean;
   lastSeen: string | null;
+  channel: number | null;
+}
+
+export interface BoardHistoryEvent {
+  id: number;
+  action: string;
+  createdAt: string;
+  actor: string | null;
+  meta: {
+    from?: string | null;
+    to?: string | null;
+    version?: string | null;
+    serialCode?: string | null;
+  } | null;
 }
 
 export interface MyBoard {
@@ -107,6 +199,11 @@ export interface MyBoard {
   firmwareVersion: string | null;
   offline: boolean;
   lastSeen: string | null;
+  createdAt: string | null;
+  hotspotName: string | null;
+  hotspotPassword: string | null;
+  ledEnabled: boolean;
+  history: BoardHistoryEvent[];
   devices: MyBoardDevice[];
 }
 
@@ -114,7 +211,9 @@ export interface MyBoardsGroup {
   homeId: number;
   homeName: string;
   role: string;
+  apiKey: { keyPrefix: string; expiresAt: string | null } | null;
   boards: MyBoard[];
+  unassignedDevices: MyBoardDevice[];
 }
 
 export async function listMyBoards(): Promise<ApiResponse<MyBoardsGroup[]>> {

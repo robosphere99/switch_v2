@@ -2,10 +2,12 @@ import type { DeviceStatus, DeviceType } from "@robosphere/shared";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { AppError } from "../lib/response";
-import { emitToHome } from "../lib/socket";
+import { emitDeviceUpdated, emitToHome } from "../lib/socket";
 import { audit } from "./audit.service";
 import { createNotification } from "./notification.service";
+import { sendPushToUser } from "./push.service";
 import { resolveFirmware } from "./firmware.service";
+import { mqttPushCommands, mqttPushLedState } from "./mqtt.service";
 
 export async function listDevices(homeId: number, viewerId?: number) {
   const where: Prisma.DeviceWhereInput = { homeId };
@@ -28,6 +30,7 @@ export async function listDevices(homeId: number, viewerId?: number) {
     where,
     include: {
       esp: { select: { id: true, name: true, serialCode: true, modelCode: true, firmwareVersion: true, offline: true, lastSeen: true } },
+      room: { select: { id: true, name: true } },
     },
     orderBy: { createdAt: "desc" },
   });
@@ -88,9 +91,9 @@ export async function setDeviceStatus(input: {
   // Defensive: stale prisma client ho to check skip (log karo, 500 nahi)
   const membership = prisma.deviceAccess
     ? await prisma.homeMember.findUnique({
-        where: { homeId_userId: { homeId: input.homeId, userId: input.actorId } },
-        select: { restricted: true },
-      })
+      where: { homeId_userId: { homeId: input.homeId, userId: input.actorId } },
+      select: { restricted: true, dailyLimitMinutes: true },
+    })
     : null;
   if (membership?.restricted && prisma.deviceAccess) {
     const granted = await prisma.deviceAccess.findUnique({
@@ -98,6 +101,21 @@ export async function setDeviceStatus(input: {
     });
     if (!granted) {
       throw new AppError("FORBIDDEN", "Is device ka access nahi hai (child mode)", 403);
+    }
+
+    // Child Rate Limit Enforcement (Configurable toggles per minute per device)
+    const limit = membership?.dailyLimitMinutes || 5;
+    const ONE_MINUTE_AGO = new Date(Date.now() - 60 * 1000);
+    const recentToggles = await prisma.deviceLog.count({
+      where: {
+        actorId: input.actorId,
+        deviceId: device.id,
+        logType: "status_change",
+        createdAt: { gte: ONE_MINUTE_AGO },
+      },
+    });
+    if (recentToggles >= limit) {
+      throw new AppError("RATE_LIMIT_EXCEEDED", `Tumne is switch (${device.name}) ke sath bahut chedkhaani ki hai. 1 minute ruko! (Limit: ${limit}/min)`, 429);
     }
   }
 
@@ -124,15 +142,222 @@ export async function setDeviceStatus(input: {
   ]);
 
   const updated = await prisma.device.findUnique({ where: { id: device.id } });
-  if (updated) emitToHome(input.homeId, "device:updated", updated);
+  if (updated) {
+    await emitDeviceUpdated(input.homeId, updated.id);
+
+    // MQTT instant-push: if device is linked to an ESP board, push via MQTT
+    if (updated.espId) {
+      const esp = await prisma.espDevice.findUnique({ where: { id: updated.espId }, select: { macAddress: true } });
+      if (esp) mqttPushCommands(esp.macAddress);
+    }
+
+    // Phase 14: Real-time Push Alert Broadcast (Vibration/Sound Native Mobile Alerts)
+    try {
+      const members = await prisma.homeMember.findMany({
+        where: { homeId: input.homeId, role: { in: ['admin', 'owner'] } }
+      });
+      const actor = await prisma.user.findUnique({ where: { id: input.actorId }, select: { username: true } });
+      const actorName = actor?.username || "A member";
+
+      for (const m of members) {
+        sendPushToUser(
+          m.userId,
+          `${updated.name} turned ${input.status.toUpperCase()}`,
+          `${actorName} just interacted with the ${updated.name}`,
+          undefined,
+          "device"
+        );
+      }
+    } catch (e) {
+      console.warn("[Push] Background dispatch failure:", e);
+    }
+  }
   return updated;
 }
 
-/** Update device name and/or move it to a room. */
+/**
+ * Bulk status — ek saath kai devices (room all-off / all-lights-off).
+ * Har device pe wahi checks (home scoping + restricted member) — ek
+ * transaction me sab command + log. Web UI room/home bulk actions ke liye.
+ */
+/**
+ * Remote device command — site se ESP ko bhejo (restart / WiFi / LED).
+ * Home scoping + restricted-member check (setStatus jaisa), command queue me
+ * entry + log.
+ */
+export async function sendDeviceCommand(input: {
+  homeId: number;
+  actorId: number;
+  deviceId: number;
+  command: string;
+  logType: string;
+  logMessage: string;
+}) {
+  const device = await prisma.device.findFirst({
+    where: { id: input.deviceId, homeId: input.homeId },
+  });
+  if (!device) {
+    throw new AppError("DEVICE_NOT_FOUND", "Device nahi mila is home me", 404);
+  }
+
+  // Restricted member (child mode) — same gate as setStatus
+  const membership = prisma.deviceAccess
+    ? await prisma.homeMember.findUnique({
+      where: { homeId_userId: { homeId: input.homeId, userId: input.actorId } },
+      select: { restricted: true },
+    })
+    : null;
+  if (membership?.restricted && prisma.deviceAccess) {
+    const granted = await prisma.deviceAccess.findUnique({
+      where: { deviceId_userId: { deviceId: device.id, userId: input.actorId } },
+    });
+    if (!granted) {
+      throw new AppError("FORBIDDEN", "Is device ka access nahi hai (child mode)", 403);
+    }
+  }
+
+  await prisma.$transaction([
+    prisma.deviceCommand.create({
+      data: { deviceId: device.id, actorId: input.actorId, command: input.command },
+    }),
+    prisma.deviceLog.create({
+      data: { deviceId: device.id, actorId: input.actorId, logType: input.logType, logMessage: input.logMessage },
+    }),
+  ]);
+
+  const updated = await prisma.device.findUnique({ where: { id: device.id } });
+  if (updated) {
+    await emitDeviceUpdated(input.homeId, updated.id);
+
+    try {
+      const members = await prisma.homeMember.findMany({
+        where: { homeId: input.homeId, role: { in: ['admin', 'owner'] } }
+      });
+      const actor = await prisma.user.findUnique({ where: { id: input.actorId }, select: { username: true } });
+
+      for (const m of members) {
+        sendPushToUser(
+          m.userId,
+          `System Command: ${input.command}`,
+          `${actor?.username || "A member"} dispatched a remote hardware command.`,
+          undefined,
+          "device"
+        );
+      }
+    } catch (e) {
+      console.warn("[Push] Remote Command Background dispatch failure:", e);
+    }
+  }
+  return updated;
+}
+
+export async function bulkSetStatus(input: {
+  homeId: number;
+  actorId: number;
+  deviceIds: number[];
+  status: DeviceStatus;
+}) {
+  const ids = [...new Set(input.deviceIds)];
+  let devices = await prisma.device.findMany({
+    where: { id: { in: ids }, homeId: input.homeId },
+  });
+  if (devices.length === 0) {
+    throw new AppError("DEVICE_NOT_FOUND", "Koi device nahi mila is home me", 404);
+  }
+
+  // Restricted member (child mode) — sirf granted devices control kar sakta hai.
+  const membership = prisma.deviceAccess
+    ? await prisma.homeMember.findUnique({
+      where: { homeId_userId: { homeId: input.homeId, userId: input.actorId } },
+      select: { restricted: true, dailyLimitMinutes: true },
+    })
+    : null;
+  if (membership?.restricted && prisma.deviceAccess) {
+    const granted = await prisma.deviceAccess.findMany({
+      where: { userId: input.actorId, deviceId: { in: devices.map((d) => d.id) } },
+      select: { deviceId: true },
+    });
+    const grantedSet = new Set(granted.map((g) => g.deviceId));
+    const allowed = devices.filter((d) => grantedSet.has(d.id));
+    if (allowed.length === 0) {
+      throw new AppError("FORBIDDEN", "In devices ka access nahi hai (child mode)", 403);
+    }
+    devices = allowed;
+
+    // Child Rate Limit Enforcement (Configurable toggles per minute per device)
+    const limit = membership?.dailyLimitMinutes || 5;
+    const ONE_MINUTE_AGO = new Date(Date.now() - 60 * 1000);
+    const recentToggles = await prisma.deviceLog.groupBy({
+      by: ['deviceId'],
+      where: {
+        actorId: input.actorId,
+        deviceId: { in: devices.map(d => d.id) },
+        logType: "status_change",
+        createdAt: { gte: ONE_MINUTE_AGO },
+      },
+      _count: { deviceId: true }
+    });
+    // Add the ongoing bulk action (1 toggle per device) to the past count.
+    const maxToggles = Math.max(...recentToggles.map(t => t._count.deviceId), 0);
+    if (maxToggles + 1 > limit) {
+      throw new AppError("RATE_LIMIT_EXCEEDED", `Tumne group me kisi switch ko ek minute me limit (${limit}) ke paar daba diya hai, thodi der wait karo!`, 429);
+    }
+  }
+
+  await prisma.$transaction([
+    prisma.device.updateMany({
+      where: { id: { in: devices.map((d) => d.id) } },
+      data: { status: input.status },
+    }),
+    ...devices.map((d) =>
+      prisma.deviceCommand.create({
+        data: { deviceId: d.id, actorId: input.actorId, command: `set_status:${input.status}` },
+      }),
+    ),
+    ...devices.map((d) =>
+      prisma.deviceLog.create({
+        data: {
+          deviceId: d.id,
+          actorId: input.actorId,
+          logType: "status_change",
+          logMessage: `Device turned ${input.status}`,
+        },
+      }),
+    ),
+  ]);
+
+  const updated = await prisma.device.findMany({
+    where: { id: { in: devices.map((d) => d.id) }, homeId: input.homeId },
+  });
+  for (const d of updated) await emitDeviceUpdated(input.homeId, d.id);
+
+  try {
+    const members = await prisma.homeMember.findMany({
+      where: { homeId: input.homeId, role: { in: ['admin', 'owner'] } }
+    });
+    const actor = await prisma.user.findUnique({ where: { id: input.actorId }, select: { username: true } });
+
+    for (const m of members) {
+      sendPushToUser(
+        m.userId,
+        `Room Actuation: ${input.status.toUpperCase()}`,
+        `${actor?.username || "A member"} toggled grouped components.`,
+        undefined,
+        "device"
+      );
+    }
+  } catch (e) {
+    console.warn("[Push] Bulk Group Background dispatch failure:", e);
+  }
+
+  return updated;
+}
+
+/** Update device name, move it to a room, or assign it to a Board Channel. */
 export async function updateDevice(
   homeId: number,
   deviceId: number,
-  patch: { name?: string; roomId?: number | null },
+  patch: { name?: string; roomId?: number | null; espId?: number | null; channel?: number | null },
 ) {
   const device = await prisma.device.findFirst({ where: { id: deviceId, homeId } });
   if (!device) throw new AppError("DEVICE_NOT_FOUND", "Device not found in this home", 404);
@@ -155,8 +380,41 @@ export async function updateDevice(
 
   return prisma.device.update({
     where: { id: deviceId },
-    data: { name: patch.name, roomId: patch.roomId },
+    data: { name: patch.name, roomId: patch.roomId, espId: patch.espId, channel: patch.channel },
   });
+}
+
+export async function setEspLed(args: {
+  homeId: number;
+  espId: number;
+  actorId: number;
+  enabled: boolean;
+}) {
+  const { homeId, espId, actorId, enabled } = args;
+
+  const esp = await prisma.espDevice.update({
+    where: { id: espId, homeId },
+    data: { ledEnabled: enabled },
+  });
+
+  await prisma.auditLog.create({
+    data: {
+      homeId,
+      actorId,
+      action: "esp_led",
+      entity: "esp",
+      entityId: espId,
+      meta: { title: `Status LED ${enabled ? "enabled" : "disabled"}` },
+    },
+  });
+
+  // Push immediate update to ESP, Web, and Mobile
+  emitToHome(homeId, "esp:updated", { id: esp.id, ledEnabled: esp.ledEnabled });
+  if (esp.macAddress) {
+    mqttPushLedState(esp.macAddress, esp.ledEnabled);
+  }
+
+  return esp;
 }
 
 /** Recent activity log for a device (who toggled what, when). */
@@ -224,7 +482,7 @@ export async function renameEsp(homeId: number, espId: number, name: string, act
  */
 export async function listMyBoards(userId: number) {
   const homes = await prisma.home.findMany({
-    where: { members: { some: { userId } } },
+    where: { members: { some: { userId, role: { in: ["owner", "admin"] } } } },
     select: {
       id: true,
       name: true,
@@ -234,6 +492,18 @@ export async function listMyBoards(userId: number) {
   });
 
   const homeIds = homes.map((h) => h.id);
+
+  // Har home ka pehla (active) API key — board detail panel me dikhega.
+  const homeApiKeys = await prisma.apiKey.findMany({
+    where: { homeId: { in: homeIds }, revokedAt: null },
+    select: { homeId: true, keyPrefix: true, expiresAt: true },
+    orderBy: [{ homeId: "asc" }, { createdAt: "desc" }],
+  });
+  const apiKeyByHome = new Map<number, { keyPrefix: string; expiresAt: Date | null }>();
+  for (const k of homeApiKeys) {
+    if (k.homeId && !apiKeyByHome.has(k.homeId)) apiKeyByHome.set(k.homeId, k);
+  }
+
   const boards = await prisma.espDevice.findMany({
     where: { homeId: { in: homeIds } },
     include: {
@@ -245,26 +515,58 @@ export async function listMyBoards(userId: number) {
           status: true,
           offline: true,
           lastSeen: true,
+          channel: true,
         },
-        orderBy: { id: "asc" },
+        orderBy: { channel: "asc" },
       },
     },
     orderBy: { id: "asc" },
   });
 
-  const byHome = new Map<number, typeof boards>();
-  for (const b of boards) {
+  const unassignedDevices = await prisma.device.findMany({
+    where: { homeId: { in: homeIds }, espId: null },
+    select: {
+      id: true,
+      homeId: true,
+      name: true,
+      type: true,
+      status: true,
+      offline: true,
+      lastSeen: true,
+      channel: true,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const withHistory = boards.map((b) => ({
+    ...b,
+    history: [],
+  }));
+
+  const byHome = new Map<number, typeof withHistory>();
+  for (const b of withHistory) {
     const arr = byHome.get(b.homeId) ?? [];
     arr.push(b);
     byHome.set(b.homeId, arr);
   }
 
-  return homes.map((h) => ({
-    homeId: h.id,
-    homeName: h.name,
-    role: h.members[0]?.role ?? "member",
-    boards: byHome.get(h.id) ?? [],
-  }));
+  return homes.map((h) => {
+    const role = h.members[0]?.role ?? "member";
+    const canManage = role === "owner" || role === "admin";
+
+    return {
+      homeId: h.id,
+      homeName: h.name,
+      role: role,
+      apiKey: canManage ? (apiKeyByHome.get(h.id) ?? null) : null,
+      boards: canManage ? (byHome.get(h.id) ?? []).map((b) => ({
+        ...b,
+        hotspotName: b.serialCode ? `SwitchNest-${b.serialCode}` : null,
+        hotspotPassword: b.serialCode ?? null,
+      })) : [],
+      unassignedDevices: canManage ? unassignedDevices.filter(d => d.homeId === h.id) : [],
+    };
+  });
 }
 
 /** User apne board pe firmware update push kare (OTA). */
@@ -314,7 +616,7 @@ export async function requestOta(homeId: number, deviceId: number, actorId: numb
       });
     }
   }
-  emitToHome(homeId, "device:updated", { id: deviceId });
+  await emitDeviceUpdated(homeId, deviceId);
 
   return {
     deviceId,

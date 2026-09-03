@@ -64,3 +64,8 @@ export async function removeNotification(id: number): Promise<ApiResponse<{ ok: 
   const { data } = await api.delete<ApiResponse<{ ok: boolean }>>(`/notifications/${id}`);
   return data;
 }
+
+export async function removeAllNotifications(): Promise<ApiResponse<{ ok: boolean }>> {
+  const { data } = await api.delete<ApiResponse<{ ok: boolean }>>("/notifications/delete-all");
+  return data;
+}

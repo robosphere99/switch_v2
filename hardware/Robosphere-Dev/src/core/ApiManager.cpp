@@ -1,19 +1,18 @@
-#include <Arduino.h>
-#include <HTTPClient.h>
-#include <ArduinoJson.h>
-#include <WiFi.h>
-#include <WiFiClientSecure.h>
 #include "core/ApiManager.h"
-#include "preferences/PreferencesManager.h"
-#include "core/DeviceManager.h"
-#include "core/LedManager.h"
-#include "core/MappingManager.h"
+#include "Config.h"
 #include "core/BoardManager.h"
 #include "core/DimmerManager.h"
+#include "core/LedManager.h"
+#include "core/MqttManager.h"
 #include "core/RelayManager.h"
-#include "Config.h"
-namespace ApiManager
-{
+#include "preferences/PreferencesManager.h"
+#include <Arduino.h>
+#include <ArduinoJson.h>
+#include <HTTPClient.h>
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
+
+namespace ApiManager {
 
 // ==================================================
 // HTTPS support — server URL agar https:// hai toh secure
@@ -24,32 +23,30 @@ namespace ApiManager
 // ==================================================
 static WiFiClient plainClient;
 static WiFiClientSecure secureClient;
-static bool clientForUrl(const String &url, HTTPClient &http, bool secureOnly = false)
-{
-    bool useSecure = url.startsWith("https://") || (secureOnly && url.startsWith("https://"));
-    if (useSecure)
-    {
-        secureClient.setInsecure();
-        return http.begin(secureClient, url);
-    }
-    return http.begin(url);
+static bool clientForUrl(const String &url, HTTPClient &http,
+                         bool secureOnly = false) {
+  bool useSecure =
+      url.startsWith("https://") || (secureOnly && url.startsWith("https://"));
+  if (useSecure) {
+    secureClient.setInsecure();
+    return http.begin(secureClient, url);
+  }
+  return http.begin(url);
 }
 
 // Command poller apne dedicated task (core 0) se chalta hai — uske liye ALAG
-// TLS client rakhte hain taaki main loop (downloadDevices/heartbeat/updateDevice)
-// wale secureClient se ek hi connection pe conflict na ho. Aisi sharing se
-// dono ek saath TLS session corrupt kar sakte the.
+// TLS client rakhte hain taaki main loop
+// (downloadDevices/heartbeat/updateDevice) wale secureClient se ek hi
+// connection pe conflict na ho. Aisi sharing se dono ek saath TLS session
+// corrupt kar sakte the.
 static WiFiClientSecure commandSecureClient;
-static bool commandClientForUrl(const String &url, HTTPClient &http)
-{
-    if (url.startsWith("https://"))
-    {
-        commandSecureClient.setInsecure();
-        return http.begin(commandSecureClient, url);
-    }
-    return http.begin(url);
+static bool commandClientForUrl(const String &url, HTTPClient &http) {
+  if (url.startsWith("https://")) {
+    commandSecureClient.setInsecure();
+    return http.begin(commandSecureClient, url);
+  }
+  return http.begin(url);
 }
-
 
 // ==================================================
 // Debounced Batch Push Queue
@@ -76,115 +73,105 @@ static unsigned long flushAt = 0;
 static const unsigned long DEBOUNCE_MS = 300;
 static const unsigned long RETRY_MS = 3000;
 
-static int findPending(int deviceId)
-{
-    for (int i = 0; i < MAX_PENDING; i++)
-    {
-        if (pendingValid[i] && pendingDeviceId[i] == deviceId)
-            return i;
-    }
-    return -1;
+static int findPending(int deviceId) {
+  for (int i = 0; i < MAX_PENDING; i++) {
+    if (pendingValid[i] && pendingDeviceId[i] == deviceId)
+      return i;
+  }
+  return -1;
 }
 
 // Pending table ko burst mein flush karo. Fail hone wale entries
 // pending hi rehti hain (baad mein retry ke liye).
-static bool flushPending()
-{
-    bool allOk = true;
+static bool flushPending() {
+  bool allOk = true;
 
-    for (int i = 0; i < MAX_PENDING; i++)
-    {
-        if (!pendingValid[i])
-            continue;
+  for (int i = 0; i < MAX_PENDING; i++) {
+    if (!pendingValid[i])
+      continue;
 
-        bool ok = updateDevice(pendingDeviceId[i], pendingState[i]);
+    bool ok = updateDevice(pendingDeviceId[i], pendingState[i]);
 
-        if (ok)
-        {
-            pendingValid[i] = false;
-            pendingCount--;
-        }
-        else
-        {
-            allOk = false;
-        }
+    if (ok) {
+      pendingValid[i] = false;
+      pendingCount--;
+    } else {
+      allOk = false;
     }
+  }
 
-    return allOk;
+  return allOk;
 }
 
-bool queueDeviceUpdate(int deviceId, bool state)
-{
-    int idx = findPending(deviceId);
+bool queueDeviceUpdate(int deviceId, bool state) {
+  int idx = findPending(deviceId);
 
-    if (idx != -1)
-    {
-        // Coalesce — same device, latest state wins
-        pendingState[idx] = state;
-    }
-    else
-    {
-        if (pendingCount >= MAX_PENDING)
-        {
-            // Table full — turant flush karke jagah banao
-            flushPending();
-            idx = findPending(deviceId);
-        }
-
-        if (idx == -1)
-        {
-            idx = -1;
-            for (int i = 0; i < MAX_PENDING; i++)
-            {
-                if (!pendingValid[i])
-                {
-                    idx = i;
-                    break;
-                }
-            }
-        }
-
-        if (idx == -1)
-            return false;
-
-        pendingDeviceId[idx] = deviceId;
-        pendingState[idx] = state;
-        pendingValid[idx] = true;
-        pendingCount++;
+  if (idx != -1) {
+    // Coalesce — same device, latest state wins
+    pendingState[idx] = state;
+  } else {
+    if (pendingCount >= MAX_PENDING) {
+      // Table full — turant flush karke jagah banao
+      flushPending();
+      idx = findPending(deviceId);
     }
 
-    // Debounce window — sirf tab set karo jab koi flush scheduled nahi hai.
-    // Agar pehle se flush (ya failed retry backoff) chal raha hai toh usko
-    // reset mat karo — warna server down hone par har toggle 300ms window
-    // dobara set karega aur loop continuously block hota rahega.
-    if (flushAt == 0)
-        flushAt = millis() + DEBOUNCE_MS;
+    if (idx == -1) {
+      idx = -1;
+      for (int i = 0; i < MAX_PENDING; i++) {
+        if (!pendingValid[i]) {
+          idx = i;
+          break;
+        }
+      }
+    }
 
+    if (idx == -1)
+      return false;
+
+    pendingDeviceId[idx] = deviceId;
+    pendingState[idx] = state;
+    pendingValid[idx] = true;
+    pendingCount++;
+  }
+
+  // MQTT Fast-path: if MQTT is connected, publish the state immediately
+  // without waiting for the HTTP debounce loop.
+  if (MqttManager::isConnected()) {
+    MqttManager::publishState();
+    // Keep it in pending queue so the next HTTP flush can clear it or ignore
+    // it, but actually we could just clear it here to save memory/cycles.
+    pendingValid[idx] = false;
+    pendingCount--;
     return true;
+  }
+
+  // Debounce window — sirf tab set karo jab koi flush scheduled nahi hai.
+  // Agar pehle se flush (ya failed retry backoff) chal raha hai toh usko
+  // reset mat karo — warna server down hone par har toggle 300ms window
+  // dobara set karega aur loop continuously block hota rahega.
+  if (flushAt == 0)
+    flushAt = millis() + DEBOUNCE_MS;
+
+  return true;
 }
 
-void update()
-{
-    if (pendingCount == 0)
-    {
-        flushAt = 0;
-        return;
-    }
+void update() {
+  if (pendingCount == 0) {
+    flushAt = 0;
+    return;
+  }
 
-    if ((long)(millis() - flushAt) >= 0)
-    {
-        if (flushPending())
-        {
-            flushAt = 0;
-        }
-        else
-        {
-            // Server unreachable ho sakta hai — backoff: 3s baad retry,
-            // beech mein new toggles pending mein add hote rahenge par
-            // loop ko har 300ms pe block nahi karenge.
-            flushAt = millis() + RETRY_MS;
-        }
+  if ((long)(millis() - flushAt) >= 0) {
+    if (flushPending()) {
+      flushAt = 0;
+    } else {
+      // Server unreachable ho sakta hai — backoff: 3s baad retry,
+      // beech mein new toggles pending mein add hote rahenge par
+      // loop ko har 300ms pe block nahi karenge.
+      flushAt = millis() + RETRY_MS;
     }
+  }
 }
 
 // ==================================================
@@ -204,186 +191,163 @@ static unsigned long currentBackoff = 10000;
 static const unsigned long BACKOFF_MIN = 10000;
 static const unsigned long BACKOFF_MAX = 300000; // 5 min
 
-static bool inBackoff()
-{
-    return (millis() < backoffUntil);
+static bool inBackoff() { return (millis() < backoffUntil); }
+
+static void markFailure() {
+  currentBackoff *= 2;
+  if (currentBackoff > BACKOFF_MAX)
+    currentBackoff = BACKOFF_MAX;
+  backoffUntil = millis() + currentBackoff;
 }
 
-static void markFailure()
-{
-    currentBackoff *= 2;
-    if (currentBackoff > BACKOFF_MAX)
-        currentBackoff = BACKOFF_MAX;
-    backoffUntil = millis() + currentBackoff;
+static void markSuccess() {
+  currentBackoff = BACKOFF_MIN;
+  backoffUntil = 0;
 }
 
-static void markSuccess()
-{
-    currentBackoff = BACKOFF_MIN;
-    backoffUntil = 0;
-}
+bool testConnection() {
+  // Manual test — backoff bypass karo (user ne khud test kiya hai)
+  HTTPClient http;
 
-bool testConnection()
-{
-    if (inBackoff())
-        return false;
+  String url =
+      PreferencesManager::getServerURL() +
+      "/api/device/read-all?api_key=" + PreferencesManager::getApiKey();
 
-    HTTPClient http;
+  clientForUrl(url, http);
+  http.setTimeout(5000);
+  http.setConnectTimeout(3000);
+  int httpCode = http.GET();
 
-    String url =
-        PreferencesManager::getServerURL() +
-        "/api/device/read-all?api_key=" +
-        PreferencesManager::getApiKey();
+  http.end();
 
-    clientForUrl(url, http);
-    http.setTimeout(500);
-    http.setConnectTimeout(1500);
-    int httpCode = http.GET();
-
-    http.end();
-
-    if (httpCode == 200)
-    {
-        markSuccess();
-        return true;
-    }
-
-    markFailure();
-    return false;
-}
-
-bool downloadDevices()
-{
-    if (inBackoff())
-        return false;
-
-    if (WiFi.status() != WL_CONNECTED)
-        return false;
-
-    String serverURL = PreferencesManager::getServerURL();
-    String apiKey = PreferencesManager::getApiKey();
-
-    if (serverURL.isEmpty())
-        return false;
-
-    if (apiKey.isEmpty())
-        return false;
-    HTTPClient http;
-
-    String url =
-        PreferencesManager::getServerURL() +
-        "/api/device/read-all?api_key=" +
-        PreferencesManager::getApiKey();
-
-    clientForUrl(url, http);
-    http.setTimeout(500);
-    http.setConnectTimeout(1500);
-    int httpCode = http.GET();
-
-    if (httpCode != 200)
-    {
-        LedManager::setMode(LedManager::SERVER_ERROR);
-        Serial.print("HTTP Code : ");
-        Serial.println(httpCode);
-        http.end();
-        markFailure();
-        return false;
-    }
-
-    String payload = http.getString();
-    // Serial.println("Payload:");
-    // Serial.println(payload);    
-
-    http.end();
-
-    // Heap pe JSON buffer — 4KB static stack pe rakha toh web handler ke andar
-    // stack overflow (loopTask crash) hota hai
-    DynamicJsonDocument doc(4096);
-
-    DeserializationError error =
-        deserializeJson(doc, payload);
-
-    if (error)
-    {
-        Serial.print("JSON Error : ");
-        Serial.println(error.c_str());
-        return false;
-    }
-
-    if (!doc["success"])
-    {
-        Serial.println("API returned success = false");
-        return false;
-    }
-
-    DeviceManager::clear();
-
-    JsonArray devices =
-        doc["data"]["devices"].as<JsonArray>();
-
-    for (JsonObject device : devices)
-    {
-        DeviceManager::addDevice(
-            device["id"],
-            device["name"],
-            device["status"]
-        );
-    }
-    // Serial.print("Downloaded Devices : ");
-    // Serial.println(DeviceManager::getCount());
-
+  if (httpCode == 200) {
     markSuccess();
     return true;
+  }
+
+  markFailure();
+  return false;
 }
-bool updateDevice(int deviceId, bool state)
-{
-    if (inBackoff())
-        return false;
 
-    // WiFi down hai toh HTTP attempt hi mat karo — otherwise ARP/connect
-    // stall seconds tak loop block karta hai. Pending queue mein update
-    // rehta hai, WiFi wapas aate hi flush ho jayega.
-    if (WiFi.status() != WL_CONNECTED)
-        return false;
+bool downloadDevices() {
+  if (inBackoff())
+    return false;
 
-    HTTPClient http;
+  if (WiFi.status() != WL_CONNECTED)
+    return false;
 
-    String url =
-        PreferencesManager::getServerURL() +
-        "/api/device/update";
+  String serverURL = PreferencesManager::getServerURL();
+  String apiKey = PreferencesManager::getApiKey();
 
-    clientForUrl(url, http);
-    http.setTimeout(500);
-    http.setConnectTimeout(1500); 
+  if (serverURL.isEmpty())
+    return false;
 
-    http.addHeader(
-        "Content-Type",
-        "application/x-www-form-urlencoded"
-    );
+  if (apiKey.isEmpty())
+    return false;
+  HTTPClient http;
 
-    String postData;
+  String url =
+      PreferencesManager::getServerURL() +
+      "/api/device/read-all?api_key=" + PreferencesManager::getApiKey() +
+      "&mac=" + WiFi.macAddress();
 
-    postData =
-        "api_key=" + PreferencesManager::getApiKey();
+  clientForUrl(url, http);
+  http.setTimeout(5000);
+  http.setConnectTimeout(3000);
+  int httpCode = http.GET();
 
-    postData += "&device_id=" + String(deviceId);
-
-    postData += "&status=";
-
-    postData += state ? "on" : "off";
-
-    int httpCode = http.POST(postData);
-
+  if (httpCode != 200) {
+    LedManager::setMode(LedManager::SERVER_ERROR);
+    Serial.print("HTTP Code : ");
+    Serial.println(httpCode);
     http.end();
-
-    if (httpCode == 200)
-    {
-        markSuccess();
-        return true;
-    }
-
     markFailure();
     return false;
+  }
+
+  String payload = http.getString();
+  http.end();
+
+  DynamicJsonDocument doc(2048);
+  DeserializationError error = deserializeJson(doc, payload);
+
+  if (error) {
+    Serial.print("JSON Error : ");
+    Serial.println(error.c_str());
+    return false;
+  }
+
+  // Direct mapping to Channels
+  if (doc["data"].containsKey("led")) {
+    if (doc["data"]["led"] == 1)
+      LedManager::enable();
+    else
+      LedManager::disable();
+  }
+
+  JsonArray states = doc["data"]["states"].as<JsonArray>();
+  int ch = 0;
+  for (int state : states) {
+    if (state == 1)
+      RelayManager::on(ch);
+    else
+      RelayManager::off(ch);
+    ch++;
+  }
+
+  markSuccess();
+  return true;
+}
+bool updateDevice(int deviceId, bool state) {
+  // If MQTT is connected, we don't need to do HTTP POSTs
+  // This MUST be checked before inBackoff(), otherwise a temporarily
+  // unreachable HTTP server will completely block MQTT state synchronization.
+  if (MqttManager::isConnected()) {
+    MqttManager::publishState();
+    return true; // Pretend it succeeded so flush clears it
+  }
+
+  if (inBackoff())
+    return false;
+
+  // WiFi down hai toh HTTP attempt hi mat karo — otherwise ARP/connect
+  // stall seconds tak loop block karta hai. Pending queue mein update
+  // rehta hai, WiFi wapas aate hi flush ho jayega.
+  if (WiFi.status() != WL_CONNECTED)
+    return false;
+
+  HTTPClient http;
+
+  String url = PreferencesManager::getServerURL() + "/api/device/update";
+
+  clientForUrl(url, http);
+  http.setTimeout(500);
+  http.setConnectTimeout(1500);
+
+  http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+
+  String postData;
+
+  postData = "api_key=" + PreferencesManager::getApiKey();
+
+  postData += "&channel=" + String(deviceId);
+  postData += "&mac=" + WiFi.macAddress();
+
+  postData += "&status=";
+
+  postData += state ? "on" : "off";
+
+  int httpCode = http.POST(postData);
+
+  http.end();
+
+  if (httpCode == 200) {
+    markSuccess();
+    return true;
+  }
+
+  markFailure();
+  return false;
 }
 
 // ==================================================
@@ -396,255 +360,203 @@ bool updateDevice(int deviceId, bool state)
 // kar dete hain — server device state already set hai, ack sirf queue
 // cleanup ke liye hai.
 // ==================================================
-bool downloadCommands()
-{
-    if (inBackoff())
-        return false;
-
-    if (WiFi.status() != WL_CONNECTED)
-        return false;
-
-    String serverURL = PreferencesManager::getServerURL();
-    String apiKey = PreferencesManager::getApiKey();
-
-    if (serverURL.isEmpty() || apiKey.isEmpty())
-        return false;
-
-    HTTPClient http;
-
-    // Long-poll mode (v2): server response ko hold karta hai jab tak command
-    // na aaye (max 20s). Command aate hi turant response milta hai → web toggle
-    // se relay pe click ~1s ke andar. Yah function ab dedicated command-poll
-    // task (core 0) se chalta hai, isliye blocking se loop/web-panel freeze
-    // nahi hota. Read timeout = hold + 6s buffer; connect timeout short rehta
-    // hai taaki WiFi down pe jaldi fail ho.
-    String url = serverURL + "/api/device/commands?api_key=" + apiKey + "&long=1&hold=20";
-
-    commandClientForUrl(url, http);
-    http.setTimeout(26000);
-    http.setConnectTimeout(1500);
-    int httpCode = http.GET();
-
-    if (httpCode != 200)
-    {
-        http.end();
-        return false;
-    }
-
-    String payload = http.getString();
-    http.end();
-
-    DynamicJsonDocument doc(4096);
-
-    DeserializationError error = deserializeJson(doc, payload);
-
-    if (error)
-    {
-        Serial.print("Commands JSON Error : ");
-        Serial.println(error.c_str());
-        return false;
-    }
-
-    if (!doc["success"])
-        return false;
-
-    JsonArray commands = doc["data"]["commands"].as<JsonArray>();
-
-    int applied = 0;
-
-    for (JsonObject cmd : commands)
-    {
-        int commandId = cmd["id"];
-        int deviceId = cmd["deviceId"];
-        const char* command = cmd["command"] | "";
-
-        Serial.print("Command #");
-        Serial.print(commandId);
-        Serial.print(" device=");
-        Serial.print(deviceId);
-        Serial.print(" cmd=");
-        Serial.println(command);
-
-        // Expected format: "set_status:on" / "set_status:off"
-        bool state = false;
-        bool known = false;
-
-        if (strcmp(command, "set_status:on") == 0)
-        {
-            state = true;
-            known = true;
-        }
-        else if (strcmp(command, "set_status:off") == 0)
-        {
-            state = false;
-            known = true;
-        }
-
-        if (known)
-        {
-            int relay = MappingManager::getRelayByDeviceId(deviceId);
-
-            if (relay != -1)
-            {
-                RelayManager::setState(relay, state);
-                Serial.print("  -> Relay ");
-                Serial.print(relay);
-                Serial.println(state ? " ON" : " OFF");
-                applied++;
-            }
-            else
-            {
-                Serial.println("  -> device is not mapped to this unit (skipping relay)");
-            }
-        }
-        else
-        {
-            Serial.println("  -> unknown command, ignoring");
-        }
-
-        // Ack — server state already set, ack sirf queue ko clean karta hai
-        ackCommand(commandId, deviceId, true);
-    }
-
-    if (applied > 0)
-        markSuccess();
-
-    return true;
-}
-
-bool ackCommand(int commandId, int deviceId, bool ok)
-{
-    if (inBackoff())
-        return false;
-
-    if (WiFi.status() != WL_CONNECTED)
-        return false;
-
-    HTTPClient http;
-
-    String url = PreferencesManager::getServerURL() + "/api/device/commands/ack";
-
-    // ack sirf command-poll task se aata hai — apna dedicated client use karo
-    commandClientForUrl(url, http);
-    http.setTimeout(500);
-    http.setConnectTimeout(1500);
-
-    http.addHeader(
-        "Content-Type",
-        "application/x-www-form-urlencoded"
-    );
-
-    String postData;
-
-    postData = "api_key=" + PreferencesManager::getApiKey();
-
-    postData += "&command_id=" + String(commandId);
-
-    postData += "&device_id=" + String(deviceId);
-
-    postData += "&status=" + String(ok ? "executed" : "failed");
-
-    int httpCode = http.POST(postData);
-
-    http.end();
-
-    // 200 = acked, 409 = already acked (idempotent — no problem)
-    if (httpCode == 200 || httpCode == 409)
-    {
-        markSuccess();
-        return true;
-    }
-
-    markFailure();
+bool downloadCommands() {
+  if (inBackoff())
     return false;
-}
 
-bool heartbeat(String &otaUrl)
-{
-    otaUrl = "";
+  if (WiFi.status() != WL_CONNECTED)
+    return false;
 
-    if (WiFi.status() != WL_CONNECTED)
-        return false;
+  // If MQTT is connected, it receives commands asynchronously. Disable HTTP
+  // long-poll.
+  if (MqttManager::isConnected())
+    return false;
 
-    String serverURL = PreferencesManager::getServerURL();
-    String apiKey = PreferencesManager::getApiKey();
+  String serverURL = PreferencesManager::getServerURL();
+  String apiKey = PreferencesManager::getApiKey();
 
-    if (serverURL.isEmpty() || apiKey.isEmpty())
-        return false;
+  if (serverURL.isEmpty() || apiKey.isEmpty())
+    return false;
 
-    // Primary device id — pehla mapped relay ka device
-    int deviceId = MappingManager::getDeviceIdByRelay(0);
-    if (deviceId < 0)
-        deviceId = 0;
+  HTTPClient http;
 
-    // Actual relay states (2-way sync: ESP side ke toggles server pe mirror)
-    String states = "[";
-    bool first = true;
-    int mapped = MappingManager::getMappedCount();
-    for (int ch = 0; ch < mapped; ch++)
-    {
-        int did = MappingManager::getDeviceIdByRelay(ch);
-        if (did < 0)
-            continue;
+  // Long-poll mode (v2): server response ko hold karta hai jab tak command
+  // na aaye (max 20s). Command aate hi turant response milta hai → web toggle
+  // se relay pe click ~1s ke andar. Yah function ab dedicated command-poll
+  // task (core 0) se chalta hai, isliye blocking se loop/web-panel freeze
+  // nahi hota. Read timeout = hold + 6s buffer; connect timeout short rehta
+  // hai taaki WiFi down pe jaldi fail ho.
+  String url = serverURL + "/api/device/commands?api_key=" + apiKey +
+               "&mac=" + WiFi.macAddress() + "&long=1&hold=20";
 
-        if (!first)
-            states += ",";
-        states += "{\"id\":";
-        states += String(did);
-        states += ",\"status\":\"";
-        states += String(RelayManager::getState(ch) ? "on" : "off");
-        states += "\"";
-        if (DimmerManager::isDimmer()) {
-          states += ",\"value\":\"";
-          states += DimmerManager::getStepPercent(ch);
-          states += "\"";
-        }
-        states += "}";
-        first = false;
-    }
-    states += "]";
+  commandClientForUrl(url, http);
+  http.setTimeout(26000);
+  http.setConnectTimeout(1500);
+  int httpCode = http.GET();
 
-    HTTPClient http;
-    http.setTimeout(API_TIMEOUT_MS);
-    clientForUrl(serverURL + "/api/device/heartbeat", http);
-    http.addHeader("Content-Type", "application/x-www-form-urlencoded");
-
-    String body = "api_key=" + apiKey;
-    body += "&device_id=" + String(deviceId);
-    body += "&ip=" + WiFi.localIP().toString();
-    body += "&fw_version=" + String(FIRMWARE_VERSION);
-    body += "&mac=" + WiFi.macAddress();
-    body += "&ssid=" + WiFi.SSID();
-    body += "&serial=" + PreferencesManager::getSerialCode();
-    body += "&model=" + BoardManager::getModelCode();
-    body += "&states=" + states;
-
-    int httpCode = http.POST(body);
-    if (httpCode != HTTP_CODE_OK)
-    {
-        http.end();
-        return false;
-    }
-
-    String payload = http.getString();
+  if (httpCode != 200) {
     http.end();
+    return false;
+  }
 
-    DynamicJsonDocument doc(2048);
-    DeserializationError error = deserializeJson(doc, payload);
-    if (error)
-        return false;
+  String payload = http.getString();
+  http.end();
 
-    if (doc["success"] != true)
-        return false;
+  DynamicJsonDocument doc(4096);
 
-    // Admin ne is device ko update push kiya hai?
-    bool required = doc["data"]["ota"]["required"] | false;
-    if (required)
-    {
-        otaUrl = doc["data"]["ota"]["url"].as<String>();
+  DeserializationError error = deserializeJson(doc, payload);
+
+  if (error) {
+    Serial.print("Commands JSON Error : ");
+    Serial.println(error.c_str());
+    return false;
+  }
+
+  if (!doc["success"])
+    return false;
+
+  JsonArray commands = doc["data"]["commands"].as<JsonArray>();
+
+  int applied = 0;
+
+  for (JsonObject cmd : commands) {
+    int commandId = cmd["id"];
+    int channel = cmd["channel"] | -1;
+    const char *command = cmd["command"] | "";
+
+    Serial.print("Command #");
+    Serial.print(commandId);
+    Serial.print(" channel=");
+    Serial.print(channel);
+    Serial.print(" cmd=");
+    Serial.println(command);
+
+    bool state = false;
+    bool known = false;
+
+    if (strcmp(command, "set_status:on") == 0) {
+      state = true;
+      known = true;
+    } else if (strcmp(command, "set_status:off") == 0) {
+      state = false;
+      known = true;
     }
 
-    return true;
+    if (known) {
+      if (channel > 0) {
+        int relay = channel - 1; // back to 0-indexed
+        RelayManager::setState(relay, state);
+        Serial.print("  -> Relay ");
+        Serial.print(relay);
+        Serial.println(state ? " ON" : " OFF");
+        applied++;
+      }
+    }
+
+    // Ack
+    ackCommand(commandId, true);
+  }
+
+  if (applied > 0)
+    markSuccess();
+
+  return true;
 }
 
+bool ackCommand(int commandId, bool ok) {
+  if (inBackoff())
+    return false;
+
+  if (WiFi.status() != WL_CONNECTED)
+    return false;
+
+  HTTPClient http;
+
+  String url = PreferencesManager::getServerURL() + "/api/device/commands/ack";
+
+  commandClientForUrl(url, http);
+  http.setTimeout(500);
+  http.setConnectTimeout(1500);
+
+  http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+
+  String postData;
+  postData = "api_key=" + PreferencesManager::getApiKey();
+  postData += "&command_id=" + String(commandId);
+  postData += "&status=" + String(ok ? "executed" : "failed");
+
+  int httpCode = http.POST(postData);
+
+  http.end();
+
+  // 200 = acked, 409 = already acked (idempotent — no problem)
+  if (httpCode == 200 || httpCode == 409) {
+    markSuccess();
+    return true;
+  }
+
+  markFailure();
+  return false;
 }
+
+bool heartbeat(String &otaUrl) {
+  otaUrl = "";
+
+  if (WiFi.status() != WL_CONNECTED)
+    return false;
+
+  String serverURL = PreferencesManager::getServerURL();
+  String apiKey = PreferencesManager::getApiKey();
+
+  if (serverURL.isEmpty() || apiKey.isEmpty())
+    return false;
+
+  String states = "[";
+  for (int ch = 0; ch < BoardManager::getRelayCount(); ch++) {
+    if (ch > 0)
+      states += ",";
+    states += RelayManager::getState(ch) ? "1" : "0";
+  }
+  states += "]";
+
+  HTTPClient http;
+  http.setTimeout(API_TIMEOUT_MS);
+  clientForUrl(serverURL + "/api/device/heartbeat", http);
+  http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+
+  String body = "api_key=" + apiKey;
+  body += "&ip=" + WiFi.localIP().toString();
+  body += "&fw_version=" + String(FIRMWARE_VERSION);
+  body += "&mac=" + WiFi.macAddress();
+  body += "&ssid=" + WiFi.SSID();
+  body += "&serial=" + PreferencesManager::getSerialCode();
+  body += "&model=" + BoardManager::getModelCode();
+  body += "&states=" + states;
+
+  int httpCode = http.POST(body);
+  if (httpCode != HTTP_CODE_OK) {
+    http.end();
+    return false;
+  }
+
+  String payload = http.getString();
+  http.end();
+
+  DynamicJsonDocument doc(2048);
+  DeserializationError error = deserializeJson(doc, payload);
+  if (error)
+    return false;
+
+  if (doc["success"] != true)
+    return false;
+
+  // Admin ne is device ko update push kiya hai?
+  bool required = doc["data"]["ota"]["required"] | false;
+  if (required) {
+    otaUrl = doc["data"]["ota"]["url"].as<String>();
+  }
+
+  return true;
+}
+
+} // namespace ApiManager

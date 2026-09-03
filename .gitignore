@@ -48,6 +48,60 @@ hardware/attachments/
 *.db-wal
 hardware/Robosphere-Dev/.device_map.json
 
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Env files
+.env
+.env.local
+.env.*.local
+
+# Node / build
+node_modules/
+dist/
+build/
+out/
+
+# PlatformIO (firmware build artifacts — source hi track hota hai)
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# Databases / runtime data
+*.db
+*.sqlite
+*.sqlite3
+
+# OS / IDE extras
+*.swp
+*~
+
+# Published firmware binaries — server pe OTA ke liye chahiye (git pull se
+# hardware/firmware/*.bin aa jata hai), isliye .bin track hote hain.
+hardware/firmware/*
+!hardware/firmware/*.bin
+
+# Support chat attachment files (user data — DB me path rehta hai, blobs yahan disk pe)
+hardware/attachments/
+
+# Local dev artifacts
+.freebuff/
+*.db-shm
+*.db-wal
+hardware/Robosphere-Dev/.device_map.json
+
 # Python
 __pycache__/
 *.pyc
+
+# Runtime data
+*.jsonl
+*.apk

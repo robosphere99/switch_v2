@@ -6,15 +6,19 @@ import path from "node:path";
 import fs from "node:fs";
 import { execSync } from "node:child_process";
 import { requireAuth } from "../middleware/auth";
+import { rateLimit } from "../middleware/rateLimit";
 import { validateBody } from "../middleware/validate";
 import { prisma } from "../lib/prisma";
 import { getHealthMonitorState } from "../lib/healthMonitor";
+import { getLeakMonitorState } from "../lib/leakMonitor";
 import { AppError, ok } from "../lib/response";
 import { audit } from "../services/audit.service";
-import { createNotification } from "../services/notification.service";
+import { createNotification, createNotificationWithEmail } from "../services/notification.service";
 import { emitToHome } from "../lib/socket";
 import { generateSerials, updateOrderStatus } from "../services/shop.service";
 import { decryptSecret } from "../lib/crypto";
+import { signBillToken } from "../lib/billVerify";
+import { detectLanIp } from "../lib/lanIp";
 import { resolveFirmware } from "../services/firmware.service";
 import { firmwareDir } from "../lib/paths";
 import { logFilePath } from "../lib/logger";
@@ -22,6 +26,9 @@ import { getRequestStats } from "../lib/requestTracker";
 import { getSiteSettings, updateSiteSettings } from "../services/siteSettings.service";
 import { setDbReady } from "../lib/dbState";
 import { sendEmail } from "../lib/email.service";
+import { chatCompletion, getAiConfig, aiConfigured } from "../lib/ai";
+import { requestPasswordReset } from "../services/auth.service";
+import bcrypt from "bcryptjs";
 
 export const adminRouter = Router();
 
@@ -75,28 +82,28 @@ adminRouter.get("/stats", async (_req, res) => {
     usersRecent,
     ordersRecent,
   ] = await Promise.all([
-    prisma.user.count(),
-    prisma.home.count(),
-    prisma.device.count(),
-    prisma.user.count({ where: { lastLoginAt: { gte: dayAgo } } }),
-    prisma.device.count({ where: { lastSeen: { gte: dayAgo } } }),
-    prisma.deviceCommand.count({ where: { status: "pending" } }),
-    prisma.apiKey.count(),
-    prisma.auditLog.count(),
-    prisma.espDevice.count(),
-    prisma.espDevice.count({ where: { OR: [{ offline: true }, { lastSeen: { lt: twoMin } }] } }),
-    prisma.order.count(),
-    prisma.order.count({ where: { status: "pending" } }),
-    prisma.order.count({ where: { createdAt: { gte: dayAgo } } }),
-    prisma.order.count({ where: { createdAt: { gte: monthStart } } }),
-    prisma.order.aggregate({ _sum: { totalAmount: true }, where: { paidAt: { not: null } } }),
-    prisma.order.aggregate({ _sum: { totalAmount: true }, where: { paidAt: { not: null }, createdAt: { gte: monthStart } } }),
-    prisma.user.count({ where: { createdAt: { gte: weekAgo } } }),
-    prisma.supportMessage.count(),
-    prisma.contactMessage.count(),
-    prisma.deviceLog.count({ where: { createdAt: { gte: dayAgo } } }),
-    prisma.user.findMany({ where: { createdAt: { gte: weekAgo } }, select: { createdAt: true } }),
-    prisma.order.findMany({ where: { createdAt: { gte: weekAgo } }, select: { createdAt: true, totalAmount: true, paidAt: true } }),
+    prisma.user.count().catch(() => 0),
+    prisma.home.count().catch(() => 0),
+    prisma.device.count().catch(() => 0),
+    Promise.resolve(0),
+    prisma.device.count({ where: { lastSeen: { gte: dayAgo } } }).catch(() => 0),
+    prisma.deviceCommand.count({ where: { status: "pending" } }).catch(() => 0),
+    prisma.apiKey.count().catch(() => 0),
+    prisma.auditLog.count().catch(() => 0),
+    prisma.espDevice.count().catch(() => 0),
+    prisma.espDevice.count({ where: { OR: [{ offline: true }, { lastSeen: { lt: twoMin } }] } }).catch(() => 0),
+    prisma.order.count().catch(() => 0),
+    prisma.order.count({ where: { status: "pending" } }).catch(() => 0),
+    prisma.order.count({ where: { createdAt: { gte: dayAgo } } }).catch(() => 0),
+    prisma.order.count({ where: { createdAt: { gte: monthStart } } }).catch(() => 0),
+    prisma.order.aggregate({ _sum: { totalAmount: true }, where: { paidAt: { not: null } } }).catch(() => ({ _sum: { totalAmount: 0 } })),
+    prisma.order.aggregate({ _sum: { totalAmount: true }, where: { paidAt: { not: null }, createdAt: { gte: monthStart } } }).catch(() => ({ _sum: { totalAmount: 0 } })),
+    prisma.user.count({ where: { createdAt: { gte: weekAgo } } }).catch(() => 0),
+    prisma.supportMessage.count().catch(() => 0),
+    prisma.contactMessage.count().catch(() => 0),
+    prisma.deviceLog.count({ where: { createdAt: { gte: dayAgo } } }).catch(() => 0),
+    prisma.user.findMany({ where: { createdAt: { gte: weekAgo } }, select: { createdAt: true } }).catch(() => []),
+    prisma.order.findMany({ where: { createdAt: { gte: weekAgo } }, select: { createdAt: true, totalAmount: true, paidAt: true } }).catch(() => []),
   ]);
 
   // Last 7 din (aaj samet) — signup + revenue trend (Admin Overview chart ke liye)
@@ -137,6 +144,7 @@ adminRouter.get("/stats", async (_req, res) => {
     supportMessages,
     contactMessages,
     deviceLogs24h,
+    leak: getLeakMonitorState(),
     requests: getRequestStats(),
     usersByDay,
     ordersByDay,
@@ -161,13 +169,27 @@ const settingsSchema = z
     smtpPass: z.string().max(200).optional(), // blank = purana rakho
     smtpFrom: z.string().email().max(150).optional().or(z.literal("")),
     smtpSecure: z.boolean().optional(),
+    // AI assistant config (Phase 7) — UI se, env ke bajaye
+    aiProvider: z.enum(["openai", "gemini", "ollama", ""]).optional(),
+    aiApiKey: z.string().max(200).optional(), // blank = purana rakho
+    aiBaseUrl: z.string().max(200).optional().or(z.literal("")),
+    aiModel: z.string().max(100).optional(),
+    supportTicketMediaRetentionDays: z.number().int().min(1).max(3650).optional(),
+    chatHistoryRetentionDays: z.number().int().min(1).max(3650).optional(),
+    deviceTelemetryRetentionDays: z.number().int().min(1).max(3650).optional(),
   })
   .refine((d) => Object.keys(d).length > 0, { message: "At least one field to update" });
 
 adminRouter.get("/settings", async (_req, res) => {
   const s = await getSiteSettings();
-  // smtpPass kabhi wapas nahi — sirf flag ki set hai ya nahi (UI placeholder ke liye)
-  ok(res, { ...s, smtpPass: s.smtpPass ? "********" : "", smtpPassSet: !!s.smtpPass });
+  // smtpPass / aiApiKey kabhi wapas nahi — sirf flags ki set hai ya nahi (UI placeholder)
+  ok(res, {
+    ...s,
+    smtpPass: s.smtpPass ? "********" : "",
+    smtpPassSet: !!s.smtpPass,
+    aiApiKey: s.aiApiKey ? "********" : "",
+    aiApiKeySet: !!s.aiApiKey,
+  });
 });
 
 adminRouter.put("/settings", validateBody(settingsSchema), async (req, res) => {
@@ -198,6 +220,26 @@ adminRouter.post("/settings/test-email", async (req, res) => {
   ok(res, { sent: true });
 });
 
+/** AI config verify — chhota completion call, error ko readable message me. */
+adminRouter.post("/settings/ai-test", async (_req, res) => {
+  if (!(await aiConfigured())) {
+    throw new AppError("CONFIG_ERROR", "AI configured nahi hai — Settings me provider + model + API key daalo aur Save karo", 400);
+  }
+  const cfg = await getAiConfig();
+  try {
+    const reply = await chatCompletion({
+      system: "Reply with exactly: AI_OK",
+      messages: [{ role: "user", content: "ping" }],
+      maxTokens: 10,
+      timeoutMs: 20_000,
+    });
+    ok(res, { ok: true, reply, provider: cfg.provider, model: cfg.model });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new AppError("AI_ERROR", `AI call fail: ${msg}`, 502);
+  }
+});
+
 // ---------- Users ----------
 
 adminRouter.get("/users", async (req, res) => {
@@ -210,21 +252,264 @@ adminRouter.get("/users", async (req, res) => {
       role: true,
       status: true,
       createdAt: true,
-      lastLoginAt: true,
-      _count: { select: { ownedHomes: true, memberships: true } },
+      _count: {
+        select: {
+          ownedHomes: true,
+          memberships: true,
+          orders: true,
+          apiKeys: true,
+          createdDevices: true,
+          claimedSerials: true,
+          warrantyClaims: true,
+        },
+      },
     },
     where: q
       ? {
-          OR: [
-            { username: { contains: q } },
-            { email: { contains: q } },
-          ],
-        }
+        OR: [
+          { username: { contains: q } },
+          { email: { contains: q } },
+        ],
+      }
       : undefined,
     orderBy: { createdAt: "desc" },
     take: 200,
   });
-  ok(res, users);
+
+  const userIds = users.map((u) => u.id);
+  // Boards: user jis homes ka member hai, unme ESP count + usage minutes —
+  // relational aggregate select me nahi chalta, isliye alag groupBy + map.
+  const memberships = await prisma.homeMember.findMany({
+    where: { userId: { in: userIds } },
+    select: { userId: true, homeId: true },
+  });
+  const espCounts = await prisma.espDevice.groupBy({
+    by: ["homeId"],
+    where: { homeId: { in: memberships.map((m) => m.homeId) } },
+    _count: { _all: true },
+  });
+  const espByHome = new Map(espCounts.map((e) => [e.homeId, e._count._all]));
+  const boardsByUser = new Map<number, number>();
+  for (const m of memberships) {
+    boardsByUser.set(m.userId, (boardsByUser.get(m.userId) ?? 0) + (espByHome.get(m.homeId) ?? 0));
+  }
+  const usageRows = await prisma.deviceUsage.groupBy({
+    by: ["userId"],
+    where: { userId: { in: userIds } },
+    _sum: { onMinutes: true },
+  });
+  const usageByUser = new Map(usageRows.map((r) => [r.userId, r._sum.onMinutes ?? 0]));
+
+  ok(
+    res,
+    users.map((u) => ({
+      id: u.id,
+      username: u.username,
+      email: u.email,
+      role: u.role,
+      status: u.status,
+      createdAt: u.createdAt,
+
+      _count: u._count,
+      boards: boardsByUser.get(u.id) ?? 0,
+      usageMinutes: usageByUser.get(u.id) ?? 0,
+    })),
+  );
+});
+
+/** Ek user ka full context — homes, orders, keys, boards, usage (support/view ke liye). */
+adminRouter.get("/users/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  const user = await prisma.user.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      username: true,
+      email: true,
+      role: true,
+      status: true,
+      createdAt: true,
+      _count: {
+        select: {
+          ownedHomes: true,
+          orders: true,
+          apiKeys: true,
+          createdDevices: true,
+          claimedSerials: true,
+          warrantyClaims: true,
+          contactMessages: true,
+        },
+      },
+      memberships: {
+        select: {
+          home: { select: { id: true, name: true } },
+          role: true,
+        },
+        orderBy: { role: "asc" },
+      },
+      orders: {
+        select: {
+          id: true,
+          orderNumber: true,
+          status: true,
+          paymentStatus: true,
+          totalAmount: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: "desc" },
+        take: 10,
+      },
+      apiKeys: {
+        select: {
+          id: true,
+          keyPrefix: true,
+          label: true,
+          createdAt: true,
+          expiresAt: true,
+          revokedAt: true,
+          lastUsedAt: true,
+          home: { select: { name: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+      },
+    },
+  });
+  if (!user) throw new AppError("NOT_FOUND", "User not found", 404);
+
+  const espCounts = await prisma.espDevice.groupBy({
+    by: ["homeId"],
+    where: { homeId: { in: user.memberships.map((m) => m.home.id) } },
+    _count: { _all: true },
+  });
+  const boards = espCounts.reduce((n, e) => n + e._count._all, 0);
+  const usageAgg = await prisma.deviceUsage.aggregate({
+    where: { userId: user.id },
+    _sum: { onMinutes: true },
+  });
+
+  ok(res, {
+    ...user,
+    boards,
+    usageMinutes: usageAgg._sum.onMinutes ?? 0,
+  });
+});
+
+const createUserSchema = z.object({
+  username: z.string().min(3).max(50),
+  email: z.string().email().max(100),
+  password: z.string().min(6).max(255),
+  role: z.enum(["user", "system_admin"]).optional(),
+});
+
+/** Admin se naya user banao (temp password ke saath) — user management complete karne ke liye. */
+adminRouter.post("/users", validateBody(createUserSchema), async (req, res) => {
+  const { username, email, password, role } = req.body;
+  const existingUsername = await prisma.user.findFirst({ where: { username }, select: { id: true } });
+  if (existingUsername) throw new AppError("USER_EXISTS", `Username '${username}' is already taken. Please use another username.`, 409);
+
+  const existingEmail = await prisma.user.findFirst({ where: { email }, select: { id: true, username: true } });
+  if (existingEmail) throw new AppError("USER_EXISTS", `Email '${email}' is already registered (account: '${existingEmail.username}').`, 409);
+  const hashed = await bcrypt.hash(password, 10);
+  const user = await prisma.user.create({
+    data: {
+      username,
+      email,
+      password: hashed,
+      role: role ?? "user",
+      status: "active",
+      pushDeviceToggles: true,
+      pushSystemAlerts: true,
+      tokenVersion: 0,
+    },
+    select: { id: true, username: true, email: true, role: true, status: true, createdAt: true },
+  });
+  await audit(req.user!.sub, "admin.user.create", {
+    entity: "user",
+    entityId: user.id,
+    meta: { username: user.username, email: user.email, role: user.role },
+  });
+  ok(res, user, 201);
+});
+
+/** User ko password reset email bhejo (forgot-password jaisa hi flow — token + email). */
+adminRouter.post("/users/:id/send-reset-email", async (req, res) => {
+  const id = Number(req.params.id);
+  const user = await prisma.user.findUnique({
+    where: { id },
+    select: { id: true, username: true, email: true },
+  });
+  if (!user) throw new AppError("NOT_FOUND", "User not found", 404);
+  await requestPasswordReset(user.email);
+  await audit(req.user!.sub, "admin.user.sendResetEmail", {
+    entity: "user",
+    entityId: id,
+    meta: { username: user.username, email: user.email },
+  });
+  ok(res, { sent: true, message: `Password reset email bheja (${user.email})` });
+});
+
+/** Admin directly user ka password reset karo (bina email ke). */
+const resetPasswordSchema = z.object({
+  password: z.string().min(6).max(255),
+});
+adminRouter.post("/users/:id/reset-password", validateBody(resetPasswordSchema), async (req, res) => {
+  const id = Number(req.params.id);
+  const user = await prisma.user.findUnique({
+    where: { id },
+    select: { id: true, username: true, email: true },
+  });
+  if (!user) throw new AppError("NOT_FOUND", "User not found", 404);
+  const hashed = await bcrypt.hash(req.body.password, 10);
+  await prisma.user.update({ where: { id }, data: { password: hashed } });
+  await audit(req.user!.sub, "admin.user.resetPassword", {
+    entity: "user",
+    entityId: id,
+    meta: { username: user.username, email: user.email },
+  });
+  ok(res, { reset: true, message: `Password reset ho gaya (${user.username})` });
+});
+
+// ---------- Broadcast ----------
+
+const broadcastLimiter = rateLimit({
+  name: "admin:broadcast",
+  windowMs: 60 * 60_000,
+  max: 5,
+  message: "Bahut zyada broadcasts — 1 ghanta baad try karo",
+});
+
+const broadcastSchema = z.object({
+  title: z.string().trim().min(1).max(120),
+  body: z.string().trim().min(1).max(2000),
+  sendEmail: z.boolean().optional(),
+});
+
+/** In-app bulk broadcast — offer/announcement sab users ko (bell + realtime; email best-effort). */
+adminRouter.post("/broadcast", broadcastLimiter, validateBody(broadcastSchema), async (req, res) => {
+  const { title, body, sendEmail } = req.body;
+  const targets = await prisma.user.findMany({
+    where: { role: "user", status: "active" },
+    select: { id: true },
+  });
+  let emailed = 0;
+  for (const t of targets) {
+    if (sendEmail) {
+      await createNotificationWithEmail(
+        t.id,
+        { category: "system", type: "info", title, body },
+        { emailSubject: title, emailBody: body },
+      );
+      emailed++;
+    } else {
+      await createNotification(t.id, { category: "system", type: "info", title, body });
+    }
+  }
+  await audit(req.user!.sub, "admin.broadcast", {
+    entity: "site",
+    meta: { title, targets: targets.length, emailed },
+  });
+  ok(res, { sent: targets.length, emailed });
 });
 
 adminRouter.patch("/users/:id/status", async (req, res) => {
@@ -347,14 +632,14 @@ adminRouter.get("/devices", async (req, res) => {
     },
     where: q
       ? {
-          OR: [
-            { name: { contains: q } },
-            { serialNumber: { contains: q } },
-            { ipAddress: { contains: q } },
-            { home: { name: { contains: q } } },
-            { home: { owner: { username: { contains: q } } } },
-          ],
-        }
+        OR: [
+          { name: { contains: q } },
+          { serialNumber: { contains: q } },
+          { ipAddress: { contains: q } },
+          { home: { name: { contains: q } } },
+          { home: { owner: { username: { contains: q } } } },
+        ],
+      }
       : undefined,
     orderBy: { id: "desc" },
     take: 200,
@@ -477,15 +762,46 @@ adminRouter.get("/search", async (req, res) => {
 // ---------- API keys ----------
 
 adminRouter.get("/api-keys", async (_req, res) => {
-  const keys = await prisma.apiKey.findMany({
-    include: {
-      user: { select: { id: true, username: true, email: true } },
-      home: { select: { id: true, name: true } },
-    },
-    orderBy: { createdAt: "desc" },
-    take: 200,
+  try {
+    const keys = await prisma.apiKey.findMany({
+      include: {
+        user: { select: { id: true, username: true, email: true } },
+        home: { select: { id: true, name: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 200,
+    });
+    ok(res, keys);
+  } catch (err: any) {
+    console.error(`[admin] api-keys query failed:`, err?.message ?? err);
+    ok(res, []);
+  }
+});
+
+/** Flasher ke liye: user ke liye naya API key banao (userId/homeId pe bind).
+ * GUI me order fetch pe key nahi mili (buyer ka home nahi) to yahi call hota hai. */
+adminRouter.post("/api-keys", async (req, res) => {
+  const userId = Number(req.body?.userId);
+  if (!userId) throw new AppError("BAD_REQUEST", "userId required");
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw new AppError("NOT_FOUND", "User not found");
+  let homeId = req.body?.homeId ? Number(req.body.homeId) : null;
+  if (!homeId) {
+    const home = await prisma.home.findFirst({ where: { ownerId: userId } });
+    homeId = home?.id ?? null;
+  }
+  const label = String(req.body?.label ?? "factory").slice(0, 100);
+  const crypto = await import("node:crypto");
+  const plain = `rs_${crypto.randomBytes(9).toString("base64url").replace(/-/g, "").slice(0, 16)}`;
+  const keyHash = crypto.createHash("sha256").update(plain).digest("hex");
+  const keyPrefix = plain.slice(0, 8);
+  await prisma.apiKey.create({ data: { userId, homeId, label, keyHash, keyPrefix } });
+  await audit(req.user!.sub, "admin.apikey.create", {
+    entity: "api_key",
+    entityId: userId,
+    meta: { label, prefix: keyPrefix, userId },
   });
-  ok(res, keys);
+  ok(res, { apiKey: plain, keyPrefix, userId, homeId });
 });
 
 adminRouter.delete("/api-keys/:id", async (req, res) => {
@@ -634,19 +950,296 @@ adminRouter.get("/audit", async (req, res) => {
 // ---------- Diagnostics: app log (crash 503 ka asli reason yahan milega) ----------
 
 /** Admin ko app.log ke aakhri N lines dikhao — crashguard / boot lines yahan hain. */
-/**
- * Startup diagnostics — boot/heartbeat/exit lines parsed + live process
- * status. 503 cycle ka pura picture ek jagah: kitni baar process exit hua,
- * kab boot hua, koi crashguard/fatal line, aur abhi wala process ka RSS.
- */
+/** Diagnostics ka full text dump — export (.txt) ke liye. */
+function buildDiagnosticsText(d: {
+  process: { pid: number; uptimeSec: number; rssMB: number; heapMB: number; node: string; startedAt: string };
+  parent: { pid: number; name: string; startTime: string; cmdline: string } | null;
+  boot: string[];
+  exits: string[];
+  crashes: string[];
+  serverErrors: string[];
+  stats: { reqEnd: number; reqAbort: number; exitsInTail: number; bootsInTail: number };
+  hbSummary: Array<{ pid: number; count: number; firstUptime: number; lastUptime: number; firstRss: number; lastRss: number; rssGrowthPerHour: number }>;
+  hbSeries: Array<{ ts: string; pid: number; uptime: number; rss: number; heap: number | null }>;
+  healthCheck: {
+    lastCheck: { ts: string; ok: boolean; status: number | null; ms: number; err: string | null } | null;
+    checksTotal: number;
+    checksOk: number;
+    successRate: number | null;
+    activeIncident: { id: string; startedAt: string; lastStatus: number | null; lastErr: string | null } | null;
+    incidents: Array<{
+      ts: string;
+      id: string;
+      failCount?: number;
+      lastStatus?: number | null;
+      lastErr?: string | null;
+      end?: { ts: string; durationSec: number; recoveredStatus?: number | null } | null;
+    }>;
+  };
+  webconfig: { path: string | null; iisnode: string | null; httpErrors: string | null; appPoolRecycling: string | null } | null;
+  appPool: string | null;
+  wpEvents: string | null;
+  error?: string;
+  logPath: string | null;
+  logBytes: number;
+}): string {
+  const L: string[] = [];
+  const sec = (t: string) => L.push(`\n${"=".repeat(70)}\n${t}\n${"=".repeat(70)}`);
+  L.push(`SwitchNest Diagnostics Export`);
+  L.push(`Exported: ${new Date().toISOString()}`);
+  L.push(`Log file: ${d.logPath ?? "?"} (${d.logBytes ?? 0} bytes)`);
+  if (d.error) L.push(`Parse error: ${d.error}`);
+
+  sec("PROCESS");
+  L.push(`PID:            ${d.process.pid}`);
+  L.push(`Uptime:         ${Math.floor(d.process.uptimeSec / 60)}m ${d.process.uptimeSec % 60}s`);
+  L.push(`RSS:            ${d.process.rssMB} MB`);
+  L.push(`Heap:           ${d.process.heapMB} MB`);
+  L.push(`Node:           ${d.process.node}`);
+  L.push(`Started at:     ${d.process.startedAt}`);
+  if (d.parent) {
+    L.push(`Parent:         ${d.parent.name} (pid ${d.parent.pid})`);
+    L.push(`Parent start:   ${d.parent.startTime}`);
+    L.push(`Parent cmdline: ${d.parent.cmdline}`);
+  }
+
+  sec("STATS (log tail)");
+  L.push(`Requests (END):   ${d.stats.reqEnd}`);
+  L.push(`Requests (ABORT): ${d.stats.reqAbort}`);
+  L.push(`Boots in tail:    ${d.stats.bootsInTail}`);
+  L.push(`Exits in tail:    ${d.stats.exitsInTail}`);
+
+  sec("HEALTH CHECKER");
+  const hc = d.healthCheck;
+  if (hc.lastCheck) {
+    L.push(`Last check: ${hc.lastCheck.ts}  ${hc.lastCheck.ok ? "OK" : "FAIL"}  status=${hc.lastCheck.status ?? "-"}  ${hc.lastCheck.ms}ms  err=${hc.lastCheck.err ?? "-"}`);
+  } else {
+    L.push(`Last check: (none yet)`);
+  }
+  L.push(`Checks:     ${hc.checksOk}/${hc.checksTotal}  (success ${hc.successRate ?? "-"}%)`);
+  if (hc.activeIncident) {
+    L.push(`ACTIVE INCIDENT: ${hc.activeIncident.id}  since ${hc.activeIncident.startedAt}  last=${hc.activeIncident.lastStatus ?? hc.activeIncident.lastErr}`);
+  }
+  L.push(`Incidents:`);
+  if (hc.incidents.length === 0) L.push(`  (none)`);
+  for (const inc of hc.incidents) {
+    L.push(
+      `  ${inc.ts}  id=${inc.id}  ${inc.lastStatus ? `HTTP ${inc.lastStatus}` : inc.lastErr ?? "?"}` +
+      (inc.end ? `  -> recovered ${inc.end.durationSec}s` : "  -> OPEN"),
+    );
+  }
+
+  sec(`BOOT HISTORY (last ${d.boot.length})`);
+  for (const b of d.boot) L.push(`  ${b}`);
+
+  sec(`EXITS / RESTARTS (tail ${d.exits.length})`);
+  if (d.exits.length === 0) L.push(`  (no exits recorded)`);
+  for (const e of d.exits) L.push(`  ${e}`);
+
+  sec(`CRASHES / FATAL (tail ${d.crashes.length})`);
+  if (d.crashes.length === 0) L.push(`  (no crashguard/fatal lines)`);
+  for (const c of d.crashes) L.push(`  ${c}`);
+
+  sec(`SERVER ERRORS (tail ${d.serverErrors.length})`);
+  if (d.serverErrors.length === 0) L.push(`  (none)`);
+  for (const s of d.serverErrors) L.push(`  ${s}`);
+
+  sec(`HEARTBEAT SUMMARY (per process, ${d.hbSummary.length})`);
+  L.push(`  pid\thb\tfirstUptime\tlastUptime\tfirstRss\tlastRss\tgrowthMB/hr`);
+  for (const h of d.hbSummary.slice(0, 60)) {
+    L.push(`  ${h.pid}\t${h.count}\t${h.firstUptime}\t${h.lastUptime}\t${h.firstRss}\t${h.lastRss}\t${h.rssGrowthPerHour}`);
+  }
+
+  sec(`MEMORY TREND (24h, ${d.hbSeries.length} points — first/last 10)`);
+  const sample = [...d.hbSeries.slice(0, 10), ...d.hbSeries.slice(-10)];
+  L.push(`  ts\tpid\tuptime\trss\theap`);
+  for (const p of sample) {
+    L.push(`  ${p.ts}\t${p.pid}\t${p.uptime}\t${p.rss}\t${p.heap ?? "-"}`);
+  }
+
+  sec("WEB.CONFIG");
+  if (d.webconfig) {
+    L.push(`Path: ${d.webconfig.path}`);
+    if (d.webconfig.iisnode) L.push(`iisnode: ${d.webconfig.iisnode}`);
+    if (d.webconfig.httpErrors) L.push(`httpErrors: ${d.webconfig.httpErrors}`);
+    if (d.webconfig.appPoolRecycling) L.push(`recycling: ${d.webconfig.appPoolRecycling}`);
+  } else {
+    L.push(`(not readable)`);
+  }
+
+  sec("APP POOL (appcmd)");
+  L.push(d.appPool ? d.appPool.slice(0, 3000) : `(unavailable)`);
+
+  if (d.wpEvents) {
+    sec("WORKER PROCESS EVENTS (wevtutil)");
+    L.push(d.wpEvents.slice(0, 2000));
+  }
+
+  L.push(`\n${"=".repeat(70)}`);
+  return L.join("\n");
+}
+
 /**
  * Deploy info — admin panel me "last code update" + current commit.
  * deploy.cmd har deploy pe site/apps/logs/deploy.json likhta hai
  * (timestamp + commit + branch). Yahan marker + live git state
  * (agar production pe repo clone ho) + process uptime milta hai.
  */
+/** GitHub Actions CI status — latest run for a commit. 5-min cache; GITHUB_TOKEN/GH_TOKEN env se. */
+type CiStatus = {
+  status: "pass" | "fail" | "pending" | "unknown";
+  runId?: number;
+  workflow?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  reason?: string;
+};
+const ciCache: { key: string; at: number; value: CiStatus } = { key: "", at: 0, value: { status: "unknown" } };
+async function fetchCiStatus(sha?: string): Promise<CiStatus> {
+  const cacheKey = sha ?? "latest-main";
+  const now = Date.now();
+  if (ciCache.key === cacheKey && now - ciCache.at < 300_000) return ciCache.value;
+  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+  const q = sha ? `head_sha=${sha}` : "branch=main";
+  const store = (v: CiStatus) => {
+    ciCache.key = cacheKey;
+    ciCache.at = now;
+    ciCache.value = v;
+    return v;
+  };
+  try {
+    const res = await fetch(`https://api.github.com/repos/robosphere99/switch_v2/actions/runs?${q}&per_page=1`, {
+      headers: {
+        Accept: "application/vnd.github+json",
+        "User-Agent": "switchnest-admin",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (res.status === 401 || res.status === 403 || res.status === 404) {
+      return store(
+        token
+          ? { status: "unknown", reason: `GitHub API ${res.status}` }
+          : { status: "unknown", reason: "private repo — GITHUB_TOKEN env me daalo" },
+      );
+    }
+    if (!res.ok) return store({ status: "unknown", reason: `GitHub API ${res.status}` });
+    const data = (await res.json()) as {
+      workflow_runs?: Array<{ id: number; name?: string | null; status: string; conclusion: string | null; created_at: string; updated_at: string }>;
+    };
+    const run = data.workflow_runs?.[0];
+    if (!run) return store({ status: "unknown", reason: "no workflow runs yet" });
+    const conclusion = run.conclusion;
+    return store({
+      status:
+        conclusion === "success"
+          ? "pass"
+          : conclusion === "failure" || conclusion === "cancelled" || conclusion === "timed_out" || conclusion === "action_required"
+            ? "fail"
+            : run.status === "completed"
+              ? "unknown"
+              : "pending",
+      runId: run.id,
+      workflow: run.name ?? undefined,
+      createdAt: run.created_at,
+      updatedAt: run.updated_at,
+    });
+  } catch (e) {
+    return { status: "unknown", reason: e instanceof Error ? e.message : "network error" };
+  }
+}
+
+/** Latest main commit — marker/git dono missing ho to fallback (GitHub API).
+ * Production pe .git nahi hota aur deploy.json wipe bhi ho sakta hai — isliye
+ * API khud apne repo ka current main commit fetch karta hai (60s cache). */
+const latestCache: { at: number; value: { commit: string; branch: string; ts: string } | null } = { at: 0, value: null };
+async function fetchLatestMain() {
+  const now = Date.now();
+  if (now - latestCache.at < 60_000) return latestCache.value;
+  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+  try {
+    const res = await fetch("https://api.github.com/repos/robosphere99/switch_v2/commits/main", {
+      headers: {
+        Accept: "application/vnd.github+json",
+        "User-Agent": "switchnest-admin",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return latestCache.value;
+    const j = (await res.json()) as { sha?: string; commit?: { committer?: { date?: string } } };
+    latestCache.value = { commit: j.sha || "", branch: "main", ts: j.commit?.committer?.date || "" };
+    latestCache.at = now;
+  } catch {
+    /* best-effort — cache purana rehne do */
+  }
+  return latestCache.value;
+}
+
+/** Kya `ancestor` local git history me hai (head ka ancestor)? True = head aage/equal. */
+function isAncestorOf(ancestor: string, head: string): boolean {
+  try {
+    execSync(`git merge-base --is-ancestor ${ancestor} ${head}`, {
+      stdio: "ignore",
+      windowsHide: true,
+      timeout: 5000,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+adminRouter.get("/lan-info", async (_req, res) => {
+  // Flasher Guide page (web) ke liye — localhost mode me ESP server URL me
+  // `<LAN-IP>` placeholder ki jagah asli IP dikhna chahiye. Server khud apna
+  // LAN IP detect karta hai (wahi IP jo boards heartbeat pe use karenge).
+  const lanIp = await detectLanIp();
+  ok(res, { lanIp, espServerUrl: `http://${lanIp}:4000` });
+});
+
+// ---------------------------------------------------------------------------
+// URL reachability check — Guide page ke "Test connection" button ke liye.
+// Board ko dikhne wala URL (ESP Server URL) isi se test hota hai: server us
+// URL pe HTTP GET karta hai — koi bhi response = reachable (200/404/redirect
+// sab server alive batate hain), timeout/refused = nahi. Private/LAN IPs
+// allowed (localhost-first me boards LAN pe hote hain) — admin-only + rate
+// limited isliye SSRF-ish abuse na ho.
+// ---------------------------------------------------------------------------
+const checkUrlLimiter = rateLimit({
+  name: "admin:check-url",
+  windowMs: 60_000,
+  max: 30,
+  message: "Bahut zyada URL checks — thodi der baad try karo",
+});
+
+const checkUrlSchema = z.object({ url: z.string().min(1).max(300) });
+
+adminRouter.post("/check-url", checkUrlLimiter, validateBody(checkUrlSchema), async (req, res) => {
+  const raw = String((req.body as { url?: unknown }).url ?? "").trim();
+  if (!/^https?:\/\//i.test(raw)) {
+    throw new AppError("VALIDATION_ERROR", "URL http:// ya https:// se shuru hona chahiye", 400);
+  }
+  const started = Date.now();
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 6000);
+    const r = await fetch(raw, { signal: ctrl.signal });
+    clearTimeout(timer);
+    ok(res, { ok: true, status: r.status, ms: Date.now() - started });
+  } catch (err) {
+    const aborted = err instanceof Error && err.name === "AbortError";
+    const msg = aborted
+      ? "Timeout — 6s me koi response nahi (URL galat ya server down?)"
+      : err instanceof Error
+        ? err.message
+        : String(err);
+    ok(res, { ok: false, error: msg, ms: Date.now() - started });
+  }
+});
+
 adminRouter.get("/deploy-info", async (_req, res) => {
-  let marker: { deployedAt?: string; commit?: string; branch?: string } | null = null;
+  let marker: { deployedAt?: string; commit?: string; branch?: string; source?: string } | null = null;
   const markerPath = path.resolve(process.cwd(), "../logs/deploy.json");
   try {
     if (fs.existsSync(markerPath)) {
@@ -661,9 +1254,88 @@ adminRouter.get("/deploy-info", async (_req, res) => {
     if (head) git = { commit: head, branch };
   } catch { /* production pe .git nahi ho to — marker hi kaafi hai */ }
 
+  // Build metadata — dist/build-commit.json (build time pe likha, git me committed).
+  // Deployed commit ka SABSE reliable source: code hi batata hai kis commit se bana hai,
+  // deploy.json (untracked, wipe ho sakta hai) ya GitHub API pe depend nahi karta.
+  let build: { commit: string; builtAt: string } | null = null;
+  try {
+    const bp = path.resolve(process.cwd(), "dist/build-commit.json");
+    if (fs.existsSync(bp)) {
+      const bj = JSON.parse(fs.readFileSync(bp, "utf8"));
+      if (bj?.commit) build = { commit: bj.commit, builtAt: bj.builtAt || "" };
+    }
+  } catch { /* build metadata nahi — marker/git/latest fallback */ }
+
+  const ciSha = marker?.commit || git?.commit || build?.commit || undefined;
+  const ci = await fetchCiStatus(ciSha);
+  const latest = await fetchLatestMain();
+
+  // Deploy sync health — main pe push hua par live site pe nahi pahuncha
+  // (lost webhook delivery / failed deploy) to yahan detect hota hai.
+  //   synced  : deployed commit == latest main commit
+  //   pending : naya commit hai par deploy window me (push 5 min se kam purana)
+  //   lagging : commit 5+ min purana hai aur abhi tak live nahi — action chahiye
+  //   unknown : deployed/latest dono nahi pata (GitHub fetch fail / build metadata missing)
+  // Note: build-commit.json hamesha PARENT commit embed karta hai (build commit
+  // se pehle hota hai) — isliye marker (deploy-time SHA) ko priority, build sirf
+  // last resort jab marker wipe ho jaye.
+  // Deployed commit ka source: production me marker (deploy.json, deploy-time)
+  // exact SHA deta hai. Dev machine pe marker nahi hota — running code git HEAD
+  // hai (tsx src/ se), aur dist/build-commit.json purane build se stale rehta
+  // hai — isliye git ko build se PEHLE rakho (stale build se jhuta "deploy
+  // lagging" alarm aata tha localhost-first me).
+  const deployedSource: "marker" | "git" | "build" | null = marker?.commit
+    ? "marker"
+    : git?.commit
+      ? "git"
+      : build?.commit
+        ? "build"
+        : null;
+  const deployedCommit = marker?.commit || git?.commit || build?.commit || null;
+  const deployedAt =
+    deployedSource === "marker"
+      ? marker?.deployedAt || null
+      : deployedSource === "build"
+        ? build?.builtAt || null
+        : null;
+  const latestCommit = latest?.commit || null;
+  const latestTs = latest?.ts || null;
+  // Marker source "build" = GitHub down tha deploy pe, commit parent hai —
+  // usse sync compare KARNA galat ho sakta hai (jhuta lagging). Trusted
+  // sirf github/git source (ya purane markers bina source ke).
+  const markerTrusted = marker?.commit ? marker?.source !== "build" : true;
+  let syncStatus: "synced" | "pending" | "lagging" | "local" | "unknown" = "unknown";
+  let syncAgeMin: number | null = null;
+  if (markerTrusted && deployedCommit && latestCommit && latestTs) {
+    syncAgeMin = Math.round((Date.now() - new Date(latestTs).getTime()) / 60_000);
+    if (deployedCommit === latestCommit) syncStatus = "synced";
+    else if (syncAgeMin > 5) {
+      // Lagging alarm SIRF production deploy ke liye meaningful hai (marker se
+      // deployed). Dev/local pe deployed = git HEAD — GitHub main se AAGE hona
+      // (unpushed commits) localhost-first me normal hai, alarm nahi. Direction
+      // check: deployed main se aage hai to calm "local", peeche hai to "lagging".
+      const aheadOfMain =
+        deployedSource === "git" && git?.commit && latestCommit
+          ? isAncestorOf(latestCommit, git.commit)
+          : false;
+      syncStatus = aheadOfMain ? "local" : "lagging";
+    } else syncStatus = "pending";
+  }
   ok(res, {
     marker,
     git,
+    build,
+    deployedAt,
+    latest,
+    sync: {
+      status: syncStatus,
+      deployedCommit,
+      deployedSource,
+      latestCommit,
+      ageMin: syncAgeMin,
+      since: latest?.ts || null,
+    },
+    ci,
     processUptimeSec: Math.round(process.uptime()),
     startedAt: new Date(Date.now() - process.uptime() * 1000).toISOString(),
   });
@@ -716,6 +1388,24 @@ adminRouter.get("/diagnostics", async (_req, res) => {
         end?: { ts: string; durationSec: number; recoveredStatus?: number | null } | null;
       }>;
     };
+    leak: {
+      running: boolean;
+      startedAt: string;
+      lastCheckedAt: string | null;
+      leaking: boolean;
+      detail: {
+        pid: number;
+        growthPct: number;
+        spanH: number;
+        rssFirst: number;
+        rssLast: number;
+        firstTs: string;
+        lastTs: string;
+      } | null;
+      thresholdPct: number;
+      windowH: number;
+      incidents: Array<Record<string, unknown>>;
+    };
     appPool: string | null;
     wpEvents: string | null;
     webconfig: {
@@ -756,6 +1446,7 @@ adminRouter.get("/diagnostics", async (_req, res) => {
       checking: false,
       incidents: [],
     },
+    leak: getLeakMonitorState(),
     webconfig: null,
     appPool: null,
     wpEvents: null,
@@ -830,28 +1521,18 @@ adminRouter.get("/diagnostics", async (_req, res) => {
         .sort((a, b) => b.lastRss - a.lastRss);
 
       // Time-series (24h) — har 10s [hb] line → {ts, pid, rss, heap}.
-      // Naya format: [hb] alive ts=<ISO> uptime=N pid=N rss=NMB heap=NMB
-      // Purana format (bina ts/heap): uptime-based approximate ts.
-      const hbSeriesRe = /\[hb\] alive(?: ts=([\d:.TZ-]+))? uptime=(\d+)s pid=(\d+) rss=(\d+)MB(?: heap=(\d+)MB)?/;
+      // Sirf REAL ts= wali lines — purana format (bina ts) ko now-uptime se
+      // date karna chronological order ulta kar deta hai (RSS decline ko
+      // growth dikhata tha). Legacy lines chart se bahar rakhi gayi hain.
+      const hbSeriesRe = /\[hb\] alive ts=([\d:.TZ-]+) uptime=(\d+)s pid=(\d+) rss=(\d+)MB(?: heap=(\d+)MB)?/;
       const nowMs = Date.now();
       const dayAgo = nowMs - 24 * 3600 * 1000;
       const series: Array<{ ts: string; pid: number; uptime: number; rss: number; heap: number | null }> = [];
-      let lastRealTs = nowMs;
       for (const l of lines) {
         const m = hbSeriesRe.exec(l);
         if (!m) continue;
-        const tsRaw = m[1];
-        let t: number;
-        if (tsRaw) {
-          t = Date.parse(tsRaw);
-          if (!Number.isNaN(t)) lastRealTs = t;
-          else t = lastRealTs;
-        } else {
-          // purana format — uptime se approximate: uptime chhota = recently booted.
-          const up = Number(m[2]);
-          t = nowMs - up * 1000;
-        }
-        if (t < dayAgo) continue;
+        const t = Date.parse(m[1]);
+        if (Number.isNaN(t) || t < dayAgo) continue;
         series.push({
           ts: new Date(t).toISOString(),
           pid: Number(m[3]),
@@ -877,6 +1558,7 @@ adminRouter.get("/diagnostics", async (_req, res) => {
 
 
   result.healthCheck = getHealthMonitorState();
+  result.leak = getLeakMonitorState();
 
   // web.config — iisnode settings (nodeProcessCountPerApplication, watchedFiles,
   // maxConcurrentRequestsPerProcess). Process har ~60s recycle ho raha hai bina
@@ -957,6 +1639,15 @@ adminRouter.get("/diagnostics", async (_req, res) => {
     }
   } catch {
     /* wmic unavailable — parent unknown, koi baat nahi */
+  }
+
+  // Export — full dump as .txt (Content-Disposition attachment).
+  if (String(_req.query.download) === "1") {
+    const txt = buildDiagnosticsText(result);
+    const fname = `switchnest-diagnostics-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.txt`;
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${fname}"`);
+    return res.send(txt);
   }
 
   ok(res, result);
@@ -1059,16 +1750,16 @@ adminRouter.get("/esp", async (req, res) => {
   const esps = await prisma.espDevice.findMany({
     where: q
       ? {
-          OR: [
-            { name: { contains: q } },
-            { serialCode: { contains: q } },
-            { macAddress: { contains: q } },
-            { ipAddress: { contains: q } },
-            { ssid: { contains: q } },
-            { modelCode: { contains: q } },
-            { home: { OR: [{ name: { contains: q } }, { owner: { username: { contains: q } } }] } },
-          ],
-        }
+        OR: [
+          { name: { contains: q } },
+          { serialCode: { contains: q } },
+          { macAddress: { contains: q } },
+          { ipAddress: { contains: q } },
+          { ssid: { contains: q } },
+          { modelCode: { contains: q } },
+          { home: { OR: [{ name: { contains: q } }, { owner: { username: { contains: q } } }] } },
+        ],
+      }
       : undefined,
     select: {
       id: true,
@@ -1169,6 +1860,79 @@ adminRouter.post("/esp/:id/key", async (req, res) => {
 });
 
 /** Rename an ESP board (admin friendly name). */
+/**
+ * Board cleanup (support ke liye): stale/offline boards + naam-serial mismatch detect.
+ * Naam-serial mismatch = naam auto-pattern (`serial · ssid`) jaisa dikhta hai par
+ * current serial/ssid se match nahi karta — matlab purana/stale naam (custom
+ * rename hua naam isse flag nahi hota). Support ek click me sahi naam laga sakta hai.
+ */
+adminRouter.get("/esp/issues", async (req, res) => {
+  const esps = await prisma.espDevice.findMany({
+    select: {
+      id: true,
+      homeId: true,
+      macAddress: true,
+      name: true,
+      ssid: true,
+      serialCode: true,
+      modelCode: true,
+      ipAddress: true,
+      firmwareVersion: true,
+      lastSeen: true,
+      offline: true,
+      home: {
+        select: {
+          id: true,
+          name: true,
+          owner: { select: { username: true } },
+        },
+      },
+    },
+    orderBy: { lastSeen: "asc" },
+    take: 500,
+  });
+  const now = Date.now();
+  const DAY = 86_400_000;
+  const issues = esps.map((e) => {
+    const expectedName = e.serialCode && e.ssid ? `${e.serialCode} · ${e.ssid}` : null;
+    const nameMismatch =
+      !!e.name && !!expectedName && e.name !== expectedName && e.name.includes(" · ");
+    const lastSeenMs = e.lastSeen ? e.lastSeen.getTime() : null;
+    const staleDays = lastSeenMs ? Math.floor((now - lastSeenMs) / DAY) : null;
+    const stale = e.offline && (lastSeenMs === null || now - lastSeenMs > DAY);
+    return {
+      id: e.id,
+      homeId: e.homeId,
+      macAddress: e.macAddress,
+      name: e.name,
+      expectedName,
+      nameMismatch,
+      ssid: e.ssid,
+      serialCode: e.serialCode,
+      modelCode: e.modelCode,
+      ipAddress: e.ipAddress,
+      firmwareVersion: e.firmwareVersion,
+      lastSeen: e.lastSeen,
+      offline: e.offline,
+      stale,
+      staleDays,
+      home: e.home ? { id: e.home.id, name: e.home.name, owner: e.home.owner?.username ?? null } : null,
+    };
+  });
+  // Sirf asli issues — mismatch ya stale. Online + sahi naam wale boards yahan nahi aate.
+  const filtered = issues.filter((i) => i.nameMismatch || i.stale);
+  // Pehle mismatch wale, phir sabse purane stale boards
+  filtered.sort((a, b) => {
+    if (a.nameMismatch !== b.nameMismatch) return a.nameMismatch ? -1 : 1;
+    return (a.staleDays ?? 0) - (b.staleDays ?? 0);
+  });
+  ok(res, {
+    issues: filtered,
+    mismatchCount: filtered.filter((i) => i.nameMismatch).length,
+    staleCount: filtered.filter((i) => i.stale).length,
+  });
+});
+
 adminRouter.patch("/esp/:id", async (req, res) => {
   const id = Number(req.params.id);
   const name = String(req.body?.name ?? "").trim().slice(0, 60);
@@ -1371,6 +2135,32 @@ adminRouter.get("/devices/:id/support", async (req, res) => {
   const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
   ok(res, { ...device, online: device.lastSeen !== null && device.lastSeen.getTime() > dayAgo.getTime() });
 });
+/** Rotate console password for an ESP board (sends MQTT payload and updates DB). */
+adminRouter.post("/esp/:id/rotate-console-password", async (req, res) => {
+  const id = Number(req.params.id);
+  const crypto = await import("node:crypto");
+  const newPass = crypto.randomBytes(4).toString("hex");
+
+  const esp = await prisma.espDevice.findUnique({ where: { id } });
+  if (!esp) throw new AppError("NOT_FOUND", "ESP not found", 404);
+
+  await prisma.espDevice.update({
+    where: { id },
+    data: { consolePassword: newPass },
+  });
+
+  // Dynamic import since it's used only here to avoid circular dep issues
+  const { mqttPushRotatePassword } = await import("../services/mqtt.service");
+  mqttPushRotatePassword(esp.macAddress, newPass);
+
+  await audit(req.user!.sub, "admin.esp.rotate_password", {
+    entity: "esp",
+    entityId: id,
+    meta: { macAddress: esp.macAddress, newPass },
+  });
+
+  ok(res, { id, newPass });
+});
 
 /** Fix: stuck pending commands ko clear karo (device fir se responsive ho jayega). */
 adminRouter.post("/devices/:id/clear-commands", async (req, res) => {
@@ -1539,15 +2329,23 @@ adminRouter.get("/esp/:id/probe", async (req, res) => {
 // ---------- Shop: Products ----------
 
 adminRouter.get("/products", async (_req, res) => {
-  const products = await prisma.product.findMany({
-    orderBy: { id: "asc" },
-    include: { _count: { select: { serials: true } } },
-  });
-  ok(res, products);
+  try {
+    const products = await prisma.product.findMany({
+      orderBy: { id: "asc" },
+      include: { _count: { select: { serials: true } }, media: { orderBy: { id: "asc" } } },
+    });
+    ok(res, products);
+  } catch (err) {
+    const products = await prisma.product.findMany({
+      orderBy: { id: "asc" },
+      include: { _count: { select: { serials: true } } },
+    });
+    ok(res, products.map((p) => ({ ...p, media: [] })));
+  }
 });
 
 adminRouter.post("/products", async (req, res) => {
-  const { name, modelCode, relayCount, price, description, features, imageUrl } = req.body ?? {};
+  const { name, modelCode, relayCount, price, description, features, imageUrl, stockCount } = req.body ?? {};
   if (!name || !modelCode || price == null) {
     throw new AppError("BAD_REQUEST", "name, modelCode and price are required");
   }
@@ -1560,6 +2358,7 @@ adminRouter.post("/products", async (req, res) => {
       description: description ? String(description) : undefined,
       features: features ? (typeof features === "string" ? JSON.parse(features) : features) : undefined,
       imageUrl: imageUrl ? String(imageUrl).slice(0, 255) : undefined,
+      stockCount: stockCount != null ? Number(stockCount) : 0,
     },
   });
   await audit(req.user!.sub, "admin.product.create", { entity: "product", entityId: product.id, meta: { modelCode } });
@@ -1568,7 +2367,7 @@ adminRouter.post("/products", async (req, res) => {
 
 adminRouter.patch("/products/:id", async (req, res) => {
   const id = Number(req.params.id);
-  const { name, price, description, features, imageUrl, active } = req.body ?? {};
+  const { name, price, description, features, imageUrl, active, stockCount } = req.body ?? {};
   const product = await prisma.product.update({
     where: { id },
     data: {
@@ -1577,6 +2376,7 @@ adminRouter.patch("/products/:id", async (req, res) => {
       description: description != null ? String(description) : undefined,
       features: features ? (typeof features === "string" ? JSON.parse(features) : features) : undefined,
       imageUrl: imageUrl != null ? String(imageUrl).slice(0, 255) : undefined,
+      stockCount: stockCount != null ? Number(stockCount) : undefined,
       active: active != null ? Boolean(active) : undefined,
     },
   });
@@ -1591,6 +2391,51 @@ adminRouter.delete("/products/:id", async (req, res) => {
   ok(res, { deleted: true });
 });
 
+// Product media upload (photos, PDFs, datasheets, diagrams)
+const productMediaUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => {
+      const dir = path.join(process.cwd(), "uploads/product-media");
+      fs.mkdirSync(dir, { recursive: true });
+      cb(null, dir);
+    },
+    filename: (_req, file, cb) => {
+      const ext = path.extname(file.originalname);
+      cb(null, `pm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`);
+    },
+  }),
+  limits: { fileSize: 20 * 1024 * 1024 },
+});
+
+adminRouter.post("/products/:id/media", productMediaUpload.single("file"), async (req, res) => {
+  const productId = Number(req.params.id);
+  if (!req.file) throw new AppError("BAD_REQUEST", "No file uploaded");
+  const product = await prisma.product.findUnique({ where: { id: productId } });
+  if (!product) throw new AppError("NOT_FOUND", "Product not found");
+  const fileUrl = `/uploads/product-media/${req.file.filename}`;
+  const ext = path.extname(req.file.originalname).toLowerCase();
+  const type = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"].includes(ext) ? "image"
+    : [".mp4", ".webm", ".mov"].includes(ext) ? "video"
+    : "document";
+  const media = await prisma.productMedia.create({
+    data: { productId, url: fileUrl, type },
+  });
+  await audit(req.user!.sub, "admin.product.media.add", { entity: "product", entityId: productId, meta: { mediaId: media.id } });
+  ok(res, media, 201);
+});
+
+
+adminRouter.delete("/products/media/:mediaId", async (req, res) => {
+  const mediaId = Number(req.params.mediaId);
+  const media = await prisma.productMedia.findUnique({ where: { id: mediaId } });
+  if (!media) throw new AppError("NOT_FOUND", "Media not found");
+  const filePath = path.join(process.cwd(), media.url.replace(/^\/+/, ""));
+  try { fs.unlinkSync(filePath); } catch { /* file may not exist */ }
+  await prisma.productMedia.delete({ where: { id: mediaId } });
+  await audit(req.user!.sub, "admin.product.media.delete", { entity: "product", entityId: media.productId ?? undefined, meta: { mediaId } });
+  ok(res, { deleted: true });
+});
+
 // ---------- Shop: Orders ----------
 
 adminRouter.get("/orders", async (req, res) => {
@@ -1599,12 +2444,29 @@ adminRouter.get("/orders", async (req, res) => {
     where: status ? { status: status as never } : undefined,
     include: {
       items: true,
+      serials: { select: { serialCode: true, testedAt: true } },
       user: { select: { id: true, username: true, email: true } },
     },
     orderBy: { createdAt: "desc" },
     take: 200,
   });
   ok(res, orders);
+});
+
+/** Ek order ka pura detail (bill/print ke liye) — items + buyer + payment. */
+adminRouter.get("/orders/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  const order = await prisma.order.findUnique({
+    where: { id },
+    include: {
+      items: true,
+      serials: { select: { serialCode: true, testedAt: true } },
+      user: { select: { id: true, username: true, email: true } },
+    },
+  });
+  if (!order) throw new AppError("NOT_FOUND", "Order not found");
+  // Bill QR ke liye HMAC-signed verify token — public verify page isi se khulta hai.
+  ok(res, { ...order, verifyToken: signBillToken(order.id) });
 });
 
 adminRouter.patch("/orders/:id/status", async (req, res) => {
@@ -1619,21 +2481,96 @@ adminRouter.patch("/orders/:id/status", async (req, res) => {
   ok(res, order);
 });
 
+adminRouter.patch("/orders/:id/payment-status", async (req, res) => {
+  const id = Number(req.params.id);
+  const paymentStatus = String(req.body?.paymentStatus ?? "");
+  const order = await prisma.order.update({
+    where: { id },
+    data: {
+      paymentStatus,
+      paidAt: paymentStatus === "paid" ? new Date() : null
+    }
+  });
+  await audit(req.user!.sub, `admin.order.payment.${paymentStatus}`, {
+    entity: "order",
+    entityId: id,
+    meta: { orderNumber: order.orderNumber },
+  });
+  ok(res, order);
+});
+
 // ---------- Shop: Serial Registry ----------
 
 adminRouter.get("/serials", async (req, res) => {
   const status = req.query.status ? String(req.query.status) : undefined;
   const productId = req.query.productId ? Number(req.query.productId) : undefined;
+  const orderId = req.query.orderId ? Number(req.query.orderId) : undefined;
   const serials = await prisma.serialRegistry.findMany({
     where: {
       ...(status ? { status: status as never } : {}),
       ...(productId ? { productId } : {}),
+      ...(orderId ? { orderId } : {}),
     },
-    include: { product: { select: { id: true, name: true, modelCode: true } } },
+    select: {
+      id: true,
+      serialCode: true,
+      productId: true,
+      orderId: true,
+      userId: true,
+      homeId: true,
+      status: true,
+      createdAt: true,
+      claimedAt: true,
+      testedAt: true,
+      product: { select: { id: true, name: true, modelCode: true } },
+      user: { select: { id: true, username: true, email: true } },
+      order: { select: { id: true, orderNumber: true, status: true } },
+    },
     orderBy: { id: "desc" },
     take: 500,
   });
-  ok(res, serials);
+
+  // Sticker/hotspot ke liye: har serial ka order ke andar device number
+  // (orderIdx) aur order total serials (orderTotal) — `username_XXXXXX_2` jaisa
+  // hotspot naam banane ke liye (order me multiple devices ho to).
+  const orderIds = [...new Set(serials.map((s) => s.orderId).filter((x): x is number => Boolean(x)))];
+  const perOrder: Record<number, string[]> = {};
+  if (orderIds.length) {
+    const byOrder = await prisma.serialRegistry.findMany({
+      where: { orderId: { in: orderIds } },
+      select: { id: true, serialCode: true, orderId: true },
+      orderBy: { id: "asc" },
+    });
+    for (const s of byOrder) {
+      if (!s.orderId) continue;
+      (perOrder[s.orderId] ??= []).push(s.serialCode);
+    }
+  }
+  const enriched = serials.map((s) => {
+    const codes = s.orderId ? perOrder[s.orderId] : undefined;
+    return {
+      ...s,
+      orderIdx: codes ? codes.indexOf(s.serialCode) + 1 : 0,
+      orderTotal: codes?.length ?? 0,
+    };
+  });
+  ok(res, enriched);
+});
+
+/** Serial detail — kisne claim kiya, kaun sa order, home, warranty (admin click pe). */
+adminRouter.get("/serials/:code", async (req, res) => {
+  const code = String(req.params.code ?? "").trim().toUpperCase();
+  const serial = await prisma.serialRegistry.findUnique({
+    where: { serialCode: code },
+    include: {
+      product: { select: { id: true, name: true, modelCode: true } },
+      user: { select: { id: true, username: true, email: true } },
+      order: { select: { id: true, orderNumber: true, status: true } },
+      home: { select: { id: true, name: true } },
+    },
+  });
+  if (!serial) throw new AppError("NOT_FOUND", "Serial not found");
+  ok(res, serial);
 });
 
 adminRouter.post("/serials/generate", async (req, res) => {
@@ -1646,6 +2583,51 @@ adminRouter.post("/serials/generate", async (req, res) => {
     meta: { count, codes: codes.slice(0, 5) },
   });
   ok(res, { generated: codes.length, codes }, 201);
+});
+
+/** Delete serial — sirf available (unclaimed) serials delete kar sakte ho. */
+adminRouter.delete("/serials/:code", async (req, res) => {
+  const code = String(req.params.code ?? "").trim().toUpperCase();
+  const serial = await prisma.serialRegistry.findUnique({ where: { serialCode: code } });
+  if (!serial) throw new AppError("NOT_FOUND", "Serial not found");
+  if (serial.status !== "available") {
+    throw new AppError("BAD_REQUEST", "Sirf available serials delete ho sakte hain");
+  }
+  await prisma.serialRegistry.delete({ where: { id: serial.id } });
+  await audit(req.user!.sub, "admin.serial.delete", {
+    entity: "serial",
+    entityId: serial.id,
+    meta: { serialCode: code },
+  });
+  ok(res, { deleted: true });
+});
+
+/** Bulk delete serials — sirf available (unclaimed) serials delete ho sakte hain. */
+adminRouter.delete("/serials", async (req, res) => {
+  const codes = req.body?.codes;
+  if (!Array.isArray(codes) || codes.length === 0) {
+    throw new AppError("BAD_REQUEST", "codes array required");
+  }
+  if (codes.length > 500) {
+    throw new AppError("BAD_REQUEST", "Ek baar me max 500 serials delete kar sakte ho");
+  }
+  const upperCodes = codes.map((c: string) => String(c).trim().toUpperCase());
+  const serials = await prisma.serialRegistry.findMany({
+    where: { serialCode: { in: upperCodes } },
+  });
+  const available = serials.filter((s) => s.status === "available");
+  const skipped = upperCodes.length - available.length;
+  if (available.length === 0) {
+    throw new AppError("BAD_REQUEST", "Koi available serial nahi mila delete karne ke liye");
+  }
+  await prisma.serialRegistry.deleteMany({
+    where: { id: { in: available.map((s) => s.id) } },
+  });
+  await audit(req.user!.sub, "admin.serial.bulk_delete", {
+    entity: "serial",
+    meta: { count: available.length, skipped, codes: upperCodes.slice(0, 10) },
+  });
+  ok(res, { deleted: available.length, skipped });
 });
 
 // ---------- Manufacturing: Order Provision + Serial Test ----------
@@ -1728,6 +2710,15 @@ adminRouter.get("/orders/:id/provision", async (req, res) => {
   }
   if (!order) throw new AppError("NOT_FOUND", "Order not found");
 
+  // Paid-gate: sirf verified-payment orders hi flasher me fetch ho sakte hain.
+  // Pending/cancelled order ka board factory me flash nahi hota — pehle payment verify karo.
+  if (order.status === "pending" || order.status === "cancelled") {
+    throw new AppError(
+      "BAD_REQUEST",
+      "Payment verify nahi hua — pehle admin Orders me order ko 'Mark Paid' karo, phir fetch karo",
+    );
+  }
+
   const items = await Promise.all(
     order.items.map(async (it) => {
       // Model hamesha product se (serial se nahi) — taaki serial generate
@@ -1781,6 +2772,7 @@ adminRouter.get("/orders/:id/provision", async (req, res) => {
     orderId: order.id,
     orderNumber: order.orderNumber,
     status: order.status,
+    paymentStatus: order.paymentStatus,
     wifiSsid: order.wifiSsid,
     wifiPassword,
     apiKey: apiKeyPlain,
@@ -1792,17 +2784,55 @@ adminRouter.get("/orders/:id/provision", async (req, res) => {
 /** Flasher: serial ko factory-tested mark karo (relay self-test pass hone ke baad). */
 adminRouter.post("/serials/:code/mark-tested", async (req, res) => {
   const code = String(req.params.code).trim().toUpperCase();
+  const { consolePassword } = req.body ?? {};
+
   const serial = await prisma.serialRegistry.findUnique({ where: { serialCode: code } });
   if (!serial) throw new AppError("NOT_FOUND", "Serial not found");
+
   const updated = await prisma.serialRegistry.update({
     where: { id: serial.id },
-    data: { testedAt: new Date() },
+    data: {
+      testedAt: new Date(),
+      consolePassword: consolePassword ? String(consolePassword) : undefined
+    },
   });
   await audit(req.user!.sub, "admin.serial.tested", {
     entity: "serial",
     entityId: serial.id,
-    meta: { serialCode: code },
+    meta: { serialCode: code, hasConsolePassword: !!consolePassword },
   });
+
+  // Serial order se linked hai to user ko notify — "tested, ab pack hone chala".
+  if (serial.orderId) {
+    try {
+      const order = await prisma.order.findUnique({
+        where: { id: serial.orderId },
+        include: { items: true, serials: { select: { testedAt: true } } },
+      });
+      if (order && order.status === "processing") { // Only process if currently in 'processing/testing' phase
+        // Notification
+        await createNotification(order.userId, {
+          category: "system",
+          type: "info",
+          title: "✅ Factory test pass",
+          body: `Aapka board (${code}) factory relay self-test pass kar chuka hai. Order ${order.orderNumber}.`,
+        });
+
+        // Pack auto-cascade validation
+        const qtyRequired = order.items.reduce((sum, item) => sum + item.quantity, 0);
+        const testedCount = order.serials.filter(s => s.testedAt !== null).length;
+
+        // If we have met or exceeded the quantity with valid tests, mark packed.
+        if (testedCount >= qtyRequired) {
+          // Inside shop.service this emits the final summary PACKED notification.
+          await updateOrderStatus(order.id, "packed");
+        }
+      }
+    } catch (err) {
+      console.error("[admin] tested notification/cascade failed", err);
+    }
+  }
+
   ok(res, { tested: true, serialCode: code, testedAt: updated.testedAt });
 });
 
@@ -1852,6 +2882,31 @@ adminRouter.patch("/warranty/:id/status", async (req, res) => {
     entityId: id,
     meta: { serialCode: claim.serialCode },
   });
+
+  // User ko status change ki notification + EMAIL (Phase 6).
+  const statusMsg: Record<string, string> = {
+    approved: `Aapki warranty claim (${claim.serialCode}) APPROVED ho gayi — replacement/repair ke liye support se baat karo.`,
+    rejected: `Aapki warranty claim (${claim.serialCode}) REJECT ho gayi. Reason ke liye support se baat karo.`,
+    resolved: `Aapki warranty claim (${claim.serialCode}) RESOLVED ho gayi — issue sort ho gaya.`,
+  };
+  try {
+    await createNotificationWithEmail(
+      claim.userId,
+      {
+        category: "system",
+        type: status === "rejected" ? "warning" : "info",
+        title: `🛡️ Warranty ${status}: ${claim.serialCode}`,
+        body: statusMsg[status] ?? `Claim status update: ${status}`,
+      },
+      {
+        emailSubject: `🛡️ Warranty claim ${status} — ${claim.serialCode}`,
+        ctaUrl: "/warranty",
+        ctaLabel: "Warranty dekho",
+      },
+    );
+  } catch (err) {
+    console.error("[admin] warranty email failed", err);
+  }
   ok(res, { id: updated.id, status: updated.status });
 });
 

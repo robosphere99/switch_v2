@@ -1,36 +1,57 @@
 import { PrismaClient } from "@prisma/client";
+import dotenv from "dotenv";
+import path from "node:path";
+import fs from "node:fs";
 
-const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
-
-/**
- * MySQL pool chhota rakhna zaroori hai — Plesk per-user
- * max_user_connections. Har process ka default pool (num_cpus*2+1)
- * multiple processes me exhaust -> ERROR 1203 -> fail -> naya process
- * -> aur zyada connections -> cascade. connection_limit=2 breaks cycle.
- */
-export function withConnLimit(url: string, limit = 2): string {
+// Load .env synchronously before initializing PrismaClient
+const candidatePaths = [
+  path.resolve(process.cwd(), ".env"),
+  path.resolve(process.cwd(), "../.env"),
+  path.resolve(process.cwd(), "../../.env"),
+];
+for (const p of candidatePaths) {
   try {
-    const u = new URL(url);
+    if (fs.existsSync(p)) {
+      dotenv.config({ path: p, override: true });
+    }
+  } catch {}
+}
+
+export function getEffectiveDbUrl(): string {
+  const envUrl = process.env.DATABASE_URL?.trim();
+  if (envUrl) return envUrl;
+  const host = process.env.DB_HOST ?? "127.0.0.1";
+  const port = process.env.DB_PORT ?? "3306";
+  const user = process.env.DB_USER ?? "root";
+  const pass = process.env.DB_PASS ?? "";
+  const name = process.env.DB_NAME ?? "switchnest";
+  return `mysql://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}:${port}/${name}`;
+}
+
+export function withConnLimit(url: string, limit = 10): string {
+  const target = url.trim() || getEffectiveDbUrl();
+  try {
+    const u = new URL(target);
     u.searchParams.set("connection_limit", String(limit));
     return u.toString();
   } catch {
-    return url; // parse fail ho to as-is (rare)
+    return target;
   }
 }
+
+// Ensure process.env.DATABASE_URL is set before PrismaClient constructor
+process.env.DATABASE_URL = withConnLimit(getEffectiveDbUrl());
+
+const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
 export let prisma: PrismaClient =
   globalForPrisma.prisma ??
   new PrismaClient({
-    datasources: { db: { url: withConnLimit(process.env.DATABASE_URL ?? "") } },
+    datasources: { db: { url: process.env.DATABASE_URL } },
   });
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 
-/**
- * Installation ke baad naye DATABASE_URL pe dobara connect karne ke liye.
- * Install route tables create karne ke baad isse call karta hai — purana
- * client disconnect, naya URL set, naya client connect.
- */
 export async function resetPrismaClient(databaseUrl: string): Promise<PrismaClient> {
   try {
     await prisma.$disconnect();
@@ -38,8 +59,10 @@ export async function resetPrismaClient(databaseUrl: string): Promise<PrismaClie
     // already disconnected — ignore
   }
   process.env.DATABASE_URL = withConnLimit(databaseUrl);
-  const next = new PrismaClient();
-  await next.$connect();
+  const next = new PrismaClient({
+    datasources: { db: { url: process.env.DATABASE_URL } },
+  });
+  await next.$connect().catch(() => undefined);
   prisma = next;
   if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = next;
   return next;

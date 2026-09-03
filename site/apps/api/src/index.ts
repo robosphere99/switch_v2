@@ -1,15 +1,32 @@
 import { createServer } from "http";
 import { createApp } from "./app";
 import { env } from "./config/env";
-import { prisma } from "./lib/prisma";
+import { prisma, getEffectiveDbUrl, resetPrismaClient } from "./lib/prisma";
 import { logger, fileLog, logFilePath } from "./lib/logger";
 import { initSocket } from "./lib/socket";
 import { startScheduler } from "./services/scheduler.service";
 import { startFamilySafety } from "./services/familySafety.service";
 import { startOfflineWatcher } from "./services/offline.service";
+import { startKeyExpiryWatcher } from "./services/keyExpiry.service";
 import { startHealthMonitor } from "./lib/healthMonitor";
+import { startLeakMonitor } from "./lib/leakMonitor";
 import { setDbReady } from "./lib/dbState";
 import { loadRequestTracker, startRequestFlush } from "./lib/requestTracker";
+import { startArchivalService } from "./services/archival.service";
+import { startMqttBroker } from "./services/mqtt.service";
+
+// Catch all unhandled background errors to prevent Node process termination under IIS (which causes 503)
+process.on("uncaughtException", (err) => {
+  const line = `[uncaughtException] ${err instanceof Error ? err.stack || err.message : String(err)}`;
+  console.error(line);
+  fileLog(line);
+});
+
+process.on("unhandledRejection", (reason) => {
+  const line = `[unhandledRejection] ${reason instanceof Error ? reason.stack || reason.message : String(reason)}`;
+  console.error(line);
+  fileLog(line);
+});
 
 // Tables exist ya nahi — information_schema se check (empty DB pe crash
 // nahi karta). Bas DB reachable hona kaafi nahi: tables nahi hain to
@@ -257,6 +274,228 @@ async function runLightMigrations(): Promise<void> {
         logger.info("✅ Migration: device_usage table created");
       }
     });
+    // 7) password_reset_tokens — forgot-password flow (hashed token, 1-use, 30min expiry).
+    await migration("password_reset_tokens table", async () => {
+      const prt = await prisma.$queryRaw<{ c: bigint }[]>`
+        SELECT COUNT(*) AS c FROM information_schema.tables
+        WHERE table_schema = DATABASE() AND table_name = 'password_reset_tokens'
+      `;
+      if (Number(prt[0]?.c ?? 0) === 0) {
+        await prisma.$executeRawUnsafe(`
+          CREATE TABLE password_reset_tokens (
+            id INT NOT NULL AUTO_INCREMENT,
+            userId INT NOT NULL,
+            token_hash VARCHAR(64) NOT NULL,
+            expires_at DATETIME(3) NOT NULL,
+            used_at DATETIME(3) NULL,
+            created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+            PRIMARY KEY (id),
+            UNIQUE INDEX password_reset_tokens_token_hash_key (token_hash),
+            INDEX password_reset_tokens_userId_idx (userId),
+            CONSTRAINT password_reset_tokens_userId_fkey FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        `);
+        logger.info("✅ Migration: password_reset_tokens table created");
+      }
+    });
+    // 7) api_keys.revoked_at — key revocation tracking.
+    await migration("api_keys.revoked_at", async () => {
+      const ra = await prisma.$queryRaw<{ c: bigint }[]>`
+        SELECT COUNT(*) AS c FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'api_keys' AND column_name = 'revoked_at'
+      `;
+      if (Number(ra[0]?.c ?? 0) === 0) {
+        await prisma.$executeRawUnsafe(
+          "ALTER TABLE `api_keys` ADD COLUMN `revoked_at` DATETIME(3) NULL",
+        );
+        logger.info("✅ Migration: api_keys.revoked_at added");
+      }
+    });
+    // 8) esp_devices.led_enabled — allow user to disable the blue status LED on ESP32 boards
+    await migration("esp_devices.led_enabled", async () => {
+      const le = await prisma.$queryRaw<{ c: bigint }[]>`
+        SELECT COUNT(*) AS c FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'esp_devices' AND column_name = 'led_enabled'
+      `;
+      if (Number(le[0]?.c ?? 0) === 0) {
+        await prisma.$executeRawUnsafe(
+          "ALTER TABLE `esp_devices` ADD COLUMN `led_enabled` BOOLEAN NOT NULL DEFAULT TRUE",
+        );
+        logger.info("✅ Migration: esp_devices.led_enabled added");
+      }
+    });
+    // 9) devices.channel — Relay channel index (1..N) within ESP board
+    await migration("devices.channel", async () => {
+      const ch = await prisma.$queryRaw<{ c: bigint }[]>`
+        SELECT COUNT(*) AS c FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = 'devices' AND column_name = 'channel'
+      `;
+      if (Number(ch[0]?.c ?? 0) === 0) {
+        await prisma.$executeRawUnsafe(
+          "ALTER TABLE `devices` ADD COLUMN `channel` INT NULL",
+        );
+        logger.info("✅ Migration: devices.channel column added");
+      }
+    });
+    const addCol = async (table: string, col: string, defSql: string) => {
+      await migration(`${table}.${col}`, async () => {
+        const res = await prisma.$queryRaw<{ c: bigint }[]>`
+          SELECT COUNT(*) AS c FROM information_schema.columns
+          WHERE table_schema = DATABASE() AND table_name = ${table} AND column_name = ${col}
+        `;
+        if (Number(res[0]?.c ?? 0) === 0) {
+          await prisma.$executeRawUnsafe(`ALTER TABLE \`${table}\` ADD COLUMN \`${col}\` ${defSql}`);
+          logger.info(`✅ Migration: ${table}.${col} added`);
+        }
+      });
+    };
+
+    await addCol("devices", "channel", "INT NULL");
+    await addCol("users", "avatar_url", "VARCHAR(500) NULL");
+    await addCol("users", "expo_push_token", "VARCHAR(100) NULL");
+    await addCol("users", "dob", "DATE NULL");
+    await addCol("users", "gender", "VARCHAR(20) NULL");
+    await addCol("users", "phone", "VARCHAR(20) NULL");
+    await addCol("users", "address", "TEXT NULL");
+    await addCol("users", "push_device_toggles", "BOOLEAN NOT NULL DEFAULT TRUE");
+    await addCol("users", "push_system_alerts", "BOOLEAN NOT NULL DEFAULT TRUE");
+    await addCol("users", "token_version", "INT NOT NULL DEFAULT 0");
+    await addCol("products", "stock_count", "INT NOT NULL DEFAULT 0");
+    await addCol("products", "rating", "DECIMAL(3,2) NOT NULL DEFAULT 0.0");
+    await addCol("products", "total_reviews", "INT NOT NULL DEFAULT 0");
+    await addCol("orders", "razorpay_order_id", "VARCHAR(64) NULL");
+    await addCol("orders", "payment_ref", "VARCHAR(64) NULL");
+    await addCol("orders", "paid_at", "DATETIME(3) NULL");
+    await addCol("serial_registry", "warranty_status", "VARCHAR(20) NOT NULL DEFAULT 'active'");
+    await addCol("serial_registry", "warranty_expires_at", "DATETIME(3) NULL");
+    await addCol("serial_registry", "console_password", "VARCHAR(64) NULL");
+    await addCol("serial_registry", "tested_at", "DATETIME(3) NULL");
+    await addCol("notifications", "category", "VARCHAR(20) NOT NULL DEFAULT 'system'");
+    await addCol("notifications", "cta_url", "VARCHAR(255) NULL");
+    await addCol("notifications", "cta_label", "VARCHAR(50) NULL");
+    await addCol("home_members", "restricted", "BOOLEAN NOT NULL DEFAULT FALSE");
+    await addCol("home_members", "daily_limit_minutes", "INT NULL");
+    await addCol("esp_devices", "serial_code", "VARCHAR(32) NULL");
+    await addCol("esp_devices", "model_code", "VARCHAR(16) NULL");
+    await addCol("esp_devices", "offline", "BOOLEAN NOT NULL DEFAULT TRUE");
+    await addCol("esp_devices", "updated_at", "DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)");
+    await addCol("esp_devices", "console_password", "VARCHAR(64) NULL");
+    await migration("alter orders.status to VARCHAR(32)", async () => {
+      await prisma.$executeRawUnsafe("ALTER TABLE `orders` MODIFY COLUMN `status` VARCHAR(32) NOT NULL DEFAULT 'pending'");
+    });
+
+    await migration("fix pending orders with paymentRef", async () => {
+      const updatedCount = await prisma.$executeRawUnsafe(`
+        UPDATE orders
+        SET status = 'processing', paymentStatus = 'paid'
+        WHERE payment_ref IS NOT NULL AND status = 'pending'
+      `);
+      if (Number(updatedCount) > 0) {
+        logger.info(`✅ Migration: updated ${updatedCount} stuck pending orders to processing/paid`);
+      }
+    });
+
+    // Auto-seed product catalog if empty
+    await migration("auto-seed default products", async () => {
+      const pc = await prisma.product.count();
+      if (pc === 0) {
+        const DEFAULT_PRODUCTS = [
+          { name: "2CH WiFi Relay Module", modelCode: "2CH", relayCount: 2, price: "599", description: "Two-channel WiFi relay board for lights and small appliances. 10A per channel, ESP32 based, works with the SwitchNest app and voice assistant.", features: JSON.stringify({ channels: 2, wifi: true, ota: true, voice: true }), stockCount: 50 },
+          { name: "4CH WiFi Relay Module", modelCode: "4CH", relayCount: 4, price: "799", description: "Four-channel WiFi relay board — the classic choice for room-wide control. 10A per channel with status LED and manual override switches.", features: JSON.stringify({ channels: 4, wifi: true, ota: true, voice: true }), stockCount: 50 },
+          { name: "5CH WiFi Relay Module", modelCode: "5CH", relayCount: 5, price: "899", description: "Five-channel relay board — perfect for combining 4 devices plus one spare. ESP32 with OTA updates and two-way sync.", features: JSON.stringify({ channels: 5, wifi: true, ota: true, voice: true }), stockCount: 50 },
+          { name: "6CH WiFi Relay Module", modelCode: "6CH", relayCount: 6, price: "999", description: "Six-channel WiFi relay board for medium-size homes. Control lights, fans and appliances from one compact board.", features: JSON.stringify({ channels: 6, wifi: true, ota: true, voice: true }), stockCount: 50 },
+          { name: "8CH WiFi Relay Module", modelCode: "8CH", relayCount: 8, price: "1199", description: "Eight-channel WiFi relay board — full-home control. Ideal for new construction wiring with all loads in one panel.", features: JSON.stringify({ channels: 8, wifi: true, ota: true, voice: true }), stockCount: 50 },
+          { name: "4CH IR WiFi Relay Module", modelCode: "4CH-IR", relayCount: 4, price: "999", description: "Four-channel relay board with built-in IR receiver — control with the app and any IR remote. Works with ACs, TVs and IR appliances.", features: JSON.stringify({ channels: 4, ir: true, wifi: true, ota: true, voice: true }), stockCount: 50 },
+          { name: "Fan Speed Dimmer (WiFi)", modelCode: "FAN-DIM", relayCount: 1, price: "899", description: "WiFi fan regulator with stepped speed control. Replace your old 5-step regulator and control the fan from the app or voice.", features: JSON.stringify({ fanDimmer: true, steps: 5, wifi: true, ota: true, voice: true }), stockCount: 50 },
+          { name: "3-State Touch Dimmer", modelCode: "DIM-3S", relayCount: 1, price: "749", description: "Touch dimmer with 3 brightness steps (off → 50% → 100%). WiFi + touch control, works with existing bulb holders.", features: JSON.stringify({ dimmer: true, steps: 3, touch: true, wifi: true, ota: true }), stockCount: 50 },
+          { name: "4-State Touch Dimmer", modelCode: "DIM-4S", relayCount: 1, price: "799", description: "Touch dimmer with 4 brightness steps (off → 33% → 66% → 100%). WiFi + touch control, app dimming via steps.", features: JSON.stringify({ dimmer: true, steps: 4, touch: true, wifi: true, ota: true }), stockCount: 50 },
+        ];
+        for (const p of DEFAULT_PRODUCTS) {
+          await prisma.product.create({ data: p });
+        }
+        logger.info("✅ Auto-seeded default product catalog (9 products)");
+      }
+    });
+
+    // 14) refresh_tokens table — session persistence & token refresh
+    await migration("refresh_tokens table", async () => {
+      const rt = await prisma.$queryRaw<{ c: bigint }[]>`
+        SELECT COUNT(*) AS c FROM information_schema.tables
+        WHERE table_schema = DATABASE() AND table_name = 'refresh_tokens'
+      `;
+      if (Number(rt[0]?.c ?? 0) === 0) {
+        await prisma.$executeRawUnsafe(`
+          CREATE TABLE refresh_tokens (
+            id INT NOT NULL AUTO_INCREMENT,
+            userId INT NOT NULL,
+            token_hash VARCHAR(64) NOT NULL,
+            device_info VARCHAR(255) NULL,
+            ip_address VARCHAR(45) NULL,
+            last_active DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+            expires_at DATETIME(3) NOT NULL,
+            created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+            revoked_at DATETIME(3) NULL,
+            PRIMARY KEY (id),
+            UNIQUE INDEX refresh_tokens_token_hash_key (token_hash),
+            INDEX refresh_tokens_userId_idx (userId),
+            CONSTRAINT refresh_tokens_userId_fkey FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        `);
+        logger.info("✅ Migration: refresh_tokens table created");
+      }
+    });
+
+    await addCol("product_media", "review_id", "INT NULL");
+
+    // 15) product_media table
+    await migration("product_media table", async () => {
+      const pm = await prisma.$queryRaw<{ c: bigint }[]>`
+        SELECT COUNT(*) AS c FROM information_schema.tables
+        WHERE table_schema = DATABASE() AND table_name = 'product_media'
+      `;
+      if (Number(pm[0]?.c ?? 0) === 0) {
+        await prisma.$executeRawUnsafe(`
+          CREATE TABLE product_media (
+            id INT NOT NULL AUTO_INCREMENT,
+            product_id INT NOT NULL,
+            review_id INT NULL,
+            type VARCHAR(20) NOT NULL DEFAULT 'image',
+            url VARCHAR(500) NOT NULL,
+            created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+            PRIMARY KEY (id),
+            INDEX product_media_product_id_idx (product_id),
+            CONSTRAINT product_media_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE ON UPDATE CASCADE
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        `);
+        logger.info("✅ Migration: product_media table created");
+      }
+    });
+
+    // 16) product_reviews table
+    await migration("product_reviews table", async () => {
+      const pr = await prisma.$queryRaw<{ c: bigint }[]>`
+        SELECT COUNT(*) AS c FROM information_schema.tables
+        WHERE table_schema = DATABASE() AND table_name = 'product_reviews'
+      `;
+      if (Number(pr[0]?.c ?? 0) === 0) {
+        await prisma.$executeRawUnsafe(`
+          CREATE TABLE product_reviews (
+            id INT NOT NULL AUTO_INCREMENT,
+            product_id INT NOT NULL,
+            user_id INT NOT NULL,
+            rating INT NOT NULL,
+            comment TEXT NULL,
+            created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+            PRIMARY KEY (id),
+            INDEX product_reviews_product_id_idx (product_id),
+            INDEX product_reviews_user_id_idx (user_id),
+            CONSTRAINT product_reviews_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE ON UPDATE CASCADE,
+            CONSTRAINT product_reviews_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        `);
+        logger.info("✅ Migration: product_reviews table created");
+      }
+    });
   } catch (err) {
     logger.warn("Light migration (esp serial unique) skip/fail", err instanceof Error ? err.message : String(err));
   }
@@ -268,9 +507,28 @@ async function dbHasSchema(): Promise<boolean> {
       SELECT COUNT(*) AS c FROM information_schema.tables
       WHERE table_schema = DATABASE() AND table_name = 'users'
     `;
-    return Number(rows[0]?.c ?? 0) > 0;
+    if (Number(rows[0]?.c ?? 0) > 0) return true;
   } catch (err) {
-    logger.warn("Schema probe failed", err instanceof Error ? err.message : String(err));
+    logger.warn("Schema probe via Prisma failed — trying direct mysql probe:", err instanceof Error ? err.message : String(err));
+  }
+  try {
+    const mysql = (await import("mysql2/promise")).default;
+    const dbUrl = getEffectiveDbUrl();
+    const u = new URL(dbUrl);
+    const conn = await mysql.createConnection({
+      host: u.hostname === "localhost" ? "127.0.0.1" : u.hostname,
+      port: Number(u.port || 3306),
+      user: decodeURIComponent(u.username),
+      password: decodeURIComponent(u.password),
+      database: decodeURIComponent(u.pathname.replace(/^\//, "")),
+      connectTimeout: 5000,
+    });
+    const [rows] = await conn.query(
+      "SELECT COUNT(*) AS c FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'users'",
+    );
+    await conn.end().catch(() => undefined);
+    return Number((rows as Array<{ c: number }>)[0]?.c ?? 0) > 0;
+  } catch {
     return false;
   }
 }
@@ -332,6 +590,14 @@ async function main() {
   initSocket(server);
   boot("socket init done");
 
+  // MQTT IoT Broker (Aedes) — ESP32 devices connect here instead of HTTP polling.
+  try {
+    startMqttBroker();
+    boot("mqtt broker started");
+  } catch (err) {
+    boot("mqtt broker start failed (non-fatal):", err instanceof Error ? err.message : String(err));
+  }
+
   // Plesk/iisnode app ko process.env.PORT pe expect karta hai. IMPORTANT:
   // Windows iisnode PORT me ya to TCP number deta hai, ya NAMED PIPE path
   // (\.\pipe\...). Pipe path ho to usi pe listen karna hota hai — TCP
@@ -388,58 +654,7 @@ const HEAL_LAST_KEY = "prisma_selfheal_last";
  * baar reboot (10 min guard — loop nahi).
  */
 async function selfHealPrismaClient(): Promise<void> {
-  const p = prisma as unknown as Record<string, unknown>;
-  if (p.deviceAccess && p.deviceUsage && p.supportChatSettings) return;
-  fileLog("[boot] prisma client stale (deviceAccess/deviceUsage/supportChatSettings missing) — self-heal try");
-
-  const last = await prisma.appMeta
-    .findUnique({ where: { key: HEAL_LAST_KEY } })
-    .catch(() => null);
-  if (last && Date.now() - new Date(last.value).getTime() < 10 * 60 * 1000) {
-    fileLog("[boot] self-heal 10 min pehle try hua — skip (degraded mode, koi loop nahi)");
-    return;
-  }
-
-  let ok = false;
-  for (const args of [
-    ["npx.cmd", "--no-install", "prisma", "generate"],
-    ["npx.cmd", "prisma", "generate"],
-  ]) {
-    try {
-      execFileSync(args[0], args.slice(1), {
-        cwd: process.cwd(),
-        stdio: "pipe",
-        timeout: 180_000,
-        windowsHide: true,
-      });
-      ok = true;
-      break;
-    } catch (err) {
-      fileLog(`[boot] prisma generate try fail: ${err instanceof Error ? err.message : String(err)}`);
-    }
-  }
-  if (!ok) {
-    fileLog("[boot] prisma generate FAILED — degraded mode (restrictions off, site chalega)");
-    return;
-  }
-
-  await prisma.appMeta
-    .upsert({
-      where: { key: HEAL_LAST_KEY },
-      create: { key: HEAL_LAST_KEY, value: new Date().toISOString() },
-      update: { value: new Date().toISOString() },
-    })
-    .catch(() => undefined);
-  // IMPORTANT: turant process.exit(0) NAHI — iisnode startup ke waqt exit ko
-  // "startup failure" maan leta hai → IIS rapid-fail protection pool ko stop
-  // kar deta hai → 503 jab tak manual restart na ho (yahi recurring 503 ka
-  // source tha). Reboot ko HAMESHA 120s uptime ke baad rakho — koi bhi exit
-  // iisnode startup window (pehle ~60s) me nahi aata. 10-min guard loop hone
-  // nahi deta.
-  const healUptime = Math.round(process.uptime());
-  const healDelayMs = healUptime < 120 ? (120 - healUptime) * 1000 : 5_000;
-  fileLog(`[boot] prisma generate OK — ${Math.round(healDelayMs / 1000)}s baad safe reboot (fresh client load)`);
-  setTimeout(() => process.exit(0), healDelayMs);
+  // Prebuilt bundle already contains up-to-date client.
 }
 
 async function initDatabase(): Promise<void> {
@@ -451,8 +666,15 @@ async function initDatabase(): Promise<void> {
     try {
       await prisma.$connect();
     } catch (err) {
-      boot("db probe: NOT reachable —", err instanceof Error ? err.message : String(err));
-      return false;
+      // Primary connect fail hua to Plesk MariaDB credentials try karo
+      const pleskUrl = "mysql://switch_v2:switchnest%401234567890@127.0.0.1:3306/switch_v2";
+      try {
+        await resetPrismaClient(pleskUrl);
+        await prisma.$connect();
+      } catch {
+        boot("db probe: NOT reachable —", err instanceof Error ? err.message : String(err));
+        return false;
+      }
     }
     if (await dbHasSchema()) {
       logger.info("✅ Database connected (schema ready)");
@@ -472,13 +694,24 @@ async function initDatabase(): Promise<void> {
       startScheduler();
       startFamilySafety();
       startHealthMonitor();
+      startLeakMonitor();
     } catch (err) {
       logger.warn("Scheduler start skipped/failed", err instanceof Error ? err.message : String(err));
+    }
+    try {
+      startKeyExpiryWatcher();
+    } catch (err) {
+      logger.warn("Key expiry watcher start skipped/failed", err instanceof Error ? err.message : String(err));
     }
     try {
       startOfflineWatcher();
     } catch (err) {
       logger.warn("Offline watcher start skipped/failed", err instanceof Error ? err.message : String(err));
+    }
+    try {
+      startArchivalService();
+    } catch (err) {
+      logger.warn("Archival service start skipped/failed", err instanceof Error ? err.message : String(err));
     }
     // Request traffic tracker — AppMeta se load + periodic flush
     try {

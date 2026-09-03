@@ -1,14 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Users, Wifi, Home as HomeIcon } from "lucide-react";
 import { useState } from "react";
-import type { Device, DeviceType } from "@robosphere/shared";
-import { listDevices, setDeviceStatus, createDevice, updateDevice, deleteDevice, getDeviceLogs, renameEsp, getCurrentFirmware, requestOta } from "../api/devices";
+import type { Device, DeviceType, UsageAnalytics } from "@robosphere/shared";
+import { listDevices, bulkSetDeviceStatus, createDevice, updateDevice, deleteDevice, getDeviceLogs, getUsageAnalytics, renameEsp, getCurrentFirmware, requestOta } from "../api/devices";
+import { createToggleOptions } from "../lib/deviceOptimistic";
 import { listHomes, getHomeDetail } from "../api/homes";
 import { createRoom, deleteRoom } from "../api/rooms";
 import { DeviceCard, isOnline } from "../components/DeviceCard";
-import { Switch, TYPE_ICONS } from "../components/Switch";
 import { Modal } from "../components/Modal";
 import { ScheduleSection } from "../components/ScheduleSection";
+import { AutomationSuggestions } from "../components/AutomationSuggestions";
 import { useAuthStore } from "../stores/auth";
 
 const DEVICE_TYPES: DeviceType[] = ["bulb", "fan", "ac", "tv", "plug", "custom"];
@@ -18,6 +19,106 @@ function apiErrMsg(e: unknown): string {
   return (
     (e as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ??
     "Kuch galat ho gaya"
+  );
+}
+
+/** ms → "2h 15m" / "45m" / "30s" */
+function fmtDur(ms: number): string {
+  if (!ms || ms <= 0) return "—";
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
+}
+
+/** Simple div-based bar chart — koi chart library nahi (project convention). */
+function ToggleBars({ data }: { data: UsageAnalytics["togglesPerDay"] }) {
+  const max = Math.max(1, ...data.map((d) => d.count));
+  return (
+    <div className="flex h-28 items-end gap-1.5">
+      {data.map((d) => (
+        <div key={d.date} className="group flex flex-1 flex-col items-center gap-1" title={`${d.date}: ${d.count}`}>
+          <span className="text-[10px] font-semibold text-gray-500">{d.count > 0 ? d.count : ""}</span>
+          <div
+            className={`w-full rounded-t ${d.count > 0 ? "bg-brand" : "bg-night-700"}`}
+            style={{ height: `${Math.max(4, (d.count / max) * 100)}%` }}
+          />
+          <span className="truncate text-[9px] text-gray-400">{d.date.slice(5)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AnalyticsBody({ data }: { data: UsageAnalytics }) {
+  const maxToggles = Math.max(1, ...data.perDevice.map((d) => d.toggles));
+  return (
+    <div className="space-y-6">
+      {/* Summary chips */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <div className="rounded-xl border border-gray-200 bg-night-900 p-3 dark:border-night-600">
+          <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Toggles</p>
+          <p className="mt-0.5 text-xl font-extrabold text-night-950">{data.totals.toggles}</p>
+        </div>
+        <div className="rounded-xl border border-gray-200 bg-night-900 p-3 dark:border-night-600">
+          <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">On-time (est.)</p>
+          <p className="mt-0.5 text-xl font-extrabold text-night-950">{fmtDur(data.totals.onMs)}</p>
+        </div>
+        <div className="rounded-xl border border-gray-200 bg-night-900 p-3 dark:border-night-600">
+          <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Active members</p>
+          <p className="mt-0.5 text-xl font-extrabold text-night-950">{data.perMember.length}</p>
+        </div>
+      </div>
+
+      {/* Toggles per day bar chart */}
+      <div>
+        <h4 className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500">Toggles per day</h4>
+        <ToggleBars data={data.togglesPerDay} />
+      </div>
+
+      {/* Per device */}
+      <div>
+        <h4 className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500">Top devices</h4>
+        <div className="space-y-2">
+          {data.perDevice.length === 0 && <p className="text-sm text-gray-500">No activity in this period.</p>}
+          {data.perDevice.map((d) => (
+            <div key={d.deviceId} className="rounded-lg border border-gray-200 bg-night-900 px-3 py-2 dark:border-night-600">
+              <div className="flex items-center justify-between gap-2">
+                <span className="truncate text-sm font-semibold text-night-950">{d.name}</span>
+                <span className="shrink-0 text-xs text-gray-500">
+                  {d.toggles}× · {fmtDur(d.onMs)} on
+                </span>
+              </div>
+              <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-night-700">
+                <div className="h-full rounded-full bg-brand" style={{ width: `${Math.max(4, (d.toggles / maxToggles) * 100)}%` }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Per member */}
+      <div>
+        <h4 className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500">Member activity</h4>
+        <div className="flex flex-wrap gap-2">
+          {data.perMember.map((m) => (
+            <span
+              key={m.userId ?? "auto"}
+              className="flex items-center gap-2 rounded-full border border-gray-200 bg-night-900 px-3 py-1.5 text-xs dark:border-night-600"
+            >
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand/15 font-bold text-brand">
+                {(m.username ?? "?").slice(0, 1).toUpperCase()}
+              </span>
+              <span className="font-semibold text-night-950">{m.username}</span>
+              <span className="text-gray-500">{m.toggles}×</span>
+            </span>
+          ))}
+          {data.perMember.length === 0 && <p className="text-sm text-gray-500">No member activity.</p>}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -32,7 +133,12 @@ export function Dashboard() {
   const [editName, setEditName] = useState("");
   const [editRoom, setEditRoom] = useState("");
   const [logsFor, setLogsFor] = useState<Device | null>(null);
+  const [analyticsOpen, setAnalyticsOpen] = useState(false);
+  const [analyticsDays, setAnalyticsDays] = useState(7);
   const [error, setError] = useState("");
+  // Per-device pending — optimistic toggle ke waqt switch pulse dikhata hai
+  const [pending, setPending] = useState<Record<number, "on" | "off">>({});
+  const [blockedDevices, setBlockedDevices] = useState<Record<number, boolean>>({});
 
   const homes = useQuery({ queryKey: ["homes"], queryFn: listHomes, refetchInterval: 30_000 });
 
@@ -42,7 +148,8 @@ export function Dashboard() {
     queryKey: ["home", homeId],
     queryFn: () => getHomeDetail(homeId!),
     enabled: homeId !== null,
-    refetchInterval: 10_000,
+    // Socket live hai to 20s hi kaafi (device:updated event pe invalidate hota hai).
+    refetchInterval: 20_000,
   });
 
   const home = homeDetail.data?.success ? homeDetail.data.data : null;
@@ -57,7 +164,8 @@ export function Dashboard() {
     queryKey: ["devices", homeId],
     queryFn: () => listDevices(homeId!),
     enabled: homeId !== null,
-    refetchInterval: 5_000,
+    // Socket live pe events invalidate karte hain — polling ab fallback (15s).
+    refetchInterval: 15_000,
   });
 
   const firmware = useQuery({
@@ -87,10 +195,35 @@ export function Dashboard() {
     queryClient.invalidateQueries({ queryKey: ["devices", homeId] });
   };
 
-  const toggle = useMutation({
-    mutationFn: ({ device, status }: { device: Device; status: "on" | "off" }) =>
-      setDeviceStatus(homeId!, device.id, status),
+  // Optimistic: API ka intezaar kiye bina UI turant update + pending state.
+  // Error pe rollback (server truth restore). ESP confirm command:updated
+  // se aata hai — realtime hook devices refetch karta hai.
+  // (Logic lib/deviceOptimistic me hai — unit-tested rollback path.)
+  const toggle = useMutation(
+    createToggleOptions({
+      queryClient,
+      homeId: homeId!,
+      setPending,
+      setError,
+      invalidate,
+      onSecurityLock: (deviceId) => {
+        setBlockedDevices(p => ({ ...p, [deviceId]: true }));
+        setTimeout(() => {
+          setBlockedDevices(p => {
+            const next = { ...p };
+            delete next[deviceId];
+            return next;
+          });
+        }, 60000);
+      }
+    }),
+  );
+
+  const bulkToggle = useMutation({
+    mutationFn: ({ deviceIds, status }: { deviceIds: number[]; status: "on" | "off" }) =>
+      bulkSetDeviceStatus(homeId!, deviceIds, status),
     onSuccess: invalidate,
+    onError: (e) => setError(apiErrMsg(e)),
   });
 
   const addDevice = useMutation({
@@ -154,6 +287,12 @@ export function Dashboard() {
     enabled: logsFor !== null,
   });
 
+  const analyticsQuery = useQuery({
+    queryKey: ["analytics", homeId, analyticsDays],
+    queryFn: () => getUsageAnalytics(homeId!, analyticsDays),
+    enabled: analyticsOpen && homeId !== null,
+  });
+
   const roomNameFor = (device: Device) =>
     home?.rooms.find((r) => r.id === device.roomId)?.name ?? null;
 
@@ -186,11 +325,10 @@ export function Dashboard() {
             <button
               key={h.id}
               onClick={() => setActiveHomeId(h.id)}
-              className={`rounded-full border px-4 py-1.5 text-xs font-semibold transition ${
-                h.id === homeId
+              className={`rounded-full border px-4 py-2 text-xs font-semibold transition ${h.id === homeId
                   ? "border-brand bg-brand/20 text-brand"
                   : "border-gray-200 bg-night-800 text-gray-600 hover:border-gray-500 dark:border-night-600"
-              }`}
+                }`}
             >
               🏠 {h.name}
               <span className="ml-1.5 text-gray-500">
@@ -245,52 +383,26 @@ export function Dashboard() {
             </div>
           </div>
 
-          {/* ===== Quick control cards ===== */}
-          {devices.data?.success && devices.data.data.length > 0 && (
-            <div>
-              <h2 className="mb-3 text-lg font-semibold text-night-950">Quick Controls</h2>
-              <div className="flex gap-3 overflow-x-auto pb-2">
-                {devices.data.data.map((device) => {
-                  const on = device.status === "on";
-                  const online = isOnline(device);
-                  return (
-                    <div
-                      key={device.id}
-                      className={`flex w-40 shrink-0 flex-col gap-3 rounded-2xl border p-4 transition ${
-                        on
-                          ? "border-brand bg-brand/10 shadow-md shadow-brand/20"
-                          : "border-gray-200 bg-night-800 dark:border-night-600"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span
-                          className={`text-[10px] font-bold uppercase tracking-wide ${
-                            on ? "text-brand" : "text-gray-400"
-                          }`}
-                        >
-                          {on ? "ON" : "OFF"}
-                        </span>
-                        <span className={`h-2 w-2 rounded-full ${online ? "bg-emerald-400" : "bg-red-400"}`} />
-                      </div>
-                      <span className="text-3xl">{TYPE_ICONS[device.type]}</span>
-                      <div>
-                        <p className="truncate text-sm font-semibold text-night-950">{device.name}</p>
-                        <p className="truncate text-[11px] text-gray-500">
-                          {roomNameFor(device) ?? device.type}
-                        </p>
-                      </div>
-                      <Switch
-                        checked={on}
-                        onChange={() =>
-                          toggle.mutate({ device, status: on ? "off" : "on" })
-                        }
-                        disabled={toggle.isPending}
-                        label={`${device.name} ${on ? "band karo" : "chalu karo"}`}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
+          {/* ===== Suggested automations (usage patterns ya demo) ===== */}
+          {homeId !== null && <AutomationSuggestions homeId={homeId} compact />}
+
+          {/* ===== Quick actions ===== */}
+          {devices.data?.success && devices.data.data.some((d) => d.type === "bulb") && (
+            <div className="flex flex-wrap items-center gap-3">
+              {(() => {
+                const bulbIds = devices.data!.data
+                  .filter((d) => d.type === "bulb" && isOnline(d))
+                  .map((d) => d.id);
+                return (
+                  <button
+                    onClick={() => bulkToggle.mutate({ deviceIds: bulbIds, status: "off" })}
+                    disabled={!bulbIds.length || bulkToggle.isPending}
+                    className="flex items-center gap-2 rounded-full border border-brand/40 bg-brand/10 px-4 py-2.5 text-sm font-semibold text-brand transition hover:bg-brand/20 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    💡 All lights off
+                  </button>
+                );
+              })()}
             </div>
           )}
 
@@ -304,14 +416,31 @@ export function Dashboard() {
                     ({devices.data?.success ? devices.data.data.length : "…"})
                   </span>
                 </h2>
-                <input
-                  value={deviceQ}
-                  onChange={(e) => setDeviceQ(e.target.value)}
-                  placeholder="🔍 Search device / serial / board…"
-                  className="w-full max-w-xs rounded-lg border border-gray-200 bg-night-800 px-3 py-1.5 text-sm text-gray-700 outline-none focus:border-brand dark:border-night-600"
-                />
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={() => setAnalyticsOpen(true)}
+                    className="rounded-full border border-brand/40 bg-brand/10 px-4 py-2.5 text-sm font-semibold text-brand transition hover:bg-brand/20"
+                  >
+                    📊 Usage
+                  </button>
+                  <input
+                    value={deviceQ}
+                    onChange={(e) => setDeviceQ(e.target.value)}
+                    placeholder="🔍 Search device / serial / board…"
+                    className="w-full max-w-xs rounded-lg border border-gray-200 bg-night-800 px-3 py-2.5 text-sm text-gray-700 outline-none focus:border-brand dark:border-night-600"
+                  />
+                </div>
               </div>
-              {devices.isLoading && <p className="text-gray-500">Loading devices…</p>}
+              {devices.isLoading && (
+                <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+                  {[0, 1, 2, 3, 4, 5].map((i) => (
+                    <div
+                      key={i}
+                      className="h-44 animate-pulse rounded-xl border border-gray-200 bg-night-800 dark:border-night-600"
+                    />
+                  ))}
+                </div>
+              )}
               {devices.data?.success && devices.data.data.length === 0 && (
                 <p className="text-gray-500">
                   No devices yet{canAdminDevices ? " — add your first device!" : ""}
@@ -319,75 +448,132 @@ export function Dashboard() {
               )}
               {(() => {
                 const q = deviceQ.trim().toLowerCase();
-                const visible = devices.data?.success
-                  ? devices.data.data.filter((d) => {
-                      if (!q) return true;
-                      const room = roomNameFor(d)?.toLowerCase() ?? "";
-                      const board = d.esp?.name?.toLowerCase() ?? "";
-                      const boardSerial = d.esp?.serialCode?.toLowerCase() ?? "";
-                      return (
-                        d.name.toLowerCase().includes(q) ||
-                        (d.serialNumber?.toLowerCase() ?? "").includes(q) ||
-                        room.includes(q) ||
-                        board.includes(q) ||
-                        boardSerial.includes(q)
-                      );
-                    })
-                  : [];
+                const all = devices.data?.success ? devices.data.data : [];
+                const visible = q
+                  ? all.filter((d) => {
+                    const room = roomNameFor(d)?.toLowerCase() ?? "";
+                    const board = d.esp?.name?.toLowerCase() ?? "";
+                    const boardSerial = d.esp?.serialCode?.toLowerCase() ?? "";
+                    return (
+                      d.name.toLowerCase().includes(q) ||
+                      (d.serialNumber?.toLowerCase() ?? "").includes(q) ||
+                      room.includes(q) ||
+                      board.includes(q) ||
+                      boardSerial.includes(q)
+                    );
+                  })
+                  : all;
                 if (q && visible.length === 0) {
                   return <p className="text-gray-500">No devices match "{deviceQ}".</p>;
                 }
+                // Room-first grouping — har room ka apna section + All off/on
+                const grouped = new Map<number | null, Device[]>();
+                for (const d of visible) {
+                  const key = d.roomId ?? null;
+                  if (!grouped.has(key)) grouped.set(key, []);
+                  grouped.get(key)!.push(d);
+                }
+                const sections = [
+                  ...home.rooms.map((r) => ({
+                    title: r.name,
+                    roomId: r.id as number | null,
+                    list: grouped.get(r.id) ?? [],
+                  })),
+                  { title: "Other devices", roomId: null as number | null, list: grouped.get(null) ?? [] },
+                ].filter((s) => s.list.length > 0);
                 return (
-                  <div className="grid gap-5 sm:grid-cols-2">
-                    {visible.map((device) => (
-                      <DeviceCard
-                        key={device.id}
-                        device={device}
-                        roomName={roomNameFor(device)}
-                        canManage={canManage}
-                        disabled={toggle.isPending}
-                        onToggle={(d) =>
-                          toggle.mutate({
-                            device: d,
-                            status: d.status === "on" ? "off" : "on",
-                          })
-                        }
-                        onEdit={(d) => {
-                          setEditing(d);
-                          setEditName(d.name);
-                          setEditRoom(d.roomId ? String(d.roomId) : "");
-                        }}
-                        onLogs={(d) => setLogsFor(d)}
-                        latestVersion={latestForModel(device.esp?.modelCode)}
-                        onOta={(d) => {
-                          const cur = d.esp?.firmwareVersion ?? "—";
-                          const next = latestForModel(d.esp?.modelCode);
-                          if (next && confirm(`Board "${d.esp?.name}" ka firmware update karein?\nAbhi: v${cur} → Latest: v${next}`)) {
-                            pushOta.mutate(d);
-                          }
-                        }}
-                        onRenameBoard={(esp) => {
-                          const name = window.prompt("ESP board ka naam (unique hona chahiye):", esp.name ?? "");
-                          if (name && name.trim()) renameBoard.mutate({ espId: esp.id, name: name.trim() });
-                        }}
-                        onDelete={(d) => {
-                          if (confirm(`Delete "${d.name}"? This cannot be undone.`)) {
-                            removeDevice.mutate(d.id);
-                          }
-                        }}
-                      />
+                  <div className="space-y-8">
+                    {sections.map((s) => (
+                      <div key={s.roomId ?? "none"}>
+                        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <h3 className="flex items-center gap-2 font-semibold text-night-950">
+                            {s.roomId !== null ? `📍 ${s.title}` : "📦 Other devices"}
+                            <span className="text-xs font-normal text-gray-500">({s.list.length})</span>
+                          </h3>
+                          {canManage && (
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() =>
+                                  bulkToggle.mutate({
+                                    deviceIds: s.list.map((d) => d.id),
+                                    status: "off",
+                                  })
+                                }
+                                disabled={bulkToggle.isPending}
+                                className="rounded-full border border-gray-300 px-4 py-2 text-xs font-semibold text-gray-600 transition hover:bg-night-700 dark:border-night-600"
+                              >
+                                All off
+                              </button>
+                              <button
+                                onClick={() =>
+                                  bulkToggle.mutate({
+                                    deviceIds: s.list.map((d) => d.id),
+                                    status: "on",
+                                  })
+                                }
+                                disabled={bulkToggle.isPending}
+                                className="rounded-full border border-brand/40 bg-brand/10 px-4 py-2 text-xs font-semibold text-brand transition hover:bg-brand/20"
+                              >
+                                All on
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+                          {s.list.map((device) => (
+                            <DeviceCard
+                              key={device.id}
+                              device={device}
+                              roomName={s.roomId !== null ? s.title : null}
+                              canManage={canManage}
+                              pending={pending[device.id] !== undefined}
+                              disabled={toggle.isPending && pending[device.id] === undefined}
+                              isBlocked={!!blockedDevices[device.id]}
+                              onToggle={(d) =>
+                                toggle.mutate({
+                                  device: d,
+                                  status: d.status === "on" ? "off" : "on",
+                                })
+                              }
+                              onEdit={(d) => {
+                                setEditing(d);
+                                setEditName(d.name);
+                                setEditRoom(d.roomId ? String(d.roomId) : "");
+                              }}
+                              onLogs={(d) => setLogsFor(d)}
+                              latestVersion={latestForModel(device.esp?.modelCode)}
+                              onOta={(d) => {
+                                const cur = d.esp?.firmwareVersion ?? "—";
+                                const next = latestForModel(d.esp?.modelCode);
+                                if (next && confirm(`Board "${d.esp?.name}" ka firmware update karein?\nAbhi: v${cur} → Latest: v${next}`)) {
+                                  pushOta.mutate(d);
+                                }
+                              }}
+                              onRenameBoard={(esp) => {
+                                const name = window.prompt("ESP board ka naam (unique hona chahiye):", esp.name ?? "");
+                                if (name && name.trim()) renameBoard.mutate({ espId: esp.id, name: name.trim() });
+                              }}
+                              onDelete={(d) => {
+                                if (confirm(`Delete "${d.name}"? This cannot be undone.`)) {
+                                  removeDevice.mutate(d.id);
+                                }
+                              }}
+                            />
+                          ))}
+                        </div>
+                      </div>
                     ))}
                   </div>
                 );
               })()}
 
               <div className="mt-8">
-              <ScheduleSection
-                homeId={homeId!}
-                devices={devices.data?.success ? devices.data.data : []}
-                canManage={canManage}
-              />
-            </div>
+                <ScheduleSection
+                  homeId={homeId!}
+                  devices={devices.data?.success ? devices.data.data : []}
+                  canManage={canManage}
+                />
+              </div>
             </div>
 
             {/* Right sidebar: Add device, rooms, boards, members */}
@@ -506,9 +692,8 @@ export function Dashboard() {
                             className="flex items-center gap-2.5 rounded-lg border border-gray-200 bg-night-900/60 px-3 py-2 dark:border-night-600"
                           >
                             <span
-                              className={`h-2 w-2 shrink-0 rounded-full ${
-                                online ? "bg-emerald-400" : "bg-red-400"
-                              }`}
+                              className={`h-2 w-2 shrink-0 rounded-full ${online ? "bg-emerald-400" : "bg-red-400"
+                                }`}
                             />
                             <div className="min-w-0 flex-1">
                               <p className="truncate text-xs font-semibold text-night-950">
@@ -519,9 +704,8 @@ export function Dashboard() {
                               </p>
                             </div>
                             <span
-                              className={`text-[10px] font-bold uppercase ${
-                                online ? "text-emerald-400" : "text-red-400"
-                              }`}
+                              className={`text-[10px] font-bold uppercase ${online ? "text-emerald-400" : "text-red-400"
+                                }`}
                             >
                               {online ? "online" : "offline"}
                             </span>
@@ -593,6 +777,33 @@ export function Dashboard() {
           >
             Save Changes
           </button>
+        </Modal>
+      )}
+
+      {/* Analytics modal */}
+      {analyticsOpen && (
+        <Modal title={`📊 Usage — last ${analyticsDays} days`} onClose={() => setAnalyticsOpen(false)}>
+          <div className="mb-4 flex gap-2">
+            {[7, 30, 90].map((d) => (
+              <button
+                key={d}
+                onClick={() => setAnalyticsDays(d)}
+                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${analyticsDays === d
+                    ? "bg-brand text-white"
+                    : "border border-gray-300 text-gray-600 hover:bg-night-700 dark:border-night-600"
+                  }`}
+              >
+                {d}d
+              </button>
+            ))}
+          </div>
+          {analyticsQuery.isLoading && <p className="text-sm text-gray-500">Loading…</p>}
+          {analyticsQuery.data?.success && (
+            <AnalyticsBody data={analyticsQuery.data.data} />
+          )}
+          {analyticsQuery.data?.success === false && (
+            <p className="text-sm text-red-400">{analyticsQuery.data.error.message}</p>
+          )}
         </Modal>
       )}
 

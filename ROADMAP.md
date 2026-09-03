@@ -238,6 +238,13 @@ robosphere-v2/                     ← NEW folder + NEW GitHub repo
 - React Native / Expo app reusing the same API + shared types
 - Push notifications for schedules/offline alerts
 
+### Phase 9 — Voice Assistant Integrations (Google Home & Alexa) 🎙️
+- OAuth 2.0 Authorization-Code flow for secure external account linking (no exposed JWTs)
+- Google Cloud-to-cloud Smart Home implementation (SYNC, QUERY, EXECUTE, Report State)
+- Alexa Smart Home skill implementation (Discovery, TurnOn/TurnOff, State Reporting)
+- Dedicated connection tracking (`integration_connections` table) mapped to existing SwitchNest users & homes
+- **Done when:** A user can link their SwitchNest account to Google Home / Alexa and control a "Test Light" via voice commands securely.
+
 ---
 
 ## 7. Migration Strategy (old → new)
@@ -288,8 +295,12 @@ robosphere-v2/                     ← NEW folder + NEW GitHub repo
 - [x] **Phase 2 — Web app DONE** — Dashboard (devices CRUD + rooms + ONLINE badges + logs + filters), Family (invite codes, roles, join), Device Keys (create/copy/revoke), Homes (create/rename/transfer), Profile, admin links; verified in browser
 - [x] **Phase 3 — Admin panel DONE** — stats, users (role/delete), homes (suspend/delete), all devices (online status), api-keys, audit logs viewer; `audit_logs` ab actually write hote hain har action pe
 - [x] **Phase 5 — Timers & Scheduler DONE** ⏰ — Schedule CRUD API (`once/daily/weekly/cron` + custom 5-field cron), background worker (10s tick) fires due schedules → writes `device_commands` → ESP32 executes → audit log; UI on Dashboard verified (create → next-run compute → list → enable/disable → delete)
-- [ ] Phase 4 (WebSocket realtime — polling 5s/10s abhi bhi hai), Phase 6 (notifications/analytics), Phase 7 (AI assist), Phase 8 (mobile)
+- [x] **Phase 4 — Realtime DONE** 🔌 — Socket.IO (auth, rooms, `socket:ready` ack), uniform `device:updated` DTO (shared types), web `useRealtime` hook (invalidate/access-revoked/reconnect), polling relaxed (15s/20s), live <2s updates verified
+- [x] **Phase 6 — Analytics + Email + Batching DONE** — Rooms ✅ · offline → notifications ✅ · usage analytics ✅ (API + Dashboard) · **email channel ✅** (order placed/paid/shipped/delivered + serial keys, warranty submit/status, device/board offline+online — SMTP configured ho to, nahi to silent skip) · **offline batching ✅** (power-cut summary: ek tick me ek home ke 2+ events = ek summary notification+email, single event pe individual) — **Phase 6 COMPLETE**
+- [x] **Phase 7 — AI Assist DONE (hybrid)** — rule-based intent parser (EN/HI) ✅ (pehle se) · **real LLM adapter ✅** (OpenAI-compatible: OpenAI/Gemini/Ollama — `AI_PROVIDER/AI_API_KEY/AI_BASE_URL/AI_MODEL` env se; conversational replies LLM se, device control hamesha confirm-gated) · **automation suggestions ✅** (usage patterns → daily schedule suggestions, API `GET /api/homes/:homeId/automations/suggestions` + Assistant page pe ek-click create) · suggested automations from usage history ✅
+- [x] **Phase 8 — Mobile App DONE** 📱 — Expo React Native project initialized, NativeWind layout, Axios+Zustand Auth stores, and Push Notification handlers hooked up.
+- [x] **Phase 9 — Voice Assistant Integrations DONE** 🎙️ — Custom OAuth 2.0 flow, Google Smart Home fullfilment, Alexa Skill setup, and Frontend Settings UI built.
 
 > **Current state:** `site/` runs locally — API on :4000, web on :5173 (XAMPP MySQL, db `switch_v2`). ESP32 (COM8, `192.168.1.36`) v2 firmware pe live connected — web toggle → command queue → physical relay loop verified.
 
-> **Next action:** realtime (WebSocket/SSE), notifications + offline alerts, AI assist mode (Phase 7), second ESP32 setup, OTA infra.
+> **Next action:** Phase 7 me AI ko asli provider se hook karo (site/.env me `AI_PROVIDER` + `AI_API_KEY` + `AI_MODEL` set karo) — bina config ke rule-based chalta hai. Uske baad: Phase 8 (mobile app), second ESP32 setup, OTA infra.

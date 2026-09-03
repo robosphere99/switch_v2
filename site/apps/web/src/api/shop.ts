@@ -2,6 +2,14 @@ import { api } from "./client";
 
 // ---------- Types ----------
 
+export interface ProductMediaItem {
+  id: number;
+  productId: number | null;
+  url: string;
+  type: string;
+  createdAt: string;
+}
+
 export interface Product {
   id: number;
   name: string;
@@ -13,6 +21,7 @@ export interface Product {
   imageUrl: string | null;
   active: boolean;
   createdAt: string;
+  media?: ProductMediaItem[];
 }
 
 export interface OrderItem {
@@ -29,7 +38,7 @@ export interface Order {
   id: number;
   orderNumber: string;
   userId: number;
-  status: "pending" | "paid" | "shipped" | "delivered" | "cancelled";
+  status: "pending" | "processing" | "packed" | "shipped" | "delivered" | "cancelled";
   paymentMethod: "cod" | "upi" | "manual";
   paymentStatus: string;
   paymentRef: string | null;
@@ -41,6 +50,8 @@ export interface Order {
   shippingAddress: string;
   wifiSsid: string | null;
   createdAt: string;
+  /** Bill QR ke liye HMAC-signed verify token (admin order detail me aata hai). */
+  verifyToken?: string;
   items: OrderItem[];
   user?: { id: number; username: string; email: string };
 }
@@ -56,6 +67,29 @@ export interface SerialRow {
   createdAt: string;
   claimedAt: string | null;
   product: { id: number; name: string; modelCode: string };
+  user?: { id: number; username: string; email: string } | null;
+  order?: { id: number; orderNumber: string; status: string } | null;
+  orderIdx?: number;   // order ke andar device number (1-based) — sticker hotspot ke liye
+  orderTotal?: number; // order me total serials
+}
+
+export interface SerialDetail {
+  id: number;
+  serialCode: string;
+  productId: number;
+  orderId: number | null;
+  userId: number | null;
+  homeId: number | null;
+  status: string;
+  createdAt: string;
+  claimedAt: string | null;
+  testedAt: string | null;
+  warrantyExpiresAt: string | null;
+  warrantyStatus: string;
+  product: { id: number; name: string; modelCode: string };
+  user?: { id: number; username: string; email: string } | null;
+  order?: { id: number; orderNumber: string; status: string } | null;
+  home?: { id: number; name: string } | null;
 }
 
 // ---------- Shop (public) ----------
@@ -130,13 +164,35 @@ export async function deleteAdminProduct(id: number): Promise<void> {
   await api.delete(`/admin/products/${id}`);
 }
 
+export async function uploadProductMedia(productId: number, file: File): Promise<ProductMediaItem> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const { data } = await api.post(`/admin/products/${productId}/media`, formData);
+  return data.data;
+}
+
+export async function deleteProductMedia(mediaId: number): Promise<void> {
+  await api.delete(`/admin/products/media/${mediaId}`);
+}
+
+
 export async function getAdminOrders(): Promise<Order[]> {
   const { data } = await api.get("/admin/orders");
   return data.data;
 }
 
+export async function getAdminOrder(id: number): Promise<Order> {
+  const { data } = await api.get(`/admin/orders/${id}`);
+  return data.data;
+}
+
 export async function updateOrderStatus(id: number, status: string): Promise<Order> {
   const { data } = await api.patch(`/admin/orders/${id}/status`, { status });
+  return data.data;
+}
+
+export async function updateOrderPaymentStatus(id: number, paymentStatus: string): Promise<Order> {
+  const { data } = await api.patch(`/admin/orders/${id}/payment-status`, { paymentStatus });
   return data.data;
 }
 
@@ -151,6 +207,20 @@ export async function getSerials(filters?: { status?: string; productId?: number
 
 export async function generateSerials(productId: number, count: number): Promise<{ generated: number; codes: string[] }> {
   const { data } = await api.post("/admin/serials/generate", { productId, count });
+  return data.data;
+}
+
+export async function getSerialDetail(serialCode: string): Promise<SerialDetail> {
+  const { data } = await api.get(`/admin/serials/${encodeURIComponent(serialCode)}`);
+  return data.data;
+}
+
+export async function deleteSerial(serialCode: string): Promise<void> {
+  await api.delete(`/admin/serials/${encodeURIComponent(serialCode)}`);
+}
+
+export async function deleteSerials(codes: string[]): Promise<{ deleted: number; skipped: number }> {
+  const { data } = await api.delete("/admin/serials", { data: { codes } });
   return data.data;
 }
 
@@ -231,4 +301,8 @@ export async function getAdminWarranty(): Promise<WarrantyClaimRow[]> {
 export async function updateWarrantyStatus(id: number, status: string): Promise<{ id: number; status: string }> {
   const { data } = await api.patch(`/admin/warranty/${id}/status`, { status });
   return data.data;
+}
+
+export async function addProductReview(productId: number, payload: { rating: number, comment?: string }): Promise<void> {
+  await api.post(`/shop/products/${productId}/reviews`, payload);
 }

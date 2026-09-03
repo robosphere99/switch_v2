@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import {
   createChat,
-  listChats,
   listMessages,
   sendMessage,
   confirmProposal,
@@ -10,34 +9,44 @@ import {
 } from "../api/assistant";
 import { listHomes } from "../api/homes";
 import { RichText } from "../components/RichText";
+import { AutomationSuggestions } from "../components/AutomationSuggestions";
+import { Home as HomeIcon } from "lucide-react";
 
 const EXAMPLES = [
   "turn on the fan",
-  "pankha band karo",
-  "saare lights on karo",
+  "bedroom ki light on karo",
+  "saare lights off karo",
   "TV on karo",
-  "all devices off karo",
+  "all devices off",
 ];
 
 export function Assistant() {
   const queryClient = useQueryClient();
+  const [activeHomeId, setActiveHomeId] = useState<number | null>(null);
   const [chatId, setChatId] = useState<number | null>(null);
   const [input, setInput] = useState("");
   const [confirmingId, setConfirmingId] = useState<number | null>(null);
-  const [newChatHome, setNewChatHome] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const homes = useQuery({ queryKey: ["homes"], queryFn: listHomes });
   const myHomes = homes.data?.success ? homes.data.data : [];
 
-  const chats = useQuery({ queryKey: ["assistant", "chats"], queryFn: listChats });
+  const openHomeThread = useMutation({
+    mutationFn: (hId: number) => createChat(hId),
+    onSuccess: (res, hId) => {
+      if (res.success) {
+        setChatId(res.data.id);
+        setActiveHomeId(hId);
+      }
+    },
+  });
 
-  // auto-open the most recent chat
+  // Auto-open the first home
   useEffect(() => {
-    if (chatId === null && chats.data?.success && chats.data.data.length > 0) {
-      setChatId(chats.data.data[0].id);
+    if (activeHomeId === null && myHomes.length > 0) {
+      openHomeThread.mutate(myHomes[0].id);
     }
-  }, [chats.data, chatId]);
+  }, [myHomes, activeHomeId]);
 
   const messages = useQuery({
     queryKey: ["assistant", "messages", chatId],
@@ -49,27 +58,11 @@ export function Assistant() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.data]);
 
-  const invalidateChats = () => {
-    queryClient.invalidateQueries({ queryKey: ["assistant", "chats"] });
-  };
-
-  const newChat = useMutation({
-    mutationFn: () => createChat(Number(newChatHome)),
-    onSuccess: (res) => {
-      if (res.success) {
-        setChatId(res.data.id);
-        setNewChatHome("");
-        invalidateChats();
-      }
-    },
-  });
-
   const send = useMutation({
     mutationFn: (content: string) => sendMessage(chatId!, content),
     onSuccess: () => {
       setInput("");
       queryClient.invalidateQueries({ queryKey: ["assistant", "messages", chatId] });
-      invalidateChats();
     },
   });
 
@@ -83,130 +76,109 @@ export function Assistant() {
   });
 
   const msgList = messages.data?.success ? messages.data.data : [];
+  const loading = openHomeThread.isPending;
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-3xl font-bold">🤖 AI Assist</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Natural language me bolo — device on/off. Pehle confirm, phir execute. (Hindi + English)
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <select
-            value={newChatHome}
-            onChange={(e) => setNewChatHome(e.target.value)}
-            className="rounded-lg border border-brand/20 bg-night-900 px-3 py-2 text-sm outline-none focus:border-brand"
-          >
-            <option value="">Select home…</option>
-            {myHomes.map((h) => (
-              <option key={h.id} value={h.id}>
-                {h.name}
-              </option>
-            ))}
-          </select>
-          <button
-            onClick={() => newChat.mutate()}
-            disabled={!newChatHome}
-            className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-          >
-            + New Chat
-          </button>
-        </div>
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold">🤖 AI Assist</h1>
+        <p className="mt-1 text-sm text-gray-500">
+          Natural language se devices control karein. Ek ghar, ek persistent ai conversation thread.
+        </p>
       </div>
 
-      {chats.data?.success && chats.data.data.length === 0 && (
+      {myHomes.length === 0 && homes.isSuccess && (
         <div className="rounded-xl border border-brand/20 bg-night-800 p-8 text-center">
-          <p className="mb-2 text-lg">👋 Kuch bhi bolo!</p>
-          <p className="mb-6 text-sm text-gray-500">Pehle home select karke "New Chat" banao, phir command do.</p>
-          <div className="flex flex-wrap justify-center gap-2">
-            {EXAMPLES.map((ex) => (
-              <button
-                key={ex}
-                onClick={() => setInput(ex)}
-                className="rounded-full border border-brand/30 bg-night-900 px-3 py-1.5 text-xs text-brand hover:bg-brand/10"
-              >
-                {ex}
-              </button>
-            ))}
-          </div>
+          <p className="mb-2 text-lg">🏡 Koi ghar nahi mila!</p>
+          <p className="text-sm text-gray-500">Pehle Home banayein phir assistant use karein.</p>
         </div>
       )}
 
-      {chatId !== null && (
-        <div className="grid gap-6 lg:grid-cols-[220px_1fr]">
-          {/* Chat list */}
-          <div className="hidden lg:block">
-            <div className="space-y-2">
-              {chats.data?.success &&
-                chats.data.data.map((c) => (
-                  <button
-                    key={c.id}
-                    onClick={() => setChatId(c.id)}
-                    className={`w-full truncate rounded-lg border px-3 py-2 text-left text-sm ${
-                      c.id === chatId ? "border-brand bg-brand/15 text-brand" : "border-gray-200 bg-night-800 text-gray-600 hover:border-gray-500"
-                    }`}
-                  >
-                    💬 {c.title}
-                  </button>
-                ))}
-            </div>
-          </div>
-
-          {/* Thread */}
-          <div className="flex h-[70vh] flex-col rounded-xl border border-gray-200 bg-night-800">
-            <div className="flex-1 space-y-4 overflow-y-auto p-5">
-              {msgList.length === 0 && (
-                <p className="text-center text-sm text-gray-500">Message bhejo — jaise "saare lights band karo"</p>
-              )}
-              {msgList.map((m) => (
-                <MessageBubble
-                  key={m.id}
-                  message={m}
-                  confirming={confirmingId === m.id}
-                  onConfirm={() => {
-                    setConfirmingId(m.id);
-                    confirm.mutate(m.id);
-                  }}
-                />
-              ))}
-              <div ref={bottomRef} />
-            </div>
-
-            <div className="border-t border-gray-200 p-4">
-              <div className="flex gap-2">
-                <input
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && input.trim() && chatId) send.mutate(input.trim());
-                  }}
-                  placeholder='Try: "saare lights off karo" / "TV on karo"'
-                  className="flex-1 rounded-lg border border-brand/20 bg-night-900 px-4 py-2.5 text-sm outline-none focus:border-brand"
-                />
-                <button
-                  onClick={() => send.mutate(input.trim())}
-                  disabled={!input.trim() || send.isPending}
-                  className="rounded-lg bg-brand px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
-                >
-                  Send
-                </button>
+      {myHomes.length > 0 && (
+        <>
+          {activeHomeId !== null && <AutomationSuggestions homeId={activeHomeId} />}
+          <div className="grid gap-6 lg:grid-cols-[220px_1fr]">
+            {/* Sidebar: Home List */}
+            <div className="hidden lg:block">
+              <div className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-500">
+                Your Homes
               </div>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {EXAMPLES.map((ex) => (
+              <div className="space-y-2">
+                {myHomes.map((h) => (
                   <button
-                    key={ex}
-                    onClick={() => setInput(ex)}
-                    className="rounded-full border border-gray-200 px-2.5 py-1 text-[11px] text-gray-500 hover:border-brand hover:text-brand"
+                    key={h.id}
+                    onClick={() => openHomeThread.mutate(h.id)}
+                    className={`flex w-full items-center gap-2 truncate rounded-lg border px-3 py-2.5 text-left text-sm font-semibold transition-all ${h.id === activeHomeId
+                        ? "border-brand bg-brand/10 text-brand shadow-sm shadow-brand/20"
+                        : "border-gray-200 bg-night-800 text-gray-400 hover:border-gray-500 hover:text-gray-300"
+                      }`}
                   >
-                    {ex}
+                    <HomeIcon className="h-4 w-4 opacity-70" />
+                    {h.name}
                   </button>
                 ))}
               </div>
             </div>
+
+            {/* Main Chat Thread */}
+            <div className="flex h-[72vh] flex-col overflow-hidden rounded-xl border border-gray-200 bg-night-800 shadow-sm">
+              <div className="flex-1 space-y-4 overflow-y-auto p-5">
+                {loading && msgList.length === 0 && (
+                  <div className="text-center mt-10 text-brand animate-pulse">Loading AI thread...</div>
+                )}
+                {!loading && msgList.length === 0 && (
+                  <div className="flex h-full flex-col items-center justify-center text-center">
+                    <p className="text-sm text-gray-400 mb-6">Hello! Commands bhej kar is ghar ko control karein.</p>
+                    <div className="flex flex-wrap justify-center gap-2">
+                      {EXAMPLES.map((ex) => (
+                        <button
+                          key={ex}
+                          onClick={() => setInput(ex)}
+                          className="rounded-full border border-brand/30 bg-night-900 px-3 py-1.5 text-xs text-brand hover:bg-brand/10 transition"
+                        >
+                          {ex}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {msgList.map((m) => (
+                  <MessageBubble
+                    key={m.id}
+                    message={m}
+                    confirming={confirmingId === m.id}
+                    onConfirm={() => {
+                      setConfirmingId(m.id);
+                      confirm.mutate(m.id);
+                    }}
+                  />
+                ))}
+                <div ref={bottomRef} />
+              </div>
+
+              <div className="border-t border-gray-200 p-4 bg-night-900/50">
+                <div className="flex gap-2">
+                  <input
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && input.trim() && chatId) send.mutate(input.trim());
+                    }}
+                    placeholder='Ye try karein: "saare lights off karo..."'
+                    className="flex-1 rounded-lg border border-brand/20 bg-night-900 px-4 py-3 text-sm outline-none transition focus:border-brand focus:ring-1 focus:ring-brand"
+                  />
+                  <button
+                    onClick={() => send.mutate(input.trim())}
+                    disabled={!input.trim() || send.isPending}
+                    className="rounded-lg bg-brand px-6 py-3 text-sm font-bold text-white transition hover:brightness-110 disabled:opacity-50"
+                  >
+                    {send.isPending ? "..." : "Send"}
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );
@@ -225,17 +197,16 @@ function MessageBubble({
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div
-        className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm ${
-          isUser ? "rounded-br-sm bg-brand text-white" : "rounded-bl-sm border border-gray-200 bg-night-900 text-gray-700"
-        }`}
+        className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm ${isUser ? "rounded-br-sm bg-brand text-white shadow-md shadow-brand/10" : "rounded-bl-sm border border-gray-200 bg-night-900 text-gray-700"
+          }`}
       >
         <RichText text={message.content} className="whitespace-pre-line" />
         {!isUser && message.proposal && message.proposal.length > 0 && (
-          <div className="mt-3 space-y-1.5">
+          <div className="mt-3 space-y-1.5 border-t border-gray-200/20 pt-3">
             {message.proposal.map((p) => (
-              <div key={p.deviceId} className="flex items-center justify-between gap-3 rounded-lg bg-night-800 px-3 py-1.5 text-xs">
-                <span>{p.deviceName}</span>
-                <span className={`rounded px-1.5 py-0.5 font-bold ${p.action === "on" ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-400"}`}>
+              <div key={p.deviceId} className="flex items-center justify-between gap-3 rounded-lg bg-night-800 px-3 py-2 text-xs border border-gray-200/5">
+                <span className="font-semibold text-gray-300">{p.deviceName}</span>
+                <span className={`rounded px-2 py-0.5 font-bold ${p.action === "on" ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-400"}`}>
                   {p.action === "on" ? "ON" : "OFF"}
                 </span>
               </div>
@@ -243,9 +214,9 @@ function MessageBubble({
             <button
               onClick={onConfirm}
               disabled={confirming}
-              className="w-full rounded-lg bg-green-600 py-2 text-sm font-semibold text-night-950 hover:bg-green-500 disabled:opacity-50"
+              className="mt-2 w-full rounded-lg bg-emerald-600/90 py-2.5 text-sm font-bold text-white hover:bg-emerald-500 transition disabled:opacity-50"
             >
-              {confirming ? "Executing…" : "✅ Confirm & Execute"}
+              {confirming ? "Executing…" : "✅ Confirm Action"}
             </button>
           </div>
         )}
