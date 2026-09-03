@@ -38,7 +38,7 @@ export function Activate() {
 
   if (result) {
     return (
-      <div className="mx-auto max-w-xl px-4 py-16 text-center">
+      <div className="page-enter mx-auto max-w-xl px-4 py-16 text-center">
         <div className="mb-4 text-6xl">🎉</div>
         <h1 className="mb-2 text-3xl font-bold">Device Activated!</h1>
         <p className="mb-4 text-gray-500">
@@ -58,7 +58,7 @@ export function Activate() {
   }
 
   return (
-    <div className="mx-auto max-w-xl px-4 py-12">
+    <div className="page-enter mx-auto max-w-xl px-4 py-12">
       <h1 className="mb-2 text-3xl font-bold">
         <span className="text-brand">🔑 Activate Device</span>
       </h1>

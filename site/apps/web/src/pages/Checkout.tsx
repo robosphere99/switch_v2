@@ -160,11 +160,11 @@ export function Checkout() {
 
   if (!items.length) {
     return (
-      <div className="mx-auto max-w-2xl px-4 py-16 text-center">
+      <div className="page-enter mx-auto max-w-2xl px-4 py-16 text-center">
         <div className="mb-4 text-5xl">🛒</div>
         <h1 className="mb-2 text-2xl font-bold">Cart khali hai</h1>
         <p className="mb-6 text-gray-500">Pehle kuch products add karo.</p>
-        <Link to="/shop" className="rounded-lg bg-brand px-6 py-3 font-semibold text-white">
+        <Link to="/shop" className="btn-primary px-6 py-3">
           Shop kholo
         </Link>
       </div>
@@ -172,15 +172,13 @@ export function Checkout() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-10">
-      <h1 className="mb-6 text-3xl font-bold">
-        <span className="text-brand">Checkout</span>
-      </h1>
+    <div className="page-enter mx-auto max-w-3xl px-4 py-10 sm:px-6">
+      <h1 className="page-title mb-6">Checkout</h1>
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Items summary */}
-        <section className="rounded-xl border border-brand/20 bg-night-800 p-6">
-          <h2 className="mb-3 text-lg font-semibold">Order Summary</h2>
+        <section className="card-static p-6">
+          <h2 className="mb-4 text-base font-semibold text-gray-900 dark:text-white">Order Summary</h2>
           <div className="space-y-2 text-sm">
             {items.map((i) => (
               <div key={i.productId} className="flex justify-between text-gray-600">

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { sendContact } from "../api/public";
 import { useSiteStore } from "../stores/site";
+import { ArrowRight, Mail, MapPin, Phone, Clock } from "lucide-react";
 
 const STEPS = [
   {
@@ -25,6 +26,13 @@ const STEPS = [
   },
 ];
 
+const CONTACT_ICONS: Record<string, typeof Mail> = {
+  Email: Mail,
+  "Phone / WhatsApp": Phone,
+  Address: MapPin,
+  Hours: Clock,
+};
+
 /** Contact info — Admin → Settings se edit hota hai (public site-settings endpoint). */
 function useContactInfo() {
   const s = useSiteStore((st) => st.settings);
@@ -38,24 +46,21 @@ function useContactInfo() {
 
 export function HowItWorksSection() {
   return (
-    <section className="mx-auto max-w-6xl px-4 pb-24">
-      <h2 className="mb-3 text-center text-4xl font-bold">
-        <span className="text-brand">
-          How It Works
-        </span>
-      </h2>
-      <p className="mb-12 text-center text-gray-500">
-        Shop se leke control tak — bas 4 steps.
-      </p>
-      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+    <section className="mx-auto max-w-7xl px-4 pb-24 sm:px-6 lg:px-8">
+      <div className="mb-12 text-center">
+        <h2 className="section-title">How It Works</h2>
+        <p className="section-subtitle">Shop se leke control tak — bas 4 steps.</p>
+      </div>
+      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
         {STEPS.map((s, i) => (
-          <div key={s.title} className="relative rounded-xl border border-brand/20 bg-night-800 p-6">
-            <div className="absolute -top-3 left-6 rounded-full bg-brand px-2.5 py-0.5 text-xs font-bold text-white">
-              Step {i + 1}
+          <div key={s.title} className="card-static relative p-6">
+            {/* Step badge */}
+            <div className="absolute -top-3 left-5 inline-flex h-6 min-w-[1.75rem] items-center justify-center rounded-full bg-brand px-2.5 text-[11px] font-bold text-white shadow-sm shadow-brand/30">
+              {i + 1}
             </div>
-            <div className="mb-3 mt-2 text-4xl">{s.icon}</div>
-            <h3 className="mb-2 font-semibold text-night-950">{s.title}</h3>
-            <p className="text-sm text-gray-500">{s.desc}</p>
+            <div className="mb-4 mt-3 text-3xl">{s.icon}</div>
+            <h3 className="mb-2 font-semibold text-gray-900 dark:text-white">{s.title}</h3>
+            <p className="text-sm leading-relaxed text-gray-500 dark:text-gray-400">{s.desc}</p>
           </div>
         ))}
       </div>
@@ -65,44 +70,41 @@ export function HowItWorksSection() {
 
 export function AboutUsSection() {
   return (
-    <section className="border-y border-brand/15 bg-night-900/40 py-24">
-      <div className="mx-auto grid max-w-6xl items-center gap-12 px-4 lg:grid-cols-2">
+    <section className="border-y border-gray-100 bg-gray-50/60 py-24 dark:border-night-600 dark:bg-night-800/40">
+      <div className="mx-auto grid max-w-7xl items-center gap-12 px-4 lg:grid-cols-2 sm:px-6 lg:px-8">
         <div>
-          <h2 className="mb-6 text-4xl font-bold">
-            <span className="text-brand">
-              About SwitchNest
-            </span>
-          </h2>
-          <div className="space-y-4 text-gray-600">
+          <h2 className="section-title mb-6">About SwitchNest</h2>
+          <div className="space-y-4 text-gray-600 dark:text-gray-300">
             <p>
               SwitchNest ek Indian smart-home company hai — hum aam ghar ke liye
-              <span className="text-brand"> practical, affordable WiFi boards</span> banate hain.
+              <span className="font-semibold text-brand"> practical, affordable WiFi boards</span> banate hain.
               Na complex wiring, na costly subscription — bas board kharido, serial se activate karo, control karo.
             </p>
             <p>
-              Har board <span className="text-brand">manufacturing me hi flash + relay self-test</span> se
+              Har board <span className="font-semibold text-brand">manufacturing me hi flash + relay self-test</span> se
               guzarta hai, aur WiFi se OTA updates milte rehte hain. Dimmer se leke 8-channel boards tak —
               naye boards customers ki demand pe design hote hain.
             </p>
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-gray-400 italic">
               Mission: "Har Indian ghar ko smart banao — bina electrician ke, bina wiring change kiye."
             </p>
           </div>
-          <div className="mt-8 flex gap-8">
-            <div>
-              <div className="text-3xl font-bold text-brand">100%</div>
-              <div className="text-xs text-gray-500">Factory tested boards</div>
-            </div>
-            <div>
-              <div className="text-3xl font-bold text-brand">1 yr</div>
-              <div className="text-xs text-gray-500">Serial warranty</div>
-            </div>
-            <div>
-              <div className="text-3xl font-bold text-brand">OTA</div>
-              <div className="text-xs text-gray-500">WiFi updates</div>
-            </div>
+
+          {/* Stats */}
+          <div className="mt-8 flex gap-6 border-t border-gray-100 pt-6 dark:border-night-600">
+            {[
+              { val: "100%", label: "Factory tested" },
+              { val: "1 yr", label: "Serial warranty" },
+              { val: "OTA", label: "WiFi updates" },
+            ].map((s) => (
+              <div key={s.label}>
+                <div className="text-2xl font-bold text-brand">{s.val}</div>
+                <div className="mt-0.5 text-xs text-gray-400">{s.label}</div>
+              </div>
+            ))}
           </div>
         </div>
+
         <div className="grid gap-4 sm:grid-cols-2">
           {[
             { icon: "🔧", t: "Made in India", d: "Hardware + firmware hum khud design karte hain." },
@@ -110,10 +112,10 @@ export function AboutUsSection() {
             { icon: "🛡️", t: "Serial-Locked", d: "Device ownership serial code se protected." },
             { icon: "💬", t: "Real Support", d: "WhatsApp/email se seedha engineer se baat." },
           ].map((c) => (
-            <div key={c.t} className="rounded-xl border border-brand/20 bg-night-800 p-5">
-              <div className="mb-2 text-3xl">{c.icon}</div>
-              <div className="font-semibold text-night-950">{c.t}</div>
-              <div className="mt-1 text-sm text-gray-500">{c.d}</div>
+            <div key={c.t} className="card p-5">
+              <div className="mb-3 text-2xl">{c.icon}</div>
+              <div className="font-semibold text-gray-900 dark:text-white">{c.t}</div>
+              <div className="mt-1 text-sm text-gray-500 dark:text-gray-400">{c.d}</div>
             </div>
           ))}
         </div>
@@ -125,29 +127,36 @@ export function AboutUsSection() {
 export function LocateUsSection() {
   const CONTACT_INFO = useContactInfo();
   return (
-    <section className="mx-auto max-w-6xl px-4 py-24">
-      <h2 className="mb-12 text-center text-4xl font-bold">
-        <span className="text-brand">
-          Locate Us
-        </span>
-      </h2>
+    <section className="mx-auto max-w-7xl px-4 py-24 sm:px-6 lg:px-8">
+      <div className="mb-12 text-center">
+        <h2 className="section-title">Locate Us</h2>
+        <p className="section-subtitle">Come visit us or reach out anytime.</p>
+      </div>
       <div className="grid gap-8 lg:grid-cols-2">
-        <div className="space-y-4">
-          {CONTACT_INFO.map((c) => (
-            <div key={c.label} className="flex items-start gap-3 rounded-xl border border-brand/20 bg-night-800 p-4">
-              <span className="text-2xl">{c.icon}</span>
-              <div>
-                <div className="text-xs uppercase tracking-wide text-gray-500">{c.label}</div>
-                <div className="text-sm text-gray-700">{c.value}</div>
+        <div className="space-y-3">
+          {CONTACT_INFO.map((c) => {
+            const Icon = CONTACT_ICONS[c.label] ?? Mail;
+            return (
+              <div
+                key={c.label}
+                className="card-static flex items-start gap-4 p-4"
+              >
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand/10">
+                  <Icon className="h-4 w-4 text-brand" />
+                </div>
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">{c.label}</div>
+                  <div className="mt-0.5 text-sm text-gray-700 dark:text-gray-200">{c.value}</div>
+                </div>
               </div>
-            </div>
-          ))}
-          <div className="rounded-xl border border-brand/20 bg-night-800 p-4 text-sm text-gray-500">
-            🚗 <span className="text-gray-700">Visit:</span> Lab visits by appointment — WhatsApp pe pehle message karo,
+            );
+          })}
+          <div className="card-static p-4 text-sm text-gray-500 dark:text-gray-400">
+            🚗 <span className="font-medium text-gray-700 dark:text-gray-200">Visit:</span> Lab visits by appointment — WhatsApp pe pehle message karo,
             board demos dikhate hain.
           </div>
         </div>
-        <div className="overflow-hidden rounded-xl border border-brand/20">
+        <div className="overflow-hidden rounded-2xl border border-gray-100 shadow-sm dark:border-night-600">
           <iframe
             title="SwitchNest location map"
             src="https://www.google.com/maps?q=Sector%2062%2C%20Noida%2C%20Uttar%20Pradesh&output=embed"
@@ -183,73 +192,71 @@ export function ContactUsSection() {
   };
 
   return (
-    <section className="border-t border-brand/15 bg-night-900/40 py-24">
-      <div className="mx-auto grid max-w-6xl gap-12 px-4 lg:grid-cols-2">
+    <section className="border-t border-gray-100 bg-gray-50/60 py-24 dark:border-night-600 dark:bg-night-800/40">
+      <div className="mx-auto grid max-w-7xl gap-12 px-4 lg:grid-cols-2 sm:px-6 lg:px-8">
         <div>
-          <h2 className="mb-4 text-4xl font-bold">
-            <span className="text-brand">
-              Contact / Feedback
-            </span>
-          </h2>
-          <p className="mb-6 max-w-md text-gray-500">
+          <h2 className="section-title mb-4">Contact / Feedback</h2>
+          <p className="mb-6 max-w-md text-gray-500 dark:text-gray-400">
             Sawaal, order help, ya product feedback — form bharke bhejo, humara team seedha reply karta hai.
             (Chat widget bhi hai — bottom right 🤖)
           </p>
+
           {status && (
-            <div className={`mb-4 rounded-lg border p-4 text-sm ${status.ok ? "border-green-500/40 bg-green-900/30 text-green-700" : "border-red-500/40 bg-red-900/30 text-red-600"}`}>
+            <div className={`mb-6 ${status.ok ? "alert-success" : "alert-error"}`}>
               {status.text}
             </div>
           )}
-          <div className="space-y-3 text-sm">
+
+          <div className="space-y-3">
             {CONTACT_INFO.map((c) => (
-              <div key={c.label} className="flex items-center gap-3 text-gray-600">
-                <span className="text-xl">{c.icon}</span>
-                <span className="text-gray-500">{c.label}:</span>
+              <div key={c.label} className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-300">
+                <span className="text-lg">{c.icon}</span>
+                <span className="text-gray-400">{c.label}:</span>
                 <span>{c.value}</span>
               </div>
             ))}
           </div>
         </div>
 
-        <form onSubmit={submit} className="rounded-xl border border-brand/20 bg-night-800 p-6">
-          <div className="mb-4 grid gap-4 sm:grid-cols-2">
+        <form onSubmit={submit} className="card-static p-6 sm:p-8">
+          <div className="mb-5 grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-xs text-gray-500">Name *</label>
+              <label className="field-label">Name *</label>
               <input
                 required
                 value={form.name}
                 onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                className="w-full rounded-lg border border-brand/30 bg-night-700 px-3 py-2 text-sm text-night-950"
+                className="input-field"
                 placeholder="Aapka naam"
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs text-gray-500">Email</label>
+              <label className="field-label">Email</label>
               <input
                 type="email"
                 value={form.email}
                 onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-                className="w-full rounded-lg border border-brand/30 bg-night-700 px-3 py-2 text-sm text-night-950"
+                className="input-field"
                 placeholder="you@example.com"
               />
             </div>
           </div>
-          <div className="mb-4 grid gap-4 sm:grid-cols-2">
+          <div className="mb-5 grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-xs text-gray-500">Phone</label>
+              <label className="field-label">Phone</label>
               <input
                 value={form.phone}
                 onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-                className="w-full rounded-lg border border-brand/30 bg-night-700 px-3 py-2 text-sm text-night-950"
+                className="input-field"
                 placeholder="+91 …"
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs text-gray-500">Subject</label>
+              <label className="field-label">Subject</label>
               <select
                 value={form.subject}
                 onChange={(e) => setForm((f) => ({ ...f, subject: e.target.value }))}
-                className="w-full rounded-lg border border-brand/30 bg-night-700 px-3 py-2 text-sm text-night-950"
+                className="select-field"
               >
                 <option>Feedback</option>
                 <option>Order / Delivery Help</option>
@@ -260,23 +267,28 @@ export function ContactUsSection() {
               </select>
             </div>
           </div>
-          <div className="mb-4">
-            <label className="mb-1 block text-xs text-gray-500">Message *</label>
+          <div className="mb-5">
+            <label className="field-label">Message *</label>
             <textarea
               required
               rows={4}
               value={form.message}
               onChange={(e) => setForm((f) => ({ ...f, message: e.target.value }))}
-              className="w-full rounded-lg border border-brand/30 bg-night-700 px-3 py-2 text-sm text-night-950"
+              className="input-field resize-none"
               placeholder="Kya help chahiye? / Aapka feedback…"
             />
           </div>
           <button
             type="submit"
             disabled={busy}
-            className="rounded-lg bg-brand px-6 py-2.5 font-semibold text-white disabled:opacity-50"
+            className="btn-primary w-full"
           >
-            {busy ? "Sending…" : "📨 Send Message"}
+            {busy ? "Sending…" : (
+              <>
+                Send Message
+                <ArrowRight className="h-4 w-4" />
+              </>
+            )}
           </button>
         </form>
       </div>

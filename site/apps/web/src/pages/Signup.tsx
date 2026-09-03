@@ -1,14 +1,17 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { Eye, EyeOff, ArrowRight, Home } from "lucide-react";
 import { signup } from "../api/auth";
 import { extractApiError } from "../api/client";
 import { useAuthStore } from "../stores/auth";
 import { applyAccountTheme } from "../lib/themeAccount";
+import { Logo } from "../components/Logo";
 
 export function Signup() {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [homeName, setHomeName] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -41,75 +44,103 @@ export function Signup() {
   }
 
   return (
-    <div className="flex min-h-[80vh] items-center justify-center px-4">
-      <form
-        onSubmit={handleSubmit}
-        className="w-full max-w-md rounded-2xl border border-brand/20 bg-night-800 p-10 shadow-2xl"
-      >
-        <h1 className="mb-8 text-center text-2xl font-bold">🏠 Create Your Home</h1>
+    <div className="page-enter flex min-h-[85vh] items-center justify-center px-4 py-12">
+      <div className="w-full max-w-md">
+        <div className="card-static p-8 sm:p-10">
+          {/* Header */}
+          <div className="mb-8 flex flex-col items-center gap-3 text-center">
+            <Logo size="lg" />
+            <div>
+              <h1 className="mt-2 text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
+                Create Your Home
+              </h1>
+              <p className="mt-1 text-sm text-gray-500">
+                Start your smart home journey in seconds.
+              </p>
+            </div>
+          </div>
 
-        {error && (
-          <p className="mb-4 rounded bg-red-500/10 px-4 py-2 text-sm text-red-400">{error}</p>
-        )}
+          {error && <div className="alert-error mb-5">{error}</div>}
 
-        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-          Username
-        </label>
-        <input
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          required
-          className="mb-4 w-full rounded-lg border border-brand/20 bg-night-900 px-4 py-3 text-night-950 outline-none focus:border-brand"
-        />
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="field-label">Username</label>
+              <input
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+                autoFocus
+                className="input-field"
+                placeholder="yourname"
+              />
+            </div>
 
-        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-          Email
-        </label>
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-          className="mb-4 w-full rounded-lg border border-brand/20 bg-night-900 px-4 py-3 text-night-950 outline-none focus:border-brand"
-        />
+            <div>
+              <label className="field-label">Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="input-field"
+                placeholder="you@example.com"
+              />
+            </div>
 
-        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-          Password
-        </label>
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-          minLength={6}
-          className="mb-4 w-full rounded-lg border border-brand/20 bg-night-900 px-4 py-3 text-night-950 outline-none focus:border-brand"
-        />
+            <div>
+              <label className="field-label">Password</label>
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  minLength={6}
+                  className="input-field pr-12"
+                  placeholder="Min. 6 characters"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-brand transition-colors"
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+            </div>
 
-        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-          Home Name (optional)
-        </label>
-        <input
-          value={homeName}
-          onChange={(e) => setHomeName(e.target.value)}
-          placeholder="e.g. Sharma Family Home"
-          className="mb-6 w-full rounded-lg border border-brand/20 bg-night-900 px-4 py-3 text-night-950 outline-none focus:border-brand"
-        />
+            <div>
+              <label className="field-label">Home Name (optional)</label>
+              <div className="relative">
+                <input
+                  value={homeName}
+                  onChange={(e) => setHomeName(e.target.value)}
+                  placeholder="e.g. Sharma Family Home"
+                  className="input-field pl-10"
+                />
+                <Home className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              </div>
+              <p className="mt-1.5 text-[11px] text-gray-400">You can change this later from settings.</p>
+            </div>
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full rounded-lg bg-brand py-3 font-semibold text-white disabled:opacity-60"
-        >
-          {loading ? "Creating…" : "Sign Up"}
-        </button>
+            <button type="submit" disabled={loading} className="btn-primary w-full py-3 mt-2">
+              {loading ? "Creating account…" : (
+                <>
+                  Create Account
+                  <ArrowRight className="h-4 w-4" />
+                </>
+              )}
+            </button>
+          </form>
 
-        <p className="mt-6 text-center text-sm text-gray-500">
-          Already have an account?{" "}
-          <Link to="/login" className="text-brand hover:underline">
-            Login
-          </Link>
-        </p>
-      </form>
+          <p className="mt-6 text-center text-sm text-gray-500">
+            Already have an account?{" "}
+            <Link to="/login" className="font-semibold text-brand hover:underline">
+              Login
+            </Link>
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

@@ -79,14 +79,14 @@ export function Settings() {
     const capitalize = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
 
     return (
-        <div className="mx-auto max-w-4xl p-6">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2 flex items-center gap-2">
-                <Settings2 className="w-8 h-8 text-brand" /> Settings
+        <div className="page-enter mx-auto max-w-4xl px-4 py-8 sm:px-6">
+            <h1 className="page-title mb-1 flex items-center gap-2">
+                <Settings2 className="w-7 h-7 text-brand" /> Settings
             </h1>
-            <p className="text-gray-500 mb-6">Home configuration and Audit logs (Admins Only)</p>
+            <p className="text-gray-500 mb-8">Home configuration and Audit logs (Admins Only)</p>
 
-            <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-                <h2 className="text-xl font-bold text-gray-900 mb-4">Audit Logs</h2>
+            <div className="card-static p-6">
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-5">Audit Logs</h2>
 
                 {homes.length > 1 && (
                     <div className="flex gap-3 mb-4 overflow-x-auto pb-2">
@@ -132,7 +132,7 @@ export function Settings() {
                                     setSelectedDeviceId(val);
                                     if (selectedHomeId) fetchLogs(selectedHomeId, val, selectedUserId, selectedTimeRange);
                                 }}
-                                className="w-full border border-gray-300 rounded-xl py-2 px-3 text-sm focus:ring-brand focus:border-brand shadow-sm bg-gray-50 cursor-pointer font-medium"
+                                className="select-field"
                             >
                                 <option value="">All Connected Devices</option>
                                 {devices.map((device: any) => (
@@ -155,7 +155,7 @@ export function Settings() {
                                     setSelectedUserId(val);
                                     if (selectedHomeId) fetchLogs(selectedHomeId, selectedDeviceId, val, selectedTimeRange);
                                 }}
-                                className="w-full border border-gray-300 rounded-xl py-2 px-3 text-sm focus:ring-brand focus:border-brand shadow-sm bg-gray-50 cursor-pointer font-medium"
+                                className="select-field"
                             >
                                 <option value="">Everyone (All Members)</option>
                                 {members.map((member: any) => (
@@ -178,7 +178,7 @@ export function Settings() {
                                     setSelectedTimeRange(val);
                                     if (selectedHomeId) fetchLogs(selectedHomeId, selectedDeviceId, selectedUserId, val);
                                 }}
-                                className="w-full border border-gray-300 rounded-xl py-2 px-3 text-sm focus:ring-brand focus:border-brand shadow-sm bg-gray-50 cursor-pointer font-medium"
+                                className="select-field"
                             >
                                 <option value="">Any Time (All History)</option>
                                 <option value="24h">Last 24 Hours</option>
@@ -217,7 +217,7 @@ export function Settings() {
                             const msgFormatted = item.logMessage.replace('Device status changed to', 'turned');
 
                             return (
-                                <div key={item.id} className="flex items-center gap-4 bg-gray-50/50 border border-gray-100 rounded-xl p-4">
+                                <div key={item.id} className="flex items-center gap-4 rounded-xl border border-gray-100 bg-gray-50/60 p-4 dark:border-night-600 dark:bg-night-700/30">
                                     <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${iconColor}`}>
                                         <ActionIcon className="h-5 w-5" />
                                     </div>

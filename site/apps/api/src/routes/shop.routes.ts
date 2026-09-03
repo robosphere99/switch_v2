@@ -5,11 +5,9 @@ import * as shopController from "../controllers/shop.controller";
 
 export const shopRouter = Router();
 
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, "uploads/"),
-  filename: (_req, file, cb) => cb(null, Date.now() + "-" + file.originalname.replace(/[^a-zA-Z0-9.-]/g, "_")),
-});
-const upload = multer({ storage, limits: { fileSize: 50 * 1024 * 1024 } }); // 50MB
+import { cloudinaryBillingStorage } from "../lib/cloudinary";
+
+const upload = multer({ storage: cloudinaryBillingStorage, limits: { fileSize: 50 * 1024 * 1024 } }); // 50MB
 
 // Public: products & reviews
 shopRouter.get("/products", shopController.getProducts);

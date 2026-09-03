@@ -167,9 +167,9 @@ export async function updateAdminSettings(patch: SiteSettingsPayload): Promise<A
   return data;
 }
 
-/** SMTP test mail — admin ke email pe. */
-export async function testAdminEmail(): Promise<ApiResponse<{ sent: boolean }>> {
-  const { data } = await api.post("/admin/settings/test-email");
+/** SMTP test mail. If 'to' is provided, sends to that email, else admin email. */
+export async function testAdminEmail(to?: string): Promise<ApiResponse<{ sent: boolean }>> {
+  const { data } = await api.post("/admin/settings/test-email", { to });
   return data;
 }
 

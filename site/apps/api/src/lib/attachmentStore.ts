@@ -46,6 +46,7 @@ export function readAttachmentFile(filename: string): Buffer | null {
 /** File delete (message soft-delete pe cleanup). Missing file = silent. */
 export function deleteAttachmentFile(filename: string | null): void {
   if (!filename) return;
+  if (filename.startsWith("http://") || filename.startsWith("https://")) return;
   const safe = path.basename(filename);
   if (safe !== filename) return;
   try {

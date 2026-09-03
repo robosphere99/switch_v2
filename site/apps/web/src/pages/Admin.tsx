@@ -2055,7 +2055,7 @@ export function Admin() {
                   ⚠️ Crash / Error lines ({logs.data.data.crashes.length} unique)
                 </p>
                 <div className="max-h-40 space-y-1 overflow-auto">
-                  {logs.data.data.crashes.map((c, i) => (
+                  {[...logs.data.data.crashes].reverse().map((c, i) => (
                     <div key={i} className="flex items-start gap-2 rounded bg-black/40 px-2 py-1">
                       <span
                         className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${c.count > 1 ? "bg-red-500/25 text-red-300" : "bg-gray-500/25 text-gray-400"
@@ -2082,7 +2082,7 @@ export function Admin() {
                       {f.name} · {(f.size / 1024).toFixed(1)} KB
                     </p>
                     <pre className="max-h-32 overflow-auto whitespace-pre-wrap font-mono text-[10px] text-amber-200/80">
-                      {f.lines.join(String.fromCharCode(10))}
+                      {[...f.lines].reverse().join(String.fromCharCode(10))}
                     </pre>
                   </div>
                 ))}
@@ -2091,7 +2091,7 @@ export function Admin() {
 
             <div className="rounded-lg border border-gray-200 bg-black/60 p-3">
               <pre className="h-[60vh] overflow-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-emerald-300">
-                {logs.data?.success ? logs.data.data.lines.join(String.fromCharCode(10)) : "Loading…"}
+                {logs.data?.success ? [...logs.data.data.lines].reverse().join(String.fromCharCode(10)) : "Loading…"}
               </pre>
             </div>
             {logs.isError && (

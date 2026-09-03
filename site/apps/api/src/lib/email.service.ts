@@ -33,12 +33,13 @@ export async function getSmtpConfig(): Promise<SmtpConfig> {
       pass = s.smtpPass; // purana plaintext fallback
     }
   }
+  const user = s?.smtpUser || process.env.SMTP_USER || process.env.EMAIL_USER || "";
   return {
     host: s?.smtpHost || process.env.SMTP_HOST || "",
     port: s?.smtpPort || Number(process.env.SMTP_PORT) || 587,
-    user: s?.smtpUser || process.env.SMTP_USER || "",
-    pass: pass || process.env.SMTP_PASS || "",
-    from: s?.smtpFrom || process.env.SMTP_FROM || s?.supportEmail || env.ADMIN_EMAIL,
+    user,
+    pass: pass || process.env.SMTP_PASS || process.env.EMAIL_PASS || "",
+    from: s?.smtpFrom || process.env.SMTP_FROM || s?.supportEmail || user || env.ADMIN_EMAIL,
     secure: s?.smtpSecure || process.env.SMTP_SECURE === "true",
   };
 }

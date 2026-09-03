@@ -18,7 +18,7 @@ export function VoiceAssistants() {
     };
 
     return (
-        <div className="mx-auto max-w-4xl p-6">
+        <div className="page-enter mx-auto max-w-4xl p-6">
             <h1 className="text-3xl font-bold mb-2">Voice Assistants</h1>
             <p className="text-gray-400 mb-8">
                 Connect your SwitchNest account to Amazon Alexa or Google Home to control your devices using your voice.

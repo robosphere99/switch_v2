@@ -7,7 +7,7 @@
 > Repo location (this machine): `C:\Users\robos\OneDrive\Documents\SwitchNest`
 >
 <!-- AUTO:STAMP:START -->
-> _Auto-updated: 2026-09-02 16:18 UTC · branch `main` · tree dirty (4 changes) · 380 commits_
+> _Auto-updated: 2026-09-03 21:41 UTC · branch `main` · tree dirty (58 changes) · 382 commits_
 <!-- AUTO:STAMP:END -->
 
 ---
@@ -112,26 +112,26 @@ that also serves real ESP32 hardware).
 <!-- AUTO:RECENT_COMMITS:START -->
 Sabse naye 20 commits:
 
-- `c8e6249` (2026-09-02) feat(terminal): add HTTP polling command queue fallback for admin board terminal commands
-- `b30d504` (2026-09-02) fix(db): add esp_devices.console_password light migration
-- `0c0afd7` (2026-09-02) fix(claim): use findFirst update/create upsert logic for espDevice and enhance errorHandler with Prisma error formatting
-- `f1f9db2` (2026-09-02) fix(claim): expand valid serial statuses for activation and pass explicit updatedAt to espDevice.create with esp_devices light migrations
-- `54da0a3` (2026-09-02) fix(db): alter orders.status column from ENUM to VARCHAR(32) and fix paymentStatus column name in backfill
-- `92ccf2e` (2026-09-02) fix(shop): ensure demoPay delegates to updateOrderStatus cleanly for state transition
-- `38480ed` (2026-09-02) fix(db): add home_members.restricted and daily_limit_minutes light migrations
-- `dd3a51a` (2026-09-02) fix(auth): replace dynamic mysql2 import with prisma executeRawUnsafe in issueTokens fallback
-- `7be7309` (2026-09-02) fix(shop): ensure demoPay and updateOrderStatus set paymentStatus to paid and status to processing with backfill for pending orders
-- `bac6d97` (2026-09-02) fix(shop): add notifications.cta_url light migration and wrap demoPay updateOrderStatus in try/catch
-- `3926413` (2026-09-02) fix(iis): add global uncaughtException and unhandledRejection handlers to prevent process exits and 503 apppool stops
-- `f349db4` (2026-09-02) fix(iis): disable selfHealPrismaClient execFileSync to eliminate startup lag and 503 apppool stops
-- `1a040e7` (2026-09-02) fix(admin): add fallback in GET /api/admin/products and product_media.review_id light migration
-- `458a7db` (2026-09-02) fix(shop): add product_media table migration and add fallback in GET /api/shop/products
-- `b5dd7f8` (2026-09-02) feat(db): add auto-seed default products catalog light migration
-- `c84b602` (2026-09-02) fix(iis): remove process.exit call from selfHealPrismaClient to prevent HTTP 503 apppool crash
-- `5d3db23` (2026-09-02) cleanup: remove temporary debug-log endpoint
-- `5c40b5f` (2026-09-02) fix(db): add users.expo_push_token light migration to resolve user creation 500 error
-- `0607f7c` (2026-09-02) debug: add temporary public debug-log endpoint for server inspection
-- `1d9d590` (2026-09-02) fix(api): refactor light migrations to check and add each missing column independently
+- `87dc5bb` (2026-09-04) feat: improve health checkup
+- `cffa1a3` (2026-09-04) refactor(api): complete MVC architecture refactoring, redone product cards, set JWT expirations
+- `9852a99` (2026-09-02) feat(terminal): add HTTP polling command queue fallback for admin board terminal commands
+- `f67628d` (2026-09-02) fix(db): add esp_devices.console_password light migration
+- `d8f34cf` (2026-09-02) fix(claim): use findFirst update/create upsert logic for espDevice and enhance errorHandler with Prisma error formatting
+- `4cc9416` (2026-09-02) fix(claim): expand valid serial statuses for activation and pass explicit updatedAt to espDevice.create with esp_devices light migrations
+- `9142076` (2026-09-02) fix(db): alter orders.status column from ENUM to VARCHAR(32) and fix paymentStatus column name in backfill
+- `59e6df8` (2026-09-02) fix(shop): ensure demoPay delegates to updateOrderStatus cleanly for state transition
+- `ee64c97` (2026-09-02) fix(db): add home_members.restricted and daily_limit_minutes light migrations
+- `edc6c90` (2026-09-02) fix(auth): replace dynamic mysql2 import with prisma executeRawUnsafe in issueTokens fallback
+- `12d0539` (2026-09-02) fix(shop): ensure demoPay and updateOrderStatus set paymentStatus to paid and status to processing with backfill for pending orders
+- `3539843` (2026-09-02) fix(shop): add notifications.cta_url light migration and wrap demoPay updateOrderStatus in try/catch
+- `105b21b` (2026-09-02) fix(iis): add global uncaughtException and unhandledRejection handlers to prevent process exits and 503 apppool stops
+- `7748e59` (2026-09-02) fix(iis): disable selfHealPrismaClient execFileSync to eliminate startup lag and 503 apppool stops
+- `6c537fb` (2026-09-02) fix(admin): add fallback in GET /api/admin/products and product_media.review_id light migration
+- `491bdf6` (2026-09-02) fix(shop): add product_media table migration and add fallback in GET /api/shop/products
+- `25fdc86` (2026-09-02) feat(db): add auto-seed default products catalog light migration
+- `492be4e` (2026-09-02) fix(iis): remove process.exit call from selfHealPrismaClient to prevent HTTP 503 apppool crash
+- `502efcf` (2026-09-02) cleanup: remove temporary debug-log endpoint
+- `78a0e18` (2026-09-02) fix(db): add users.expo_push_token light migration to resolve user creation 500 error
 <!-- AUTO:RECENT_COMMITS:END -->
 
 - 503 root-cause work: DB probe retry loop so the app self-heals, `nodeProcessCountPerApplication=1`,

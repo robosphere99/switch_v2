@@ -453,7 +453,7 @@ const RESET_TOKEN_TTL_MS = 30 * 60 * 1000;
  * SMTP configured nahi hai to reset link console/file-log me log hota hai
  * (dev me kaam karne ke liye) — response me kabhi token nahi aata.
  */
-export async function requestPasswordReset(email: string): Promise<{ sent: true }> {
+export async function requestPasswordReset(email: string, origin?: string): Promise<{ sent: true }> {
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user) return { sent: true }; // same response — email exist nahi karne par bhi
 
@@ -475,7 +475,7 @@ export async function requestPasswordReset(email: string): Promise<{ sent: true 
 
   const s = await getSiteSettings().catch(() => null);
   const siteName = s?.siteName || "SwitchNest";
-  const siteUrl = (s?.siteUrl || "").replace(/\/$/, "");
+  const siteUrl = (origin || s?.siteUrl || "").replace(/\/$/, "");
   const resetUrl = siteUrl
     ? `${siteUrl}/reset-password?token=${encodeURIComponent(rawToken)}`
     : "";

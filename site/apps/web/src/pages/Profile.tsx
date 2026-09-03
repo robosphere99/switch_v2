@@ -99,7 +99,7 @@ export function Profile() {
   }
 
   return (
-    <div className="mx-auto max-w-lg px-4 py-8">
+    <div className="page-enter mx-auto max-w-lg px-4 py-8">
       <h1 className="mb-8 flex items-center justify-center gap-2 text-center text-3xl font-bold">
         <User className="h-8 w-8 text-brand" /> My Profile
       </h1>

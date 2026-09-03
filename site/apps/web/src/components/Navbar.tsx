@@ -121,15 +121,19 @@ export function Navbar() {
   }
 
   const mobileLinkCls =
-    "flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm text-gray-700 transition hover:bg-gray-100 hover:text-brand dark:text-gray-300 dark:hover:bg-night-700 dark:hover:text-brand";
+    "flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium text-gray-600 transition-all hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-night-700 dark:hover:text-white";
 
   const activeGroups = isSystemAdmin(user?.role) ? [] : NAV_GROUPS;
 
+  /* Icon-button used in the right-rail */
+  const iconBtn =
+    "flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-all hover:border-brand/40 hover:bg-brand/5 hover:text-brand dark:border-night-600 dark:text-gray-400 dark:hover:border-brand/30 dark:hover:text-brand";
+
   return (
     <>
-      <header className="sticky top-0 z-20 border-b border-gray-200 bg-white/95 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3">
-          {/* Admin login pe logo → Admin Overview (stats); warna home page */}
+      <header className="sticky top-0 z-20 border-b border-gray-100 bg-white/80 backdrop-blur-md dark:border-night-600 dark:bg-night-800/90">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
+          {/* Logo — Admin login pe admin overview; warna home */}
           <Link
             to={user?.role === "system_admin" ? "/admin" : "/"}
             className="shrink-0"
@@ -142,7 +146,7 @@ export function Navbar() {
           {user ? (
             <div className="hidden items-center gap-2 text-[13px] md:flex">
               {/* Left: scrollable nav links */}
-              <nav className="flex min-w-0 flex-1 items-center gap-x-5 pl-4">
+              <nav className="flex min-w-0 flex-1 items-center gap-x-1 pl-3">
                 {activeGroups.map((group) => {
                   if (group.items.length === 1) {
                     const item = group.items[0];
@@ -150,10 +154,10 @@ export function Navbar() {
                       <Link
                         key={item.to}
                         to={item.to}
-                        className="inline-flex items-center gap-1.5 whitespace-nowrap text-sm font-semibold text-gray-600 transition hover:text-brand dark:text-gray-300 dark:hover:text-brand"
+                        className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium text-gray-600 transition-all hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-night-700 dark:hover:text-white"
                         title={item.title ?? item.label}
                       >
-                        <item.icon className="h-4.5 w-4.5 shrink-0" />
+                        <item.icon className="h-4 w-4 shrink-0" />
                         {item.label}
                       </Link>
                     );
@@ -161,16 +165,17 @@ export function Navbar() {
 
                   return (
                     <div key={group.title} className="group relative inline-block py-2">
-                      <button className="inline-flex items-center gap-1 text-sm font-semibold text-gray-600 transition hover:text-brand dark:text-gray-300 dark:hover:text-brand">
+                      <button className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm font-medium text-gray-600 transition-all hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-night-700 dark:hover:text-white">
                         {group.title}
-                        <ChevronDown className="h-3.5 w-3.5 opacity-70 transition-transform group-hover:rotate-180" />
+                        <ChevronDown className="h-3.5 w-3.5 opacity-60 transition-transform group-hover:rotate-180" />
                       </button>
-                      <div className="invisible absolute left-0 top-[90%] z-50 mt-1 flex w-48 flex-col rounded-xl border border-gray-100 bg-white p-1.5 opacity-0 shadow-xl transition-all group-hover:visible group-hover:top-full group-hover:opacity-100 dark:border-night-600 dark:bg-night-800">
+                      {/* Dropdown */}
+                      <div className="invisible absolute left-0 top-[90%] z-50 mt-1 flex w-52 flex-col rounded-2xl border border-gray-100 bg-white p-1.5 opacity-0 shadow-xl shadow-gray-200/60 transition-all group-hover:visible group-hover:top-full group-hover:opacity-100 dark:border-night-600 dark:bg-night-800 dark:shadow-black/40">
                         {group.items.map(({ to, label, icon: Icon, title }) => (
                           <Link
                             key={to}
                             to={to}
-                            className="inline-flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-medium text-gray-700 transition hover:bg-brand/10 hover:text-brand dark:text-gray-300 dark:hover:bg-night-700 dark:hover:text-brand"
+                            className="inline-flex items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] font-medium text-gray-600 transition-all hover:bg-gray-50 hover:text-brand dark:text-gray-300 dark:hover:bg-night-700 dark:hover:text-brand"
                             title={title ?? label}
                           >
                             <Icon className="h-4 w-4 shrink-0 text-gray-400 group-hover:text-brand" />
@@ -183,28 +188,32 @@ export function Navbar() {
                 })}
               </nav>
 
-              {/* Right: always-visible actions (never scrolls away) */}
-              <div className="flex shrink-0 items-center gap-2 pl-1">
-                <span className="h-4 w-px bg-gray-300 dark:bg-night-600" />
+              {/* Right: always-visible actions */}
+              <div className="flex shrink-0 items-center gap-1.5 pl-1">
+                <span className="h-4 w-px bg-gray-200 dark:bg-night-600" />
                 <span className="shrink-0"><NotificationBell /></span>
+
                 <Link
                   to="/profile"
-                  className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap text-gray-600 transition hover:text-brand"
+                  className="inline-flex shrink-0 items-center gap-2 rounded-xl px-2.5 py-1.5 text-sm font-medium text-gray-600 transition-all hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-night-700 dark:hover:text-white"
                 >
                   {user.avatarUrl ? (
-                    <img src={user.avatarUrl.startsWith('http') ? user.avatarUrl : user.avatarUrl} className="h-6 w-6 rounded-full object-cover border border-gray-200" alt="Avatar" />
+                    <img src={user.avatarUrl} className="h-6 w-6 rounded-full object-cover border border-gray-200" alt="Avatar" />
                   ) : (
-                    <User className="h-4 w-4 shrink-0" />
+                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-brand/10">
+                      <User className="h-3.5 w-3.5 text-brand" />
+                    </div>
                   )}
-                  <span>
-                    Hi, <span className="font-semibold text-night-950">{user.username}</span>
+                  <span className="whitespace-nowrap">
+                    Hi, <span className="font-semibold text-gray-900 dark:text-white">{user.username}</span>
                   </span>
                 </Link>
+
                 {user.role === "system_admin" && (
                   <span className="relative">
                     <Link
                       to="/admin"
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-brand/10 px-2.5 py-1 font-semibold text-brand transition hover:bg-brand/20"
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-brand/10 px-2.5 py-1.5 text-sm font-semibold text-brand transition-all hover:bg-brand/20"
                     >
                       <SettingsIcon className="h-4 w-4" />
                       Admin
@@ -212,23 +221,20 @@ export function Navbar() {
                     <SupportUnreadBadge />
                   </span>
                 )}
-                <button
-                  onClick={() => setShowDownloadApp(true)}
-                  className="rounded-lg border border-gray-300 p-1.5 text-gray-600 transition hover:border-brand hover:text-brand"
-                  title="Download App"
-                >
+
+                <button onClick={() => setShowDownloadApp(true)} className={iconBtn} title="Download App">
                   <Smartphone className="h-4 w-4" />
                 </button>
                 <button
                   onClick={() => toggleTheme(setDark)}
-                  className="rounded-lg border border-gray-300 p-1.5 text-gray-600 transition hover:border-brand hover:text-brand"
+                  className={iconBtn}
                   title={dark ? "Light mode" : "Dark mode"}
                 >
                   {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
                 </button>
                 <button
                   onClick={handleLogout}
-                  className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-600 transition hover:border-red-300 hover:bg-red-50 hover:text-red-600"
+                  className="btn-danger px-3 py-1.5 text-sm"
                 >
                   <LogOut className="h-4 w-4" />
                   Logout
@@ -236,10 +242,10 @@ export function Navbar() {
               </div>
             </div>
           ) : (
-            <nav className="hidden items-center gap-3 text-sm md:flex">
+            <nav className="hidden items-center gap-2 text-sm md:flex">
               <Link
                 to="/shop"
-                className="inline-flex items-center gap-1.5 text-gray-600 transition hover:text-brand"
+                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-medium text-gray-600 transition-all hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-night-700 dark:hover:text-white"
               >
                 <ShoppingCart className="h-4 w-4" />
                 Shop
@@ -248,37 +254,29 @@ export function Navbar() {
                 href="/api/docs"
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1.5 text-gray-600 transition hover:text-brand"
+                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-medium text-gray-600 transition-all hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-night-700 dark:hover:text-white"
                 title="API docs — Swagger UI"
               >
                 <BookOpen className="h-4 w-4" />
                 API Docs
               </a>
-              <button
-                onClick={() => setShowDownloadApp(true)}
-                className="rounded-lg border border-gray-300 p-1.5 text-gray-600 transition hover:border-brand hover:text-brand"
-                title="Download App"
-              >
+              <button onClick={() => setShowDownloadApp(true)} className={iconBtn} title="Download App">
                 <Smartphone className="h-4 w-4" />
               </button>
-              <button
-                onClick={() => toggleTheme(setDark)}
-                className="rounded-lg border border-gray-300 p-1.5 text-gray-600 transition hover:border-brand hover:text-brand"
-                title={dark ? "Light mode" : "Dark mode"}
-              >
+              <button onClick={() => toggleTheme(setDark)} className={iconBtn} title={dark ? "Light mode" : "Dark mode"}>
                 {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
               </button>
               <Link
                 to="/login"
-                className="rounded-lg border border-gray-300 px-4 py-1.5 font-semibold text-gray-700 transition hover:border-brand hover:text-brand"
+                className="btn-outline px-4 py-1.5 text-sm"
               >
                 Login
               </Link>
               <Link
                 to="/signup"
-                className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-1.5 font-semibold text-white shadow-md shadow-brand/30 transition hover:brightness-110"
+                className="btn-primary px-4 py-1.5 text-sm"
               >
-                <Zap className="h-4 w-4" />
+                <Zap className="h-3.5 w-3.5" />
                 Sign Up
               </Link>
             </nav>
@@ -287,7 +285,7 @@ export function Navbar() {
           {/* Mobile hamburger */}
           <button
             onClick={() => setMobileOpen((o) => !o)}
-            className="rounded-lg border border-gray-300 p-2.5 text-gray-600 transition hover:border-brand hover:text-brand dark:border-night-600 dark:text-gray-400 md:hidden"
+            className="rounded-xl border border-gray-200 p-2.5 text-gray-600 transition-all hover:border-brand/30 hover:bg-brand/5 hover:text-brand dark:border-night-600 dark:text-gray-400 md:hidden"
             title={mobileOpen ? "Close menu" : "Menu"}
             aria-label="Menu"
           >
@@ -295,27 +293,25 @@ export function Navbar() {
           </button>
         </div>
 
-        {/* ── Mobile sidebar ───────────────────────────────── */}
-        {/* z-50 so BottomTabBar (z-40) kabhi overlap nahi kare;
-          max-h + overflow-y-auto taaki chhote screen pe links scroll ho, buttons gayab na ho */}
+        {/* ── Mobile drawer ───────────────────────────────── */}
         {mobileOpen && (
-          <div className="fixed inset-x-0 top-[57px] z-50 flex max-h-[calc(100vh-57px-56px)] flex-col border-t border-gray-200 bg-white dark:border-night-600 dark:bg-night-800 md:hidden">
+          <div className="fixed inset-x-0 top-[57px] z-50 flex max-h-[calc(100vh-57px-56px)] flex-col border-t border-gray-100 bg-white dark:border-night-600 dark:bg-night-800 md:hidden">
             {user ? (
               <>
-                {/* ── Scrollable menu area ── */}
-                <div className="min-h-0 flex-1 overflow-y-auto">
-                  <div className="mx-auto max-w-7xl px-4 py-3 pb-2">
-                    {/* ── User info card ── */}
-                    <div className="mb-3 flex items-center gap-3 rounded-xl bg-gray-50 px-3 py-3 dark:bg-night-700">
+                {/* Scrollable menu area */}
+                <div className="min-h-0 flex-1 overflow-y-auto thin-scrollbar">
+                  <div className="mx-auto max-w-7xl px-4 py-4 pb-2">
+                    {/* User info card */}
+                    <div className="mb-4 flex items-center gap-3 rounded-2xl bg-gray-50 px-4 py-3 dark:bg-night-700">
                       {user.avatarUrl ? (
-                        <img src={user.avatarUrl.startsWith('http') ? user.avatarUrl : user.avatarUrl} className="h-10 w-10 shrink-0 rounded-full object-cover border border-gray-200" alt="Avatar" />
+                        <img src={user.avatarUrl} className="h-10 w-10 shrink-0 rounded-full object-cover border-2 border-gray-200" alt="Avatar" />
                       ) : (
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand/10 text-brand">
-                          <User className="h-5 w-5" />
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand/10">
+                          <User className="h-5 w-5 text-brand" />
                         </div>
                       )}
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-night-950 dark:text-white">
+                        <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">
                           {user.username}
                         </p>
                         {user.role && (
@@ -326,17 +322,17 @@ export function Navbar() {
                       </div>
                       <Link
                         to="/profile"
-                        className="shrink-0 rounded-lg border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-600 transition hover:border-brand hover:text-brand dark:border-night-500 dark:text-gray-400"
+                        className="shrink-0 rounded-xl border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-600 transition-all hover:border-brand hover:text-brand dark:border-night-500 dark:text-gray-400"
                         onClick={() => setMobileOpen(false)}
                       >
                         Profile
                       </Link>
                     </div>
 
-                    {/* ── Grouped menu items ── */}
+                    {/* Grouped menu */}
                     {activeGroups.map((group) => (
-                      <div key={group.title} className="mb-1">
-                        <p className="mb-0.5 px-3 pt-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                      <div key={group.title} className="mb-2">
+                        <p className="mb-1 px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">
                           {group.title}
                         </p>
                         {group.items.map(({ to, label, icon: Icon }) => (
@@ -353,16 +349,16 @@ export function Navbar() {
                       </div>
                     ))}
 
-                    {/* ── Admin link (system_admin only) ── */}
+                    {/* Admin link (system_admin only) */}
                     {user.role === "system_admin" && (
-                      <div className="mb-1">
-                        <p className="mb-0.5 px-3 pt-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                      <div className="mb-2">
+                        <p className="mb-1 px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500">
                           System
                         </p>
                         <span className="relative block">
                           <Link
                             to="/admin"
-                            className="flex w-full items-center gap-2.5 rounded-lg bg-brand/10 px-3 py-2.5 text-sm font-semibold text-brand transition hover:bg-brand/20"
+                            className="flex w-full items-center gap-2.5 rounded-xl bg-brand/10 px-3 py-2.5 text-sm font-semibold text-brand transition-all hover:bg-brand/20"
                             onClick={() => setMobileOpen(false)}
                           >
                             <SettingsIcon className="h-4 w-4" />
@@ -372,36 +368,30 @@ export function Navbar() {
                         </span>
                       </div>
                     )}
-
                   </div>
                 </div>
 
-                {/* ── Sticky bottom bar: ALWAYS visible ── */}
-                <div className="shrink-0 border-t border-gray-200 bg-white px-4 py-3 dark:border-night-600 dark:bg-night-800">
+                {/* Sticky bottom bar */}
+                <div className="shrink-0 border-t border-gray-100 bg-white px-4 py-3 dark:border-night-600 dark:bg-night-800">
                   <div className="flex items-center gap-2">
-                    <span className="shrink-0">
-                      <NotificationBell />
-                    </span>
+                    <span className="shrink-0"><NotificationBell /></span>
                     <button
-                      onClick={() => {
-                        setMobileOpen(false);
-                        setShowDownloadApp(true);
-                      }}
-                      className="shrink-0 rounded-lg border border-gray-300 p-2.5 text-gray-600 transition hover:border-brand hover:text-brand dark:border-night-600 dark:text-gray-400"
+                      onClick={() => { setMobileOpen(false); setShowDownloadApp(true); }}
+                      className={`shrink-0 ${iconBtn}`}
                       title="Download App"
                     >
                       <Smartphone className="h-5 w-5" />
                     </button>
                     <button
                       onClick={() => toggleTheme(setDark)}
-                      className="shrink-0 rounded-lg border border-gray-300 p-2.5 text-gray-600 transition hover:border-brand hover:text-brand dark:border-night-600 dark:text-gray-400"
+                      className={`shrink-0 ${iconBtn}`}
                       title={dark ? "Light mode" : "Dark mode"}
                     >
                       {dark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
                     </button>
                     <button
                       onClick={handleLogout}
-                      className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-600 transition hover:bg-red-100 dark:border-red-400/30 dark:bg-red-500/10 dark:text-red-400 dark:hover:bg-red-500/20"
+                      className="btn-danger flex flex-1 items-center justify-center gap-1.5 py-2.5"
                     >
                       <LogOut className="h-4 w-4" />
                       Logout
@@ -410,7 +400,7 @@ export function Navbar() {
                 </div>
               </>
             ) : (
-              <div className="mx-auto max-w-7xl px-4 py-3 pb-4">
+              <div className="mx-auto max-w-7xl px-4 py-4 pb-6">
                 <Link to="/shop" className={mobileLinkCls} onClick={() => setMobileOpen(false)}>
                   <ShoppingCart className="h-4 w-4 text-brand" />
                   Shop
@@ -426,10 +416,7 @@ export function Navbar() {
                   API Docs
                 </a>
                 <button
-                  onClick={() => {
-                    setMobileOpen(false);
-                    setShowDownloadApp(true);
-                  }}
+                  onClick={() => { setMobileOpen(false); setShowDownloadApp(true); }}
                   className={mobileLinkCls}
                 >
                   <Smartphone className="h-4 w-4 text-brand" />
@@ -441,7 +428,7 @@ export function Navbar() {
                 </Link>
                 <Link
                   to="/signup"
-                  className="mt-1 flex w-full items-center justify-center gap-2 rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:brightness-110"
+                  className="btn-primary mt-2 w-full justify-center py-2.5"
                   onClick={() => setMobileOpen(false)}
                 >
                   <Zap className="h-4 w-4" />
@@ -457,7 +444,7 @@ export function Navbar() {
         <DownloadAppModal onClose={() => setShowDownloadApp(false)} />
       )}
 
-      {/* Mobile bottom tab bar — header se bahar (fixed positioning sahi rahe) */}
+      {/* Mobile bottom tab bar */}
       <BottomTabBar />
     </>
   );

@@ -47,7 +47,7 @@ export function DeviceKeys() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-8">
+    <div className="page-enter mx-auto max-w-4xl px-4 py-8">
       <h1 className="mb-2 text-3xl font-bold">🔑 Device Keys</h1>
       <p className="mb-8 text-sm text-gray-500">
         These keys let your ESP32 hardware talk to the API. Keys are scoped to one home and are

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { KeyRound } from "lucide-react";
+import { KeyRound, ArrowRight, ShieldCheck } from "lucide-react";
 import { resetPassword } from "../api/auth";
 import { extractApiError } from "../api/client";
 import { Logo } from "../components/Logo";
@@ -38,20 +38,18 @@ export function ResetPassword() {
 
   if (done) {
     return (
-      <div className="flex min-h-[80vh] items-center justify-center px-4">
-        <div className="w-full max-w-md rounded-2xl border border-brand/20 bg-night-800 p-10 text-center shadow-2xl">
-          <div className="mb-4 flex justify-center">
-            <KeyRound className="h-10 w-10 text-brand" />
+      <div className="page-enter flex min-h-[85vh] items-center justify-center px-4 py-12">
+        <div className="card-static w-full max-w-md p-8 sm:p-10 text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-green-50 dark:bg-green-500/10">
+            <ShieldCheck className="h-7 w-7 text-green-600 dark:text-green-400" />
           </div>
-          <h1 className="mb-3 text-xl font-bold">✅ Password reset ho gaya</h1>
-          <p className="mb-6 text-sm text-gray-400">
+          <h1 className="mb-3 text-xl font-bold text-gray-900 dark:text-white">Password reset ho gaya!</h1>
+          <p className="mb-6 text-sm text-gray-500">
             Ab naye password se login karo. Purane saare sessions logout ho gaye hain.
           </p>
-          <Link
-            to="/login"
-            className="inline-block rounded-lg bg-brand px-6 py-3 font-semibold text-white hover:opacity-90"
-          >
+          <Link to="/login" className="btn-primary inline-flex px-8 py-2.5">
             Login karo
+            <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
       </div>
@@ -59,69 +57,77 @@ export function ResetPassword() {
   }
 
   return (
-    <div className="flex min-h-[80vh] items-center justify-center px-4">
-      <form
-        onSubmit={handleSubmit}
-        className="w-full max-w-md rounded-2xl border border-brand/20 bg-night-800 p-10 shadow-2xl"
-      >
-        <div className="mb-8 flex flex-col items-center gap-3">
-          <Logo size="lg" />
-          <h1 className="flex items-center gap-2 text-2xl font-bold">
-            <KeyRound className="h-5 w-5 text-brand" />
-            New password
-          </h1>
-          <p className="text-sm text-gray-500">Naya password set karo (min 6 characters).</p>
-        </div>
+    <div className="page-enter flex min-h-[85vh] items-center justify-center px-4 py-12">
+      <div className="w-full max-w-md">
+        <div className="card-static p-8 sm:p-10">
+          <div className="mb-8 flex flex-col items-center gap-3 text-center">
+            <Logo size="lg" />
+            <div>
+              <h1 className="mt-2 flex items-center justify-center gap-2 text-2xl font-bold text-gray-900 dark:text-white">
+                <KeyRound className="h-5 w-5 text-brand" />
+                New password
+              </h1>
+              <p className="mt-1 text-sm text-gray-500">Naya password set karo (min 6 characters).</p>
+            </div>
+          </div>
 
-        {!token && (
-          <p className="mb-4 rounded bg-amber-500/10 px-4 py-2 text-sm text-amber-400">
-            Reset link invalid hai — email se poora link copy karke kholo.
+          {!token && (
+            <div className="mb-5 rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-600 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
+              Reset link invalid hai — email se poora link copy karke kholo.
+            </div>
+          )}
+
+          {error && <div className="alert-error mb-5">{error}</div>}
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="field-label">New Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                minLength={6}
+                autoFocus
+                className="input-field"
+                placeholder="Min. 6 characters"
+              />
+            </div>
+
+            <div>
+              <label className="field-label">Confirm Password</label>
+              <input
+                type="password"
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                required
+                minLength={6}
+                className="input-field"
+                placeholder="Repeat your password"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading || !token}
+              className="btn-primary w-full py-3 mt-2"
+            >
+              {loading ? "Resetting…" : (
+                <>
+                  Reset password
+                  <ArrowRight className="h-4 w-4" />
+                </>
+              )}
+            </button>
+          </form>
+
+          <p className="mt-6 text-center text-sm text-gray-500">
+            <Link to="/login" className="font-semibold text-brand hover:underline">
+              ← Wapas login
+            </Link>
           </p>
-        )}
-
-        {error && (
-          <p className="mb-4 rounded bg-red-500/10 px-4 py-2 text-sm text-red-400">{error}</p>
-        )}
-
-        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-          New Password
-        </label>
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-          minLength={6}
-          autoFocus
-          className="mb-4 w-full rounded-lg border border-brand/20 bg-night-900 px-4 py-3 text-night-950 outline-none focus:border-brand"
-        />
-
-        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-          Confirm Password
-        </label>
-        <input
-          type="password"
-          value={confirm}
-          onChange={(e) => setConfirm(e.target.value)}
-          required
-          minLength={6}
-          className="mb-6 w-full rounded-lg border border-brand/20 bg-night-900 px-4 py-3 text-night-950 outline-none focus:border-brand"
-        />
-
-        <button
-          type="submit"
-          disabled={loading || !token}
-          className="w-full rounded-lg bg-brand py-3 font-semibold text-white disabled:opacity-60"
-        >
-          {loading ? "Resetting…" : "Reset password"}
-        </button>
-
-        <p className="mt-6 text-center text-sm text-gray-500">
-          <Link to="/login" className="text-brand hover:underline">
-            Wapas login
-          </Link>
-        </p>
-      </form>
+        </div>
+      </div>
     </div>
   );
 }

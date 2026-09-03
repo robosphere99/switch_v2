@@ -52,7 +52,7 @@ export function Homes() {
   });
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-8">
+    <div className="page-enter mx-auto max-w-4xl px-4 py-8">
       <h1 className="mb-2 text-3xl font-bold">🏠 Homes</h1>
       <p className="mb-8 text-sm text-gray-500">
         Your family homes. Devices belong to a home — you own the home you created.

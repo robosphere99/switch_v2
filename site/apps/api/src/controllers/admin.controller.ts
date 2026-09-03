@@ -129,10 +129,22 @@ export async function getStats(_req: Request, res: Response): Promise<void> {
 
 export async function getSettings(_req: Request, res: Response): Promise<void> {
   const s = await getSiteSettings();
+  
+  // Merge from .env if DB is empty so UI shows what's actually being used
+  const host = s.smtpHost || process.env.SMTP_HOST || "";
+  const user = s.smtpUser || process.env.SMTP_USER || process.env.EMAIL_USER || "";
+  const port = s.smtpPort || Number(process.env.SMTP_PORT) || 587;
+  const secure = s.smtpSecure || process.env.SMTP_SECURE === "true";
+  const passSet = !!s.smtpPass || !!process.env.SMTP_PASS || !!process.env.EMAIL_PASS;
+  
   ok(res, {
     ...s,
-    smtpPass: s.smtpPass ? "********" : "",
-    smtpPassSet: !!s.smtpPass,
+    smtpHost: host,
+    smtpUser: user,
+    smtpPort: port,
+    smtpSecure: secure,
+    smtpPass: passSet ? "********" : "",
+    smtpPassSet: passSet,
     aiApiKey: s.aiApiKey ? "********" : "",
     aiApiKeySet: !!s.aiApiKey,
   });
@@ -149,13 +161,17 @@ export async function testSmtpEmail(req: Request, res: Response): Promise<void> 
     where: { id: req.user!.sub },
     select: { email: true, username: true },
   });
-  if (!me?.email) {
-    throw new AppError("VALIDATION_ERROR", "Aapke account pe email set nahi hai — test bhejne ke liye email chahiye", 400);
+  
+  const customTo = typeof req.body?.to === "string" ? req.body.to.trim() : null;
+  const toEmail = customTo || me?.email;
+
+  if (!toEmail) {
+    throw new AppError("VALIDATION_ERROR", "Aapke account pe email set nahi hai aur test email bhi provide nahi kiya gaya.", 400);
   }
   const r = await sendEmail({
-    to: me.email,
+    to: toEmail,
     subject: "🧪 SwitchNest test email",
-    text: `Ye test email hai, ${me.username}. SMTP settings sahi kaam kar rahi hain. ✅`,
+    text: `Ye test email hai, SMTP settings sahi kaam kar rahi hain. ✅`,
   });
   if (!r.ok) {
     if (r.skipped) {

@@ -62,7 +62,7 @@ export function VerifyBill() {
   const r = state.result;
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-10">
+    <div className="page-enter mx-auto max-w-2xl px-4 py-10">
       {/* Header — verified / invalid */}
       {state.loading && (
         <div className="rounded-xl border border-gray-200 bg-night-800 p-6 text-center text-gray-400">

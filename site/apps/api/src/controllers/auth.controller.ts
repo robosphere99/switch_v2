@@ -61,7 +61,7 @@ export async function uploadAvatar(req: Request, res: Response) {
     res.status(400).json({ success: false, error: { code: "NO_FILE", message: "No avatar image provided." } });
     return;
   }
-  const avatarUrl = `/uploads/avatars/${req.file.filename}?v=${Date.now()}`;
+  const avatarUrl = req.file.path; // Cloudinary secure URL
   const user = await authService.updateProfile(req.user!.sub, { avatarUrl });
   ok(res, user);
 }
@@ -73,7 +73,8 @@ export async function updateTheme(req: Request, res: Response) {
 
 export async function forgotPassword(req: Request, res: Response) {
   const { email } = req.body;
-  const result = await authService.requestPasswordReset(email as string);
+  const origin = req.headers.origin as string | undefined;
+  const result = await authService.requestPasswordReset(email as string, origin);
   ok(res, result);
 }
 

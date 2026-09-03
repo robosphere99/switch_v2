@@ -29,7 +29,7 @@ export async function getProducts(_req: Request, res: Response): Promise<void> {
 
 export async function uploadMedia(req: Request, res: Response): Promise<void> {
   if (!req.file) throw new AppError("BAD_REQUEST", "No file uploaded");
-  ok(res, { url: `/uploads/${req.file.filename}` });
+  ok(res, { url: req.file.path });
 }
 
 export async function getProductReviews(req: Request, res: Response): Promise<void> {

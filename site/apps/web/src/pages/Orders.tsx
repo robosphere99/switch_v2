@@ -234,29 +234,27 @@ export function Orders() {
   if (loading) return <div className="p-10 text-center text-gray-500">Loading orders…</div>;
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-10">
-      <h1 className="mb-6 text-3xl font-bold">
-        <span className="text-brand">My Orders</span>
-      </h1>
+    <div className="page-enter mx-auto max-w-4xl px-4 py-8 sm:px-6">
+      <h1 className="page-title mb-6">My Orders</h1>
 
       {placed && (
-        <div className="mb-6 rounded-lg border border-green-500/40 bg-green-900/30 p-4 text-sm text-green-700">
+        <div className="alert-success mb-6">
           ✅ Order <span className="font-bold">{placed}</span> placed! Delivery hone ke baad box pe serial code se{" "}
           <Link to="/activate" className="underline">device activate</Link> karo.
         </div>
       )}
 
       {failed && (
-        <div className="mb-6 rounded-lg border border-red-500/40 bg-red-900/30 p-4 text-sm text-red-500">
+        <div className="alert-error mb-6">
           ❌ Payment failed or was cancelled. The pending order has been cancelled automatically.
         </div>
       )}
 
       {orders.length === 0 ? (
-        <div className="rounded-xl border border-brand/20 bg-night-800 p-10 text-center">
+        <div className="card-static p-10 text-center">
           <div className="mb-2 text-4xl">🛒</div>
           <p className="text-gray-500">Koi order nahi abhi.</p>
-          <Link to="/shop" className="mt-4 inline-block rounded-lg bg-brand px-6 py-2.5 font-semibold text-white">
+          <Link to="/shop" className="btn-primary mt-4 inline-flex px-6 py-2.5">
             Shop kholo
           </Link>
         </div>

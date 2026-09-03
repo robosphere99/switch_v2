@@ -320,9 +320,10 @@ export function AdminSettings() {
   });
 
   // Email test — SMTP settings verify
+  const [testEmailTo, setTestEmailTo] = useState("");
   const [mailMsg, setMailMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const testMail = useMutation({
-    mutationFn: () => testAdminEmail(),
+    mutationFn: () => testAdminEmail(testEmailTo),
     onSuccess: (res) => {
       if (res.success) {
         setMailMsg({ ok: true, text: "Test email bhej diya — inbox check karo. ✅" });
@@ -672,6 +673,13 @@ export function AdminSettings() {
           </label>
         </div>
         <div className="mt-4 flex flex-wrap items-center gap-3">
+          <input
+            type="email"
+            value={testEmailTo}
+            onChange={(e) => setTestEmailTo(e.target.value)}
+            placeholder="Recipient email (optional)"
+            className="w-64 rounded-lg border border-gray-300 bg-night-900 px-3 py-2 text-sm outline-none focus:border-brand"
+          />
           <button
             onClick={() => testMail.mutate()}
             disabled={testMail.isPending}
@@ -681,7 +689,7 @@ export function AdminSettings() {
             {testMail.isPending ? "Bhej raha hai…" : "Test email bhejo"}
           </button>
           <span className="flex items-center gap-1 text-xs text-gray-500">
-            <Mail className="h-3.5 w-3.5" /> Aapke email pe jayega
+            <Mail className="h-3.5 w-3.5" /> {testEmailTo ? "Is email pe jayega" : "Admin email pe jayega"}
           </span>
         </div>
         {mailMsg && (

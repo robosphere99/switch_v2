@@ -79,7 +79,7 @@ export function Assistant() {
   const loading = openHomeThread.isPending;
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8">
+    <div className="page-enter mx-auto max-w-5xl px-4 py-8">
       <div className="mb-6">
         <h1 className="text-3xl font-bold">🤖 AI Assist</h1>
         <p className="mt-1 text-sm text-gray-500">

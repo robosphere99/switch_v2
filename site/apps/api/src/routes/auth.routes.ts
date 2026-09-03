@@ -10,59 +10,9 @@ import fs from "node:fs";
 import { uploadsDir } from "../lib/paths";
 import { prisma } from "../lib/prisma";
 
-const avatarsDir = path.join(uploadsDir, "avatars");
-try { fs.mkdirSync(avatarsDir, { recursive: true }); } catch(e) {}
+import { cloudinaryAvatarStorage } from "../lib/cloudinary";
 
-/**
- * Deterministic avatar storage: {username}.{ext}
- * Old avatar archived into uploads/avatars/{username}/{username}_N.{ext}
- */
-const storage = multer.diskStorage({
-  destination: function (_req, _file, cb) {
-    cb(null, avatarsDir);
-  },
-  filename: function (req, file, cb) {
-    const ext = path.extname(file.originalname).toLowerCase() || ".jpg";
-    // username lookup happens before multer writes (req.user.sub is set by requireAuth)
-    prisma.user
-      .findUnique({ where: { id: req.user!.sub }, select: { username: true } })
-      .then((u) => {
-        if (!u) return cb(new Error("User not found"), "");
-        const username = u.username;
-        const canonicalName = `${username}${ext}`;
-
-        // Archive any existing avatar with this username (any extension)
-        try {
-          const existing = fs.readdirSync(avatarsDir).filter(
-            (f) => f.startsWith(`${username}.`) && !fs.statSync(path.join(avatarsDir, f)).isDirectory()
-          );
-          if (existing.length > 0) {
-            const archiveDir = path.join(avatarsDir, username);
-            fs.mkdirSync(archiveDir, { recursive: true });
-            // Find next archive number
-            const archived = fs.readdirSync(archiveDir);
-            let maxNum = 0;
-            for (const a of archived) {
-              const match = a.match(new RegExp(`^${username}_(\\d+)`));
-              if (match) maxNum = Math.max(maxNum, Number(match[1]));
-            }
-            for (const oldFile of existing) {
-              maxNum++;
-              const oldExt = path.extname(oldFile);
-              fs.renameSync(
-                path.join(avatarsDir, oldFile),
-                path.join(archiveDir, `${username}_${maxNum}${oldExt}`)
-              );
-            }
-          }
-        } catch { /* first upload — no existing file */ }
-
-        cb(null, canonicalName);
-      })
-      .catch((err) => cb(err, ""));
-  },
-});
-const upload = multer({ storage });
+const upload = multer({ storage: cloudinaryAvatarStorage });
 
 
 export const authRouter = Router();

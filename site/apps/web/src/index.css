@@ -1,23 +1,26 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --brand: 37 99 235; /* default blue #2563eb — Admin settings se change hota hai */
+    --brand: 37 99 235;    /* default blue #2563eb — Admin settings se change hota hai */
     --brand-light: 96 165 250;
-    --night-900: 241 245 249; /* page bg */
+    --night-950: 15 23 42;   /* body text — dark in light mode */
+    --night-900: 250 250 250; /* page bg — near-white (premium feel) */
     --night-800: 255 255 255; /* cards */
-    --night-700: 232 238 246; /* inputs / hover */
-    --night-600: 203 213 225; /* borders */
-    --night-500: 148 163 184; /* muted */
+    --night-700: 243 244 246; /* inputs / hover */
+    --night-600: 229 231 235; /* borders */
+    --night-500: 107 114 128; /* muted */
   }
   .dark {
-    --night-950: 241 245 249; /* light text */
-    --night-900: 9 13 24; /* page bg */
-    --night-800: 23 27 44; /* cards */
-    --night-700: 32 38 60; /* inputs / hover */
-    --night-600: 44 51 78; /* borders */
+    --night-950: 248 250 252; /* light text */
+    --night-900: 9 13 24;     /* page bg */
+    --night-800: 17 24 39;    /* cards */
+    --night-700: 31 41 55;    /* inputs / hover */
+    --night-600: 37 47 63;    /* borders */
     --night-500: 100 116 139; /* muted */
   }
   html {
@@ -27,18 +30,16 @@
     color-scheme: dark;
   }
   body {
-    @apply bg-night-900 text-night-950 font-sans antialiased;
-    background: linear-gradient(135deg, #f1f5f9 0%, #e8eef6 100%);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background-color: rgb(var(--night-900));
+    color: rgb(var(--night-950));
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     min-height: 100vh;
     transition: background-color 0.4s ease, color 0.4s ease;
   }
-  .dark body {
-    background: linear-gradient(135deg, #090d18 0%, #101628 100%);
-  }
 
-  /* Theme switch pe soft cross-fade — sirf theme-change ke waqt (html.theme-fade
-     class apply hone par) poore tree pe bg/color/border smoothly morph hota hai.
-     Page load pe nahi — theme.ts sirf change ke samay class lagata hai. */
+  /* Theme switch pe soft cross-fade */
   html.theme-fade *,
   html.theme-fade *::before,
   html.theme-fade *::after {
@@ -51,8 +52,7 @@
       stroke 0.4s ease !important;
   }
 
-  /* Theme switch pe logo bhi pulse karta hai — html.theme-fade class ke saath
-     rotate + scale, 0.5s (fade ke saath sync). Page load pe nahi chalta. */
+  /* Theme switch pe logo bhi pulse karta hai */
   @keyframes logo-theme-pop {
     0%   { transform: scale(1) rotate(0deg); }
     30%  { transform: scale(1.15) rotate(-8deg); }
@@ -63,25 +63,28 @@
     animation: logo-theme-pop 0.5s ease-in-out;
   }
 
-  /* Utility overrides under .dark — grays/whites jo night palette me nahi hain */
-  .dark .bg-white { background-color: rgb(23 27 44); }
-  .dark .bg-white\/95 { background-color: rgb(23 27 44 / 0.95); }
-  .dark .bg-gray-100\/50 { background-color: rgb(28 33 53 / 0.5); }
-  .dark .bg-gray-100\/60 { background-color: rgb(28 33 53 / 0.6); }
+  /* Dark mode utility overrides */
+  .dark .bg-white { background-color: rgb(17 24 39); }
+  .dark .bg-white\/95 { background-color: rgb(17 24 39 / 0.97); }
+  .dark .bg-white\/80 { background-color: rgb(17 24 39 / 0.85); }
+  .dark .bg-gray-100\/50 { background-color: rgb(31 41 55 / 0.5); }
+  .dark .bg-gray-100\/60 { background-color: rgb(31 41 55 / 0.6); }
   .dark .bg-gray-500\/20 { background-color: rgb(71 85 105 / 0.2); }
-  .dark .bg-gray-50 { background-color: rgb(15 19 34); }
-  .dark .bg-gray-100 { background-color: rgb(28 33 53); }
-  .dark .border-gray-200 { border-color: rgb(44 51 78); }
-  .dark .border-gray-300 { border-color: rgb(58 66 97); }
-  .dark .divide-gray-200 > :not([hidden]) ~ :not([hidden]) { border-color: rgb(44 51 78); }
-  .dark .divide-gray-300 > :not([hidden]) ~ :not([hidden]) { border-color: rgb(58 66 97); }
-  .dark .text-gray-400 { color: rgb(148 163 184); }
-  .dark .text-gray-500 { color: rgb(148 163 184); }
-  .dark .text-gray-600 { color: rgb(174 184 203); }
-  .dark .text-gray-700 { color: rgb(203 213 225); }
-  .dark .text-gray-800 { color: rgb(226 232 240); }
-  .dark .placeholder-gray-500::placeholder { color: rgb(100 116 139); }
-  .dark .placeholder-gray-400::placeholder { color: rgb(148 163 184); }
+  .dark .bg-gray-50 { background-color: rgb(17 24 39); }
+  .dark .bg-gray-100 { background-color: rgb(31 41 55); }
+  .dark .border-gray-200 { border-color: rgb(37 47 63); }
+  .dark .border-gray-100 { border-color: rgb(31 41 55); }
+  .dark .border-gray-300 { border-color: rgb(55 65 81); }
+  .dark .divide-gray-200 > :not([hidden]) ~ :not([hidden]) { border-color: rgb(37 47 63); }
+  .dark .divide-gray-300 > :not([hidden]) ~ :not([hidden]) { border-color: rgb(55 65 81); }
+  .dark .text-gray-400 { color: rgb(156 163 175); }
+  .dark .text-gray-500 { color: rgb(156 163 175); }
+  .dark .text-gray-600 { color: rgb(209 213 219); }
+  .dark .text-gray-700 { color: rgb(229 231 235); }
+  .dark .text-gray-800 { color: rgb(243 244 246); }
+  .dark .text-gray-900 { color: rgb(249 250 251); }
+  .dark .placeholder-gray-500::placeholder { color: rgb(107 114 128); }
+  .dark .placeholder-gray-400::placeholder { color: rgb(156 163 175); }
 
   /* Semantic colors — dark pe lighter shades */
   .dark .text-green-700 { color: #4ade80; }
@@ -94,11 +97,181 @@
   .dark .bg-red-50 { background-color: rgb(45 18 24); }
 }
 
-/* Scrollbar hide — scroll tohta hai, sirf visual bar nahi (WhatsApp-style clean) */
+/* ── Page entry animation ───────────────────────────────── */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* ── Design system utilities ─────────────────────────────── */
+@layer components {
+  /* Page wrapper — add to outermost div of every page */
+  .page-enter {
+    animation: fade-in-up 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  /* Premium card */
+  .card {
+    @apply rounded-2xl border border-gray-100 bg-white shadow-sm
+           transition-all duration-200
+           hover:-translate-y-0.5 hover:shadow-md
+           dark:border-night-600 dark:bg-night-800;
+  }
+
+  /* Card — no hover lift (for static info cards) */
+  .card-static {
+    @apply rounded-2xl border border-gray-100 bg-white shadow-sm
+           dark:border-night-600 dark:bg-night-800;
+  }
+
+  /* Primary button */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2
+           rounded-xl bg-brand px-5 py-2.5
+           text-sm font-semibold text-white
+           shadow-sm shadow-brand/20
+           transition-all duration-150
+           hover:brightness-110 hover:-translate-y-px hover:shadow-md hover:shadow-brand/30
+           active:scale-[0.98]
+           disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:brightness-100;
+  }
+
+  /* Outline button */
+  .btn-outline {
+    @apply inline-flex items-center justify-center gap-2
+           rounded-xl border border-gray-200 bg-white px-5 py-2.5
+           text-sm font-semibold text-gray-700
+           transition-all duration-150
+           hover:border-brand hover:text-brand hover:-translate-y-px
+           active:scale-[0.98]
+           disabled:opacity-50 disabled:cursor-not-allowed
+           dark:border-night-600 dark:bg-night-800 dark:text-gray-300
+           dark:hover:border-brand dark:hover:text-brand;
+  }
+
+  /* Danger button */
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2
+           rounded-xl border border-red-200 bg-red-50 px-5 py-2.5
+           text-sm font-semibold text-red-600
+           transition-all duration-150
+           hover:bg-red-100 hover:-translate-y-px
+           active:scale-[0.98]
+           dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400 dark:hover:bg-red-500/20;
+  }
+
+  /* Consistent form input */
+  .input-field {
+    @apply w-full rounded-xl border border-gray-200 bg-white px-4 py-3
+           text-sm text-gray-900 placeholder-gray-400
+           outline-none ring-0
+           transition-all duration-150
+           focus:border-brand focus:ring-2 focus:ring-brand/15
+           disabled:opacity-50 disabled:cursor-not-allowed
+           dark:border-night-600 dark:bg-night-700 dark:text-gray-100 dark:placeholder-gray-500
+           dark:focus:border-brand;
+  }
+
+  /* Form select (same as input-field but with arrow kept) */
+  .select-field {
+    @apply w-full rounded-xl border border-gray-200 bg-white px-4 py-3
+           text-sm text-gray-900
+           outline-none ring-0
+           transition-all duration-150
+           focus:border-brand focus:ring-2 focus:ring-brand/15
+           dark:border-night-600 dark:bg-night-700 dark:text-gray-100;
+  }
+
+  /* Form label */
+  .field-label {
+    @apply mb-1.5 block text-xs font-medium text-gray-500 dark:text-gray-400;
+  }
+
+  /* Section heading */
+  .section-title {
+    @apply text-3xl font-bold tracking-tight text-gray-900 dark:text-white;
+  }
+
+  .section-subtitle {
+    @apply mt-2 text-base text-gray-500 dark:text-gray-400;
+  }
+
+  /* Page header */
+  .page-title {
+    @apply text-2xl font-bold tracking-tight text-gray-900 dark:text-white;
+  }
+
+  /* Stat chip used in dashboards */
+  .stat-chip {
+    @apply rounded-2xl border border-gray-100 bg-white p-4 shadow-sm
+           dark:border-night-600 dark:bg-night-800;
+  }
+
+  /* Badge */
+  .badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold;
+  }
+
+  /* Error alert */
+  .alert-error {
+    @apply rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600
+           dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400;
+  }
+
+  /* Success alert */
+  .alert-success {
+    @apply rounded-xl border border-green-100 bg-green-50 px-4 py-3 text-sm text-green-700
+           dark:border-green-500/30 dark:bg-green-500/10 dark:text-green-400;
+  }
+
+  /* Divider with label */
+  .divider-label {
+    @apply relative flex items-center gap-3 text-xs text-gray-400 before:flex-1 before:border-t before:border-gray-200 after:flex-1 after:border-t after:border-gray-200 dark:before:border-night-600 dark:after:border-night-600;
+  }
+}
+
+/* Scrollbar hide */
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
+}
+
+/* Thin scrollbar for overflow areas */
+.thin-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.thin-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.thin-scrollbar::-webkit-scrollbar-thumb {
+  background: rgb(203 213 225);
+  border-radius: 2px;
+}
+.dark .thin-scrollbar::-webkit-scrollbar-thumb {
+  background: rgb(55 65 81);
 }

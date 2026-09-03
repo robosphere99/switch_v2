@@ -317,7 +317,7 @@ export function Dashboard() {
   const myHomes = homes.data.data;
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8">
+    <div className="page-enter mx-auto max-w-7xl px-4 py-8">
       {/* Home switcher — compact pills */}
       {myHomes.length > 1 && (
         <div className="mb-6 flex flex-wrap gap-2">

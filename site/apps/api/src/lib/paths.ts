@@ -10,7 +10,9 @@ import * as path from "path";
 function findRepoRoot(start: string): string | null {
   let dir = path.resolve(start);
   for (let i = 0; i < 8; i++) {
-    if (fs.existsSync(path.join(dir, "hardware"))) return dir;
+    if (fs.existsSync(path.join(dir, "hardware")) && fs.existsSync(path.join(dir, "site", "apps", "api"))) {
+      return dir;
+    }
     const parent = path.dirname(dir);
     if (parent === dir) break;
     dir = parent;
@@ -19,6 +21,9 @@ function findRepoRoot(start: string): string | null {
 }
 
 const repoRoot = findRepoRoot(process.cwd());
+
+const isDist = process.cwd().endsWith("dist");
+const apiRoot = isDist ? path.resolve(process.cwd(), "..") : process.cwd();
 
 /** <repo>/hardware/firmware — admin firmware upload + /firmware serving. */
 export const firmwareDir = repoRoot
@@ -55,20 +60,20 @@ export const attachmentDir = repoRoot
 /** <repo>/site/apps/web/dist — built Vite app (SPA serving). */
 export const webDist = repoRoot
   ? path.join(repoRoot, "site", "apps", "web", "dist")
-  : path.resolve(process.cwd(), "../../apps/web/dist");
+  : path.resolve(apiRoot, "../web/dist");
 
 /** <repo>/site/apps/api/public/swagger-ui — vendored Swagger UI assets (CDN-free,
  *  helmet ke CSP `script-src 'self'` ke saath kaam karta hai). */
 export const swaggerUiDir = repoRoot
   ? path.join(repoRoot, "site", "apps", "api", "public", "swagger-ui")
-  : path.resolve(process.cwd(), "public/swagger-ui");
+  : path.resolve(apiRoot, "public/swagger-ui");
 
 /** <repo>/site/apps/web/public/mobile-app — Vite dev & static serve folder for APK. */
 export const webPublicMobileAppDir = repoRoot
   ? path.join(repoRoot, "site", "apps", "web", "public", "mobile-app")
-  : path.resolve(process.cwd(), "../web/public/mobile-app");
+  : path.resolve(apiRoot, "../web/public/mobile-app");
 
 /** <repo>/site/apps/api/uploads — avatars and user uploaded assets. */
 export const uploadsDir = repoRoot
   ? path.join(repoRoot, "site", "apps", "api", "uploads")
-  : path.resolve(process.cwd(), "uploads");
+  : path.resolve(apiRoot, "uploads");

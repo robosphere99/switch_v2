@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import { Router } from "express";
 import { z } from "zod";
 import multer from "multer";
+import { cloudinaryProductStorage } from "../lib/cloudinary";
 import path from "node:path";
 import fs from "node:fs";
 import { execSync } from "node:child_process";
@@ -228,11 +229,39 @@ adminRouter.patch("/users/:id/role", async (req, res) => {
 adminRouter.delete("/users/:id", async (req, res) => {
   const id = Number(req.params.id);
   if (id === req.user!.sub) throw new AppError("BAD_REQUEST", "You cannot delete your own account");
-  const user = await prisma.user.findUnique({ where: { id } });
+  const user = await prisma.user.findUnique({ where: { id }, include: { ownedHomes: true } });
   if (!user) throw new AppError("NOT_FOUND", "User not found");
-  await audit(req.user!.sub, "admin.user.delete", { entity: "user", entityId: id, meta: { username: user.username, email: user.email } });
-  await prisma.user.delete({ where: { id } });
-  ok(res, { deleted: true });
+  
+  try {
+    for (const home of user.ownedHomes) {
+      await prisma.deviceLog.deleteMany({ where: { device: { homeId: home.id } } });
+      await prisma.deviceCommand.deleteMany({ where: { device: { homeId: home.id } } });
+      await prisma.deviceAccess.deleteMany({ where: { device: { homeId: home.id } } });
+      await prisma.deviceUsage.deleteMany({ where: { device: { homeId: home.id } } });
+      await prisma.device.deleteMany({ where: { homeId: home.id } });
+      await prisma.room.deleteMany({ where: { homeId: home.id } });
+      await prisma.homeMember.deleteMany({ where: { homeId: home.id } });
+      await prisma.auditLog.deleteMany({ where: { homeId: home.id } });
+      await prisma.home.delete({ where: { id: home.id } });
+    }
+    
+    await prisma.homeMember.deleteMany({ where: { userId: id } });
+    await prisma.refreshToken.deleteMany({ where: { userId: id } });
+    await prisma.auditLog.deleteMany({ where: { actorId: id } });
+    await prisma.apiKey.deleteMany({ where: { userId: id } });
+    await prisma.passwordResetToken.deleteMany({ where: { userId: id } });
+    await prisma.pushSubscription.deleteMany({ where: { userId: id } });
+    await prisma.assistantChat.deleteMany({ where: { userId: id } });
+    await prisma.assistantMessage.deleteMany({ where: { chat: { userId: id } } });
+    await prisma.orderItem.deleteMany({ where: { order: { userId: id } } });
+    await prisma.order.deleteMany({ where: { userId: id } });
+    
+    await prisma.user.delete({ where: { id } });
+    await audit(req.user!.sub, "admin.user.delete", { entity: "user", entityId: id, meta: { username: user.username, email: user.email } });
+    ok(res, { deleted: true });
+  } catch (err: any) {
+    throw new AppError("INTERNAL_ERROR", "User delete failed: " + err.message);
+  }
 });
 
 // ---------- Homes ----------
@@ -2075,27 +2104,14 @@ adminRouter.delete("/products/:id", async (req, res) => {
 });
 
 // Product media upload (photos, PDFs, datasheets, diagrams)
-const productMediaUpload = multer({
-  storage: multer.diskStorage({
-    destination: (_req, _file, cb) => {
-      const dir = path.join(process.cwd(), "uploads/product-media");
-      fs.mkdirSync(dir, { recursive: true });
-      cb(null, dir);
-    },
-    filename: (_req, file, cb) => {
-      const ext = path.extname(file.originalname);
-      cb(null, `pm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`);
-    },
-  }),
-  limits: { fileSize: 20 * 1024 * 1024 },
-});
+const productMediaUpload = multer({ storage: cloudinaryProductStorage });
 
 adminRouter.post("/products/:id/media", productMediaUpload.single("file"), async (req, res) => {
   const productId = Number(req.params.id);
   if (!req.file) throw new AppError("BAD_REQUEST", "No file uploaded");
   const product = await prisma.product.findUnique({ where: { id: productId } });
   if (!product) throw new AppError("NOT_FOUND", "Product not found");
-  const fileUrl = `/uploads/product-media/${req.file.filename}`;
+  const fileUrl = req.file.path; // Cloudinary secure URL
   const ext = path.extname(req.file.originalname).toLowerCase();
   const type = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"].includes(ext) ? "image"
     : [".mp4", ".webm", ".mov"].includes(ext) ? "video"

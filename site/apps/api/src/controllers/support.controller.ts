@@ -228,7 +228,7 @@ export async function userMediaMessage(req: Request, res: Response): Promise<voi
       attachmentName: req.file?.originalname ?? null,
       attachmentType: req.file?.mimetype ?? null,
       attachmentData: null,
-      attachmentPath: req.file?.filename ?? null,
+      attachmentPath: req.file?.path ?? null,
       readByUser: true,
       readByAdmin: false,
     },
@@ -275,7 +275,7 @@ export async function adminMediaMessage(req: Request, res: Response): Promise<vo
       attachmentName: req.file?.originalname ?? null,
       attachmentType: req.file?.mimetype ?? null,
       attachmentData: null,
-      attachmentPath: req.file?.filename ?? null,
+      attachmentPath: req.file?.path ?? null,
       readByUser: false,
       readByAdmin: true,
     },
@@ -316,6 +316,11 @@ export async function getAttachmentFile(req: Request, res: Response): Promise<vo
   if (!msg || msg.deletedAt || !msg.attachmentPath) throw new AppError("NOT_FOUND", "Attachment not found", 404);
   if (msg.userId !== payload.sub && payload.role !== "system_admin") {
     throw new AppError("FORBIDDEN", "Access denied", 403);
+  }
+
+  if (msg.attachmentPath.startsWith("http://") || msg.attachmentPath.startsWith("https://")) {
+    res.redirect(msg.attachmentPath);
+    return;
   }
 
   const buf = readAttachmentFile(msg.attachmentPath);

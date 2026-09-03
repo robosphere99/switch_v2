@@ -11,23 +11,10 @@ import * as supportController from "../controllers/support.controller";
 
 export const supportRouter = Router();
 
-try {
-  if (!fs.existsSync(attachmentDir)) {
-    fs.mkdirSync(attachmentDir, { recursive: true });
-  }
-} catch (e) {}
-
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, attachmentDir),
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname) || "";
-    const safeName = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9_-]/g, "");
-    cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}-${safeName}${ext}`);
-  },
-});
+import { cloudinarySupportStorage } from "../lib/cloudinary";
 
 const upload = multer({
-  storage,
+  storage: cloudinarySupportStorage,
   limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
 });
 
