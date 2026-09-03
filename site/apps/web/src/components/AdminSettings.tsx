@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { Bot, Check, Eye, Mail, Palette, Send } from "lucide-react";
-import { getAdminSettings, updateAdminSettings, testAdminEmail, testAdminAi, resetSite } from "../api/admin";
+import { useState, useEffect } from "react";
+import { Bot, Check, Eye, Mail, Palette, Send, Download, Upload } from "lucide-react";
+import { getAdminSettings, updateAdminSettings, testAdminEmail, testAdminAi, resetSite, getApkStatus, uploadApkRelease } from "../api/admin";
 import { updateProfile } from "../api/auth";
 import { useAuthStore } from "../stores/auth";
 import { useSiteStore } from "../stores/site";
@@ -24,6 +24,202 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       <h2 className="mb-4 text-base font-semibold">{title}</h2>
       {children}
     </div>
+  );
+}
+
+function ApkReleaseManager() {
+  const queryClient = useQueryClient();
+  const apkStatus = useQuery({ queryKey: ["admin-apk-status"], queryFn: getApkStatus });
+  const status = apkStatus.data?.success ? apkStatus.data.data : null;
+
+  const [file, setFile] = useState<File | null>(null);
+  const [version, setVersion] = useState("");
+  const [releaseNotes, setReleaseNotes] = useState("");
+  const [updateMessage, setUpdateMessage] = useState("");
+  const [isMandatory, setIsMandatory] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  useEffect(() => {
+    if (status) {
+      if (!version) setVersion(status.version);
+      if (!releaseNotes) setReleaseNotes(status.releaseNotes);
+      if (!updateMessage) setUpdateMessage(status.updateMessage);
+      setIsMandatory(status.isMandatory);
+    }
+  }, [status]);
+
+  const handleUpload = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!file) {
+      setMsg({ ok: false, text: "Please select an .apk file to upload." });
+      return;
+    }
+    setUploading(true);
+    setProgress(0);
+    setMsg(null);
+
+    const formData = new FormData();
+    formData.append("apkFile", file);
+    formData.append("version", version || status?.version || "1.0.12");
+    formData.append("releaseNotes", releaseNotes);
+    formData.append("updateMessage", updateMessage);
+    formData.append("isMandatory", String(isMandatory));
+
+    try {
+      const res = await uploadApkRelease(formData, (pct) => setProgress(pct));
+      if (res.success) {
+        setMsg({ ok: true, text: `✅ ${res.data?.message || "APK Release Published Successfully!"}` });
+        setFile(null);
+        queryClient.invalidateQueries({ queryKey: ["admin-apk-status"] });
+      } else {
+        setMsg({ ok: false, text: (res as any).error?.message || "Upload failed." });
+      }
+    } catch (err: any) {
+      setMsg({ ok: false, text: err.message || "Failed to upload APK file." });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <Section title="📱 Mobile APK Release Manager">
+      <p className="mb-4 text-sm text-gray-400">
+        Upload new Android release APK files (&gt;100MB) directly to the web server without needing Git. 
+        Uploaded APKs will be saved as <b>SwitchNest_Latest.apk</b> and served for mobile in-app updates and QR code downloads.
+      </p>
+
+      {/* Current Live APK Info */}
+      <div className="mb-6 rounded-xl border border-gray-700 bg-night-900 p-4">
+        <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-gray-400">Current Live APK Version</h3>
+        {apkStatus.isLoading ? (
+          <p className="text-sm text-gray-400">Loading status...</p>
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <span className="inline-block rounded-md bg-brand/20 px-2.5 py-1 text-sm font-bold text-brand">
+                v{status?.version || "1.0.11"}
+              </span>
+              {status?.fileInfo?.exists ? (
+                <span className="ml-3 text-xs text-gray-400">
+                  Size: <b>{status.fileInfo.sizeMb} MB</b> · Last Updated:{" "}
+                  {status.fileInfo.modifiedAt ? new Date(status.fileInfo.modifiedAt).toLocaleString() : "N/A"}
+                </span>
+              ) : (
+                <span className="ml-3 text-xs text-red-400">File not found</span>
+              )}
+            </div>
+            <a
+              href="/mobile-app/SwitchNest_Latest.apk"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-600 bg-night-800 px-3 py-1.5 text-xs font-semibold text-gray-200 hover:border-brand hover:text-white"
+            >
+              <Download className="h-3.5 w-3.5" /> Download Current APK
+            </a>
+          </div>
+        )}
+      </div>
+
+      {/* Upload Form */}
+      <form onSubmit={handleUpload} className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-400">
+              Select APK File (.apk) *
+            </span>
+            <input
+              type="file"
+              accept=".apk"
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
+              disabled={uploading}
+              className="w-full rounded-lg border border-gray-700 bg-night-900 p-2 text-xs text-gray-300 outline-none file:mr-3 file:rounded-md file:border-0 file:bg-brand/20 file:px-3 file:py-1 file:text-xs file:font-semibold file:text-brand hover:file:bg-brand/30"
+            />
+          </label>
+
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-400">
+              New Release Version *
+            </span>
+            <input
+              type="text"
+              value={version}
+              onChange={(e) => setVersion(e.target.value)}
+              placeholder="e.g. 1.0.12"
+              disabled={uploading}
+              className="w-full rounded-lg border border-gray-700 bg-night-900 px-3 py-2 text-sm text-gray-200 outline-none focus:border-brand"
+            />
+          </label>
+        </div>
+
+        <label className="block text-sm">
+          <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-400">
+            Update Banner Message
+          </span>
+          <input
+            type="text"
+            value={updateMessage}
+            onChange={(e) => setUpdateMessage(e.target.value)}
+            placeholder="e.g. New SwitchNest Release with In-App Server Selector!"
+            disabled={uploading}
+            className="w-full rounded-lg border border-gray-700 bg-night-900 px-3 py-2 text-sm text-gray-200 outline-none focus:border-brand"
+          />
+        </label>
+
+        <label className="block text-sm">
+          <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-400">
+            Release Notes (bullet points)
+          </span>
+          <textarea
+            rows={3}
+            value={releaseNotes}
+            onChange={(e) => setReleaseNotes(e.target.value)}
+            placeholder="• Added In-App Server Switcher&#10;• Live WiFi QR Code Resolution"
+            disabled={uploading}
+            className="w-full rounded-lg border border-gray-700 bg-night-900 px-3 py-2 text-sm text-gray-200 outline-none focus:border-brand"
+          />
+        </label>
+
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={isMandatory}
+            onChange={(e) => setIsMandatory(e.target.checked)}
+            disabled={uploading}
+            className="h-4 w-4 rounded border-gray-700 bg-night-900 text-brand"
+          />
+          <span className="text-gray-300">
+            Mandatory Update — <span className="text-gray-500">Force users on older versions to update before continuing</span>
+          </span>
+        </label>
+
+        {uploading && (
+          <div className="space-y-1">
+            <div className="flex justify-between text-xs text-gray-400">
+              <span>Uploading APK File...</span>
+              <span>{progress}%</span>
+            </div>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-night-900">
+              <div className="h-full bg-brand transition-all duration-300" style={{ width: `${progress}%` }} />
+            </div>
+          </div>
+        )}
+
+        {msg && (
+          <p className={`text-sm ${msg.ok ? "text-emerald-400" : "text-red-400"}`}>{msg.text}</p>
+        )}
+
+        <button
+          type="submit"
+          disabled={uploading || !file}
+          className="flex items-center gap-2 rounded-lg bg-brand px-5 py-2.5 text-sm font-semibold text-white transition hover:brightness-110 disabled:opacity-50"
+        >
+          <Upload className="h-4 w-4" />
+          {uploading ? `Uploading (${progress}%)...` : "Publish New APK Release"}
+        </button>
+      </form>
+    </Section>
   );
 }
 
@@ -720,6 +916,8 @@ export function AdminSettings() {
           {changePw.isPending ? "Changing…" : "Change password"}
         </button>
       </Section>
+
+      <ApkReleaseManager />
 
       <Section title="☢️ Danger Zone — Reset site">
         <p className="mb-3 text-sm text-gray-500">

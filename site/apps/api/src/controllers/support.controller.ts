@@ -1,0 +1,622 @@
+import type { Request, Response } from "express";
+import jwt from "jsonwebtoken";
+import { prisma } from "../lib/prisma";
+import { AppError, ok } from "../lib/response";
+import { createNotification } from "../services/notification.service";
+import { emitToUser } from "../lib/socket";
+import { saveAttachment, readAttachmentFile, deleteAttachmentFile } from "../lib/attachmentStore";
+import { sendSupportReplyEmail } from "../lib/email.service";
+import { env } from "../config/env";
+import type { AccessTokenPayload } from "@robosphere/shared";
+
+function supportModel() {
+  if (!prisma.supportMessage) {
+    throw new AppError("INTERNAL", "Support module unavailable — Prisma client stale. Run: npx prisma generate in site/apps/api", 500);
+  }
+  return prisma.supportMessage;
+}
+
+const msgSelect = {
+  id: true,
+  userId: true,
+  senderRole: true,
+  senderName: true,
+  message: true,
+  attachmentName: true,
+  attachmentType: true,
+  attachmentData: true,
+  attachmentPath: true,
+  readByUser: true,
+  readByAdmin: true,
+  deletedAt: true,
+  createdAt: true,
+} as const;
+
+async function firstAdminId(): Promise<number | null> {
+  const admin = await prisma.user.findFirst({
+    where: { role: "system_admin" },
+    select: { id: true },
+    orderBy: { id: "asc" },
+  });
+  return admin?.id ?? null;
+}
+
+async function isMuted(viewerId: number, peerUserId: number): Promise<boolean> {
+  if (!prisma.supportChatSettings) return false;
+  const s = await prisma.supportChatSettings
+    .findUnique({
+      where: { userId_peerUserId: { userId: viewerId, peerUserId } },
+      select: { mutedAt: true },
+    })
+    .catch(() => null);
+  return !!s?.mutedAt;
+}
+
+export async function searchAdminUsers(req: Request, res: Response): Promise<void> {
+  if (req.user!.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
+  const q = String(req.query.q ?? "").trim().toLowerCase();
+  if (q.length < 2) {
+    ok(res, { users: [] });
+    return;
+  }
+  const users = await prisma.user.findMany({
+    where: {
+      OR: [{ username: { contains: q } }, { email: { contains: q } }],
+    },
+    select: {
+      id: true,
+      username: true,
+      email: true,
+      role: true,
+      status: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: "desc" },
+    take: 25,
+  });
+  const info = await supportModel().groupBy({
+    by: ["userId"],
+    where: { userId: { in: users.map((u) => u.id) }, deletedAt: null },
+    _count: { _all: true },
+    _max: { createdAt: true },
+  });
+  const infoMap = new Map(info.map((m) => [m.userId, { count: m._count._all, lastAt: m._max.createdAt }]));
+  ok(
+    res,
+    users.map((u) => ({
+      ...u,
+      messageCount: infoMap.get(u.id)?.count ?? 0,
+      lastMessageAt: infoMap.get(u.id)?.lastAt ?? null,
+    }))
+  );
+}
+
+export async function getAdminThread(req: Request, res: Response): Promise<void> {
+  const userId = Number(req.query.userId);
+  if (!Number.isInteger(userId) || userId <= 0) throw new AppError("VALIDATION_ERROR", "userId required", 400);
+  const msgs = await supportModel().findMany({
+    where: { userId, deletedAt: null },
+    select: msgSelect,
+    orderBy: { createdAt: "asc" },
+    take: 200,
+  });
+  const unread = await supportModel().count({ where: { userId, readByAdmin: false, deletedAt: null } });
+  if (unread > 0) {
+    await supportModel().updateMany({
+      where: { userId, readByAdmin: false, deletedAt: null },
+      data: { readByAdmin: true },
+    });
+  }
+  ok(res, { userId, unread, messages: msgs });
+}
+
+export async function sendAdminMessage(req: Request, res: Response): Promise<void> {
+  if (req.user!.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
+  const { userId, message } = req.body;
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, username: true, email: true } });
+  if (!user) throw new AppError("NOT_FOUND", "User not found", 404);
+
+  const created = await supportModel().create({
+    data: {
+      userId,
+      senderRole: "admin",
+      senderName: req.user!.username,
+      message,
+      attachmentName: req.body.attachmentName ?? null,
+      attachmentType: req.body.attachmentType ?? null,
+      attachmentData: null,
+      attachmentPath: req.body.attachmentData
+        ? saveAttachment(req.body.attachmentData, req.body.attachmentType, req.body.attachmentName)
+        : null,
+      readByUser: false,
+      readByAdmin: true,
+    },
+  });
+
+  if (!(await isMuted(userId, req.user!.sub))) {
+    await createNotification(userId, {
+      category: "support",
+      type: "info",
+      title: "🛠️ Support ne message bheja",
+      body: JSON.stringify({ u: req.user!.sub, t: message.slice(0, 200) }),
+    });
+  }
+  emitToUser(userId, "support:new", { senderRole: "admin", message: created });
+  emitToUser(req.user!.sub, "support:new", { senderRole: "admin", message: created });
+
+  if (user.email) {
+    void sendSupportReplyEmail({ to: user.email, userName: user.username, replyText: message });
+  }
+
+  ok(res, created, 201);
+}
+
+export async function getUserThread(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.sub;
+  const [messages, unreadCount] = await Promise.all([
+    supportModel().findMany({
+      where: { userId, deletedAt: null },
+      select: msgSelect,
+      orderBy: { createdAt: "asc" },
+      take: 200,
+    }),
+    supportModel().count({ where: { userId, readByUser: false, deletedAt: null } }),
+  ]);
+  if (unreadCount > 0) {
+    await supportModel().updateMany({
+      where: { userId, readByUser: false, deletedAt: null },
+      data: { readByUser: true },
+    });
+  }
+  ok(res, { unread: unreadCount, messages });
+}
+
+export async function sendUserMessage(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.sub;
+  const created = await supportModel().create({
+    data: {
+      userId,
+      senderRole: "user",
+      senderName: req.user!.username,
+      message: req.body.message,
+      attachmentName: req.body.attachmentName ?? null,
+      attachmentType: req.body.attachmentType ?? null,
+      attachmentData: null,
+      attachmentPath: req.body.attachmentData
+        ? saveAttachment(req.body.attachmentData, req.body.attachmentType, req.body.attachmentName)
+        : null,
+      readByUser: true,
+      readByAdmin: false,
+    },
+  });
+
+  const admin = await prisma.user.findFirst({
+    where: { role: "system_admin" },
+    select: { id: true },
+    orderBy: { id: "asc" },
+  });
+  if (admin) {
+    if (!(await isMuted(admin.id, req.user!.sub))) {
+      await createNotification(admin.id, {
+        category: "support",
+        type: "info",
+        title: "📨 User ne support me reply kiya",
+        body: JSON.stringify({ u: req.user!.sub, t: (req.body.message || "").slice(0, 200) }),
+      });
+    }
+    emitToUser(admin.id, "support:new", { senderRole: "user", message: created });
+  }
+
+  emitToUser(userId, "support:new", { senderRole: "user", message: created });
+  ok(res, created, 201);
+}
+
+export async function userMediaMessage(req: Request, res: Response): Promise<void> {
+  const userId = req.user!.sub;
+  const message = req.body.message || "";
+
+  if (!req.file && !message) {
+    throw new AppError("VALIDATION_ERROR", "Message or file required", 400);
+  }
+
+  const created = await supportModel().create({
+    data: {
+      userId,
+      senderRole: "user",
+      senderName: req.user!.username,
+      message: message,
+      attachmentName: req.file?.originalname ?? null,
+      attachmentType: req.file?.mimetype ?? null,
+      attachmentData: null,
+      attachmentPath: req.file?.filename ?? null,
+      readByUser: true,
+      readByAdmin: false,
+    },
+  });
+
+  const admin = await prisma.user.findFirst({
+    where: { role: "system_admin" },
+    select: { id: true },
+    orderBy: { id: "asc" },
+  });
+  if (admin) {
+    if (!(await isMuted(admin.id, req.user!.sub))) {
+      await createNotification(admin.id, {
+        category: "support",
+        type: "info",
+        title: "📲 User ne support me media bheja",
+        body: JSON.stringify({ u: req.user!.sub, t: "Media file uploaded" }),
+      });
+    }
+    emitToUser(admin.id, "support:new", { senderRole: "user", message: created });
+  }
+  emitToUser(userId, "support:new", { senderRole: "user", message: created });
+
+  ok(res, created, 201);
+}
+
+export async function adminMediaMessage(req: Request, res: Response): Promise<void> {
+  if (req.user!.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
+  const userId = Number(req.body.userId);
+  const message = req.body.message || "";
+
+  if (!Number.isInteger(userId) || userId <= 0) throw new AppError("VALIDATION_ERROR", "Valid userId required", 400);
+  if (!req.file && !message) throw new AppError("VALIDATION_ERROR", "Message or file required", 400);
+
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, username: true, email: true } });
+  if (!user) throw new AppError("NOT_FOUND", "User not found", 404);
+
+  const created = await supportModel().create({
+    data: {
+      userId,
+      senderRole: "admin",
+      senderName: req.user!.username,
+      message: message,
+      attachmentName: req.file?.originalname ?? null,
+      attachmentType: req.file?.mimetype ?? null,
+      attachmentData: null,
+      attachmentPath: req.file?.filename ?? null,
+      readByUser: false,
+      readByAdmin: true,
+    },
+  });
+
+  if (!(await isMuted(userId, req.user!.sub))) {
+    await createNotification(userId, {
+      category: "support",
+      type: "info",
+      title: "🎧 Support ne media bheja",
+      body: JSON.stringify({ u: req.user!.sub, t: "Media file sent" }),
+    });
+  }
+
+  emitToUser(userId, "support:new", { senderRole: "admin", message: created });
+  emitToUser(req.user!.sub, "support:new", { senderRole: "admin", message: created });
+
+  ok(res, created, 201);
+}
+
+export async function getAttachmentFile(req: Request, res: Response): Promise<void> {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) throw new AppError("VALIDATION_ERROR", "Invalid attachment id", 400);
+
+  const header = req.headers.authorization;
+  const qToken = typeof req.query.token === "string" ? req.query.token : null;
+  let payload: AccessTokenPayload | null = null;
+  try {
+    const raw = header?.startsWith("Bearer ") ? header.slice(7) : qToken;
+    if (raw) payload = jwt.verify(raw, env.JWT_ACCESS_SECRET) as unknown as AccessTokenPayload;
+  } catch {}
+  if (!payload) throw new AppError("UNAUTHORIZED", "Missing bearer token", 401);
+
+  const msg = await supportModel().findUnique({
+    where: { id },
+    select: { userId: true, attachmentPath: true, attachmentName: true, attachmentType: true, deletedAt: true },
+  });
+  if (!msg || msg.deletedAt || !msg.attachmentPath) throw new AppError("NOT_FOUND", "Attachment not found", 404);
+  if (msg.userId !== payload.sub && payload.role !== "system_admin") {
+    throw new AppError("FORBIDDEN", "Access denied", 403);
+  }
+
+  const buf = readAttachmentFile(msg.attachmentPath);
+  if (!buf) throw new AppError("NOT_FOUND", "Attachment file missing", 404);
+  const isImage = (msg.attachmentType ?? "").startsWith("image/");
+  res.setHeader("Content-Type", msg.attachmentType || "application/octet-stream");
+  res.setHeader(
+    "Content-Disposition",
+    `${isImage ? "inline" : "attachment"}; filename="${encodeURIComponent(msg.attachmentName || "file")}"`,
+  );
+  res.setHeader("Cache-Control", "private, max-age=3600");
+  res.send(buf);
+}
+
+export async function getAdminUnreadCount(req: Request, res: Response): Promise<void> {
+  if (req.user!.role !== "system_admin") { ok(res, { unread: 0 }); return; }
+  if (!prisma.supportMessage) { ok(res, { unread: 0 }); return; }
+  const groups = await supportModel().groupBy({
+    by: ["userId"],
+    where: { readByAdmin: false, deletedAt: null },
+    _count: { _all: true },
+  });
+  ok(res, { unread: groups.length });
+}
+
+export async function getAdminConversations(req: Request, res: Response): Promise<void> {
+  if (req.user!.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
+  if (!prisma.supportMessage) { ok(res, { conversations: [], totalUnread: 0 }); return; }
+  const recent = await supportModel().findMany({
+    where: { deletedAt: null },
+    select: {
+      id: true,
+      userId: true,
+      senderRole: true,
+      message: true,
+      attachmentName: true,
+      readByAdmin: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: "desc" },
+    take: 1000,
+  });
+  const byUser = new Map<number, { lastPreview: string; lastSenderRole: string; lastAt: Date; unread: number }>();
+  for (const m of recent) {
+    const cur = byUser.get(m.userId);
+    const preview = m.message?.trim()
+      ? m.message
+      : m.attachmentName
+        ? `📎 ${m.attachmentName}`
+        : "(attachment)";
+    if (!cur) {
+      byUser.set(m.userId, {
+        lastPreview: preview,
+        lastSenderRole: m.senderRole,
+        lastAt: m.createdAt,
+        unread: m.readByAdmin ? 0 : 1,
+      });
+    } else if (!m.readByAdmin) {
+      cur.unread += 1;
+    }
+  }
+  const userIds = [...byUser.keys()];
+  const users =
+    userIds.length > 0
+      ? await prisma.user.findMany({
+          where: { id: { in: userIds } },
+          select: { id: true, username: true, email: true },
+        })
+      : [];
+  const userMap = new Map(users.map((u) => [u.id, u]));
+  const conversations = [...byUser.entries()]
+    .map(([userId, c]) => ({
+      userId,
+      username: userMap.get(userId)?.username ?? "Unknown",
+      email: userMap.get(userId)?.email ?? null,
+      lastPreview: c.lastPreview.slice(0, 120),
+      lastSenderRole: c.lastSenderRole,
+      lastAt: c.lastAt,
+      unreadCount: c.unread,
+    }))
+    .sort((a, b) => b.lastAt.getTime() - a.lastAt.getTime());
+  const totalUnread = conversations.reduce((a, c) => a + c.unreadCount, 0);
+  ok(res, { conversations, totalUnread });
+}
+
+export async function adminReadAll(req: Request, res: Response): Promise<void> {
+  if (req.user!.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
+  if (!prisma.supportMessage) { ok(res, { unread: 0 }); return; }
+  await supportModel().updateMany({
+    where: { readByAdmin: false, deletedAt: null },
+    data: { readByAdmin: true },
+  });
+  ok(res, { unread: 0 });
+}
+
+export async function adminThreadRead(req: Request, res: Response): Promise<void> {
+  if (req.user!.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
+  const userId = Number(req.body?.userId);
+  const read = Boolean(req.body?.read);
+  if (!Number.isInteger(userId) || userId <= 0) {
+    throw new AppError("VALIDATION_ERROR", "userId required", 400);
+  }
+  if (!prisma.supportMessage) { ok(res, { updated: 0 }); return; }
+  const updated = await supportModel().updateMany({
+    where: { userId, deletedAt: null, readByAdmin: read ? false : true },
+    data: { readByAdmin: read },
+  });
+  ok(res, { updated: updated.count });
+}
+
+export async function getAdminContext(req: Request, res: Response): Promise<void> {
+  if (req.user!.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
+  const userId = Number(req.query.userId);
+  if (!Number.isInteger(userId) || userId <= 0) {
+    throw new AppError("VALIDATION_ERROR", "userId required", 400);
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      username: true,
+      email: true,
+      role: true,
+      status: true,
+      createdAt: true,
+    },
+  });
+  if (!user) throw new AppError("NOT_FOUND", "User not found", 404);
+
+  const [memberships, orders] = await Promise.all([
+    prisma.homeMember.findMany({
+      where: { userId },
+      select: {
+        role: true,
+        home: {
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            owner: { select: { id: true, username: true } },
+            _count: { select: { devices: true, members: true, rooms: true } },
+          },
+        },
+      },
+      orderBy: { joinedAt: "asc" },
+    }),
+    prisma.order.findMany({
+      where: { userId },
+      select: {
+        id: true,
+        orderNumber: true,
+        status: true,
+        paymentStatus: true,
+        totalAmount: true,
+        shippingPhone: true,
+        createdAt: true,
+        _count: { select: { items: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 15,
+    }),
+  ]);
+
+  const homeIds = memberships.map((m) => m.home.id);
+  const [devices, esps] =
+    homeIds.length > 0
+      ? await Promise.all([
+          prisma.device.findMany({
+            where: { homeId: { in: homeIds } },
+            select: {
+              id: true,
+              name: true,
+              type: true,
+              status: true,
+              serialNumber: true,
+              offline: true,
+              lastSeen: true,
+              room: { select: { name: true } },
+              home: { select: { name: true } },
+            },
+            orderBy: { name: "asc" },
+            take: 100,
+          }),
+          prisma.espDevice.findMany({
+            where: { homeId: { in: homeIds } },
+            select: {
+              id: true,
+              name: true,
+              macAddress: true,
+              serialCode: true,
+              modelCode: true,
+              firmwareVersion: true,
+              offline: true,
+              ipAddress: true,
+              lastSeen: true,
+              home: { select: { name: true } },
+            },
+            orderBy: { id: "asc" },
+            take: 50,
+          }),
+        ])
+      : [[], []];
+
+  ok(res, {
+    user,
+    homes: memberships.map((m) => ({ ...m.home, memberRole: m.role })),
+    devices,
+    esps,
+    orders,
+  });
+}
+
+export async function getChatSettings(req: Request, res: Response): Promise<void> {
+  if (!prisma.supportChatSettings) { ok(res, { settings: [] }); return; }
+  const settings = await prisma.supportChatSettings.findMany({
+    where: { userId: req.user!.sub },
+    select: { peerUserId: true, mutedAt: true, pinnedAt: true },
+  });
+  ok(res, { settings });
+}
+
+export async function updateChatSettings(req: Request, res: Response): Promise<void> {
+  if (!prisma.supportChatSettings) throw new AppError("INTERNAL", "Chat settings unavailable — prisma client stale", 500);
+  let peerUserId = Number(req.params.peerUserId);
+  if (req.user!.role !== "system_admin") {
+    peerUserId = (await firstAdminId()) ?? 0;
+  }
+  if (!Number.isInteger(peerUserId) || peerUserId <= 0) {
+    throw new AppError("VALIDATION_ERROR", "peerUserId required", 400);
+  }
+  const { muted, pinned } = req.body as { muted?: boolean; pinned?: boolean };
+  if (muted === undefined && pinned === undefined) {
+    throw new AppError("VALIDATION_ERROR", "muted ya pinned required", 400);
+  }
+  const data: { mutedAt?: Date | null; pinnedAt?: Date | null } = {};
+  if (typeof muted === "boolean") data.mutedAt = muted ? new Date() : null;
+  if (typeof pinned === "boolean") data.pinnedAt = pinned ? new Date() : null;
+
+  const setting = await prisma.supportChatSettings.upsert({
+    where: { userId_peerUserId: { userId: req.user!.sub, peerUserId } },
+    create: {
+      userId: req.user!.sub,
+      peerUserId,
+      mutedAt: data.mutedAt ?? null,
+      pinnedAt: data.pinnedAt ?? null,
+    },
+    update: data,
+  });
+  ok(res, setting);
+}
+
+export async function deleteUserMessage(req: Request, res: Response): Promise<void> {
+  const id = Number(req.params.id);
+  const msg = await supportModel().findUnique({ where: { id } });
+  if (!msg) throw new AppError("NOT_FOUND", "Message not found", 404);
+  if (msg.userId !== req.user!.sub || msg.senderRole !== "user") {
+    throw new AppError("FORBIDDEN", "Sirf apna message delete kar sakte ho", 403);
+  }
+  await supportModel().update({ where: { id }, data: { deletedAt: new Date() } });
+  deleteAttachmentFile(msg.attachmentPath);
+  ok(res, { deleted: true });
+}
+
+export async function deleteAdminMessage(req: Request, res: Response): Promise<void> {
+  if (req.user!.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
+  const id = Number(req.params.id);
+  const msg = await supportModel().findUnique({ where: { id } });
+  if (!msg) throw new AppError("NOT_FOUND", "Message not found", 404);
+  await supportModel().update({ where: { id }, data: { deletedAt: new Date() } });
+  deleteAttachmentFile(msg.attachmentPath);
+  ok(res, { deleted: true });
+}
+
+export async function clearUserThread(req: Request, res: Response): Promise<void> {
+  const withFiles = await supportModel().findMany({
+    where: { userId: req.user!.sub, deletedAt: null },
+    select: { attachmentPath: true },
+  });
+  const r = await supportModel().updateMany({
+    where: { userId: req.user!.sub, deletedAt: null },
+    data: { deletedAt: new Date() },
+  });
+  withFiles.forEach((m) => deleteAttachmentFile(m.attachmentPath));
+  ok(res, { cleared: r.count });
+}
+
+export async function clearAdminThread(req: Request, res: Response): Promise<void> {
+  if (req.user!.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
+  const userId = Number(req.query.peerUserId);
+  if (!Number.isInteger(userId) || userId <= 0) {
+    throw new AppError("VALIDATION_ERROR", "peerUserId required", 400);
+  }
+  const withFiles = await supportModel().findMany({
+    where: { userId, deletedAt: null },
+    select: { attachmentPath: true },
+  });
+  const r = await supportModel().updateMany({
+    where: { userId, deletedAt: null },
+    data: { deletedAt: new Date() },
+  });
+  withFiles.forEach((m) => deleteAttachmentFile(m.attachmentPath));
+  ok(res, { cleared: r.count });
+}

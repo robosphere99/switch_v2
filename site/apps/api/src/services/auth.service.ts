@@ -31,6 +31,18 @@ function hashToken(token: string): string {
   return crypto.createHash("sha256").update(token).digest("hex");
 }
 
+function parseExpiryMs(durationStr: string): number {
+  const match = durationStr.match(/^(\d+)([smhd])$/);
+  if (!match) return 15 * 60 * 1000;
+  const val = parseInt(match[1], 10);
+  const unit = match[2];
+  if (unit === "s") return val * 1000;
+  if (unit === "m") return val * 60 * 1000;
+  if (unit === "h") return val * 60 * 60 * 1000;
+  if (unit === "d") return val * 24 * 60 * 60 * 1000;
+  return 15 * 60 * 1000;
+}
+
 // jti (random nonce) guarantees unique tokens even when issued in the same second.
 function signAccessToken(user: User, sessionId?: number): string {
   return jwt.sign(
@@ -323,7 +335,7 @@ async function issueTokens(user: User, deviceInfo?: string, ipAddress?: string, 
 
   const refreshToken = signRefreshToken(user);
   const tokenHash = hashToken(refreshToken);
-  const exp = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  const exp = new Date(Date.now() + parseExpiryMs(env.JWT_REFRESH_EXPIRES));
 
   let sessionId = 1;
   try {

@@ -50,8 +50,8 @@ var init_env = __esm({
       ),
       JWT_ACCESS_SECRET: z.string().default("dev-access-secret"),
       JWT_REFRESH_SECRET: z.string().default("dev-refresh-secret"),
-      JWT_ACCESS_EXPIRES: z.string().default("15m"),
-      JWT_REFRESH_EXPIRES: z.string().default("7d"),
+      JWT_ACCESS_EXPIRES: z.string().default("7d"),
+      JWT_REFRESH_EXPIRES: z.string().default("15m"),
       // Plesk/Paas PORT env var ko respect karta hai (Plesk nginx app ko assigned
       // port pe proxy karta hai); nahi diya to 4000.
       API_PORT: z.coerce.number().default(Number(process.env.PORT) || 4e3),
@@ -324,8 +324,13 @@ var init_siteSettings_service = __esm({
       supportTicketMediaRetentionDays: 90,
       // Defaults to 3 months
       chatHistoryRetentionDays: 90,
-      deviceTelemetryRetentionDays: 180
+      deviceTelemetryRetentionDays: 180,
       // Defaults to 6 months for ML analysis (Hot Storage)
+      mobileAppVersion: "1.0.11",
+      mobileAppMinVersion: "1.0.0",
+      mobileAppReleaseNotes: "\u2022 Connect to Live Website & In-App Server Selector\n\u2022 Live LAN QR Code Auto-Detection\n\u2022 ESP WebServer Direct Connection",
+      mobileAppUpdateMessage: "New Mobile App Release Available!",
+      mobileAppIsMandatory: false
     };
     KEY2 = "site_settings";
   }
@@ -1678,10 +1683,25 @@ function findRepoRoot(start) {
 }
 var repoRoot = findRepoRoot(process.cwd());
 var firmwareDir = repoRoot ? path3.join(repoRoot, "hardware", "firmware") : path3.resolve(process.cwd(), "../../../hardware/firmware");
-var mobileAppDir = repoRoot ? path3.join(repoRoot, "mobile-app") : path3.resolve(process.cwd(), "../../../mobile-app");
+var mobileAppDir = repoRoot ? path3.join(repoRoot, "mobile-app") : path3.resolve(process.cwd(), "mobile-app");
+function getMobileAppCandidateDirs() {
+  const dirs = [
+    path3.resolve(process.cwd(), "mobile-app"),
+    path3.resolve(process.cwd(), "../mobile-app"),
+    path3.resolve(process.cwd(), "../../mobile-app"),
+    path3.resolve(process.cwd(), "../../../mobile-app"),
+    repoRoot ? path3.join(repoRoot, "mobile-app") : "",
+    repoRoot ? path3.join(repoRoot, "site", "apps", "web", "public", "mobile-app") : "",
+    path3.resolve(process.cwd(), "apps/web/public/mobile-app"),
+    path3.resolve(process.cwd(), "../web/public/mobile-app"),
+    path3.resolve(process.cwd(), "../../apps/web/public/mobile-app")
+  ].filter((d) => Boolean(d));
+  return Array.from(new Set(dirs));
+}
 var attachmentDir = repoRoot ? path3.join(repoRoot, "hardware", "attachments") : path3.resolve(process.cwd(), "../../../hardware/attachments");
 var webDist = repoRoot ? path3.join(repoRoot, "site", "apps", "web", "dist") : path3.resolve(process.cwd(), "../../apps/web/dist");
 var swaggerUiDir = repoRoot ? path3.join(repoRoot, "site", "apps", "api", "public", "swagger-ui") : path3.resolve(process.cwd(), "public/swagger-ui");
+var webPublicMobileAppDir = repoRoot ? path3.join(repoRoot, "site", "apps", "web", "public", "mobile-app") : path3.resolve(process.cwd(), "../web/public/mobile-app");
 var uploadsDir = repoRoot ? path3.join(repoRoot, "site", "apps", "api", "uploads") : path3.resolve(process.cwd(), "uploads");
 
 // src/routes/index.ts
@@ -1761,6 +1781,17 @@ function toAuthUser(user) {
 }
 function hashToken(token) {
   return crypto3.createHash("sha256").update(token).digest("hex");
+}
+function parseExpiryMs(durationStr) {
+  const match = durationStr.match(/^(\d+)([smhd])$/);
+  if (!match) return 15 * 60 * 1e3;
+  const val = parseInt(match[1], 10);
+  const unit = match[2];
+  if (unit === "s") return val * 1e3;
+  if (unit === "m") return val * 60 * 1e3;
+  if (unit === "h") return val * 60 * 60 * 1e3;
+  if (unit === "d") return val * 24 * 60 * 60 * 1e3;
+  return 15 * 60 * 1e3;
 }
 function signAccessToken(user, sessionId) {
   return jwt2.sign(
@@ -1985,7 +2016,7 @@ async function issueTokens(user, deviceInfo, ipAddress, revokeOtherSessions3) {
   }
   const refreshToken = signRefreshToken(user);
   const tokenHash = hashToken(refreshToken);
-  const exp = new Date(Date.now() + 7 * 24 * 60 * 60 * 1e3);
+  const exp = new Date(Date.now() + parseExpiryMs(env.JWT_REFRESH_EXPIRES));
   let sessionId = 1;
   try {
     const session = await prisma.refreshToken.create({
@@ -4733,21 +4764,11 @@ deviceApiRouter.post(
 
 // src/routes/apiKey.routes.ts
 import { Router as Router6 } from "express";
-import crypto6 from "node:crypto";
 import { z as z7 } from "zod";
+
+// src/controllers/apiKey.controller.ts
 init_prisma();
-var apiKeyRouter = Router6();
-var createKeyLimiter = rateLimit({
-  name: "api-key:create",
-  windowMs: 60 * 6e4,
-  max: 20,
-  message: "Bahut zyada API keys bana rahe ho \u2014 1 ghanta baad try karo"
-});
-var createSchema3 = z7.object({
-  label: z7.string().min(1).max(100).optional(),
-  homeId: z7.coerce.number().int().positive().optional(),
-  expiresInDays: z7.coerce.number().int().positive().max(3650).optional()
-});
+import crypto6 from "node:crypto";
 function hashKey3(raw) {
   return crypto6.createHash("sha256").update(raw).digest("hex");
 }
@@ -4755,7 +4776,7 @@ function generateKey() {
   const raw = `rs_${crypto6.randomBytes(24).toString("hex")}`;
   return { raw, prefix: raw.slice(0, 8) };
 }
-apiKeyRouter.get("/", requireAuth, async (req, res) => {
+async function listApiKeys(req, res) {
   try {
     const keys = await prisma.apiKey.findMany({
       where: { userId: req.user.sub },
@@ -4767,8 +4788,8 @@ apiKeyRouter.get("/", requireAuth, async (req, res) => {
     console.error("[apiKey] list failed:", err?.message ?? err);
     ok(res, []);
   }
-});
-apiKeyRouter.post("/", requireAuth, createKeyLimiter, validateBody(createSchema3), async (req, res) => {
+}
+async function createApiKey(req, res) {
   const { raw, prefix } = generateKey();
   const key = await prisma.apiKey.create({
     data: {
@@ -4781,8 +4802,8 @@ apiKeyRouter.post("/", requireAuth, createKeyLimiter, validateBody(createSchema3
     }
   });
   ok(res, { ...key, keyHash: void 0, rawKey: raw }, 201);
-});
-apiKeyRouter.delete("/:id", requireAuth, async (req, res) => {
+}
+async function deleteApiKey(req, res) {
   const id = Number(req.params.id);
   const existing = await prisma.apiKey.findFirst({ where: { id, userId: req.user.sub } });
   if (!existing) throw new AppError("API_KEY_NOT_FOUND", "API key not found", 404);
@@ -4793,7 +4814,24 @@ apiKeyRouter.delete("/:id", requireAuth, async (req, res) => {
     });
   }
   ok(res, { message: "API key revoked" });
+}
+
+// src/routes/apiKey.routes.ts
+var apiKeyRouter = Router6();
+var createKeyLimiter = rateLimit({
+  name: "api-key:create",
+  windowMs: 60 * 6e4,
+  max: 20,
+  message: "Bahut zyada API keys bana rahe ho \u2014 1 ghanta baad try karo"
 });
+var createSchema3 = z7.object({
+  label: z7.string().min(1).max(100).optional(),
+  homeId: z7.coerce.number().int().positive().optional(),
+  expiresInDays: z7.coerce.number().int().positive().max(3650).optional()
+});
+apiKeyRouter.get("/", requireAuth, listApiKeys);
+apiKeyRouter.post("/", requireAuth, createKeyLimiter, validateBody(createSchema3), createApiKey);
+apiKeyRouter.delete("/:id", requireAuth, deleteApiKey);
 
 // src/routes/room.routes.ts
 import { Router as Router7 } from "express";
@@ -4820,6 +4858,25 @@ async function listRooms(homeId) {
   });
 }
 
+// src/controllers/room.controller.ts
+async function listRooms2(req, res) {
+  const homeId = Number(req.params.homeId);
+  const rooms = await listRooms(homeId);
+  ok(res, rooms);
+}
+async function createRoom2(req, res) {
+  const homeId = Number(req.params.homeId);
+  const { name } = req.body;
+  const room = await createRoom(homeId, name);
+  ok(res, room, 201);
+}
+async function deleteRoom2(req, res) {
+  const homeId = Number(req.params.homeId);
+  const roomId = Number(req.params.roomId);
+  await deleteRoom(homeId, roomId);
+  ok(res, { message: "Room deleted" });
+}
+
 // src/routes/room.routes.ts
 var roomRouter = Router7();
 var idParams4 = z8.object({ homeId: z8.coerce.number().int().positive() });
@@ -4833,7 +4890,7 @@ roomRouter.get(
   requireAuth,
   validateParams(idParams4),
   requireHomeMember("viewer"),
-  async (req, res) => ok(res, await listRooms(Number(req.params.homeId)))
+  listRooms2
 );
 roomRouter.post(
   "/:homeId/rooms",
@@ -4841,17 +4898,14 @@ roomRouter.post(
   validateParams(idParams4),
   requireHomeMember("admin"),
   validateBody(createSchema4),
-  async (req, res) => ok(res, await createRoom(Number(req.params.homeId), req.body.name), 201)
+  createRoom2
 );
 roomRouter.delete(
   "/:homeId/rooms/:roomId",
   requireAuth,
   validateParams(roomParams),
   requireHomeMember("admin"),
-  async (req, res) => {
-    await deleteRoom(Number(req.params.homeId), Number(req.params.roomId));
-    ok(res, { message: "Room deleted" });
-  }
+  deleteRoom2
 );
 
 // src/routes/schedule.routes.ts
@@ -5040,6 +5094,42 @@ async function deleteSchedule(homeId, scheduleId, actorId) {
   return { deleted: true };
 }
 
+// src/controllers/schedule.controller.ts
+async function createSchedule2(req, res) {
+  const { deviceId, action, type, runAt, cron } = req.body;
+  const homeId = Number(req.params.homeId);
+  const actorId = req.user.sub;
+  const schedule = await createSchedule({
+    homeId,
+    actorId,
+    deviceId,
+    action,
+    type,
+    runAt,
+    cron: type === "cron" ? cron : null
+  });
+  ok(res, schedule, 201);
+}
+async function listSchedules2(req, res) {
+  const homeId = Number(req.params.homeId);
+  const schedules = await listSchedules(homeId);
+  ok(res, schedules);
+}
+async function updateSchedule2(req, res) {
+  const homeId = Number(req.params.homeId);
+  const scheduleId = Number(req.params.scheduleId);
+  const actorId = req.user.sub;
+  const updated = await updateSchedule(homeId, scheduleId, actorId, req.body);
+  ok(res, updated);
+}
+async function deleteSchedule2(req, res) {
+  const homeId = Number(req.params.homeId);
+  const scheduleId = Number(req.params.scheduleId);
+  const actorId = req.user.sub;
+  await deleteSchedule(homeId, scheduleId, actorId);
+  ok(res, { message: "Schedule deleted" });
+}
+
 // src/routes/schedule.routes.ts
 var scheduleRouter = Router8();
 var homeParams = z9.object({ homeId: z9.coerce.number().int().positive() });
@@ -5066,28 +5156,14 @@ scheduleRouter.post(
   validateParams(homeParams),
   requireHomeMember("member"),
   validateBody(createSchema5),
-  async (req, res) => {
-    const { deviceId, action, type, runAt, cron } = req.body;
-    const schedule = await createSchedule({
-      homeId: Number(req.params.homeId),
-      actorId: req.user.sub,
-      deviceId,
-      action,
-      type,
-      runAt,
-      cron: type === "cron" ? cron : null
-    });
-    ok(res, schedule, 201);
-  }
+  createSchedule2
 );
 scheduleRouter.get(
   "/:homeId/schedules",
   requireAuth,
   validateParams(homeParams),
   requireHomeMember("viewer"),
-  async (req, res) => {
-    ok(res, await listSchedules(Number(req.params.homeId)));
-  }
+  listSchedules2
 );
 scheduleRouter.patch(
   "/:homeId/schedules/:scheduleId",
@@ -5095,63 +5171,75 @@ scheduleRouter.patch(
   validateParams(scheduleParams),
   requireHomeMember("member"),
   validateBody(updateSchema3),
-  async (req, res) => {
-    const updated = await updateSchedule(
-      Number(req.params.homeId),
-      Number(req.params.scheduleId),
-      req.user.sub,
-      req.body
-    );
-    ok(res, updated);
-  }
+  updateSchedule2
 );
 scheduleRouter.delete(
   "/:homeId/schedules/:scheduleId",
   requireAuth,
   validateParams(scheduleParams),
   requireHomeMember("member"),
-  async (req, res) => {
-    await deleteSchedule(Number(req.params.homeId), Number(req.params.scheduleId), req.user.sub);
-    ok(res, { message: "Schedule deleted" });
-  }
+  deleteSchedule2
 );
 
 // src/routes/notification.routes.ts
 import { Router as Router9 } from "express";
 import { z as z10 } from "zod";
+
+// src/controllers/notification.controller.ts
 init_notification_service();
-var notificationRouter = Router9();
-notificationRouter.get("/", requireAuth, async (req, res) => {
+async function listNotifications2(req, res) {
   const page = Number(req.query.page ?? 1);
   const pageSize = Number(req.query.pageSize ?? 20);
   const category = String(req.query.category ?? "all");
   const type = String(req.query.type ?? "all");
   const unread = req.query.unread === "1" || req.query.unread === "true";
-  ok(
-    res,
-    await listNotifications(req.user.sub, { page, pageSize, category, type, unread })
-  );
-});
-notificationRouter.get("/unread-count", requireAuth, async (req, res) => {
-  ok(res, await unreadCount(req.user.sub));
-});
-notificationRouter.post("/read-all", requireAuth, async (req, res) => {
-  ok(res, await markAllRead(req.user.sub));
-});
+  const result = await listNotifications(req.user.sub, {
+    page,
+    pageSize,
+    category,
+    type,
+    unread
+  });
+  ok(res, result);
+}
+async function unreadCount2(req, res) {
+  const count = await unreadCount(req.user.sub);
+  ok(res, count);
+}
+async function markAllRead2(req, res) {
+  const result = await markAllRead(req.user.sub);
+  ok(res, result);
+}
+async function markRead2(req, res) {
+  const id = Number(req.params.id);
+  const result = await markRead(req.user.sub, id);
+  ok(res, result);
+}
+async function removeAll2(req, res) {
+  const result = await removeAll(req.user.sub);
+  ok(res, result);
+}
+async function remove5(req, res) {
+  const id = Number(req.params.id);
+  const result = await remove2(req.user.sub, id);
+  ok(res, result);
+}
+
+// src/routes/notification.routes.ts
+var notificationRouter = Router9();
+notificationRouter.get("/", requireAuth, listNotifications2);
+notificationRouter.get("/unread-count", requireAuth, unreadCount2);
+notificationRouter.post("/read-all", requireAuth, markAllRead2);
 var idParams5 = z10.object({ id: z10.coerce.number().int().positive() });
-notificationRouter.post("/:id/read", requireAuth, validateParams(idParams5), async (req, res) => {
-  ok(res, await markRead(req.user.sub, Number(req.params.id)));
-});
-notificationRouter.delete("/delete-all", requireAuth, async (req, res) => {
-  ok(res, await removeAll(req.user.sub));
-});
-notificationRouter.delete("/:id", requireAuth, validateParams(idParams5), async (req, res) => {
-  ok(res, await remove2(req.user.sub, Number(req.params.id)));
-});
+notificationRouter.post("/:id/read", requireAuth, validateParams(idParams5), markRead2);
+notificationRouter.delete("/delete-all", requireAuth, removeAll2);
+notificationRouter.delete("/:id", requireAuth, validateParams(idParams5), remove5);
 
 // src/routes/assistant.routes.ts
 import { Router as Router10 } from "express";
 import { z as z11 } from "zod";
+
+// src/controllers/assistant.controller.ts
 init_prisma();
 
 // src/services/assistant.service.ts
@@ -5661,6 +5749,71 @@ async function confirmProposal(userId, chatId, messageId) {
   return { results, assistantMessage: { ...assistantMessage, content: replyText, proposal: null } };
 }
 
+// src/controllers/assistant.controller.ts
+async function membership(userId, homeId) {
+  return prisma.homeMember.findUnique({
+    where: { homeId_userId: { homeId, userId } }
+  });
+}
+async function createChat2(req, res) {
+  const { homeId, title } = req.body;
+  const member = await membership(req.user.sub, homeId);
+  if (!member) {
+    res.status(403).json({ success: false, error: { code: "FORBIDDEN", message: "Not a member of this home" } });
+    return;
+  }
+  const chat = await createChat(req.user.sub, homeId, title);
+  ok(res, chat, 201);
+}
+async function listChats2(req, res) {
+  const chats = await listChats(req.user.sub);
+  ok(res, chats);
+}
+async function sendMessage2(req, res) {
+  const result = await sendMessage(
+    req.user.sub,
+    Number(req.params.chatId),
+    req.body.content,
+    req.body.replyToMessageId
+  );
+  const member = await membership(req.user.sub, result.chat.homeId);
+  if (!member) {
+    res.status(403).json({ success: false, error: { code: "FORBIDDEN", message: "Not a member of this home" } });
+    return;
+  }
+  ok(res, result);
+}
+async function confirmProposal2(req, res) {
+  const chat = await getChat(req.user.sub, Number(req.params.chatId));
+  if (!chat) {
+    res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Chat not found" } });
+    return;
+  }
+  const member = await membership(req.user.sub, chat.homeId);
+  if (!member) {
+    res.status(403).json({ success: false, error: { code: "FORBIDDEN", message: "Not a member of this home" } });
+    return;
+  }
+  const result = await confirmProposal(req.user.sub, Number(req.params.chatId), req.body.messageId);
+  ok(res, result);
+}
+async function listMessages2(req, res) {
+  const chat = await getChat(req.user.sub, Number(req.params.chatId));
+  if (!chat) {
+    res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Chat not found" } });
+    return;
+  }
+  const messages = await listMessages(chat.id);
+  ok(
+    res,
+    messages.map((m) => {
+      if (m.role !== "assistant") return m;
+      const { text, proposal } = decodeAssistantContent(m.content);
+      return { ...m, content: text, proposal };
+    })
+  );
+}
+
 // src/routes/assistant.routes.ts
 var assistantRouter = Router10();
 var chatCreateLimiter = rateLimit({
@@ -5688,36 +5841,15 @@ var createSchema6 = z11.object({
 });
 var messageSchema = z11.object({ content: z11.string().min(1).max(2e3), replyToMessageId: z11.number().int().positive().optional() });
 var confirmSchema = z11.object({ messageId: z11.number().int().positive() });
-async function membership(userId, homeId) {
-  return prisma.homeMember.findUnique({
-    where: { homeId_userId: { homeId, userId } }
-  });
-}
-assistantRouter.post("/chats", chatCreateLimiter, requireAuth, validateBody(createSchema6), async (req, res) => {
-  const { homeId, title } = req.body;
-  const member = await membership(req.user.sub, homeId);
-  if (!member) {
-    return res.status(403).json({ success: false, error: { code: "FORBIDDEN", message: "Not a member of this home" } });
-  }
-  ok(res, await createChat(req.user.sub, homeId, title), 201);
-});
-assistantRouter.get("/chats", requireAuth, async (req, res) => {
-  ok(res, await listChats(req.user.sub));
-});
+assistantRouter.post("/chats", chatCreateLimiter, requireAuth, validateBody(createSchema6), createChat2);
+assistantRouter.get("/chats", requireAuth, listChats2);
 assistantRouter.post(
   "/chats/:chatId/messages",
   messageLimiter,
   requireAuth,
   validateParams(chatParams),
   validateBody(messageSchema),
-  async (req, res) => {
-    const result = await sendMessage(req.user.sub, Number(req.params.chatId), req.body.content, req.body.replyToMessageId);
-    const member = await membership(req.user.sub, result.chat.homeId);
-    if (!member) {
-      return res.status(403).json({ success: false, error: { code: "FORBIDDEN", message: "Not a member of this home" } });
-    }
-    ok(res, result);
-  }
+  sendMessage2
 );
 assistantRouter.post(
   "/chats/:chatId/confirm",
@@ -5725,33 +5857,9 @@ assistantRouter.post(
   requireAuth,
   validateParams(chatParams),
   validateBody(confirmSchema),
-  async (req, res) => {
-    const chat = await getChat(req.user.sub, Number(req.params.chatId));
-    if (!chat) {
-      return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Chat not found" } });
-    }
-    const member = await membership(req.user.sub, chat.homeId);
-    if (!member) {
-      return res.status(403).json({ success: false, error: { code: "FORBIDDEN", message: "Not a member of this home" } });
-    }
-    ok(res, await confirmProposal(req.user.sub, Number(req.params.chatId), req.body.messageId));
-  }
+  confirmProposal2
 );
-assistantRouter.get("/chats/:chatId/messages", requireAuth, validateParams(chatParams), async (req, res) => {
-  const chat = await getChat(req.user.sub, Number(req.params.chatId));
-  if (!chat) {
-    return res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "Chat not found" } });
-  }
-  const messages = await listMessages(chat.id);
-  ok(
-    res,
-    messages.map((m) => {
-      if (m.role !== "assistant") return m;
-      const { text, proposal } = decodeAssistantContent(m.content);
-      return { ...m, content: text, proposal };
-    })
-  );
-});
+assistantRouter.get("/chats/:chatId/messages", requireAuth, validateParams(chatParams), listMessages2);
 
 // src/routes/admin.routes.ts
 import { Router as Router11 } from "express";
@@ -6507,6 +6615,12 @@ function detectLanIp() {
 // src/routes/admin.routes.ts
 init_firmware_service();
 init_logger();
+init_siteSettings_service();
+import bcrypt2 from "bcryptjs";
+
+// src/controllers/admin.controller.ts
+init_prisma();
+init_audit_service();
 
 // src/lib/requestTracker.ts
 init_prisma();
@@ -6593,23 +6707,14 @@ async function flushRequestTracker() {
   }
 }
 
-// src/routes/admin.routes.ts
+// src/controllers/admin.controller.ts
 init_siteSettings_service();
 init_email_service();
-import bcrypt2 from "bcryptjs";
-var adminRouter = Router11();
-function requireAdmin(req, _res, next) {
-  if (req.user?.role !== "system_admin") {
-    return next(new AppError("FORBIDDEN", "Admin access required", 403));
-  }
-  next();
-}
-adminRouter.use(requireAuth, requireAdmin);
 var DAY_MS2 = 24 * 60 * 60 * 1e3;
 function dayKey2(d) {
   return d.toISOString().slice(0, 10);
 }
-adminRouter.get("/stats", async (_req, res) => {
+async function getStats(_req, res) {
   const dayAgo = new Date(Date.now() - DAY_MS2);
   const weekAgo = new Date(Date.now() - 7 * DAY_MS2);
   const twoMin = new Date(Date.now() - 12e4);
@@ -6705,33 +6810,8 @@ adminRouter.get("/stats", async (_req, res) => {
     ordersByDay,
     revenueByDay
   });
-});
-var settingsSchema = z12.object({
-  siteName: z12.string().min(1).max(60).optional(),
-  supportEmail: z12.string().email().max(100).optional(),
-  supportPhone: z12.string().min(1).max(30).optional(),
-  supportAddress: z12.string().min(1).max(200).optional(),
-  supportHours: z12.string().min(1).max(100).optional(),
-  brandColor: z12.string().regex(/^#[0-9a-fA-F]{6}$/, "Hex color (#RRGGBB)").optional(),
-  siteUrl: z12.string().url().max(200).optional().or(z12.literal("")),
-  smtpHost: z12.string().max(150).optional(),
-  smtpPort: z12.number().int().min(1).max(65535).optional(),
-  smtpUser: z12.string().max(150).optional(),
-  smtpPass: z12.string().max(200).optional(),
-  // blank = purana rakho
-  smtpFrom: z12.string().email().max(150).optional().or(z12.literal("")),
-  smtpSecure: z12.boolean().optional(),
-  // AI assistant config (Phase 7) — UI se, env ke bajaye
-  aiProvider: z12.enum(["openai", "gemini", "ollama", ""]).optional(),
-  aiApiKey: z12.string().max(200).optional(),
-  // blank = purana rakho
-  aiBaseUrl: z12.string().max(200).optional().or(z12.literal("")),
-  aiModel: z12.string().max(100).optional(),
-  supportTicketMediaRetentionDays: z12.number().int().min(1).max(3650).optional(),
-  chatHistoryRetentionDays: z12.number().int().min(1).max(3650).optional(),
-  deviceTelemetryRetentionDays: z12.number().int().min(1).max(3650).optional()
-}).refine((d) => Object.keys(d).length > 0, { message: "At least one field to update" });
-adminRouter.get("/settings", async (_req, res) => {
+}
+async function getSettings(_req, res) {
   const s = await getSiteSettings();
   ok(res, {
     ...s,
@@ -6740,12 +6820,13 @@ adminRouter.get("/settings", async (_req, res) => {
     aiApiKey: s.aiApiKey ? "********" : "",
     aiApiKeySet: !!s.aiApiKey
   });
-});
-adminRouter.put("/settings", validateBody(settingsSchema), async (req, res) => {
-  ok(res, await updateSiteSettings(req.body));
+}
+async function putSettings(req, res) {
+  const updated = await updateSiteSettings(req.body);
   void audit(req.user.sub, "settings.update", { entity: "site", meta: { fields: Object.keys(req.body) } });
-});
-adminRouter.post("/settings/test-email", async (req, res) => {
+  ok(res, updated);
+}
+async function testSmtpEmail(req, res) {
   const me2 = await prisma.user.findUnique({
     where: { id: req.user.sub },
     select: { email: true, username: true }
@@ -6765,8 +6846,8 @@ adminRouter.post("/settings/test-email", async (req, res) => {
     throw new AppError("SMTP_ERROR", `Email fail: ${r.error ?? "unknown"}`, 500);
   }
   ok(res, { sent: true });
-});
-adminRouter.post("/settings/ai-test", async (_req, res) => {
+}
+async function testAiConnection(_req, res) {
   if (!await aiConfigured()) {
     throw new AppError("CONFIG_ERROR", "AI configured nahi hai \u2014 Settings me provider + model + API key daalo aur Save karo", 400);
   }
@@ -6783,8 +6864,8 @@ adminRouter.post("/settings/ai-test", async (_req, res) => {
     const msg = err instanceof Error ? err.message : String(err);
     throw new AppError("AI_ERROR", `AI call fail: ${msg}`, 502);
   }
-});
-adminRouter.get("/users", async (req, res) => {
+}
+async function getUsers(req, res) {
   const q = String(req.query.q ?? "").trim();
   const users = await prisma.user.findMany({
     select: {
@@ -6807,10 +6888,7 @@ adminRouter.get("/users", async (req, res) => {
       }
     },
     where: q ? {
-      OR: [
-        { username: { contains: q } },
-        { email: { contains: q } }
-      ]
+      OR: [{ username: { contains: q } }, { email: { contains: q } }]
     } : void 0,
     orderBy: { createdAt: "desc" },
     take: 200
@@ -6850,8 +6928,8 @@ adminRouter.get("/users", async (req, res) => {
       usageMinutes: usageByUser.get(u.id) ?? 0
     }))
   );
-});
-adminRouter.get("/users/:id", async (req, res) => {
+}
+async function getUserById(req, res) {
   const id = Number(req.params.id);
   const user = await prisma.user.findUnique({
     where: { id },
@@ -6924,7 +7002,46 @@ adminRouter.get("/users/:id", async (req, res) => {
     boards,
     usageMinutes: usageAgg._sum.onMinutes ?? 0
   });
-});
+}
+
+// src/routes/admin.routes.ts
+var adminRouter = Router11();
+function requireAdmin(req, _res, next) {
+  if (req.user?.role !== "system_admin") {
+    return next(new AppError("FORBIDDEN", "Admin access required", 403));
+  }
+  next();
+}
+adminRouter.use(requireAuth, requireAdmin);
+var settingsSchema = z12.object({
+  siteName: z12.string().min(1).max(60).optional(),
+  supportEmail: z12.string().email().max(100).optional(),
+  supportPhone: z12.string().min(1).max(30).optional(),
+  supportAddress: z12.string().min(1).max(200).optional(),
+  supportHours: z12.string().min(1).max(100).optional(),
+  brandColor: z12.string().regex(/^#[0-9a-fA-F]{6}$/, "Hex color (#RRGGBB)").optional(),
+  siteUrl: z12.string().url().max(200).optional().or(z12.literal("")),
+  smtpHost: z12.string().max(150).optional(),
+  smtpPort: z12.number().int().min(1).max(65535).optional(),
+  smtpUser: z12.string().max(150).optional(),
+  smtpPass: z12.string().max(200).optional(),
+  smtpFrom: z12.string().email().max(150).optional().or(z12.literal("")),
+  smtpSecure: z12.boolean().optional(),
+  aiProvider: z12.enum(["openai", "gemini", "ollama", ""]).optional(),
+  aiApiKey: z12.string().max(200).optional(),
+  aiBaseUrl: z12.string().max(200).optional().or(z12.literal("")),
+  aiModel: z12.string().max(100).optional(),
+  supportTicketMediaRetentionDays: z12.number().int().min(1).max(3650).optional(),
+  chatHistoryRetentionDays: z12.number().int().min(1).max(3650).optional(),
+  deviceTelemetryRetentionDays: z12.number().int().min(1).max(3650).optional()
+}).refine((d) => Object.keys(d).length > 0, { message: "At least one field to update" });
+adminRouter.get("/stats", getStats);
+adminRouter.get("/settings", getSettings);
+adminRouter.put("/settings", validateBody(settingsSchema), putSettings);
+adminRouter.post("/settings/test-email", testSmtpEmail);
+adminRouter.post("/settings/ai-test", testAiConnection);
+adminRouter.get("/users", getUsers);
+adminRouter.get("/users/:id", getUserById);
 var createUserSchema = z12.object({
   username: z12.string().min(3).max(50),
   email: z12.string().email().max(100),
@@ -9033,10 +9150,105 @@ adminRouter.post("/reset", validateBody(resetSchema), async (req, res) => {
     message: mode === "factory" ? "Factory reset ho gaya \u2014 ab install wizard se fresh setup karo" : "Data reset ho gaya \u2014 admin + catalog rahe, baaki sab clear"
   });
 });
+var apkDir = webPublicMobileAppDir;
+try {
+  fs9.mkdirSync(apkDir, { recursive: true });
+} catch (e) {
+}
+var apkUpload = multer2({
+  storage: multer2.diskStorage({
+    destination: (_req, _file, cb) => cb(null, apkDir),
+    filename: (_req, file, cb) => {
+      cb(null, `upload_${Date.now()}_${file.originalname}`);
+    }
+  }),
+  limits: { fileSize: 300 * 1024 * 1024 }
+  // 300 MB limit for APK files
+});
+adminRouter.get("/apk/status", async (_req, res) => {
+  try {
+    const settings = await getSiteSettings();
+    const candidatePaths2 = [
+      path9.join(webPublicMobileAppDir, "SwitchNest_Latest.apk"),
+      path9.join(mobileAppDir, "SwitchNest_Latest.apk")
+    ];
+    let fileInfo = { exists: false, sizeMb: "0", modifiedAt: null };
+    for (const targetPath of candidatePaths2) {
+      if (fs9.existsSync(targetPath)) {
+        const stats = fs9.statSync(targetPath);
+        fileInfo = {
+          exists: true,
+          sizeMb: (stats.size / (1024 * 1024)).toFixed(1),
+          modifiedAt: stats.mtime.toISOString()
+        };
+        break;
+      }
+    }
+    ok(res, {
+      version: settings.mobileAppVersion || "1.0.11",
+      minVersion: settings.mobileAppMinVersion || "1.0.0",
+      releaseNotes: settings.mobileAppReleaseNotes || "",
+      updateMessage: settings.mobileAppUpdateMessage || "",
+      isMandatory: settings.mobileAppIsMandatory === true,
+      fileInfo
+    });
+  } catch (e) {
+    res.status(500).json({ success: false, error: { message: e.message || "Failed to fetch APK status" } });
+  }
+});
+adminRouter.post("/apk/upload", apkUpload.single("apkFile"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: { message: "No APK file provided in request." } });
+    }
+    const { version, releaseNotes, updateMessage, isMandatory, minVersion } = req.body;
+    const cleanVersion = (version || "1.0.11").trim();
+    const uploadedPath = req.file.path;
+    const latestApkPath = path9.join(webPublicMobileAppDir, "SwitchNest_Latest.apk");
+    const versionedApkPath = path9.join(webPublicMobileAppDir, `SwitchNest_v${cleanVersion}.apk`);
+    fs9.copyFileSync(uploadedPath, latestApkPath);
+    fs9.copyFileSync(uploadedPath, versionedApkPath);
+    if (fs9.existsSync(mobileAppDir)) {
+      try {
+        fs9.copyFileSync(uploadedPath, path9.join(mobileAppDir, "SwitchNest_Latest.apk"));
+        fs9.copyFileSync(uploadedPath, path9.join(mobileAppDir, `SwitchNest_v${cleanVersion}.apk`));
+      } catch (e) {
+        console.warn("[apk-upload] mobileAppDir copy warning:", e);
+      }
+    }
+    try {
+      fs9.unlinkSync(uploadedPath);
+    } catch {
+    }
+    const updatedSettings = await updateSiteSettings({
+      mobileAppVersion: cleanVersion,
+      mobileAppMinVersion: minVersion || "1.0.0",
+      mobileAppReleaseNotes: releaseNotes || "",
+      mobileAppUpdateMessage: updateMessage || `New SwitchNest v${cleanVersion} is ready!`,
+      mobileAppIsMandatory: isMandatory === "true" || isMandatory === true
+    });
+    const stats = fs9.statSync(latestApkPath);
+    await audit(req.user.sub, "admin.apk_upload", {
+      entity: "mobile_app",
+      meta: { version: cleanVersion, sizeMb: (stats.size / (1024 * 1024)).toFixed(1) }
+    });
+    ok(res, {
+      message: `Successfully published Mobile APK v${cleanVersion}`,
+      version: updatedSettings.mobileAppVersion,
+      sizeMb: (stats.size / (1024 * 1024)).toFixed(1),
+      modifiedAt: stats.mtime.toISOString()
+    });
+  } catch (e) {
+    console.error("[apk-upload] Error processing APK upload:", e);
+    res.status(500).json({ success: false, error: { message: e.message || "Failed to upload APK file" } });
+  }
+});
 
 // src/routes/shop.routes.ts
 import { Router as Router12 } from "express";
 import multer3 from "multer";
+
+// src/controllers/shop.controller.ts
 init_prisma();
 init_audit_service();
 
@@ -9065,18 +9277,12 @@ function verifyRazorpayWebhook(rawBody, signature) {
   return expected === signature;
 }
 
-// src/routes/shop.routes.ts
+// src/controllers/shop.controller.ts
 import { exec } from "child_process";
 import { promisify } from "util";
 import os4 from "os";
 var execAsync = promisify(exec);
-var shopRouter = Router12();
-var storage2 = multer3.diskStorage({
-  destination: (_req, _file, cb) => cb(null, "uploads/"),
-  filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname.replace(/[^a-zA-Z0-9.-]/g, "_"))
-});
-var upload3 = multer3({ storage: storage2, limits: { fileSize: 50 * 1024 * 1024 } });
-shopRouter.get("/products", async (_req, res) => {
+async function getProducts(_req, res) {
   try {
     const products = await prisma.product.findMany({
       where: { active: true },
@@ -9091,20 +9297,20 @@ shopRouter.get("/products", async (_req, res) => {
     });
     ok(res, products.map((p) => ({ ...p, media: [] })));
   }
-});
-shopRouter.post("/upload", requireAuth, upload3.single("file"), (req, res) => {
+}
+async function uploadMedia(req, res) {
   if (!req.file) throw new AppError("BAD_REQUEST", "No file uploaded");
   ok(res, { url: `/uploads/${req.file.filename}` });
-});
-shopRouter.get("/products/:id/reviews", async (req, res) => {
+}
+async function getProductReviews(req, res) {
   const reviews = await prisma.productReview.findMany({
     where: { productId: Number(req.params.id) },
     include: { user: { select: { username: true, avatarUrl: true } }, media: true },
     orderBy: { createdAt: "desc" }
   });
   ok(res, reviews);
-});
-shopRouter.post("/products/:id/reviews", requireAuth, async (req, res) => {
+}
+async function addProductReview(req, res) {
   const productId = Number(req.params.id);
   const { rating, comment, mediaUrls } = req.body;
   if (!rating || rating < 1 || rating > 5) throw new AppError("BAD_REQUEST", "Valid rating (1-5) required");
@@ -9118,7 +9324,10 @@ shopRouter.post("/products/:id/reviews", requireAuth, async (req, res) => {
         rating,
         comment,
         media: {
-          create: (mediaUrls || []).map((url) => ({ url, type: url.match(/\.(mp4|mov|webm)$/i) ? "video" : "image" }))
+          create: (mediaUrls || []).map((url) => ({
+            url,
+            type: url.match(/\.(mp4|mov|webm)$/i) ? "video" : "image"
+          }))
         }
       },
       include: { media: true, user: { select: { username: true } } }
@@ -9133,8 +9342,8 @@ shopRouter.post("/products/:id/reviews", requireAuth, async (req, res) => {
     return rev;
   });
   ok(res, review, 201);
-});
-shopRouter.post("/orders", requireAuth, async (req, res) => {
+}
+async function createShopOrder(req, res) {
   const { items, shipping, wifi, paymentMethod } = req.body ?? {};
   if (!Array.isArray(items) || !items.length) {
     throw new AppError("BAD_REQUEST", "Cart is empty");
@@ -9166,8 +9375,8 @@ shopRouter.post("/orders", requireAuth, async (req, res) => {
     meta: { orderNumber: order.orderNumber, total: Number(order.totalAmount) }
   });
   ok(res, order, 201);
-});
-shopRouter.get("/orders", requireAuth, async (req, res) => {
+}
+async function getShopOrders(req, res) {
   const orders = await prisma.order.findMany({
     where: { userId: req.user.sub },
     include: { items: true },
@@ -9194,8 +9403,8 @@ shopRouter.get("/orders", requireAuth, async (req, res) => {
       };
     })
   );
-});
-shopRouter.get("/orders/:id/stickers", requireAuth, async (req, res) => {
+}
+async function getOrderStickers(req, res) {
   const id = Number(req.params.id);
   const order = await prisma.order.findUnique({
     where: { id },
@@ -9219,8 +9428,8 @@ shopRouter.get("/orders/:id/stickers", requireAuth, async (req, res) => {
     orderTotal: serials.length
   }));
   ok(res, { orderId: id, orderNumber: order.orderNumber, status: order.status, serials: enriched });
-});
-shopRouter.post("/orders/:id/cancel", requireAuth, async (req, res) => {
+}
+async function cancelShopOrder(req, res) {
   const id = Number(req.params.id);
   const order = await prisma.order.findUnique({ where: { id } });
   if (!order || order.userId !== req.user.sub) {
@@ -9232,8 +9441,8 @@ shopRouter.post("/orders/:id/cancel", requireAuth, async (req, res) => {
   await updateOrderStatus(id, "cancelled");
   await audit(req.user.sub, "shop.order.cancel", { entity: "order", entityId: id });
   ok(res, { cancelled: true });
-});
-shopRouter.post("/orders/:id/pay", requireAuth, async (req, res) => {
+}
+async function initiatePayment(req, res) {
   const id = Number(req.params.id);
   console.log(`[BACKEND PAYMENT DEBUG] Initiate payment requested for Order ID: ${id}`);
   const order = await prisma.order.findUnique({ where: { id } });
@@ -9267,8 +9476,8 @@ shopRouter.post("/orders/:id/pay", requireAuth, async (req, res) => {
     });
     ok(res, { mode: "demo", upiIntent, amount: Number(order.totalAmount), note: "Demo mode \u2014 UPI app se pay karke 'Paid' verify karo" });
   }
-});
-shopRouter.post("/orders/:id/pay/verify", requireAuth, async (req, res) => {
+}
+async function verifyPayment(req, res) {
   const id = Number(req.params.id);
   const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body ?? {};
   if (!razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
@@ -9288,8 +9497,8 @@ shopRouter.post("/orders/:id/pay/verify", requireAuth, async (req, res) => {
   const updatedOrder = await updateOrderStatus(id, "processing");
   await audit(req.user.sub, "shop.payment.verified", { entity: "order", entityId: id, meta: { paymentId: razorpayPaymentId } });
   ok(res, { paid: true, status: "processing", paymentRef: razorpayPaymentId });
-});
-shopRouter.post("/orders/:id/pay/demo", requireAuth, async (req, res) => {
+}
+async function demoPayment(req, res) {
   const id = Number(req.params.id);
   const order = await prisma.order.findUnique({ where: { id } });
   if (!order || order.userId !== req.user.sub) {
@@ -9309,8 +9518,8 @@ shopRouter.post("/orders/:id/pay/demo", requireAuth, async (req, res) => {
   const updatedOrder = await updateOrderStatus(id, "processing");
   await audit(req.user.sub, "shop.payment.demo", { entity: "order", entityId: id, meta: { ref, total: Number(order.totalAmount) } });
   ok(res, { paid: true, status: updatedOrder.status, paymentRef: ref });
-});
-shopRouter.get("/wifi/current", requireAuth, async (req, res) => {
+}
+async function getCurrentWifi(req, res) {
   const platform = os4.platform();
   try {
     let ssid = null;
@@ -9331,25 +9540,34 @@ shopRouter.get("/wifi/current", requireAuth, async (req, res) => {
     console.error("Failed to query WiFi interface:", err);
     ok(res, { ssid: null });
   }
+}
+
+// src/routes/shop.routes.ts
+var shopRouter = Router12();
+var storage2 = multer3.diskStorage({
+  destination: (_req, _file, cb) => cb(null, "uploads/"),
+  filename: (_req, file, cb) => cb(null, Date.now() + "-" + file.originalname.replace(/[^a-zA-Z0-9.-]/g, "_"))
 });
+var upload3 = multer3({ storage: storage2, limits: { fileSize: 50 * 1024 * 1024 } });
+shopRouter.get("/products", getProducts);
+shopRouter.get("/products/:id/reviews", getProductReviews);
+shopRouter.post("/upload", requireAuth, upload3.single("file"), uploadMedia);
+shopRouter.post("/products/:id/reviews", requireAuth, addProductReview);
+shopRouter.post("/orders", requireAuth, createShopOrder);
+shopRouter.get("/orders", requireAuth, getShopOrders);
+shopRouter.get("/orders/:id/stickers", requireAuth, getOrderStickers);
+shopRouter.post("/orders/:id/cancel", requireAuth, cancelShopOrder);
+shopRouter.post("/orders/:id/pay", requireAuth, initiatePayment);
+shopRouter.post("/orders/:id/pay/verify", requireAuth, verifyPayment);
+shopRouter.post("/orders/:id/pay/demo", requireAuth, demoPayment);
+shopRouter.get("/wifi/current", requireAuth, getCurrentWifi);
 
 // src/routes/claim.routes.ts
 import { Router as Router13 } from "express";
+
+// src/controllers/claim.controller.ts
 init_prisma();
 init_audit_service();
-var claimRouter = Router13();
-var claimLimiter = rateLimit({
-  name: "claim:create",
-  windowMs: 60 * 6e4,
-  max: 20,
-  message: "Bahut zyada claim attempts \u2014 1 ghanta baad try karo"
-});
-var claimHomesLimiter = rateLimit({
-  name: "claim:homes",
-  windowMs: 6e4,
-  max: 60
-});
-claimRouter.use(requireAuth);
 var TYPE_BY_MODEL = {
   "2CH": "custom",
   "4CH": "custom",
@@ -9371,11 +9589,11 @@ async function claimableHomes(userId) {
     include: { home: { select: { id: true, name: true } } }
   });
 }
-claimRouter.get("/homes", claimHomesLimiter, async (req, res) => {
+async function getClaimableHomes(req, res) {
   const homes = await claimableHomes(req.user.sub);
   ok(res, homes.map((h) => h.home));
-});
-claimRouter.post("/", claimLimiter, async (req, res) => {
+}
+async function claimDevice(req, res) {
   const serialCode = String(req.body?.serialCode ?? "").trim().toUpperCase();
   const homeId = Number(req.body?.homeId);
   if (!serialCode) throw new AppError("BAD_REQUEST", "Serial code is required");
@@ -9458,32 +9676,32 @@ claimRouter.post("/", claimLimiter, async (req, res) => {
     serialCode,
     homeId
   }, 201);
-});
+}
 
-// src/routes/warranty.routes.ts
-import { Router as Router14 } from "express";
-init_prisma();
-init_notification_service();
-var warrantyRouter = Router14();
-var statusLimiter = rateLimit({
-  name: "warranty:status",
-  windowMs: 6e4,
-  max: 30,
-  message: "Bahut zyada serial checks \u2014 thodi der baad try karo"
-});
-var claimLimiter2 = rateLimit({
-  name: "warranty:claim",
+// src/routes/claim.routes.ts
+var claimRouter = Router13();
+var claimLimiter = rateLimit({
+  name: "claim:create",
   windowMs: 60 * 6e4,
-  max: 10,
+  max: 20,
   message: "Bahut zyada claim attempts \u2014 1 ghanta baad try karo"
 });
-var mineLimiter = rateLimit({
-  name: "warranty:mine",
+var claimHomesLimiter = rateLimit({
+  name: "claim:homes",
   windowMs: 6e4,
   max: 60
 });
-warrantyRouter.use(requireAuth);
-warrantyRouter.get("/status", statusLimiter, async (req, res) => {
+claimRouter.use(requireAuth);
+claimRouter.get("/homes", claimHomesLimiter, getClaimableHomes);
+claimRouter.post("/", claimLimiter, claimDevice);
+
+// src/routes/warranty.routes.ts
+import { Router as Router14 } from "express";
+
+// src/controllers/warranty.controller.ts
+init_prisma();
+init_notification_service();
+async function getWarrantyStatus(req, res) {
   const code = String(req.query.serial ?? "").trim().toUpperCase();
   if (!code) throw new AppError("BAD_REQUEST", "serial query required");
   const serial = await prisma.serialRegistry.findUnique({
@@ -9502,8 +9720,8 @@ warrantyRouter.get("/status", statusLimiter, async (req, res) => {
     warrantyExpiresAt: serial.warrantyExpiresAt,
     claimedAt: serial.claimedAt
   });
-});
-warrantyRouter.post("/", claimLimiter2, async (req, res) => {
+}
+async function fileWarrantyClaim(req, res) {
   const serialCode = String(req.body?.serialCode ?? "").trim().toUpperCase();
   const reason = String(req.body?.reason ?? "").trim();
   const description = String(req.body?.description ?? "").trim() || void 0;
@@ -9564,8 +9782,8 @@ warrantyRouter.post("/", claimLimiter2, async (req, res) => {
     status: claim.status,
     createdAt: claim.createdAt
   }, 201);
-});
-warrantyRouter.get("/mine", mineLimiter, async (req, res) => {
+}
+async function getMyWarranty(req, res) {
   const [claims, serials] = await Promise.all([
     prisma.warrantyClaim.findMany({
       where: { userId: req.user.sub },
@@ -9579,59 +9797,58 @@ warrantyRouter.get("/mine", mineLimiter, async (req, res) => {
     })
   ]);
   ok(res, { claims, serials });
+}
+
+// src/routes/warranty.routes.ts
+var warrantyRouter = Router14();
+var statusLimiter = rateLimit({
+  name: "warranty:status",
+  windowMs: 6e4,
+  max: 30,
+  message: "Bahut zyada serial checks \u2014 thodi der baad try karo"
 });
+var claimLimiter2 = rateLimit({
+  name: "warranty:claim",
+  windowMs: 60 * 6e4,
+  max: 10,
+  message: "Bahut zyada claim attempts \u2014 1 ghanta baad try karo"
+});
+var mineLimiter = rateLimit({
+  name: "warranty:mine",
+  windowMs: 6e4,
+  max: 60
+});
+warrantyRouter.use(requireAuth);
+warrantyRouter.get("/status", statusLimiter, getWarrantyStatus);
+warrantyRouter.post("/", claimLimiter2, fileWarrantyClaim);
+warrantyRouter.get("/mine", mineLimiter, getMyWarranty);
 
 // src/routes/public.routes.ts
-init_prisma();
 import { Router as Router15 } from "express";
-init_audit_service();
-init_siteSettings_service();
+
+// src/controllers/public.controller.ts
+init_prisma();
 import path10 from "path";
 import fs10 from "fs";
-var publicRouter = Router15();
-publicRouter.get("/apk", (req, res) => {
+init_audit_service();
+init_siteSettings_service();
+async function getLanIp(_req, res) {
+  try {
+    const ip = await detectLanIp();
+    res.json({ success: true, ip });
+  } catch {
+    res.json({ success: true, ip: "127.0.0.1" });
+  }
+}
+function downloadApk(_req, res) {
   const apkPath = path10.resolve(process.cwd(), "../mobile/android/app/build/outputs/apk/debug/app-debug.apk");
   if (fs10.existsSync(apkPath)) {
     res.download(apkPath, "SwitchNest.apk");
   } else {
     res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "APK not built yet." } });
   }
-});
-var assistantLimiter = rateLimit({
-  name: "public:assistant",
-  windowMs: 6e4,
-  max: 20,
-  message: "Bahut zyada messages \u2014 thodi der baad try karo"
-});
-var adminAssistantLimiter = rateLimit({
-  name: "public:assistant-admin",
-  windowMs: 6e4,
-  max: 30,
-  message: "Bahut zyada messages \u2014 thodi der baad try karo"
-});
-var contactLimiter = rateLimit({
-  name: "public:contact",
-  windowMs: 60 * 6e4,
-  max: 5,
-  message: "Bahut zyada contact messages \u2014 1 ghanta baad try karo"
-});
-var supportFormLimiter = rateLimit({
-  name: "public:support-form",
-  windowMs: 60 * 6e4,
-  max: 10,
-  message: "Bahut zyada support messages \u2014 1 ghanta baad try karo"
-});
-var siteSettingsLimiter = rateLimit({
-  name: "public:site-settings",
-  windowMs: 6e4,
-  max: 120
-});
-var mySupportLimiter = rateLimit({
-  name: "public:my-support",
-  windowMs: 6e4,
-  max: 60
-});
-publicRouter.get("/site-settings", siteSettingsLimiter, async (_req, res) => {
+}
+async function getSiteSettings2(_req, res) {
   try {
     const settings = await getPublicSiteSettings();
     ok(res, settings);
@@ -9645,17 +9862,12 @@ publicRouter.get("/site-settings", siteSettingsLimiter, async (_req, res) => {
       brandColor: "#0284c7"
     });
   }
-});
-var verifyBillLimiter = rateLimit({
-  name: "public:verify-bill",
-  windowMs: 6e4,
-  max: 120,
-  message: "Bahut zyada verify requests \u2014 thodi der baad try karo"
-});
-publicRouter.get("/verify/bill/:token", verifyBillLimiter, async (req, res) => {
+}
+async function verifyBill(req, res) {
   const payload = verifyBillToken(typeof req.params.token === "string" ? req.params.token : "");
   if (!payload) {
-    return ok(res, { verified: false, reason: "invalid_token" });
+    ok(res, { verified: false, reason: "invalid_token" });
+    return;
   }
   const order = await prisma.order.findUnique({
     where: { id: payload.orderId },
@@ -9668,7 +9880,10 @@ publicRouter.get("/verify/bill/:token", verifyBillLimiter, async (req, res) => {
       }
     }
   });
-  if (!order) return ok(res, { verified: false, reason: "not_found" });
+  if (!order) {
+    ok(res, { verified: false, reason: "not_found" });
+    return;
+  }
   const items = order.items.map((i) => ({
     productName: i.productName,
     quantity: i.quantity,
@@ -9695,7 +9910,7 @@ publicRouter.get("/verify/bill/:token", verifyBillLimiter, async (req, res) => {
     items,
     serials
   });
-});
+}
 var CHIPS = [
   "Kis board ki zaroorat hai?",
   "Site kaise kaam karti hai?",
@@ -9801,31 +10016,6 @@ function detectNeed(text, products) {
   }
   return null;
 }
-publicRouter.post("/assistant", assistantLimiter, optionalAuth, async (req, res) => {
-  const text = String(req.body?.message ?? "").trim();
-  if (!text) return ok(res, { reply: "Kuch likho \u2014 e.g. '4 lights control karne hain' ya 'dimmer chahiye'.", chips: CHIPS });
-  if (req.user?.role === "system_admin") {
-    return ok(res, await adminAssistantReply(text));
-  }
-  const products = await prisma.product.findMany({
-    where: { active: true },
-    select: { id: true, name: true, modelCode: true, relayCount: true, price: true },
-    orderBy: { id: "asc" }
-  });
-  const need = detectNeed(text, products);
-  if (need) return ok(res, { ...need, chips: CHIPS });
-  for (const faq of FAQ) {
-    if (faq.test.test(text)) {
-      return ok(res, { reply: faq.reply, products: [], chips: faq.chips ?? CHIPS });
-    }
-  }
-  const picks = products.slice(0, 6).map((p) => ({ ...p, price: p.price.toString(), reason: "Sabse popular boards" }));
-  return ok(res, {
-    reply: "Poora clear nahi hua \u{1F642} \u2014 yeh rahe hamare boards, ya mujhe batao: kitne lights/fans? dimmer chahiye? IR remote se control karna hai? Main sahi board suggest kar dunga.",
-    products: picks,
-    chips: CHIPS
-  });
-});
 var ADMIN_CHIPS = [
   "Kitne users online hain?",
   "Overview stats kaise dekhein?",
@@ -9902,9 +10092,7 @@ async function adminLiveStats() {
   ] = await Promise.all([
     prisma.user.count(),
     Promise.resolve(0),
-    // lastLoginAt column not yet on production DB
     Promise.resolve(0),
-    // lastLoginAt column not yet on production DB
     prisma.home.count(),
     prisma.device.count(),
     prisma.device.count({ where: { lastSeen: { gte: dayAgo } } }),
@@ -9980,41 +10168,89 @@ async function adminAssistantReply(text) {
     chips: ADMIN_CHIPS
   };
 }
-publicRouter.post("/assistant/admin", adminAssistantLimiter, requireAuth, async (req, res) => {
+async function publicAssistant(req, res) {
+  const text = String(req.body?.message ?? "").trim();
+  if (!text) {
+    ok(res, { reply: "Kuch likho \u2014 e.g. '4 lights control karne hain' ya 'dimmer chahiye'.", chips: CHIPS });
+    return;
+  }
+  if (req.user?.role === "system_admin") {
+    ok(res, await adminAssistantReply(text));
+    return;
+  }
+  const products = await prisma.product.findMany({
+    where: { active: true },
+    select: { id: true, name: true, modelCode: true, relayCount: true, price: true },
+    orderBy: { id: "asc" }
+  });
+  const need = detectNeed(text, products);
+  if (need) {
+    ok(res, { ...need, chips: CHIPS });
+    return;
+  }
+  for (const faq of FAQ) {
+    if (faq.test.test(text)) {
+      ok(res, { reply: faq.reply, products: [], chips: faq.chips ?? CHIPS });
+      return;
+    }
+  }
+  const picks = products.slice(0, 6).map((p) => ({ ...p, price: p.price.toString(), reason: "Sabse popular boards" }));
+  ok(res, {
+    reply: "Poora clear nahi hua \u{1F642} \u2014 yeh rahe hamare boards, ya mujhe batao: kitne lights/fans? dimmer chahiye? IR remote se control karna hai? Main sahi board suggest kar dunga.",
+    products: picks,
+    chips: CHIPS
+  });
+}
+async function adminAssistant(req, res) {
   if (req.user.role !== "system_admin") {
     throw new AppError("FORBIDDEN", "Admin access required", 403);
   }
-  return ok(res, await adminAssistantReply(String(req.body?.message ?? "").trim()));
-});
-publicRouter.post("/contact", contactLimiter, async (req, res) => {
+  ok(res, await adminAssistantReply(String(req.body?.message ?? "").trim()));
+}
+async function postContactForm(req, res) {
   const name = String(req.body?.name ?? "").trim().slice(0, 100);
   const email = String(req.body?.email ?? "").trim().slice(0, 120) || null;
   const phone = String(req.body?.phone ?? "").trim().slice(0, 20) || null;
   const subject = String(req.body?.subject ?? "Feedback").trim().slice(0, 150);
   const message = String(req.body?.message ?? "").trim();
-  if (!name) return ok(res, { error: "Name required" }, 400);
-  if (!message) return ok(res, { error: "Message required" }, 400);
-  if (message.length > 4e3) return ok(res, { error: "Message 4000 chars se kam rakho" }, 400);
+  if (!name) {
+    ok(res, { error: "Name required" }, 400);
+    return;
+  }
+  if (!message) {
+    ok(res, { error: "Message required" }, 400);
+    return;
+  }
+  if (message.length > 4e3) {
+    ok(res, { error: "Message 4000 chars se kam rakho" }, 400);
+    return;
+  }
   const created = await prisma.contactMessage.create({
     data: { name, email, phone, subject, message }
   });
   ok(res, { id: created.id, status: created.status }, 201);
-});
-publicRouter.get("/support/my", mySupportLimiter, requireAuth, async (req, res) => {
+}
+async function getMySupport(req, res) {
   const msgs = await prisma.contactMessage.findMany({
     where: { userId: req.user.sub },
     orderBy: { createdAt: "desc" },
     take: 30
   });
   ok(res, msgs);
-});
-publicRouter.post("/support", supportFormLimiter, requireAuth, async (req, res) => {
+}
+async function postSupportMessage(req, res) {
   const subject = String(req.body?.subject ?? "Support").trim().slice(0, 150);
   const message = String(req.body?.message ?? "").trim();
   const phone = String(req.body?.phone ?? "").trim().slice(0, 20) || null;
   const orderNumber = String(req.body?.orderNumber ?? "").trim().slice(0, 50) || null;
-  if (!message) return ok(res, { error: "Message required" }, 400);
-  if (message.length > 4e3) return ok(res, { error: "Message 4000 chars se kam rakho" }, 400);
+  if (!message) {
+    ok(res, { error: "Message required" }, 400);
+    return;
+  }
+  if (message.length > 4e3) {
+    ok(res, { error: "Message 4000 chars se kam rakho" }, 400);
+    return;
+  }
   const user = await prisma.user.findUnique({
     where: { id: req.user.sub },
     select: { id: true, username: true, email: true }
@@ -10035,13 +10271,70 @@ publicRouter.post("/support", supportFormLimiter, requireAuth, async (req, res) 
     meta: { subject }
   });
   ok(res, { id: created.id, status: created.status }, 201);
+}
+
+// src/routes/public.routes.ts
+var publicRouter = Router15();
+var assistantLimiter = rateLimit({
+  name: "public:assistant",
+  windowMs: 6e4,
+  max: 20,
+  message: "Bahut zyada messages \u2014 thodi der baad try karo"
 });
+var adminAssistantLimiter = rateLimit({
+  name: "public:assistant-admin",
+  windowMs: 6e4,
+  max: 30,
+  message: "Bahut zyada messages \u2014 thodi der baad try karo"
+});
+var contactLimiter = rateLimit({
+  name: "public:contact",
+  windowMs: 60 * 6e4,
+  max: 5,
+  message: "Bahut zyada contact messages \u2014 1 ghanta baad try karo"
+});
+var supportFormLimiter = rateLimit({
+  name: "public:support-form",
+  windowMs: 60 * 6e4,
+  max: 10,
+  message: "Bahut zyada support messages \u2014 1 ghanta baad try karo"
+});
+var siteSettingsLimiter = rateLimit({
+  name: "public:site-settings",
+  windowMs: 6e4,
+  max: 120
+});
+var mySupportLimiter = rateLimit({
+  name: "public:my-support",
+  windowMs: 6e4,
+  max: 60
+});
+var verifyBillLimiter = rateLimit({
+  name: "public:verify-bill",
+  windowMs: 6e4,
+  max: 120,
+  message: "Bahut zyada verify requests \u2014 thodi der baad try karo"
+});
+publicRouter.get("/lan-ip", getLanIp);
+publicRouter.get("/apk", downloadApk);
+publicRouter.get("/site-settings", siteSettingsLimiter, getSiteSettings2);
+publicRouter.get("/verify/bill/:token", verifyBillLimiter, verifyBill);
+publicRouter.post("/assistant", assistantLimiter, optionalAuth, publicAssistant);
+publicRouter.post("/assistant/admin", adminAssistantLimiter, requireAuth, adminAssistant);
+publicRouter.post("/contact", contactLimiter, postContactForm);
+publicRouter.get("/support/my", mySupportLimiter, requireAuth, getMySupport);
+publicRouter.post("/support", supportFormLimiter, requireAuth, postSupportMessage);
 
 // src/routes/support.routes.ts
 import { Router as Router16 } from "express";
 import { z as z13 } from "zod";
-import jwt4 from "jsonwebtoken";
+import multer4 from "multer";
+import path12 from "path";
+import fs12 from "fs";
+
+// src/controllers/support.controller.ts
 init_prisma();
+import jwt4 from "jsonwebtoken";
 init_notification_service();
 init_socket();
 
@@ -10087,70 +10380,9 @@ function deleteAttachmentFile(filename) {
   }
 }
 
-// src/routes/support.routes.ts
+// src/controllers/support.controller.ts
 init_email_service();
 init_env();
-import multer4 from "multer";
-import path12 from "path";
-import fs12 from "fs";
-var supportRouter = Router16();
-try {
-  if (!fs12.existsSync(attachmentDir)) {
-    fs12.mkdirSync(attachmentDir, { recursive: true });
-  }
-} catch (e) {
-}
-var storage3 = multer4.diskStorage({
-  destination: (_req, _file, cb) => cb(null, attachmentDir),
-  filename: (req, file, cb) => {
-    const ext = path12.extname(file.originalname) || "";
-    const safeName = path12.basename(file.originalname, ext).replace(/[^a-zA-Z0-9_-]/g, "");
-    cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}-${safeName}${ext}`);
-  }
-});
-var upload4 = multer4({
-  storage: storage3,
-  limits: { fileSize: 50 * 1024 * 1024 }
-  // 50MB
-});
-var userSendLimiter = rateLimit({
-  name: "support:user-send",
-  windowMs: 6e4,
-  max: 10,
-  message: "Bahut fast messages bhej rahe ho \u2014 thodi der ruk kar bhejo"
-});
-var adminSendLimiter = rateLimit({
-  name: "support:admin-send",
-  windowMs: 6e4,
-  max: 30,
-  message: "Bahut fast messages bhej rahe ho \u2014 thodi der ruk kar bhejo"
-});
-var MAX_ATTACHMENT_BYTES = 2 * 1024 * 1024;
-var ALLOWED_TYPES = /^(image\/(png|jpe?g|gif|webp|heic)|application\/pdf|text\/plain)$/;
-var attachmentFields = {
-  attachmentName: z13.string().trim().min(1).max(255).optional(),
-  attachmentType: z13.string().trim().min(1).max(100).optional(),
-  attachmentData: z13.string().min(1).optional()
-};
-function refineAttachment(d, ctx) {
-  const hasAny = d.attachmentName != null || d.attachmentType != null || d.attachmentData != null;
-  if (!hasAny) return;
-  if (!d.attachmentName || !d.attachmentType || !d.attachmentData) {
-    ctx.addIssue({ code: "custom", path: ["attachmentData"], message: "Attachment incomplete" });
-    return;
-  }
-  if (!ALLOWED_TYPES.test(d.attachmentType)) {
-    ctx.addIssue({ code: "custom", path: ["attachmentType"], message: "Unsupported file type" });
-    return;
-  }
-  if (!/^[A-Za-z0-9+/=]+$/.test(d.attachmentData)) {
-    ctx.addIssue({ code: "custom", path: ["attachmentData"], message: "Invalid file data" });
-    return;
-  }
-  if (d.attachmentData.length * 3 > MAX_ATTACHMENT_BYTES * 4 + 8) {
-    ctx.addIssue({ code: "custom", path: ["attachmentData"], message: "File too large (max 2MB)" });
-  }
-}
 function supportModel() {
   if (!prisma.supportMessage) {
     throw new AppError("INTERNAL", "Support module unavailable \u2014 Prisma client stale. Run: npx prisma generate in site/apps/api", 500);
@@ -10188,10 +10420,13 @@ async function isMuted(viewerId, peerUserId) {
   }).catch(() => null);
   return !!s?.mutedAt;
 }
-supportRouter.get("/admin/users", requireAuth, async (req, res) => {
+async function searchAdminUsers(req, res) {
   if (req.user.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
   const q = String(req.query.q ?? "").trim().toLowerCase();
-  if (q.length < 2) return ok(res, { users: [] });
+  if (q.length < 2) {
+    ok(res, { users: [] });
+    return;
+  }
   const users = await prisma.user.findMany({
     where: {
       OR: [{ username: { contains: q } }, { email: { contains: q } }]
@@ -10222,8 +10457,8 @@ supportRouter.get("/admin/users", requireAuth, async (req, res) => {
       lastMessageAt: infoMap.get(u.id)?.lastAt ?? null
     }))
   );
-});
-supportRouter.get("/admin/messages", requireAuth, async (req, res) => {
+}
+async function getAdminThread(req, res) {
   const userId = Number(req.query.userId);
   if (!Number.isInteger(userId) || userId <= 0) throw new AppError("VALIDATION_ERROR", "userId required", 400);
   const msgs = await supportModel().findMany({
@@ -10240,18 +10475,8 @@ supportRouter.get("/admin/messages", requireAuth, async (req, res) => {
     });
   }
   ok(res, { userId, unread, messages: msgs });
-});
-var adminSendSchema = z13.object({
-  userId: z13.number().int().positive(),
-  message: z13.string().trim().max(4e3),
-  ...attachmentFields
-}).superRefine((d, ctx) => {
-  if (!d.message && !d.attachmentData) {
-    ctx.addIssue({ code: "custom", path: ["message"], message: "Message ya file required" });
-  }
-  refineAttachment(d, ctx);
-});
-supportRouter.post("/admin/messages", requireAuth, adminSendLimiter, validateBody(adminSendSchema), async (req, res) => {
+}
+async function sendAdminMessage(req, res) {
   if (req.user.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
   const { userId, message } = req.body;
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, username: true, email: true } });
@@ -10264,7 +10489,6 @@ supportRouter.post("/admin/messages", requireAuth, adminSendLimiter, validateBod
       message,
       attachmentName: req.body.attachmentName ?? null,
       attachmentType: req.body.attachmentType ?? null,
-      // Naya: file disk pe (hardware/attachments), DB me sirf path. Legacy rows me blob (attachment_data) rehta hai.
       attachmentData: null,
       attachmentPath: req.body.attachmentData ? saveAttachment(req.body.attachmentData, req.body.attachmentType, req.body.attachmentName) : null,
       readByUser: false,
@@ -10285,10 +10509,10 @@ supportRouter.post("/admin/messages", requireAuth, adminSendLimiter, validateBod
     void sendSupportReplyEmail({ to: user.email, userName: user.username, replyText: message });
   }
   ok(res, created, 201);
-});
-supportRouter.get("/messages", requireAuth, async (req, res) => {
+}
+async function getUserThread(req, res) {
   const userId = req.user.sub;
-  const [messages, unreadCount2] = await Promise.all([
+  const [messages, unreadCount3] = await Promise.all([
     supportModel().findMany({
       where: { userId, deletedAt: null },
       select: msgSelect,
@@ -10297,24 +10521,15 @@ supportRouter.get("/messages", requireAuth, async (req, res) => {
     }),
     supportModel().count({ where: { userId, readByUser: false, deletedAt: null } })
   ]);
-  if (unreadCount2 > 0) {
+  if (unreadCount3 > 0) {
     await supportModel().updateMany({
       where: { userId, readByUser: false, deletedAt: null },
       data: { readByUser: true }
     });
   }
-  ok(res, { unread: unreadCount2, messages });
-});
-var userSendSchema = z13.object({
-  message: z13.string().trim().max(4e3),
-  ...attachmentFields
-}).superRefine((d, ctx) => {
-  if (!d.message && !d.attachmentData) {
-    ctx.addIssue({ code: "custom", path: ["message"], message: "Message ya file required" });
-  }
-  refineAttachment(d, ctx);
-});
-supportRouter.post("/messages", requireAuth, userSendLimiter, validateBody(userSendSchema), async (req, res) => {
+  ok(res, { unread: unreadCount3, messages });
+}
+async function sendUserMessage(req, res) {
   const userId = req.user.sub;
   const created = await supportModel().create({
     data: {
@@ -10324,7 +10539,6 @@ supportRouter.post("/messages", requireAuth, userSendLimiter, validateBody(userS
       message: req.body.message,
       attachmentName: req.body.attachmentName ?? null,
       attachmentType: req.body.attachmentType ?? null,
-      // Naya: file disk pe (hardware/attachments), DB me sirf path.
       attachmentData: null,
       attachmentPath: req.body.attachmentData ? saveAttachment(req.body.attachmentData, req.body.attachmentType, req.body.attachmentName) : null,
       readByUser: true,
@@ -10349,8 +10563,8 @@ supportRouter.post("/messages", requireAuth, userSendLimiter, validateBody(userS
   }
   emitToUser(userId, "support:new", { senderRole: "user", message: created });
   ok(res, created, 201);
-});
-supportRouter.post("/messages/media", requireAuth, userSendLimiter, upload4.single("file"), async (req, res) => {
+}
+async function userMediaMessage(req, res) {
   const userId = req.user.sub;
   const message = req.body.message || "";
   if (!req.file && !message) {
@@ -10388,8 +10602,8 @@ supportRouter.post("/messages/media", requireAuth, userSendLimiter, upload4.sing
   }
   emitToUser(userId, "support:new", { senderRole: "user", message: created });
   ok(res, created, 201);
-});
-supportRouter.post("/admin/messages/media", requireAuth, adminSendLimiter, upload4.single("file"), async (req, res) => {
+}
+async function adminMediaMessage(req, res) {
   if (req.user.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
   const userId = Number(req.body.userId);
   const message = req.body.message || "";
@@ -10422,8 +10636,8 @@ supportRouter.post("/admin/messages/media", requireAuth, adminSendLimiter, uploa
   emitToUser(userId, "support:new", { senderRole: "admin", message: created });
   emitToUser(req.user.sub, "support:new", { senderRole: "admin", message: created });
   ok(res, created, 201);
-});
-supportRouter.get("/attachment/:id", async (req, res) => {
+}
+async function getAttachmentFile(req, res) {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) throw new AppError("VALIDATION_ERROR", "Invalid attachment id", 400);
   const header = req.headers.authorization;
@@ -10453,20 +10667,29 @@ supportRouter.get("/attachment/:id", async (req, res) => {
   );
   res.setHeader("Cache-Control", "private, max-age=3600");
   res.send(buf);
-});
-supportRouter.get("/admin/unread-count", requireAuth, async (req, res) => {
-  if (req.user.role !== "system_admin") return ok(res, { unread: 0 });
-  if (!prisma.supportMessage) return ok(res, { unread: 0 });
+}
+async function getAdminUnreadCount(req, res) {
+  if (req.user.role !== "system_admin") {
+    ok(res, { unread: 0 });
+    return;
+  }
+  if (!prisma.supportMessage) {
+    ok(res, { unread: 0 });
+    return;
+  }
   const groups = await supportModel().groupBy({
     by: ["userId"],
     where: { readByAdmin: false, deletedAt: null },
     _count: { _all: true }
   });
   ok(res, { unread: groups.length });
-});
-supportRouter.get("/admin/conversations", requireAuth, async (req, res) => {
+}
+async function getAdminConversations(req, res) {
   if (req.user.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
-  if (!prisma.supportMessage) return ok(res, { conversations: [], totalUnread: 0 });
+  if (!prisma.supportMessage) {
+    ok(res, { conversations: [], totalUnread: 0 });
+    return;
+  }
   const recent = await supportModel().findMany({
     where: { deletedAt: null },
     select: {
@@ -10513,31 +10736,37 @@ supportRouter.get("/admin/conversations", requireAuth, async (req, res) => {
   })).sort((a, b) => b.lastAt.getTime() - a.lastAt.getTime());
   const totalUnread = conversations.reduce((a, c) => a + c.unreadCount, 0);
   ok(res, { conversations, totalUnread });
-});
-supportRouter.post("/admin/read-all", requireAuth, async (req, res) => {
+}
+async function adminReadAll(req, res) {
   if (req.user.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
-  if (!prisma.supportMessage) return ok(res, { unread: 0 });
+  if (!prisma.supportMessage) {
+    ok(res, { unread: 0 });
+    return;
+  }
   await supportModel().updateMany({
     where: { readByAdmin: false, deletedAt: null },
     data: { readByAdmin: true }
   });
   ok(res, { unread: 0 });
-});
-supportRouter.post("/admin/thread-read", requireAuth, async (req, res) => {
+}
+async function adminThreadRead(req, res) {
   if (req.user.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
   const userId = Number(req.body?.userId);
   const read = Boolean(req.body?.read);
   if (!Number.isInteger(userId) || userId <= 0) {
     throw new AppError("VALIDATION_ERROR", "userId required", 400);
   }
-  if (!prisma.supportMessage) return ok(res, { updated: 0 });
+  if (!prisma.supportMessage) {
+    ok(res, { updated: 0 });
+    return;
+  }
   const updated = await supportModel().updateMany({
     where: { userId, deletedAt: null, readByAdmin: read ? false : true },
     data: { readByAdmin: read }
   });
   ok(res, { updated: updated.count });
-});
-supportRouter.get("/admin/context", requireAuth, async (req, res) => {
+}
+async function getAdminContext(req, res) {
   if (req.user.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
   const userId = Number(req.query.userId);
   if (!Number.isInteger(userId) || userId <= 0) {
@@ -10631,16 +10860,19 @@ supportRouter.get("/admin/context", requireAuth, async (req, res) => {
     esps,
     orders
   });
-});
-supportRouter.get("/settings", requireAuth, async (req, res) => {
-  if (!prisma.supportChatSettings) return ok(res, { settings: [] });
+}
+async function getChatSettings(req, res) {
+  if (!prisma.supportChatSettings) {
+    ok(res, { settings: [] });
+    return;
+  }
   const settings = await prisma.supportChatSettings.findMany({
     where: { userId: req.user.sub },
     select: { peerUserId: true, mutedAt: true, pinnedAt: true }
   });
   ok(res, { settings });
-});
-supportRouter.put("/settings/:peerUserId", requireAuth, async (req, res) => {
+}
+async function updateChatSettings(req, res) {
   if (!prisma.supportChatSettings) throw new AppError("INTERNAL", "Chat settings unavailable \u2014 prisma client stale", 500);
   let peerUserId = Number(req.params.peerUserId);
   if (req.user.role !== "system_admin") {
@@ -10667,8 +10899,8 @@ supportRouter.put("/settings/:peerUserId", requireAuth, async (req, res) => {
     update: data
   });
   ok(res, setting);
-});
-supportRouter.delete("/messages/:id", requireAuth, async (req, res) => {
+}
+async function deleteUserMessage(req, res) {
   const id = Number(req.params.id);
   const msg = await supportModel().findUnique({ where: { id } });
   if (!msg) throw new AppError("NOT_FOUND", "Message not found", 404);
@@ -10678,8 +10910,8 @@ supportRouter.delete("/messages/:id", requireAuth, async (req, res) => {
   await supportModel().update({ where: { id }, data: { deletedAt: /* @__PURE__ */ new Date() } });
   deleteAttachmentFile(msg.attachmentPath);
   ok(res, { deleted: true });
-});
-supportRouter.delete("/admin/messages/:id", requireAuth, async (req, res) => {
+}
+async function deleteAdminMessage(req, res) {
   if (req.user.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
   const id = Number(req.params.id);
   const msg = await supportModel().findUnique({ where: { id } });
@@ -10687,8 +10919,8 @@ supportRouter.delete("/admin/messages/:id", requireAuth, async (req, res) => {
   await supportModel().update({ where: { id }, data: { deletedAt: /* @__PURE__ */ new Date() } });
   deleteAttachmentFile(msg.attachmentPath);
   ok(res, { deleted: true });
-});
-supportRouter.delete("/messages", requireAuth, async (req, res) => {
+}
+async function clearUserThread(req, res) {
   const withFiles = await supportModel().findMany({
     where: { userId: req.user.sub, deletedAt: null },
     select: { attachmentPath: true }
@@ -10699,8 +10931,8 @@ supportRouter.delete("/messages", requireAuth, async (req, res) => {
   });
   withFiles.forEach((m) => deleteAttachmentFile(m.attachmentPath));
   ok(res, { cleared: r.count });
-});
-supportRouter.delete("/admin/messages", requireAuth, async (req, res) => {
+}
+async function clearAdminThread(req, res) {
   if (req.user.role !== "system_admin") throw new AppError("FORBIDDEN", "Admin access required", 403);
   const userId = Number(req.query.peerUserId);
   if (!Number.isInteger(userId) || userId <= 0) {
@@ -10716,7 +10948,105 @@ supportRouter.delete("/admin/messages", requireAuth, async (req, res) => {
   });
   withFiles.forEach((m) => deleteAttachmentFile(m.attachmentPath));
   ok(res, { cleared: r.count });
+}
+
+// src/routes/support.routes.ts
+var supportRouter = Router16();
+try {
+  if (!fs12.existsSync(attachmentDir)) {
+    fs12.mkdirSync(attachmentDir, { recursive: true });
+  }
+} catch (e) {
+}
+var storage3 = multer4.diskStorage({
+  destination: (_req, _file, cb) => cb(null, attachmentDir),
+  filename: (_req, file, cb) => {
+    const ext = path12.extname(file.originalname) || "";
+    const safeName = path12.basename(file.originalname, ext).replace(/[^a-zA-Z0-9_-]/g, "");
+    cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}-${safeName}${ext}`);
+  }
 });
+var upload4 = multer4({
+  storage: storage3,
+  limits: { fileSize: 50 * 1024 * 1024 }
+  // 50MB
+});
+var userSendLimiter = rateLimit({
+  name: "support:user-send",
+  windowMs: 6e4,
+  max: 10,
+  message: "Bahut fast messages bhej rahe ho \u2014 thodi der ruk kar bhejo"
+});
+var adminSendLimiter = rateLimit({
+  name: "support:admin-send",
+  windowMs: 6e4,
+  max: 30,
+  message: "Bahut fast messages bhej rahe ho \u2014 thodi der ruk kar bhejo"
+});
+var MAX_ATTACHMENT_BYTES = 2 * 1024 * 1024;
+var ALLOWED_TYPES = /^(image\/(png|jpe?g|gif|webp|heic)|application\/pdf|text\/plain)$/;
+var attachmentFields = {
+  attachmentName: z13.string().trim().min(1).max(255).optional(),
+  attachmentType: z13.string().trim().min(1).max(100).optional(),
+  attachmentData: z13.string().min(1).optional()
+};
+function refineAttachment(d, ctx) {
+  const hasAny = d.attachmentName != null || d.attachmentType != null || d.attachmentData != null;
+  if (!hasAny) return;
+  if (!d.attachmentName || !d.attachmentType || !d.attachmentData) {
+    ctx.addIssue({ code: "custom", path: ["attachmentData"], message: "Attachment incomplete" });
+    return;
+  }
+  if (!ALLOWED_TYPES.test(d.attachmentType)) {
+    ctx.addIssue({ code: "custom", path: ["attachmentType"], message: "Unsupported file type" });
+    return;
+  }
+  if (!/^[A-Za-z0-9+/=]+$/.test(d.attachmentData)) {
+    ctx.addIssue({ code: "custom", path: ["attachmentData"], message: "Invalid file data" });
+    return;
+  }
+  if (d.attachmentData.length * 3 > MAX_ATTACHMENT_BYTES * 4 + 8) {
+    ctx.addIssue({ code: "custom", path: ["attachmentData"], message: "File too large (max 2MB)" });
+  }
+}
+var adminSendSchema = z13.object({
+  userId: z13.number().int().positive(),
+  message: z13.string().trim().max(4e3),
+  ...attachmentFields
+}).superRefine((d, ctx) => {
+  if (!d.message && !d.attachmentData) {
+    ctx.addIssue({ code: "custom", path: ["message"], message: "Message ya file required" });
+  }
+  refineAttachment(d, ctx);
+});
+var userSendSchema = z13.object({
+  message: z13.string().trim().max(4e3),
+  ...attachmentFields
+}).superRefine((d, ctx) => {
+  if (!d.message && !d.attachmentData) {
+    ctx.addIssue({ code: "custom", path: ["message"], message: "Message ya file required" });
+  }
+  refineAttachment(d, ctx);
+});
+supportRouter.get("/admin/users", requireAuth, searchAdminUsers);
+supportRouter.get("/admin/messages", requireAuth, getAdminThread);
+supportRouter.post("/admin/messages", requireAuth, adminSendLimiter, validateBody(adminSendSchema), sendAdminMessage);
+supportRouter.post("/admin/messages/media", requireAuth, adminSendLimiter, upload4.single("file"), adminMediaMessage);
+supportRouter.get("/admin/unread-count", requireAuth, getAdminUnreadCount);
+supportRouter.get("/admin/conversations", requireAuth, getAdminConversations);
+supportRouter.post("/admin/read-all", requireAuth, adminReadAll);
+supportRouter.post("/admin/thread-read", requireAuth, adminThreadRead);
+supportRouter.get("/admin/context", requireAuth, getAdminContext);
+supportRouter.delete("/admin/messages/:id", requireAuth, deleteAdminMessage);
+supportRouter.delete("/admin/messages", requireAuth, clearAdminThread);
+supportRouter.get("/messages", requireAuth, getUserThread);
+supportRouter.post("/messages", requireAuth, userSendLimiter, validateBody(userSendSchema), sendUserMessage);
+supportRouter.post("/messages/media", requireAuth, userSendLimiter, upload4.single("file"), userMediaMessage);
+supportRouter.get("/attachment/:id", getAttachmentFile);
+supportRouter.get("/settings", requireAuth, getChatSettings);
+supportRouter.put("/settings/:peerUserId", requireAuth, updateChatSettings);
+supportRouter.delete("/messages/:id", requireAuth, deleteUserMessage);
+supportRouter.delete("/messages", requireAuth, clearUserThread);
 
 // src/routes/oauth.routes.ts
 init_prisma();
@@ -11326,9 +11656,11 @@ apiRouter.get("/firmware/current", requireAuth, async (_req, res) => {
 });
 
 // src/routes/install.routes.ts
+import { Router as Router22 } from "express";
+
+// src/controllers/install.controller.ts
 init_env();
 init_prisma();
-import { Router as Router22 } from "express";
 import mysql from "mysql2/promise";
 import fs13 from "node:fs";
 import path13 from "node:path";
@@ -11603,9 +11935,8 @@ async function checkOfflineDevicesInner() {
   }
 }
 
-// src/routes/install.routes.ts
+// src/controllers/install.controller.ts
 var SCHEMA_SQL = path13.resolve(process.cwd(), "prisma/schema.sql");
-var installRouter = Router22();
 var DEFAULT_PRODUCTS = [
   { name: "2CH WiFi Relay Module", modelCode: "2CH", relayCount: 2, price: "599", description: "Two-channel WiFi relay board for lights and small appliances. 10A per channel, ESP32 based, works with the SwitchNest app and voice assistant.", features: { channels: 2, wifi: true, ota: true, voice: true } },
   { name: "4CH WiFi Relay Module", modelCode: "4CH", relayCount: 4, price: "799", description: "Four-channel WiFi relay board \u2014 the classic choice for room-wide control. 10A per channel with status LED and manual override switches.", features: { channels: 4, wifi: true, ota: true, voice: true } },
@@ -11685,72 +12016,48 @@ async function probeDb(parts) {
         const [meta] = await conn.query("SELECT value FROM app_meta WHERE `key` = 'installed' LIMIT 1");
         const flag = meta[0]?.value;
         if (flag !== void 0) {
-          installed = flag === "1";
+          installed = flag === "true" || flag === "1";
         } else {
-          const [urows] = await conn.query("SELECT COUNT(*) AS c FROM users");
-          installed = Number(urows[0]?.c ?? 0) > 0;
+          const [uCount] = await conn.query("SELECT COUNT(*) AS c FROM users");
+          installed = Number(uCount[0]?.c ?? 0) > 0;
         }
       } catch {
-        installed = true;
+        const [uCount] = await conn.query("SELECT COUNT(*) AS c FROM users");
+        installed = Number(uCount[0]?.c ?? 0) > 0;
       }
     }
     return { reachable: true, tablesReady: hasUsers, installed, activeParts };
-  } catch {
-    return { reachable: true, tablesReady: false, installed: false, activeParts };
   } finally {
     await conn.end().catch(() => void 0);
   }
 }
-function persistDatabaseConfig(p) {
-  return persistEnvKeys([
-    ["DB_HOST", p.host],
-    ["DB_PORT", String(p.port)],
-    ["DB_USER", p.user],
-    ["DB_PASS", p.pass],
-    ["DB_NAME", p.name],
-    ["DATABASE_URL", `${buildDatabaseUrl2(p)}?connection_limit=10`]
-  ]);
-}
 async function connectServer(parts) {
-  const hostsToTry = parts.host === "localhost" ? ["127.0.0.1", "localhost"] : [parts.host, "127.0.0.1"];
-  let lastErr = null;
-  for (const h of hostsToTry) {
-    let conn = null;
-    try {
-      conn = await mysql.createConnection({
-        host: h,
-        port: parts.port,
-        user: parts.user,
-        password: parts.pass,
-        connectTimeout: 8e3
-      });
-      parts.host = h;
-      const [rows] = await conn.query("SELECT VERSION() AS v");
-      await conn.end().catch(() => void 0);
-      return { serverVersion: String(rows[0]?.v ?? "") };
-    } catch (err) {
-      lastErr = err;
-      if (conn) await conn.end().catch(() => void 0);
-    }
-  }
-  const msg = lastErr instanceof Error ? lastErr.message : String(lastErr);
-  throw new AppError("DB_CONNECT_FAILED", `Database server se connect nahi ho paya: ${msg}`, 502);
-}
-async function createDatabase(parts) {
-  const dbName = escIdent(parts.name);
-  let conn = null;
+  let conn;
   try {
     conn = await mysql.createConnection({
       host: parts.host,
       port: parts.port,
       user: parts.user,
       password: parts.pass,
-      connectTimeout: 8e3
+      connectTimeout: 5e3
     });
-    await conn.query(
-      `CREATE DATABASE IF NOT EXISTS \`${dbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
-    );
-  } catch (_err) {
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new AppError("DB_CONNECT_FAILED", `MySQL server connect failed: ${msg}. Host, user, password check karo.`, 502);
+  }
+  let version = "MySQL/MariaDB";
+  try {
+    const [r] = await conn.query("SELECT VERSION() AS v");
+    version = String(r[0]?.v ?? version);
+  } catch {
+  }
+  return { conn, serverVersion: version };
+}
+async function createDatabase(parts) {
+  const { conn } = await connectServer(parts);
+  try {
+    await conn.query(`CREATE DATABASE IF NOT EXISTS \`${escIdent(parts.name)}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
+  } catch {
   } finally {
     if (conn) await conn.end().catch(() => void 0);
   }
@@ -11811,83 +12118,106 @@ async function applySchema(parts) {
   }
 }
 async function completeInstall(parts, admin) {
-  const nextUrl = buildDatabaseUrl2(parts);
-  let conn = null;
-  try {
-    conn = await mysql.createConnection({
-      host: parts.host,
-      port: parts.port,
-      user: parts.user,
-      password: parts.pass,
-      database: parts.name,
-      connectTimeout: 1e4
-    });
-    const [existingRows] = await conn.query(
-      "SELECT id FROM users WHERE username = ? OR email = ? LIMIT 1",
-      [admin.username, admin.email]
-    );
-    if (Array.isArray(existingRows) && existingRows.length > 0) {
-      logger.info("[install] Admin user already exists in DB \u2014 marking installed");
-    } else {
-      const passwordHash = await bcrypt3.hash(admin.password, 10);
-      const homeName = `${(admin.name || admin.username).trim()}${admin.name ? "" : "'s"} Home`;
-      const [resUser] = await conn.query(
-        "INSERT INTO users (username, email, password, role, status, created_at) VALUES (?, ?, ?, 'system_admin', 'active', NOW(3))",
-        [admin.username, admin.email, passwordHash]
-      );
-      const userId = resUser.insertId;
-      const [resHome] = await conn.query(
-        "INSERT INTO homes (name, ownerId, status, maxDevices, maxMembers, created_at) VALUES (?, ?, 'active', 20, 10, NOW(3))",
-        [homeName, userId]
-      );
-      const homeId = resHome.insertId;
-      await conn.query(
-        "INSERT INTO home_members (homeId, userId, role, restricted, joined_at) VALUES (?, ?, 'owner', false, NOW(3))",
-        [homeId, userId]
-      );
-      for (const p of DEFAULT_PRODUCTS) {
-        await conn.query(
-          `INSERT INTO products (name, modelCode, relayCount, price, description, features, active, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, true, NOW(3))
-           ON DUPLICATE KEY UPDATE active = true`,
-          [p.name, p.modelCode, p.relayCount, p.price, p.description, JSON.stringify(p.features)]
-        );
+  const dbUrl = buildDatabaseUrl2(parts);
+  const prisma2 = await resetPrismaClient(dbUrl);
+  const passHash = await bcrypt3.hash(admin.password, 10);
+  let userId;
+  const existingUser = await prisma2.user.findFirst({
+    where: { OR: [{ username: admin.username }, { email: admin.email }] }
+  });
+  if (existingUser) {
+    userId = existingUser.id;
+    await prisma2.user.update({
+      where: { id: userId },
+      data: {
+        username: admin.username,
+        email: admin.email,
+        password: passHash,
+        role: "system_admin",
+        status: "active"
       }
-      await conn.query(
-        "INSERT INTO app_meta (`key`, `value`, updated_at) VALUES ('installed', '1', NOW(3)) ON DUPLICATE KEY UPDATE `value` = '1'"
-      );
-    }
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    logger.error("[install] completeInstall mysql error", err);
-    throw new AppError("INSTALL_FAILED", `Admin account create nahi ho paya: ${msg}`, 500);
-  } finally {
-    if (conn) await conn.end().catch(() => void 0);
+    });
+  } else {
+    const created = await prisma2.user.create({
+      data: {
+        username: admin.username,
+        email: admin.email,
+        password: passHash,
+        role: "system_admin",
+        status: "active"
+      }
+    });
+    userId = created.id;
   }
-  const persisted = persistDatabaseConfig(parts);
-  persistEnvKey("ADMIN_PASSWORD", admin.password);
-  try {
-    await resetPrismaClient(nextUrl);
-  } catch (_pErr) {
-    logger.warn("[install] resetPrismaClient warning (non-fatal)", _pErr);
+  const existingHome = await prisma2.home.findFirst({ where: { ownerId: userId } });
+  let homeId;
+  if (!existingHome) {
+    const h = await prisma2.home.create({
+      data: {
+        name: admin.name ? `${admin.name}'s Home` : `${admin.username}'s Home`,
+        ownerId: userId,
+        members: { create: { userId, role: "owner" } }
+      }
+    });
+    homeId = h.id;
+  } else {
+    homeId = existingHome.id;
   }
+  for (const p of DEFAULT_PRODUCTS) {
+    await prisma2.product.upsert({
+      where: { modelCode: p.modelCode },
+      update: { price: p.price, description: p.description, features: p.features },
+      create: {
+        name: p.name,
+        modelCode: p.modelCode,
+        relayCount: p.relayCount,
+        price: p.price,
+        description: p.description,
+        features: p.features,
+        active: true
+      }
+    });
+  }
+  await prisma2.appMeta.upsert({
+    where: { key: "installed" },
+    update: { value: "true", updatedAt: /* @__PURE__ */ new Date() },
+    create: { key: "installed", value: "true", updatedAt: /* @__PURE__ */ new Date() }
+  });
+  process.env.DATABASE_URL = dbUrl;
+  env.DATABASE_URL = dbUrl;
+  env.ADMIN_USERNAME = admin.username;
+  env.ADMIN_EMAIL = admin.email;
+  env.ADMIN_PASSWORD = admin.password;
   setDbReady(true);
   try {
+    persistEnvKeys([
+      ["DATABASE_URL", dbUrl],
+      ["DB_HOST", parts.host],
+      ["DB_PORT", String(parts.port)],
+      ["DB_USER", parts.user],
+      ["DB_PASS", parts.pass],
+      ["DB_NAME", parts.name],
+      ["ADMIN_USERNAME", admin.username],
+      ["ADMIN_EMAIL", admin.email],
+      ["ADMIN_PASSWORD", admin.password]
+    ]);
+  } catch (pErr) {
+    logger.warn("[install] .env persist failed (read-only filesystem?):", pErr);
+  }
+  try {
     startScheduler();
-  } catch (err) {
-    logger.warn("Scheduler start skipped/failed", err instanceof Error ? err.message : String(err));
+  } catch {
   }
   try {
     startOfflineWatcher();
-  } catch (err) {
-    logger.warn("Offline watcher start skipped/failed", err instanceof Error ? err.message : String(err));
+  } catch {
   }
   return {
     installed: true,
     database: parts.name,
-    admin: admin.username,
-    configPersisted: persisted.ok,
-    configPath: persisted.path
+    admin: { id: userId, username: admin.username, email: admin.email, role: "system_admin" },
+    home: { id: homeId },
+    message: "SwitchNest install complete! Welcome to your smart dashboard."
   };
 }
 function dbFromBody(bodyDb) {
@@ -11904,7 +12234,7 @@ function dbFromBody(bodyDb) {
   }
   return parts;
 }
-installRouter.get("/status", async (_req, res) => {
+async function getInstallStatus(_req, res) {
   try {
     const dbUrl = getEffectiveDbUrl();
     const parts = parseDatabaseUrl(dbUrl);
@@ -11945,8 +12275,8 @@ installRouter.get("/status", async (_req, res) => {
       admin: { username: "admin", email: "admin@switchnest.in", passwordSet: true }
     });
   }
-});
-installRouter.post("/connect", async (req, res) => {
+}
+async function connectStep(req, res) {
   const parts = dbFromBody(req.body?.db ?? {});
   const { serverVersion } = await connectServer(parts);
   await createDatabase(parts);
@@ -11958,8 +12288,8 @@ installRouter.post("/connect", async (req, res) => {
     dbCreated: probe.reachable,
     tablesReady: probe.tablesReady
   });
-});
-installRouter.post("/schema", async (req, res) => {
+}
+async function schemaStep(req, res) {
   const parts = dbFromBody(req.body?.db ?? {});
   await createDatabase(parts);
   await applySchema(parts);
@@ -11970,8 +12300,8 @@ installRouter.post("/schema", async (req, res) => {
     database: parts.name,
     message: "Saari tables ban gayi \u2014 ab admin account banao"
   });
-});
-installRouter.post("/admin", async (req, res) => {
+}
+async function adminStep(req, res) {
   const parts = dbFromBody(req.body?.db ?? {});
   const bodyAdmin = req.body?.admin ?? {};
   const admin = {
@@ -11988,16 +12318,12 @@ installRouter.post("/admin", async (req, res) => {
     throw new AppError("ALREADY_INSTALLED", "Database already installed and connected", 409);
   }
   if (!probe.tablesReady) {
-    throw new AppError(
-      "SCHEMA_PENDING",
-      "Pehle database + tables step complete karo (users table nahi mili)",
-      400
-    );
+    throw new AppError("SCHEMA_PENDING", "Pehle database + tables step complete karo (users table nahi mili)", 400);
   }
   const result = await completeInstall(parts, admin);
   ok(res, result);
-});
-installRouter.post("/", async (req, res) => {
+}
+async function fullInstall(req, res) {
   if (isDbReady()) {
     const parts2 = parseDatabaseUrl(env.DATABASE_URL);
     const probe = await probeDb(parts2);
@@ -12020,7 +12346,7 @@ installRouter.post("/", async (req, res) => {
   await applySchema(parts);
   const result = await completeInstall(parts, admin);
   ok(res, result);
-});
+}
 var FALLBACK_SCHEMA_SQL = `-- CreateTable
 CREATE TABLE IF NOT EXISTS \`users\` (
     \`id\` INTEGER NOT NULL AUTO_INCREMENT,
@@ -12037,423 +12363,15 @@ CREATE TABLE IF NOT EXISTS \`users\` (
     UNIQUE INDEX \`users_email_key\`(\`email\`),
     PRIMARY KEY (\`id\`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS \`assistant_chats\` (
-    \`id\` INTEGER NOT NULL AUTO_INCREMENT,
-    \`userId\` INTEGER NOT NULL,
-    \`homeId\` INTEGER NOT NULL,
-    \`title\` VARCHAR(100) NOT NULL,
-    \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    INDEX \`assistant_chats_userId_idx\`(\`userId\`),
-    PRIMARY KEY (\`id\`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS \`assistant_messages\` (
-    \`id\` INTEGER NOT NULL AUTO_INCREMENT,
-    \`chatId\` INTEGER NOT NULL,
-    \`role\` VARCHAR(20) NOT NULL,
-    \`content\` TEXT NOT NULL,
-    \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    INDEX \`assistant_messages_chatId_idx\`(\`chatId\`),
-    PRIMARY KEY (\`id\`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS \`homes\` (
-    \`id\` INTEGER NOT NULL AUTO_INCREMENT,
-    \`name\` VARCHAR(100) NOT NULL,
-    \`ownerId\` INTEGER NOT NULL,
-    \`status\` ENUM('active', 'suspended') NOT NULL DEFAULT 'active',
-    \`maxDevices\` INTEGER NOT NULL DEFAULT 20,
-    \`maxMembers\` INTEGER NOT NULL DEFAULT 10,
-    \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    INDEX \`homes_ownerId_idx\`(\`ownerId\`),
-    PRIMARY KEY (\`id\`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS \`home_members\` (
-    \`id\` INTEGER NOT NULL AUTO_INCREMENT,
-    \`homeId\` INTEGER NOT NULL,
-    \`userId\` INTEGER NOT NULL,
-    \`role\` ENUM('owner', 'admin', 'member', 'viewer') NOT NULL DEFAULT 'member',
-    \`restricted\` BOOLEAN NOT NULL DEFAULT false,
-    \`daily_limit_minutes\` INTEGER NULL,
-    \`joined_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    INDEX \`home_members_userId_idx\`(\`userId\`),
-    UNIQUE INDEX \`home_members_homeId_userId_key\`(\`homeId\`, \`userId\`),
-    PRIMARY KEY (\`id\`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS \`device_access\` (
-    \`id\` INTEGER NOT NULL AUTO_INCREMENT,
-    \`homeId\` INTEGER NOT NULL,
-    \`deviceId\` INTEGER NOT NULL,
-    \`userId\` INTEGER NOT NULL,
-    \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    INDEX \`device_access_homeId_idx\`(\`homeId\`),
-    INDEX \`device_access_userId_idx\`(\`userId\`),
-    UNIQUE INDEX \`device_access_deviceId_userId_key\`(\`deviceId\`, \`userId\`),
-    PRIMARY KEY (\`id\`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS \`device_usage\` (
-    \`id\` INTEGER NOT NULL AUTO_INCREMENT,
-    \`homeId\` INTEGER NOT NULL,
-    \`deviceId\` INTEGER NOT NULL,
-    \`userId\` INTEGER NOT NULL,
-    \`date\` DATE NOT NULL,
-    \`on_minutes\` INTEGER NOT NULL,
-    \`updated_at\` DATETIME(3) NOT NULL,
-    INDEX \`device_usage_homeId_idx\`(\`homeId\`),
-    UNIQUE INDEX \`device_usage_deviceId_userId_date_key\`(\`deviceId\`, \`userId\`, \`date\`),
-    PRIMARY KEY (\`id\`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS \`invitations\` (
-    \`id\` INTEGER NOT NULL AUTO_INCREMENT,
-    \`homeId\` INTEGER NOT NULL,
-    \`email\` VARCHAR(100) NOT NULL,
-    \`inviteCode\` VARCHAR(12) NOT NULL,
-    \`role\` ENUM('owner', 'admin', 'member', 'viewer') NOT NULL DEFAULT 'member',
-    \`status\` ENUM('pending', 'accepted', 'expired', 'revoked') NOT NULL DEFAULT 'pending',
-    \`expiresAt\` DATETIME(3) NOT NULL,
-    \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    \`accepted_at\` DATETIME(3) NULL,
-    UNIQUE INDEX \`invitations_inviteCode_key\`(\`inviteCode\`),
-    INDEX \`invitations_homeId_idx\`(\`homeId\`),
-    INDEX \`invitations_status_idx\`(\`status\`),
-    PRIMARY KEY (\`id\`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS \`rooms\` (
-    \`id\` INTEGER NOT NULL AUTO_INCREMENT,
-    \`homeId\` INTEGER NOT NULL,
-    \`name\` VARCHAR(100) NOT NULL,
-    \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    UNIQUE INDEX \`rooms_homeId_name_key\`(\`homeId\`, \`name\`),
-    PRIMARY KEY (\`id\`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS \`devices\` (
-    \`id\` INTEGER NOT NULL AUTO_INCREMENT,
-    \`homeId\` INTEGER NOT NULL,
-    \`roomId\` INTEGER NULL,
-    \`name\` VARCHAR(100) NOT NULL,
-    \`type\` ENUM('bulb', 'fan', 'ac', 'tv', 'plug', 'dimmer', 'custom') NOT NULL,
-    \`status\` ENUM('on', 'off') NOT NULL DEFAULT 'off',
-    \`custom_value\` VARCHAR(255) NULL,
-    \`serial_number\` VARCHAR(64) NULL,
-    \`firmware_version\` VARCHAR(32) NULL,
-    \`ip_address\` VARCHAR(45) NULL,
-    \`last_seen\` DATETIME(3) NULL,
-    \`offline\` BOOLEAN NOT NULL DEFAULT false,
-    \`ota_pending_version\` VARCHAR(32) NULL,
-    \`ota_requested_at\` DATETIME(3) NULL,
-    \`ota_progress\` INTEGER NULL,
-    \`ota_status\` VARCHAR(32) NULL,
-    \`espId\` INTEGER NULL,
-    \`createdBy\` INTEGER NOT NULL,
-    \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    \`last_updated\` DATETIME(3) NOT NULL,
-    UNIQUE INDEX \`devices_serial_number_key\`(\`serial_number\`),
-    INDEX \`devices_homeId_idx\`(\`homeId\`),
-    INDEX \`devices_roomId_idx\`(\`roomId\`),
-    PRIMARY KEY (\`id\`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS \`esp_devices\` (
-    \`id\` INTEGER NOT NULL AUTO_INCREMENT,
-    \`homeId\` INTEGER NOT NULL,
-    \`macAddress\` VARCHAR(32) NOT NULL,
-    \`name\` VARCHAR(64) NULL,
-    \`ssid\` VARCHAR(64) NULL,
-    \`serial_code\` VARCHAR(32) NULL,
-    \`model_code\` VARCHAR(16) NULL,
-    \`ip_address\` VARCHAR(45) NULL,
-    \`firmware_version\` VARCHAR(32) NULL,
-    \`last_seen\` DATETIME(3) NULL,
-    \`offline\` BOOLEAN NOT NULL DEFAULT false,
-    \`ota_pending_version\` VARCHAR(32) NULL,
-    \`ota_requested_at\` DATETIME(3) NULL,
-    \`ota_progress\` INTEGER NULL,
-    \`ota_status\` VARCHAR(32) NULL,
-    \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    \`updated_at\` DATETIME(3) NOT NULL,
-    UNIQUE INDEX \`esp_devices_macAddress_key\`(\`macAddress\`),
-    UNIQUE INDEX \`esp_devices_serial_code_key\`(\`serial_code\`),
-    INDEX \`esp_devices_homeId_idx\`(\`homeId\`),
-    PRIMARY KEY (\`id\`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS \`device_configurations\` (
-    \`id\` INTEGER NOT NULL AUTO_INCREMENT,
-    \`deviceId\` INTEGER NOT NULL,
-    \`config_name\` VARCHAR(255) NOT NULL,
-    \`config_value\` TEXT NULL,
-    UNIQUE INDEX \`device_configurations_deviceId_config_name_key\`(\`deviceId\`, \`config_name\`),
-    PRIMARY KEY (\`id\`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS \`device_logs\` (
-    \`id\` INTEGER NOT NULL AUTO_INCREMENT,
-    \`deviceId\` INTEGER NOT NULL,
-    \`actorId\` INTEGER NULL,
-    \`log_type\` VARCHAR(255) NOT NULL,
-    \`log_message\` TEXT NOT NULL,
-    \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    INDEX \`device_logs_deviceId_idx\`(\`deviceId\`),
-    PRIMARY KEY (\`id\`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS \`device_commands\` (
-    \`id\` INTEGER NOT NULL AUTO_INCREMENT,
-    \`deviceId\` INTEGER NOT NULL,
-    \`actorId\` INTEGER NULL,
-    \`command\` VARCHAR(255) NOT NULL,
-    \`status\` ENUM('pending', 'executed', 'failed', 'cancelled') NOT NULL DEFAULT 'pending',
-    \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    \`executed_at\` DATETIME(3) NULL,
-    INDEX \`device_commands_deviceId_status_idx\`(\`deviceId\`, \`status\`),
-    PRIMARY KEY (\`id\`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS \`schedules\` (
-    \`id\` INTEGER NOT NULL AUTO_INCREMENT,
-    \`deviceId\` INTEGER NOT NULL,
-    \`createdBy\` INTEGER NOT NULL,
-    \`action\` ENUM('on', 'off') NOT NULL,
-    \`type\` ENUM('once', 'daily', 'weekly', 'cron') NOT NULL,
-    \`run_at\` DATETIME(3) NULL,
-    \`cron\` VARCHAR(100) NULL,
-    \`enabled\` BOOLEAN NOT NULL DEFAULT true,
-    \`next_run\` DATETIME(3) NULL,
-    \`last_run\` DATETIME(3) NULL,
-    \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    INDEX \`schedules_deviceId_idx\`(\`deviceId\`),
-    INDEX \`schedules_enabled_next_run_idx\`(\`enabled\`, \`next_run\`),
-    PRIMARY KEY (\`id\`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS \`api_keys\` (
-    \`id\` INTEGER NOT NULL AUTO_INCREMENT,
-    \`userId\` INTEGER NOT NULL,
-    \`homeId\` INTEGER NULL,
-    \`label\` VARCHAR(100) NULL,
-    \`key_hash\` VARCHAR(64) NOT NULL,
-    \`key_prefix\` VARCHAR(8) NOT NULL,
-    \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    \`expires_at\` DATETIME(3) NULL,
-    \`last_used_at\` DATETIME(3) NULL,
-    \`revoked_at\` DATETIME(3) NULL,
-    UNIQUE INDEX \`api_keys_key_hash_key\`(\`key_hash\`),
-    INDEX \`api_keys_userId_idx\`(\`userId\`),
-    INDEX \`api_keys_homeId_idx\`(\`homeId\`),
-    PRIMARY KEY (\`id\`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS \`refresh_tokens\` (
-    \`id\` INTEGER NOT NULL AUTO_INCREMENT,
-    \`userId\` INTEGER NOT NULL,
-    \`token_hash\` VARCHAR(64) NOT NULL,
-    \`expires_at\` DATETIME(3) NOT NULL,
-    \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    \`revoked_at\` DATETIME(3) NULL,
-    UNIQUE INDEX \`refresh_tokens_token_hash_key\`(\`token_hash\`),
-    INDEX \`refresh_tokens_userId_idx\`(\`userId\`),
-    PRIMARY KEY (\`id\`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS \`password_reset_tokens\` (
-    \`id\` INTEGER NOT NULL AUTO_INCREMENT,
-    \`userId\` INTEGER NOT NULL,
-    \`token_hash\` VARCHAR(64) NOT NULL,
-    \`expires_at\` DATETIME(3) NOT NULL,
-    \`used_at\` DATETIME(3) NULL,
-    \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    UNIQUE INDEX \`password_reset_tokens_token_hash_key\`(\`token_hash\`),
-    INDEX \`password_reset_tokens_userId_idx\`(\`userId\`),
-    PRIMARY KEY (\`id\`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS \`notifications\` (
-    \`id\` INTEGER NOT NULL AUTO_INCREMENT,
-    \`userId\` INTEGER NOT NULL,
-    \`category\` VARCHAR(20) NOT NULL DEFAULT 'system',
-    \`type\` ENUM('info', 'warning', 'error') NOT NULL DEFAULT 'info',
-    \`title\` VARCHAR(255) NOT NULL,
-    \`body\` TEXT NULL,
-    \`read_at\` DATETIME(3) NULL,
-    \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    INDEX \`notifications_userId_read_at_idx\`(\`userId\`, \`read_at\`),
-    PRIMARY KEY (\`id\`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS \`audit_logs\` (
-    \`id\` INTEGER NOT NULL AUTO_INCREMENT,
-    \`actorId\` INTEGER NULL,
-    \`homeId\` INTEGER NULL,
-    \`action\` VARCHAR(100) NOT NULL,
-    \`entity\` VARCHAR(100) NULL,
-    \`entityId\` INTEGER NULL,
-    \`meta\` JSON NULL,
-    \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    INDEX \`audit_logs_homeId_idx\`(\`homeId\`),
-    INDEX \`audit_logs_actorId_idx\`(\`actorId\`),
-    PRIMARY KEY (\`id\`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS \`firmware_versions\` (
-    \`id\` INTEGER NOT NULL AUTO_INCREMENT,
-    \`version\` VARCHAR(32) NOT NULL,
-    \`url\` VARCHAR(255) NOT NULL,
-    \`release_notes\` TEXT NULL,
-    \`model_code\` VARCHAR(16) NOT NULL DEFAULT '',
-    \`is_current\` BOOLEAN NOT NULL DEFAULT false,
-    \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    UNIQUE INDEX \`firmware_versions_version_model_code_key\`(\`version\`, \`model_code\`),
-    PRIMARY KEY (\`id\`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS \`products\` (
-    \`id\` INTEGER NOT NULL AUTO_INCREMENT,
-    \`name\` VARCHAR(100) NOT NULL,
-    \`modelCode\` VARCHAR(32) NOT NULL,
-    \`relayCount\` INTEGER NOT NULL DEFAULT 4,
-    \`price\` DECIMAL(10, 2) NOT NULL,
-    \`description\` TEXT NULL,
-    \`features\` JSON NULL,
-    \`imageUrl\` VARCHAR(255) NULL,
-    \`active\` BOOLEAN NOT NULL DEFAULT true,
-    \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    UNIQUE INDEX \`products_modelCode_key\`(\`modelCode\`),
-    PRIMARY KEY (\`id\`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS \`orders\` (
-    \`id\` INTEGER NOT NULL AUTO_INCREMENT,
-    \`orderNumber\` VARCHAR(32) NOT NULL,
-    \`userId\` INTEGER NOT NULL,
-    \`status\` ENUM('pending', 'paid', 'shipped', 'delivered', 'cancelled') NOT NULL DEFAULT 'pending',
-    \`paymentMethod\` ENUM('cod', 'upi', 'manual') NOT NULL DEFAULT 'manual',
-    \`paymentStatus\` VARCHAR(20) NOT NULL DEFAULT 'unpaid',
-    \`payment_ref\` VARCHAR(64) NULL,
-    \`razorpay_order_id\` VARCHAR(64) NULL,
-    \`paid_at\` DATETIME(3) NULL,
-    \`totalAmount\` DECIMAL(10, 2) NOT NULL,
-    \`shippingName\` VARCHAR(100) NOT NULL,
-    \`shippingPhone\` VARCHAR(20) NOT NULL,
-    \`shippingAddress\` VARCHAR(255) NOT NULL,
-    \`wifiSsid\` VARCHAR(64) NULL,
-    \`wifi_password_enc\` TEXT NULL,
-    \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    \`updated_at\` DATETIME(3) NOT NULL,
-    UNIQUE INDEX \`orders_orderNumber_key\`(\`orderNumber\`),
-    INDEX \`orders_userId_idx\`(\`userId\`),
-    PRIMARY KEY (\`id\`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS \`order_items\` (
-    \`id\` INTEGER NOT NULL AUTO_INCREMENT,
-    \`orderId\` INTEGER NOT NULL,
-    \`productId\` INTEGER NOT NULL,
-    \`productName\` VARCHAR(100) NOT NULL,
-    \`price\` DECIMAL(10, 2) NOT NULL,
-    \`quantity\` INTEGER NOT NULL DEFAULT 1,
-    \`serialCode\` VARCHAR(32) NULL,
-    INDEX \`order_items_orderId_idx\`(\`orderId\`),
-    PRIMARY KEY (\`id\`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS \`serial_registry\` (
-    \`id\` INTEGER NOT NULL AUTO_INCREMENT,
-    \`serialCode\` VARCHAR(32) NOT NULL,
-    \`productId\` INTEGER NOT NULL,
-    \`orderId\` INTEGER NULL,
-    \`userId\` INTEGER NULL,
-    \`homeId\` INTEGER NULL,
-    \`status\` ENUM('available', 'reserved', 'shipped', 'delivered', 'claimed') NOT NULL DEFAULT 'available',
-    \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    \`claimed_at\` DATETIME(3) NULL,
-    \`tested_at\` DATETIME(3) NULL,
-    \`warranty_expires_at\` DATETIME(3) NULL,
-    \`warranty_status\` VARCHAR(20) NOT NULL DEFAULT 'active',
-    UNIQUE INDEX \`serial_registry_serialCode_key\`(\`serialCode\`),
-    INDEX \`serial_registry_productId_idx\`(\`productId\`),
-    INDEX \`serial_registry_status_idx\`(\`status\`),
-    INDEX \`serial_registry_orderId_idx\`(\`orderId\`),
-    PRIMARY KEY (\`id\`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS \`warranty_claims\` (
-    \`id\` INTEGER NOT NULL AUTO_INCREMENT,
-    \`serialCode\` VARCHAR(32) NOT NULL,
-    \`deviceId\` INTEGER NULL,
-    \`userId\` INTEGER NOT NULL,
-    \`reason\` VARCHAR(255) NOT NULL,
-    \`description\` TEXT NULL,
-    \`status\` ENUM('submitted', 'approved', 'rejected', 'resolved') NOT NULL DEFAULT 'submitted',
-    \`admin_notes\` TEXT NULL,
-    \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    \`updated_at\` DATETIME(3) NOT NULL,
-    INDEX \`warranty_claims_userId_idx\`(\`userId\`),
-    INDEX \`warranty_claims_serialCode_idx\`(\`serialCode\`),
-    INDEX \`warranty_claims_status_idx\`(\`status\`),
-    PRIMARY KEY (\`id\`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS \`contact_messages\` (
-    \`id\` INTEGER NOT NULL AUTO_INCREMENT,
-    \`userId\` INTEGER NULL,
-    \`name\` VARCHAR(100) NOT NULL,
-    \`email\` VARCHAR(120) NULL,
-    \`phone\` VARCHAR(20) NULL,
-    \`subject\` VARCHAR(150) NOT NULL,
-    \`message\` TEXT NOT NULL,
-    \`status\` VARCHAR(20) NOT NULL DEFAULT 'new',
-    \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    INDEX \`contact_messages_status_idx\`(\`status\`),
-    INDEX \`contact_messages_userId_idx\`(\`userId\`),
-    PRIMARY KEY (\`id\`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS \`support_messages\` (
-    \`id\` INTEGER NOT NULL AUTO_INCREMENT,
-    \`userId\` INTEGER NOT NULL,
-    \`senderRole\` VARCHAR(10) NOT NULL DEFAULT 'admin',
-    \`senderName\` VARCHAR(100) NOT NULL,
-    \`message\` TEXT NOT NULL,
-    \`attachment_name\` VARCHAR(255) NULL,
-    \`attachment_type\` VARCHAR(100) NULL,
-    \`attachment_data\` MEDIUMTEXT NULL,
-    \`attachment_path\` VARCHAR(255) NULL,
-    \`read_by_user\` BOOLEAN NOT NULL DEFAULT false,
-    \`read_by_admin\` BOOLEAN NOT NULL DEFAULT true,
-    \`deleted_at\` DATETIME(3) NULL,
-    \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    INDEX \`support_messages_userId_created_at_idx\`(\`userId\`, \`created_at\`),
-    INDEX \`support_messages_read_by_admin_idx\`(\`read_by_admin\`),
-    PRIMARY KEY (\`id\`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS \`support_chat_settings\` (
-    \`id\` INTEGER NOT NULL AUTO_INCREMENT,
-    \`userId\` INTEGER NOT NULL,
-    \`peer_user_id\` INTEGER NOT NULL,
-    \`muted_at\` DATETIME(3) NULL,
-    \`pinned_at\` DATETIME(3) NULL,
-    \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-    \`updated_at\` DATETIME(3) NOT NULL,
-    INDEX \`support_chat_settings_userId_idx\`(\`userId\`),
-    UNIQUE INDEX \`support_chat_settings_userId_peer_user_id_key\`(\`userId\`, \`peer_user_id\`),
-    PRIMARY KEY (\`id\`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS \`app_meta\` (
-    \`key\` VARCHAR(64) NOT NULL,
-    \`value\` TEXT NOT NULL,
-    \`updated_at\` DATETIME(3) NOT NULL,
-    PRIMARY KEY (\`key\`)
-) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 `;
+
+// src/routes/install.routes.ts
+var installRouter = Router22();
+installRouter.get("/status", getInstallStatus);
+installRouter.post("/connect", connectStep);
+installRouter.post("/schema", schemaStep);
+installRouter.post("/admin", adminStep);
+installRouter.post("/", fullInstall);
 
 // src/routes/docs.routes.ts
 import express, { Router as Router23 } from "express";
@@ -14050,6 +13968,7 @@ docsRouter.get("/plain", (_req, res) => {
 // src/app.ts
 init_logger();
 init_prisma();
+init_siteSettings_service();
 var API_VERSION = "2.2.0";
 async function schemaDiag() {
   try {
@@ -14113,22 +14032,21 @@ function createApp() {
       data: { status: "ok", ts: (/* @__PURE__ */ new Date()).toISOString(), schema: await schemaDiag(), build: API_VERSION }
     });
   });
-  const getVersion = (req, res) => {
+  const getVersion = async (req, res) => {
     const requestHost = req.get("host") || "192.168.1.36:4000";
     const protocol = req.protocol || "http";
-    const latestVersion = "1.0.11";
-    const minRequiredVersion = "1.0.0";
+    const settings = await getSiteSettings();
     res.json({
       success: true,
       data: {
         version: API_VERSION,
         mobileAppOptions: {
-          minRequiredVersion,
-          latestVersion,
+          minRequiredVersion: settings.mobileAppMinVersion || "1.0.0",
+          latestVersion: settings.mobileAppVersion || "1.0.11",
           downloadUrl: `${protocol}://${requestHost}/mobile-app/SwitchNest_Latest.apk`,
-          updateMessage: "ESP WebServer & Background Call Fixes",
-          releaseNotes: "\u2022 Added In-App ESP WebServer\n\u2022 Fixed Call Ringing on Multiple Devices\n\u2022 Fixed ESP Hardware State Sync UI Glitch",
-          isMandatory: true
+          updateMessage: settings.mobileAppUpdateMessage || "New Mobile App Release Available!",
+          releaseNotes: settings.mobileAppReleaseNotes || "New features and bug fixes",
+          isMandatory: settings.mobileAppIsMandatory === true
         },
         ts: (/* @__PURE__ */ new Date()).toISOString()
       }
@@ -14156,7 +14074,24 @@ function createApp() {
   app.use("/api", apiRouter);
   app.use("/firmware", express2.static(firmwareDir));
   app.use("/uploads", express2.static(uploadsDir));
-  app.use("/mobile-app", express2.static(mobileAppDir));
+  const apkCandidateDirs = getMobileAppCandidateDirs();
+  for (const dir of apkCandidateDirs) {
+    if (dir && fs14.existsSync(dir)) {
+      app.use("/mobile-app", express2.static(dir));
+    }
+  }
+  app.get("/mobile-app/:filename", (req, res, next) => {
+    const filename = path14.basename(req.params.filename);
+    for (const dir of apkCandidateDirs) {
+      if (dir && fs14.existsSync(dir)) {
+        const targetPath = path14.join(dir, filename);
+        if (fs14.existsSync(targetPath)) {
+          return res.sendFile(targetPath);
+        }
+      }
+    }
+    next();
+  });
   const apiRootHtml = path14.join(process.cwd(), "index.html");
   const apiAssetsDir = path14.join(process.cwd(), "assets");
   const webDistHtml = path14.join(webDist, "index.html");

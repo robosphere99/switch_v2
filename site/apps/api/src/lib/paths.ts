@@ -28,7 +28,23 @@ export const firmwareDir = repoRoot
 /** <repo>/mobile-app — hosting Android APK releases for OTA updates. */
 export const mobileAppDir = repoRoot
   ? path.join(repoRoot, "mobile-app")
-  : path.resolve(process.cwd(), "../../../mobile-app");
+  : path.resolve(process.cwd(), "mobile-app");
+
+export function getMobileAppCandidateDirs(): string[] {
+  const dirs = [
+    path.resolve(process.cwd(), "mobile-app"),
+    path.resolve(process.cwd(), "../mobile-app"),
+    path.resolve(process.cwd(), "../../mobile-app"),
+    path.resolve(process.cwd(), "../../../mobile-app"),
+    repoRoot ? path.join(repoRoot, "mobile-app") : "",
+    repoRoot ? path.join(repoRoot, "site", "apps", "web", "public", "mobile-app") : "",
+    path.resolve(process.cwd(), "apps/web/public/mobile-app"),
+    path.resolve(process.cwd(), "../web/public/mobile-app"),
+    path.resolve(process.cwd(), "../../apps/web/public/mobile-app"),
+  ].filter((d): d is string => Boolean(d));
+
+  return Array.from(new Set(dirs));
+}
 
 /** <repo>/hardware/attachments — support chat files (DB me sirf path, blobs yahan disk pe).
  *  Firmware ki tarah Plesk pe writable. Gitignore me hai (user data — commit nahi hota). */
@@ -46,6 +62,11 @@ export const webDist = repoRoot
 export const swaggerUiDir = repoRoot
   ? path.join(repoRoot, "site", "apps", "api", "public", "swagger-ui")
   : path.resolve(process.cwd(), "public/swagger-ui");
+
+/** <repo>/site/apps/web/public/mobile-app — Vite dev & static serve folder for APK. */
+export const webPublicMobileAppDir = repoRoot
+  ? path.join(repoRoot, "site", "apps", "web", "public", "mobile-app")
+  : path.resolve(process.cwd(), "../web/public/mobile-app");
 
 /** <repo>/site/apps/api/uploads — avatars and user uploaded assets. */
 export const uploadsDir = repoRoot

@@ -36,6 +36,12 @@ export interface SiteSettings {
   supportTicketMediaRetentionDays: number;
   chatHistoryRetentionDays: number;
   deviceTelemetryRetentionDays: number;
+  // Mobile App Release Settings
+  mobileAppVersion: string;
+  mobileAppMinVersion: string;
+  mobileAppReleaseNotes: string;
+  mobileAppUpdateMessage: string;
+  mobileAppIsMandatory: boolean;
 }
 
 export const DEFAULT_SITE_SETTINGS: SiteSettings = {
@@ -61,6 +67,11 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   supportTicketMediaRetentionDays: 90, // Defaults to 3 months
   chatHistoryRetentionDays: 90,
   deviceTelemetryRetentionDays: 180, // Defaults to 6 months for ML analysis (Hot Storage)
+  mobileAppVersion: "1.0.11",
+  mobileAppMinVersion: "1.0.0",
+  mobileAppReleaseNotes: "• Connect to Live Website & In-App Server Selector\n• Live LAN QR Code Auto-Detection\n• ESP WebServer Direct Connection",
+  mobileAppUpdateMessage: "New Mobile App Release Available!",
+  mobileAppIsMandatory: false,
 };
 
 const KEY = "site_settings";

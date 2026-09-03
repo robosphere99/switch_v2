@@ -26,6 +26,11 @@ function updateLocalIp() {
     const envPath = path.join(__dirname, '.env');
     if (fs.existsSync(envPath)) {
         let content = fs.readFileSync(envPath, 'utf8');
+        // If user configured a live https website domain, preserve it!
+        if (content.includes('EXPO_PUBLIC_API_URL=https://') && !process.env.FORCE_LOCAL_IP) {
+            console.log('[SwitchNest IP Auto-Updater] Preserving live website URL from .env');
+            return;
+        }
         const regex = /(EXPO_PUBLIC_API_URL=http:\/\/)[^:]+(:\d+\/api)/g;
         if (regex.test(content)) {
             content = content.replace(regex, `$1${localIp}$2`);
@@ -48,9 +53,9 @@ function updateLocalIp() {
             console.log(`[SwitchNest IP Auto-Updater] Written EXPO_PUBLIC_API_URL to http://${localIp}:4000/api`);
         }
     } else {
-        const content = `EXPO_PUBLIC_API_URL=http://${localIp}:4000/api\nEXPO_PUBLIC_RAZORPAY_KEY_ID="rzp_test_TSVHF7cuVgmwiF"\n`;
+        const content = `EXPO_PUBLIC_API_URL=https://onlineswitch.bhartitechnical.com/api\nEXPO_PUBLIC_RAZORPAY_KEY_ID="rzp_test_TSVHF7cuVgmwiF"\n`;
         fs.writeFileSync(envPath, content, 'utf8');
-        console.log(`[SwitchNest IP Auto-Updater] Created .env file and set EXPO_PUBLIC_API_URL to http://${localIp}:4000/api`);
+        console.log(`[SwitchNest IP Auto-Updater] Created .env file with live website URL https://onlineswitch.bhartitechnical.com/api`);
     }
 }
 

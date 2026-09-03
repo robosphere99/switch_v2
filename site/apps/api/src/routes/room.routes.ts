@@ -3,8 +3,7 @@ import { z } from "zod";
 import { requireAuth } from "../middleware/auth";
 import { requireHomeMember } from "../middleware/requireRole";
 import { validateBody, validateParams } from "../middleware/validate";
-import { ok } from "../lib/response";
-import * as roomService from "../services/room.service";
+import * as roomController from "../controllers/room.controller";
 
 export const roomRouter = Router();
 
@@ -21,7 +20,7 @@ roomRouter.get(
   requireAuth,
   validateParams(idParams),
   requireHomeMember("viewer"),
-  async (req, res) => ok(res, await roomService.listRooms(Number(req.params.homeId))),
+  roomController.listRooms,
 );
 
 roomRouter.post(
@@ -30,7 +29,7 @@ roomRouter.post(
   validateParams(idParams),
   requireHomeMember("admin"),
   validateBody(createSchema),
-  async (req, res) => ok(res, await roomService.createRoom(Number(req.params.homeId), req.body.name), 201),
+  roomController.createRoom,
 );
 
 roomRouter.delete(
@@ -38,8 +37,5 @@ roomRouter.delete(
   requireAuth,
   validateParams(roomParams),
   requireHomeMember("admin"),
-  async (req, res) => {
-    await roomService.deleteRoom(Number(req.params.homeId), Number(req.params.roomId));
-    ok(res, { message: "Room deleted" });
-  },
+  roomController.deleteRoom,
 );

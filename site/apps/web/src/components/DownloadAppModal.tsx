@@ -1,8 +1,31 @@
+import { useState, useEffect } from "react";
 import { Smartphone, Download, X } from "lucide-react";
 
 export function DownloadAppModal({ onClose }: { onClose: () => void }) {
-  // App download URL (updated name to bust cache)
-  const apkUrl = `http://${window.location.hostname}:5173/mobile-app/SwitchNest_v1.0.5.apk`;
+  const [lanIp, setLanIp] = useState<string | null>(null);
+
+  useEffect(() => {
+    // If accessed on localhost or 127.0.0.1, fetch machine LAN IP so QR code works for devices on the same WiFi
+    if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+      fetch("/api/public/lan-ip")
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success && data.ip && data.ip !== "127.0.0.1") {
+            setLanIp(data.ip);
+          }
+        })
+        .catch(() => {});
+    }
+  }, []);
+
+  // Determine effective host for QR code and direct download
+  const isLocalhost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+  const effectiveHost = isLocalhost
+    ? (lanIp ? `${lanIp}:${window.location.port || 5173}` : window.location.host)
+    : window.location.hostname;
+
+  const apkProtocol = window.location.protocol;
+  const apkUrl = `${apkProtocol}//${effectiveHost}/mobile-app/SwitchNest_Latest.apk`;
   
   // Use a simple public API to generate the QR code image without relying on heavy Node packages
   const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(apkUrl)}`;
@@ -50,7 +73,7 @@ export function DownloadAppModal({ onClose }: { onClose: () => void }) {
 
           <a
             href={apkUrl}
-            download="SwitchNest_v1.0.1.apk"
+            download="SwitchNest_Latest.apk"
             className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand py-3 font-semibold text-white shadow-md shadow-brand/30 transition hover:bg-brand-600 hover:brightness-110"
           >
             <Download className="h-5 w-5" />

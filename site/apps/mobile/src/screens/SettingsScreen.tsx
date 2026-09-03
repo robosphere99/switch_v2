@@ -13,7 +13,7 @@ import { useThemedAlert } from '../components/ThemedAlert';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import QRCode from 'react-native-qrcode-svg';
 import { APP_VERSION } from '../../App';
-import { API_URL } from '../api/client';
+import { API_URL, LIVE_WEBSITE_URL, getActiveServerUrl, setCustomServerUrl } from '../api/client';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { getApkPath } from '../../modules/apk-extractor/src';
@@ -84,6 +84,59 @@ export function SettingsScreen({ user, onLogout, initialView = 'MAIN', initialSu
     const [installDate, setInstallDate] = useState<string>('Loading...');
     const [isHomeAdmin, setIsHomeAdmin] = useState(false);
     const [webViewUrl, setWebViewUrl] = useState<string | null>(null);
+
+    // Server Connection Selector State
+    const [serverModalVisible, setServerModalVisible] = useState(false);
+    const [currentServerUrl, setCurrentServerUrl] = useState(API_URL);
+    const [customUrlInput, setCustomUrlInput] = useState('');
+    const [testingServer, setTestingServer] = useState(false);
+    const [testServerStatus, setTestServerStatus] = useState<string | null>(null);
+
+    useEffect(() => {
+        (async () => {
+            const active = await getActiveServerUrl();
+            setCurrentServerUrl(active);
+            setCustomUrlInput(active);
+        })();
+        const sub = DeviceEventEmitter.addListener('server_url_changed', (newUrl: string) => {
+            setCurrentServerUrl(newUrl);
+            setCustomUrlInput(newUrl);
+        });
+        return () => sub.remove();
+    }, []);
+
+    const handleTestServer = async (urlToTest: string) => {
+        if (!urlToTest || !urlToTest.trim()) return;
+        setTestingServer(true);
+        setTestServerStatus(null);
+        try {
+            let clean = urlToTest.trim().replace(/\/+$/, '');
+            if (!clean.endsWith('/api') && !clean.includes('/api/')) {
+                clean = `${clean}/api`;
+            }
+            const target = `${clean}/health`;
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000);
+            const res = await fetch(target, { method: 'GET', signal: controller.signal });
+            clearTimeout(timeoutId);
+            if (res.ok || res.status === 200 || res.status === 401 || res.status === 404) {
+                setTestServerStatus('SUCCESS: Server is online & reachable! ✅');
+            } else {
+                setTestServerStatus(`HTTP ${res.status}: Server responded.`);
+            }
+        } catch (e: any) {
+            setTestServerStatus(`Failed to connect: ${e.message || 'Server offline or invalid URL'}`);
+        } finally {
+            setTestingServer(false);
+        }
+    };
+
+    const handleSaveServerUrl = async (url: string | null) => {
+        const updated = await setCustomServerUrl(url);
+        setCurrentServerUrl(updated);
+        showAlert('Server Connection Updated 🚀', `App is now connected to:\n${updated}`);
+        setServerModalVisible(false);
+    };
 
     // Check if user is admin/owner of at least one home on mount
     useEffect(() => {
@@ -1127,6 +1180,24 @@ export function SettingsScreen({ user, onLogout, initialView = 'MAIN', initialSu
                         <Text style={{ color: theme.textSecondary, fontSize: 18, fontWeight: 'bold', marginLeft: 'auto' }}>›</Text>
                     </TouchableOpacity>
 
+                    <Text style={[styles.sectionTitle, { color: theme.textSecondary, marginTop: 12 }]}>SERVER & CONNECTION</Text>
+                    <TouchableOpacity
+                        style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border, marginBottom: 12 }]}
+                        onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
+                            setServerModalVisible(true);
+                        }}
+                    >
+                        <Globe color={theme.primary} size={24} style={{ marginRight: 12 }} />
+                        <View style={{ flex: 1 }}>
+                            <Text style={[styles.cardTitle, { color: theme.text }]}>Website & API Server</Text>
+                            <Text style={[styles.cardSub, { color: theme.textSecondary }]} numberOfLines={1}>
+                                {currentServerUrl === LIVE_WEBSITE_URL ? '🌐 Live Website (onlineswitch.bhartitechnical.com)' : currentServerUrl}
+                            </Text>
+                        </View>
+                        <Text style={{ color: theme.textSecondary, fontSize: 18, fontWeight: 'bold', marginLeft: 8 }}>›</Text>
+                    </TouchableOpacity>
+
                     {isHomeAdmin && (
                         <>
                             <Text style={[styles.sectionTitle, { color: theme.textSecondary, marginTop: 12 }]}>ADVANCED & HARDWARE</Text>
@@ -1418,6 +1489,108 @@ export function SettingsScreen({ user, onLogout, initialView = 'MAIN', initialSu
                             }}
                         />
                     )}
+                </View>
+            </Modal>
+
+            {/* Server Connection Selector Modal */}
+            <Modal visible={serverModalVisible} animationType="slide" transparent={true} onRequestClose={() => setServerModalVisible(false)}>
+                <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}>
+                    <View style={{ backgroundColor: theme.background, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '85%' }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                <Globe color={theme.primary} size={24} style={{ marginRight: 10 }} />
+                                <Text style={{ fontSize: 20, fontWeight: 'bold', color: theme.text }}>Server Connection</Text>
+                            </View>
+                            <TouchableOpacity onPress={() => setServerModalVisible(false)} style={{ padding: 6 }}>
+                                <X color={theme.textSecondary} size={24} />
+                            </TouchableOpacity>
+                        </View>
+
+                        <ScrollView showsVerticalScrollIndicator={false}>
+                            <Text style={{ fontSize: 13, color: theme.textSecondary, marginBottom: 16, lineHeight: 18 }}>
+                                Choose which server the app connects to for real-time device control, automation sync, and account authentication.
+                            </Text>
+
+                            {/* Preset 1: Live Website */}
+                            <TouchableOpacity
+                                style={{
+                                    padding: 16,
+                                    borderRadius: 16,
+                                    borderWidth: 2,
+                                    borderColor: currentServerUrl === LIVE_WEBSITE_URL ? theme.primary : theme.border,
+                                    backgroundColor: currentServerUrl === LIVE_WEBSITE_URL ? theme.primary + '10' : theme.card,
+                                    marginBottom: 12,
+                                    flexDirection: 'row',
+                                    alignItems: 'center'
+                                }}
+                                onPress={() => handleSaveServerUrl(LIVE_WEBSITE_URL)}
+                            >
+                                <Globe color={theme.primary} size={28} style={{ marginRight: 12 }} />
+                                <View style={{ flex: 1 }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                        <Text style={{ fontSize: 16, fontWeight: 'bold', color: theme.text }}>Live Website (Recommended)</Text>
+                                    </View>
+                                    <Text style={{ fontSize: 12, color: theme.textSecondary, marginTop: 2 }}>onlineswitch.bhartitechnical.com</Text>
+                                </View>
+                                {currentServerUrl === LIVE_WEBSITE_URL && (
+                                    <CheckCircle color={theme.primary} size={22} />
+                                )}
+                            </TouchableOpacity>
+
+                            {/* Custom / Local Server Input */}
+                            <View style={{ padding: 16, borderRadius: 16, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.card, marginTop: 4, marginBottom: 20 }}>
+                                <Text style={{ fontSize: 14, fontWeight: '600', color: theme.text, marginBottom: 6 }}>Custom / Local API Endpoint</Text>
+                                <Text style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 12 }}>
+                                    Enter custom IP or server domain (e.g. http://192.168.1.100:4000/api)
+                                </Text>
+                                <TextInput
+                                    style={{
+                                        backgroundColor: theme.background,
+                                        borderWidth: 1,
+                                        borderColor: theme.border,
+                                        borderRadius: 12,
+                                        padding: 12,
+                                        color: theme.text,
+                                        fontSize: 14,
+                                        marginBottom: 12
+                                    }}
+                                    value={customUrlInput}
+                                    onChangeText={setCustomUrlInput}
+                                    placeholder="https://your-server-domain.com/api"
+                                    placeholderTextColor={theme.textSecondary + '80'}
+                                    autoCapitalize="none"
+                                    autoCorrect={false}
+                                />
+
+                                {testServerStatus ? (
+                                    <Text style={{ fontSize: 12, color: testServerStatus.startsWith('SUCCESS') ? '#10B981' : theme.danger, marginBottom: 12 }}>
+                                        {testServerStatus}
+                                    </Text>
+                                ) : null}
+
+                                <View style={{ flexDirection: 'row', gap: 10 }}>
+                                    <TouchableOpacity
+                                        style={{ flex: 1, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.primary, alignItems: 'center' }}
+                                        onPress={() => handleTestServer(customUrlInput)}
+                                        disabled={testingServer}
+                                    >
+                                        {testingServer ? (
+                                            <ActivityIndicator size="small" color={theme.primary} />
+                                        ) : (
+                                            <Text style={{ color: theme.primary, fontWeight: '600', fontSize: 13 }}>Test Ping</Text>
+                                        )}
+                                    </TouchableOpacity>
+
+                                    <TouchableOpacity
+                                        style={{ flex: 1.5, padding: 12, borderRadius: 12, backgroundColor: theme.primary, alignItems: 'center' }}
+                                        onPress={() => handleSaveServerUrl(customUrlInput)}
+                                    >
+                                        <Text style={{ color: '#FFFFFF', fontWeight: 'bold', fontSize: 13 }}>Apply Server URL</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
+                        </ScrollView>
+                    </View>
                 </View>
             </Modal>
 

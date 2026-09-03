@@ -7,7 +7,7 @@
 > Repo location (this machine): `C:\Users\robos\OneDrive\Documents\SwitchNest`
 >
 <!-- AUTO:STAMP:START -->
-> _Auto-updated: 2026-08-31 20:44 UTC · branch `main` · tree dirty (3 changes) · 280 commits_
+> _Auto-updated: 2026-09-02 16:18 UTC · branch `main` · tree dirty (4 changes) · 380 commits_
 <!-- AUTO:STAMP:END -->
 
 ---
@@ -112,26 +112,26 @@ that also serves real ESP32 hardware).
 <!-- AUTO:RECENT_COMMITS:START -->
 Sabse naye 20 commits:
 
-- `fd6d87f` (2026-09-01) feat(mobile): add double back press to exit app
-- `8299eb6` (2026-09-01) fix(firmware/api): fix LED offline toggle, web UI blink, and SERVER_ERROR LED override
-- `431fcd1` (2026-09-01) fix: resolve DevLauncher crashes & secure WebRTC media context; feat: add Download App modal
-- `22cb8e2` (2026-08-25) docs: overhaul static docs generator, add Light theme and Portfolio route
-- `d4973eb` (2026-08-24) fix(api): drop type module to appease iisnode legacy parsing limits
-- `14ed77c` (2026-08-24) fix(api): use cjs extension for IISProxy alias via dynamic import
-- `5c17b88` (2026-08-24) chore: save final state
-- `19e8fbd` (2026-08-24) fix(ci): disable tests and update openapi to unblock critical production hotfix
-- `591d28a` (2026-08-24) fix(api): force iisnode route to app.js Alias to bypass mjs binary crash
-- `c493fe3` (2026-08-24) fix(api): brutal string replace bypass for plesk ESM bootstrap collision
-- `08510ed` (2026-08-24) fix(api): expose patch script for plesk GUI
-- `b7826f8` (2026-08-24) fix(api): bypass plesk .bootstrap.cjs ESM crash loop via web.config rewrite
-- `444929f` (2026-08-24) build: dump web.config in diag array
-- `9251945` (2026-08-24) fix(api): alias entrypoints for plesk IISNode auto-reset fallbacks
-- `1a235cb` (2026-08-24) fix(api): allow string named pipes for IISNode in zod schema
-- `41b7a41` (2026-08-24) fix(api): inject ESM createRequire polyfill for ESBuild to resolve aedes dynamic module crash
-- `f72139f` (2026-08-24) build: add active boot invocation to diag script
-- `2ac5bce` (2026-08-24) build: instrument diag script with iisnode crash log extraction
-- `ae667fd` (2026-08-24) build: compile plesk artifacts for MQTT and UI enhancements
-- `13cfca1` (2026-08-24) feat: IoT Transport Modernization, Vertical Grid UI, and Rate-Limiting
+- `c8e6249` (2026-09-02) feat(terminal): add HTTP polling command queue fallback for admin board terminal commands
+- `b30d504` (2026-09-02) fix(db): add esp_devices.console_password light migration
+- `0c0afd7` (2026-09-02) fix(claim): use findFirst update/create upsert logic for espDevice and enhance errorHandler with Prisma error formatting
+- `f1f9db2` (2026-09-02) fix(claim): expand valid serial statuses for activation and pass explicit updatedAt to espDevice.create with esp_devices light migrations
+- `54da0a3` (2026-09-02) fix(db): alter orders.status column from ENUM to VARCHAR(32) and fix paymentStatus column name in backfill
+- `92ccf2e` (2026-09-02) fix(shop): ensure demoPay delegates to updateOrderStatus cleanly for state transition
+- `38480ed` (2026-09-02) fix(db): add home_members.restricted and daily_limit_minutes light migrations
+- `dd3a51a` (2026-09-02) fix(auth): replace dynamic mysql2 import with prisma executeRawUnsafe in issueTokens fallback
+- `7be7309` (2026-09-02) fix(shop): ensure demoPay and updateOrderStatus set paymentStatus to paid and status to processing with backfill for pending orders
+- `bac6d97` (2026-09-02) fix(shop): add notifications.cta_url light migration and wrap demoPay updateOrderStatus in try/catch
+- `3926413` (2026-09-02) fix(iis): add global uncaughtException and unhandledRejection handlers to prevent process exits and 503 apppool stops
+- `f349db4` (2026-09-02) fix(iis): disable selfHealPrismaClient execFileSync to eliminate startup lag and 503 apppool stops
+- `1a040e7` (2026-09-02) fix(admin): add fallback in GET /api/admin/products and product_media.review_id light migration
+- `458a7db` (2026-09-02) fix(shop): add product_media table migration and add fallback in GET /api/shop/products
+- `b5dd7f8` (2026-09-02) feat(db): add auto-seed default products catalog light migration
+- `c84b602` (2026-09-02) fix(iis): remove process.exit call from selfHealPrismaClient to prevent HTTP 503 apppool crash
+- `5d3db23` (2026-09-02) cleanup: remove temporary debug-log endpoint
+- `5c40b5f` (2026-09-02) fix(db): add users.expo_push_token light migration to resolve user creation 500 error
+- `0607f7c` (2026-09-02) debug: add temporary public debug-log endpoint for server inspection
+- `1d9d590` (2026-09-02) fix(api): refactor light migrations to check and add each missing column independently
 <!-- AUTO:RECENT_COMMITS:END -->
 
 - 503 root-cause work: DB probe retry loop so the app self-heals, `nodeProcessCountPerApplication=1`,

@@ -841,3 +841,37 @@ export async function updateOrderPaymentStatus(id: number, paymentStatus: string
   const { data } = await api.patch(`/admin/orders/${id}/payment-status`, { paymentStatus });
   return data;
 }
+
+export interface ApkStatusResponse {
+  version: string;
+  minVersion: string;
+  releaseNotes: string;
+  updateMessage: string;
+  isMandatory: boolean;
+  fileInfo: {
+    exists: boolean;
+    sizeMb: string;
+    modifiedAt: string | null;
+  };
+}
+
+export async function getApkStatus(): Promise<ApiResponse<ApkStatusResponse>> {
+  const { data } = await api.get<ApiResponse<ApkStatusResponse>>("/admin/apk/status");
+  return data;
+}
+
+export async function uploadApkRelease(
+  formData: FormData,
+  onProgress?: (pct: number) => void
+): Promise<ApiResponse<any>> {
+  const { data } = await api.post<ApiResponse<any>>("/admin/apk/upload", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+    onUploadProgress: (progressEvent) => {
+      if (progressEvent.total) {
+        const pct = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+        onProgress?.(pct);
+      }
+    },
+  });
+  return data;
+}

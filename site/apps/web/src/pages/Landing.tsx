@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { getProducts, type Product } from "../api/shop";
 import { AboutUsSection, ContactUsSection, HowItWorksSection, LocateUsSection } from "../components/LandingSections";
 import { ShoppingCart } from "lucide-react";
 import { Logo } from "../components/Logo";
+import { ProductCard } from "../components/ProductCard";
+import { useCartStore } from "../stores/cart";
 
 const FEATURES = [
   {
@@ -38,34 +40,13 @@ const FEATURES = [
   },
 ];
 
-function LandingProductCard({ p }: { p: Product }) {
-  const icon =
-    p.modelCode.startsWith("DIM")
-      ? "💡"
-      : p.modelCode === "FAN-DIM"
-        ? "🌀"
-        : p.modelCode.includes("IR")
-          ? "📡"
-          : "🎛️";
-  const sub = p.relayCount > 1 ? `${p.relayCount} CH Relay` : `${p.modelCode}`;
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-brand/20 bg-night-800 p-5 transition hover:-translate-y-0.5 hover:border-brand">
-      <div className="flex items-center gap-3">
-        <span className="text-3xl">{icon}</span>
-        <div>
-          <div className="font-semibold">{p.name}</div>
-          <div className="text-xs text-gray-500">{sub} · ESP32</div>
-        </div>
-      </div>
-      <div className="text-right">
-        <div className="font-bold text-brand">₹{Number(p.price).toLocaleString("en-IN")}</div>
-      </div>
-    </div>
-  );
-}
-
 export function Landing() {
   const [products, setProducts] = useState<Product[]>([]);
+  const navigate = useNavigate();
+  const items = useCartStore((s) => s.items);
+  const add = useCartStore((s) => s.add);
+  const setQuantity = useCartStore((s) => s.setQuantity);
+  const remove = useCartStore((s) => s.remove);
 
   useEffect(() => {
     getProducts()
@@ -108,19 +89,53 @@ export function Landing() {
       {products.length > 0 && (
         <section className="mx-auto max-w-6xl px-4 pb-24">
           <div className="mb-8 flex items-end justify-between">
-            <h2 className="text-4xl font-bold">
-              <span className="text-brand">
-                Shop Hardware
-              </span>
-            </h2>
-            <Link to="/shop" className="text-sm text-brand hover:underline">
-              View all →
+            <div>
+              <h2 className="text-3xl sm:text-4xl font-bold">
+                <span className="text-brand">
+                  Shop Smart Hardware
+                </span>
+              </h2>
+              <p className="mt-1 text-sm text-gray-500">
+                Premium toughened glass touch switches, dimmers, & universal IR blasters.
+              </p>
+            </div>
+            <Link to="/shop" className="text-sm font-semibold text-brand hover:underline shrink-0">
+              View all products →
             </Link>
           </div>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {products.slice(0, 6).map((p) => (
-              <LandingProductCard key={p.id} p={p} />
-            ))}
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            {products.slice(0, 4).map((p) => {
+              const cartItem = items.find((i) => i.productId === p.id);
+              const cartQuantity = cartItem ? cartItem.quantity : 0;
+              return (
+                <ProductCard
+                  key={p.id}
+                  p={p}
+                  cartQuantity={cartQuantity}
+                  onClick={() => navigate(`/shop?product=${p.id}`)}
+                  onAdd={() => {
+                    add({
+                      productId: p.id,
+                      name: p.name,
+                      price: Number(p.price),
+                      quantity: 1,
+                      modelCode: p.modelCode,
+                    });
+                  }}
+                  onUpdateQuantity={(qty) => {
+                    if (qty <= 0) remove(p.id);
+                    else setQuantity(p.id, qty);
+                  }}
+                />
+              );
+            })}
+          </div>
+
+          {/* Bottom track scroll indicator matching screenshot */}
+          <div className="mt-8 flex justify-center">
+            <div className="h-1.5 w-64 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden relative">
+              <div className="absolute left-0 top-0 h-full w-1/3 rounded-full bg-slate-400 dark:bg-slate-600"></div>
+            </div>
           </div>
         </section>
       )}

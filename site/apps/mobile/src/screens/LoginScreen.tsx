@@ -4,7 +4,8 @@ import * as Haptics from '../utils/haptics';
 import { useTheme } from '../theme/ThemeContext';
 import { login, revokeUnauth, signup } from '../api/auth';
 import * as SecureStore from 'expo-secure-store';
-import { ScanFace, CheckSquare, Square, Eye, EyeOff, AlertCircle } from 'lucide-react-native';
+import { ScanFace, CheckSquare, Square, Eye, EyeOff, AlertCircle, Globe, CheckCircle, X } from 'lucide-react-native';
+import { API_URL, LIVE_WEBSITE_URL, getActiveServerUrl, setCustomServerUrl } from '../api/client';
 
 type Props = {
     onLoginSuccess: (user: any) => void;
@@ -25,6 +26,17 @@ export function LoginScreen({ onLoginSuccess, onBiometricRetry }: Props) {
     const [loading, setLoading] = useState(false);
     const [activeSessions, setActiveSessions] = useState<any[]>([]);
     const [showPassword, setShowPassword] = useState(false);
+    const [currentServerUrl, setCurrentServerUrl] = useState(API_URL);
+    const [serverModalVisible, setServerModalVisible] = useState(false);
+    const [customUrlInput, setCustomUrlInput] = useState('');
+
+    React.useEffect(() => {
+        (async () => {
+            const active = await getActiveServerUrl();
+            setCurrentServerUrl(active);
+            setCustomUrlInput(active);
+        })();
+    }, []);
 
     // Track username/email availability during signup
     const [usernameAvail, setUsernameAvail] = useState<boolean | null>(null);
@@ -170,6 +182,25 @@ export function LoginScreen({ onLoginSuccess, onBiometricRetry }: Props) {
         >
             <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
                 <View style={styles.header}>
+                    <TouchableOpacity
+                        style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            backgroundColor: theme.card,
+                            borderWidth: 1,
+                            borderColor: theme.border,
+                            paddingHorizontal: 12,
+                            paddingVertical: 6,
+                            borderRadius: 20,
+                            marginBottom: 12
+                        }}
+                        onPress={() => setServerModalVisible(true)}
+                    >
+                        <Globe color={theme.primary} size={14} style={{ marginRight: 6 }} />
+                        <Text style={{ fontSize: 12, color: theme.textSecondary, fontWeight: '500' }}>
+                            {currentServerUrl === LIVE_WEBSITE_URL ? 'Connected to Live Website 🌐' : 'Custom Server 🔧'}
+                        </Text>
+                    </TouchableOpacity>
                     <Text style={[styles.title, { color: theme.text }]}>Switch<Text style={{ color: theme.primary }}>Nest</Text></Text>
                     <Text style={[styles.subtitle, { color: theme.textSecondary }]}>Intelligent automation awaits</Text>
                 </View>
@@ -354,6 +385,87 @@ export function LoginScreen({ onLoginSuccess, onBiometricRetry }: Props) {
                                 </Text>
                             </TouchableOpacity>
                         </View>
+                    </View>
+                </View>
+            </Modal>
+            {/* Server Connection Modal for Login Screen */}
+            <Modal visible={serverModalVisible} transparent animationType="slide" onRequestClose={() => setServerModalVisible(false)}>
+                <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}>
+                    <View style={{ backgroundColor: theme.background, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '80%' }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                <Globe color={theme.primary} size={22} style={{ marginRight: 8 }} />
+                                <Text style={{ fontSize: 18, fontWeight: 'bold', color: theme.text }}>Choose API Server</Text>
+                            </View>
+                            <TouchableOpacity onPress={() => setServerModalVisible(false)} style={{ padding: 4 }}>
+                                <X color={theme.textSecondary} size={22} />
+                            </TouchableOpacity>
+                        </View>
+
+                        <ScrollView showsVerticalScrollIndicator={false}>
+                            <Text style={{ fontSize: 13, color: theme.textSecondary, marginBottom: 16 }}>
+                                Select your backend server domain before logging in:
+                            </Text>
+
+                            <TouchableOpacity
+                                style={{
+                                    padding: 16,
+                                    borderRadius: 16,
+                                    borderWidth: 2,
+                                    borderColor: currentServerUrl === LIVE_WEBSITE_URL ? theme.primary : theme.border,
+                                    backgroundColor: currentServerUrl === LIVE_WEBSITE_URL ? theme.primary + '10' : theme.card,
+                                    marginBottom: 12,
+                                    flexDirection: 'row',
+                                    alignItems: 'center'
+                                }}
+                                onPress={async () => {
+                                    const updated = await setCustomServerUrl(LIVE_WEBSITE_URL);
+                                    setCurrentServerUrl(updated);
+                                    setServerModalVisible(false);
+                                }}
+                            >
+                                <Globe color={theme.primary} size={24} style={{ marginRight: 12 }} />
+                                <View style={{ flex: 1 }}>
+                                    <Text style={{ fontSize: 15, fontWeight: 'bold', color: theme.text }}>Live Website (Recommended)</Text>
+                                    <Text style={{ fontSize: 12, color: theme.textSecondary, marginTop: 2 }}>onlineswitch.bhartitechnical.com</Text>
+                                </View>
+                                {currentServerUrl === LIVE_WEBSITE_URL && (
+                                    <CheckCircle color={theme.primary} size={20} />
+                                )}
+                            </TouchableOpacity>
+
+                            <View style={{ padding: 16, borderRadius: 16, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.card, marginBottom: 16 }}>
+                                <Text style={{ fontSize: 14, fontWeight: '600', color: theme.text, marginBottom: 6 }}>Custom Server URL</Text>
+                                <TextInput
+                                    style={{
+                                        backgroundColor: theme.background,
+                                        borderWidth: 1,
+                                        borderColor: theme.border,
+                                        borderRadius: 12,
+                                        padding: 12,
+                                        color: theme.text,
+                                        fontSize: 14,
+                                        marginBottom: 12
+                                    }}
+                                    value={customUrlInput}
+                                    onChangeText={setCustomUrlInput}
+                                    placeholder="https://your-domain.com/api"
+                                    placeholderTextColor={theme.textSecondary + '80'}
+                                    autoCapitalize="none"
+                                    autoCorrect={false}
+                                />
+                                <TouchableOpacity
+                                    style={{ padding: 12, borderRadius: 12, backgroundColor: theme.primary, alignItems: 'center' }}
+                                    onPress={async () => {
+                                        const updated = await setCustomServerUrl(customUrlInput);
+                                        setCurrentServerUrl(updated);
+                                        setServerModalVisible(false);
+                                    }}
+                                >
+                                    <Text style={{ color: '#FFFFFF', fontWeight: 'bold', fontSize: 13 }}>Save Server Endpoint</Text>
+                                </TouchableOpacity>
+                            </View>
+                        </ScrollView>
                     </View>
                 </View>
             </Modal>

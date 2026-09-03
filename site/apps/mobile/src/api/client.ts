@@ -2,10 +2,50 @@ import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import { DeviceEventEmitter } from 'react-native';
 
-// Using EXPO_PUBLIC_ variables allows you to change the IP for physical device testing.
-// Defaulting to 10.0.2.2 for Android emulators if no env is set.
-export const API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://your-live-domain.com/api';
-console.log('[DEBUG] API_URL Initialized as:', API_URL);
+export const LIVE_WEBSITE_URL = 'https://onlineswitch.bhartitechnical.com/api';
+const SERVER_URL_KEY = 'custom_server_url';
+
+let cachedServerUrl: string | null = null;
+
+export async function getActiveServerUrl(): Promise<string> {
+    if (cachedServerUrl) return cachedServerUrl;
+    try {
+        const stored = await SecureStore.getItemAsync(SERVER_URL_KEY);
+        if (stored && stored.trim()) {
+            cachedServerUrl = stored.trim();
+            return cachedServerUrl;
+        }
+    } catch (e) {
+        console.warn('[client] Failed reading stored server URL:', e);
+    }
+    cachedServerUrl = process.env.EXPO_PUBLIC_API_URL || LIVE_WEBSITE_URL;
+    return cachedServerUrl;
+}
+
+export async function setCustomServerUrl(url: string | null): Promise<string> {
+    try {
+        if (url && url.trim()) {
+            let cleanUrl = url.trim().replace(/\/+$/, '');
+            if (!cleanUrl.endsWith('/api') && !cleanUrl.includes('/api/')) {
+                cleanUrl = `${cleanUrl}/api`;
+            }
+            await SecureStore.setItemAsync(SERVER_URL_KEY, cleanUrl);
+            cachedServerUrl = cleanUrl;
+        } else {
+            await SecureStore.deleteItemAsync(SERVER_URL_KEY);
+            cachedServerUrl = process.env.EXPO_PUBLIC_API_URL || LIVE_WEBSITE_URL;
+        }
+        api.defaults.baseURL = cachedServerUrl;
+        DeviceEventEmitter.emit('server_url_changed', cachedServerUrl);
+        return cachedServerUrl;
+    } catch (e) {
+        console.error('[client] Error saving custom server URL:', e);
+        return cachedServerUrl || LIVE_WEBSITE_URL;
+    }
+}
+
+export const API_URL = process.env.EXPO_PUBLIC_API_URL || LIVE_WEBSITE_URL;
+console.log('[DEBUG] API_URL Default Initialized as:', API_URL);
 
 export const api = axios.create({
     baseURL: API_URL,
@@ -14,12 +54,15 @@ export const api = axios.create({
 
 api.interceptors.request.use(async (config) => {
     try {
+        const activeUrl = await getActiveServerUrl();
+        config.baseURL = activeUrl;
+        
         const token = await SecureStore.getItemAsync('accessToken');
         if (token && config.headers) {
             config.headers.Authorization = `Bearer ${token}`;
         }
     } catch (error) {
-        console.error("Error retrieving token:", error);
+        console.error("Error preparing request:", error);
     }
     return config;
 });
@@ -57,7 +100,8 @@ api.interceptors.response.use(
                 const refreshToken = await SecureStore.getItemAsync('refreshToken');
                 if (!refreshToken) throw new Error("No refresh token cached");
 
-                const { data } = await axios.post(`${API_URL}/auth/refresh`, { refreshToken });
+                const activeUrl = await getActiveServerUrl();
+                const { data } = await axios.post(`${activeUrl}/auth/refresh`, { refreshToken });
 
                 if (data.success && data.data?.accessToken) {
                     await SecureStore.setItemAsync('accessToken', data.data.accessToken);
@@ -93,3 +137,4 @@ export const extractApiError = (error: any) => {
     }
     return { message: error.message || "Unknown error occurred" };
 };
+

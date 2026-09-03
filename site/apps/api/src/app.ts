@@ -5,7 +5,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { corsOrigins } from "./config/env";
 import { errorHandler } from "./middleware/errorHandler";
-import { firmwareDir, webDist, mobileAppDir, uploadsDir } from "./lib/paths";
+import { firmwareDir, webDist, mobileAppDir, webPublicMobileAppDir, uploadsDir, getMobileAppCandidateDirs } from "./lib/paths";
 import { apiRouter } from "./routes";
 import { installRouter } from "./routes/install.routes";
 import { docsRouter } from "./routes/docs.routes";
@@ -15,6 +15,7 @@ import { fileLog } from "./lib/logger";
 import { prisma } from "./lib/prisma";
 import { trackRequest } from "./lib/requestTracker";
 import { setLastSeenHost } from "./lib/healthMonitor";
+import { getSiteSettings } from "./services/siteSettings.service";
 
 /** Public API version — ops/diagnostics ke liye (health ke build field se sync). */
 const API_VERSION = "2.2.0";
@@ -96,23 +97,22 @@ export function createApp() {
     });
   });
 
-  const getVersion = (req: express.Request, res: express.Response) => {
+  const getVersion = async (req: express.Request, res: express.Response) => {
     const requestHost = req.get('host') || '192.168.1.36:4000';
     const protocol = req.protocol || 'http';
-    const latestVersion = "1.0.11";
-    const minRequiredVersion = "1.0.0";
+    const settings = await getSiteSettings();
 
     res.json({
       success: true,
       data: {
         version: API_VERSION,
         mobileAppOptions: {
-          minRequiredVersion,
-          latestVersion,
+          minRequiredVersion: settings.mobileAppMinVersion || "1.0.0",
+          latestVersion: settings.mobileAppVersion || "1.0.11",
           downloadUrl: `${protocol}://${requestHost}/mobile-app/SwitchNest_Latest.apk`,
-          updateMessage: "ESP WebServer & Background Call Fixes",
-          releaseNotes: "• Added In-App ESP WebServer\n• Fixed Call Ringing on Multiple Devices\n• Fixed ESP Hardware State Sync UI Glitch",
-          isMandatory: true,
+          updateMessage: settings.mobileAppUpdateMessage || "New Mobile App Release Available!",
+          releaseNotes: settings.mobileAppReleaseNotes || "New features and bug fixes",
+          isMandatory: settings.mobileAppIsMandatory === true,
         },
         ts: new Date().toISOString()
       }
@@ -155,8 +155,27 @@ export function createApp() {
   // Serve User Uploads at /uploads (Avatars, pictures).
   app.use("/uploads", express.static(uploadsDir));
 
-  // Serve compiled Mobile APK releases.
-  app.use("/mobile-app", express.static(mobileAppDir));
+  // Serve compiled Mobile APK releases across all candidate directories.
+  const apkCandidateDirs = getMobileAppCandidateDirs();
+  for (const dir of apkCandidateDirs) {
+    if (dir && fs.existsSync(dir)) {
+      app.use("/mobile-app", express.static(dir));
+    }
+  }
+
+  // Explicit route handler for /mobile-app/:filename to guarantee APK downloads
+  app.get("/mobile-app/:filename", (req, res, next) => {
+    const filename = path.basename(req.params.filename);
+    for (const dir of apkCandidateDirs) {
+      if (dir && fs.existsSync(dir)) {
+        const targetPath = path.join(dir, filename);
+        if (fs.existsSync(targetPath)) {
+          return res.sendFile(targetPath);
+        }
+      }
+    }
+    next();
+  });
 
   // Production: built web app (Vite dist) ko bhi API hi serve karta hai —
   // Plesk pe ek hi Node.js app se sab chalta hai. sync-api.mjs index.html ko api folder me copy karta hai.

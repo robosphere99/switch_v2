@@ -20,7 +20,7 @@ import { decryptSecret } from "../lib/crypto";
 import { signBillToken } from "../lib/billVerify";
 import { detectLanIp } from "../lib/lanIp";
 import { resolveFirmware } from "../services/firmware.service";
-import { firmwareDir } from "../lib/paths";
+import { firmwareDir, mobileAppDir, webPublicMobileAppDir } from "../lib/paths";
 import { logFilePath } from "../lib/logger";
 import { getRequestStats } from "../lib/requestTracker";
 import { getSiteSettings, updateSiteSettings } from "../services/siteSettings.service";
@@ -29,6 +29,8 @@ import { sendEmail } from "../lib/email.service";
 import { chatCompletion, getAiConfig, aiConfigured } from "../lib/ai";
 import { requestPasswordReset } from "../services/auth.service";
 import bcrypt from "bcryptjs";
+
+import * as adminController from "../controllers/admin.controller";
 
 export const adminRouter = Router();
 
@@ -42,118 +44,6 @@ function requireAdmin(req: Request, _res: Response, next: NextFunction) {
 
 adminRouter.use(requireAuth, requireAdmin);
 
-// ---------- Stats ----------
-
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-function dayKey(d: Date) {
-  return d.toISOString().slice(0, 10);
-}
-
-adminRouter.get("/stats", async (_req, res) => {
-  const dayAgo = new Date(Date.now() - DAY_MS);
-  const weekAgo = new Date(Date.now() - 7 * DAY_MS);
-  const twoMin = new Date(Date.now() - 120_000);
-  const monthStart = new Date();
-  monthStart.setDate(1);
-  monthStart.setHours(0, 0, 0, 0);
-
-  const [
-    users,
-    homes,
-    devices,
-    activeToday,
-    onlineDevices,
-    pendingCommands,
-    apiKeys,
-    auditCount,
-    espBoards,
-    offlineBoards,
-    orders,
-    pendingOrders,
-    ordersToday,
-    ordersThisMonth,
-    revenueTotal,
-    revenueThisMonth,
-    newUsers7d,
-    supportMessages,
-    contactMessages,
-    deviceLogs24h,
-    usersRecent,
-    ordersRecent,
-  ] = await Promise.all([
-    prisma.user.count().catch(() => 0),
-    prisma.home.count().catch(() => 0),
-    prisma.device.count().catch(() => 0),
-    Promise.resolve(0),
-    prisma.device.count({ where: { lastSeen: { gte: dayAgo } } }).catch(() => 0),
-    prisma.deviceCommand.count({ where: { status: "pending" } }).catch(() => 0),
-    prisma.apiKey.count().catch(() => 0),
-    prisma.auditLog.count().catch(() => 0),
-    prisma.espDevice.count().catch(() => 0),
-    prisma.espDevice.count({ where: { OR: [{ offline: true }, { lastSeen: { lt: twoMin } }] } }).catch(() => 0),
-    prisma.order.count().catch(() => 0),
-    prisma.order.count({ where: { status: "pending" } }).catch(() => 0),
-    prisma.order.count({ where: { createdAt: { gte: dayAgo } } }).catch(() => 0),
-    prisma.order.count({ where: { createdAt: { gte: monthStart } } }).catch(() => 0),
-    prisma.order.aggregate({ _sum: { totalAmount: true }, where: { paidAt: { not: null } } }).catch(() => ({ _sum: { totalAmount: 0 } })),
-    prisma.order.aggregate({ _sum: { totalAmount: true }, where: { paidAt: { not: null }, createdAt: { gte: monthStart } } }).catch(() => ({ _sum: { totalAmount: 0 } })),
-    prisma.user.count({ where: { createdAt: { gte: weekAgo } } }).catch(() => 0),
-    prisma.supportMessage.count().catch(() => 0),
-    prisma.contactMessage.count().catch(() => 0),
-    prisma.deviceLog.count({ where: { createdAt: { gte: dayAgo } } }).catch(() => 0),
-    prisma.user.findMany({ where: { createdAt: { gte: weekAgo } }, select: { createdAt: true } }).catch(() => []),
-    prisma.order.findMany({ where: { createdAt: { gte: weekAgo } }, select: { createdAt: true, totalAmount: true, paidAt: true } }).catch(() => []),
-  ]);
-
-  // Last 7 din (aaj samet) — signup + revenue trend (Admin Overview chart ke liye)
-  const usersByDay: Record<string, number> = {};
-  for (const u of usersRecent) {
-    const k = dayKey(u.createdAt);
-    usersByDay[k] = (usersByDay[k] ?? 0) + 1;
-  }
-  const ordersByDay: Record<string, number> = {};
-  const revenueByDay: Record<string, number> = {};
-  for (const o of ordersRecent) {
-    const k = dayKey(o.createdAt);
-    ordersByDay[k] = (ordersByDay[k] ?? 0) + 1;
-    if (o.paidAt) {
-      const pk = dayKey(o.paidAt);
-      revenueByDay[pk] = (revenueByDay[pk] ?? 0) + Number(o.totalAmount);
-    }
-  }
-
-  ok(res, {
-    users,
-    homes,
-    devices,
-    activeToday,
-    onlineDevices,
-    pendingCommands,
-    apiKeys,
-    auditCount,
-    espBoards,
-    offlineBoards,
-    orders,
-    pendingOrders,
-    ordersToday,
-    ordersThisMonth,
-    revenueTotal: Number(revenueTotal._sum.totalAmount ?? 0),
-    revenueThisMonth: Number(revenueThisMonth._sum.totalAmount ?? 0),
-    newUsers7d,
-    supportMessages,
-    contactMessages,
-    deviceLogs24h,
-    leak: getLeakMonitorState(),
-    requests: getRequestStats(),
-    usersByDay,
-    ordersByDay,
-    revenueByDay,
-  });
-});
-
-// ---------- Site settings ----------
-
 const settingsSchema = z
   .object({
     siteName: z.string().min(1).max(60).optional(),
@@ -166,12 +56,11 @@ const settingsSchema = z
     smtpHost: z.string().max(150).optional(),
     smtpPort: z.number().int().min(1).max(65535).optional(),
     smtpUser: z.string().max(150).optional(),
-    smtpPass: z.string().max(200).optional(), // blank = purana rakho
+    smtpPass: z.string().max(200).optional(),
     smtpFrom: z.string().email().max(150).optional().or(z.literal("")),
     smtpSecure: z.boolean().optional(),
-    // AI assistant config (Phase 7) — UI se, env ke bajaye
     aiProvider: z.enum(["openai", "gemini", "ollama", ""]).optional(),
-    aiApiKey: z.string().max(200).optional(), // blank = purana rakho
+    aiApiKey: z.string().max(200).optional(),
     aiBaseUrl: z.string().max(200).optional().or(z.literal("")),
     aiModel: z.string().max(100).optional(),
     supportTicketMediaRetentionDays: z.number().int().min(1).max(3650).optional(),
@@ -180,220 +69,14 @@ const settingsSchema = z
   })
   .refine((d) => Object.keys(d).length > 0, { message: "At least one field to update" });
 
-adminRouter.get("/settings", async (_req, res) => {
-  const s = await getSiteSettings();
-  // smtpPass / aiApiKey kabhi wapas nahi — sirf flags ki set hai ya nahi (UI placeholder)
-  ok(res, {
-    ...s,
-    smtpPass: s.smtpPass ? "********" : "",
-    smtpPassSet: !!s.smtpPass,
-    aiApiKey: s.aiApiKey ? "********" : "",
-    aiApiKeySet: !!s.aiApiKey,
-  });
-});
-
-adminRouter.put("/settings", validateBody(settingsSchema), async (req, res) => {
-  ok(res, await updateSiteSettings(req.body));
-  void audit(req.user!.sub, "settings.update", { entity: "site", meta: { fields: Object.keys(req.body) } });
-});
-
-/** SMTP settings verify karo — admin ke email pe test mail bhejo. */
-adminRouter.post("/settings/test-email", async (req, res) => {
-  const me = await prisma.user.findUnique({
-    where: { id: req.user!.sub },
-    select: { email: true, username: true },
-  });
-  if (!me?.email) {
-    throw new AppError("VALIDATION_ERROR", "Aapke account pe email set nahi hai — test bhejne ke liye email chahiye", 400);
-  }
-  const r = await sendEmail({
-    to: me.email,
-    subject: "🧪 SwitchNest test email",
-    text: `Ye test email hai, ${me.username}. SMTP settings sahi kaam kar rahi hain. ✅`,
-  });
-  if (!r.ok) {
-    if (r.skipped) {
-      throw new AppError("CONFIG_ERROR", "SMTP configured nahi hai — Settings me host/user/pass daalo aur Save karo", 400);
-    }
-    throw new AppError("SMTP_ERROR", `Email fail: ${r.error ?? "unknown"}`, 500);
-  }
-  ok(res, { sent: true });
-});
-
-/** AI config verify — chhota completion call, error ko readable message me. */
-adminRouter.post("/settings/ai-test", async (_req, res) => {
-  if (!(await aiConfigured())) {
-    throw new AppError("CONFIG_ERROR", "AI configured nahi hai — Settings me provider + model + API key daalo aur Save karo", 400);
-  }
-  const cfg = await getAiConfig();
-  try {
-    const reply = await chatCompletion({
-      system: "Reply with exactly: AI_OK",
-      messages: [{ role: "user", content: "ping" }],
-      maxTokens: 10,
-      timeoutMs: 20_000,
-    });
-    ok(res, { ok: true, reply, provider: cfg.provider, model: cfg.model });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    throw new AppError("AI_ERROR", `AI call fail: ${msg}`, 502);
-  }
-});
-
-// ---------- Users ----------
-
-adminRouter.get("/users", async (req, res) => {
-  const q = String(req.query.q ?? "").trim();
-  const users = await prisma.user.findMany({
-    select: {
-      id: true,
-      username: true,
-      email: true,
-      role: true,
-      status: true,
-      createdAt: true,
-      _count: {
-        select: {
-          ownedHomes: true,
-          memberships: true,
-          orders: true,
-          apiKeys: true,
-          createdDevices: true,
-          claimedSerials: true,
-          warrantyClaims: true,
-        },
-      },
-    },
-    where: q
-      ? {
-        OR: [
-          { username: { contains: q } },
-          { email: { contains: q } },
-        ],
-      }
-      : undefined,
-    orderBy: { createdAt: "desc" },
-    take: 200,
-  });
-
-  const userIds = users.map((u) => u.id);
-  // Boards: user jis homes ka member hai, unme ESP count + usage minutes —
-  // relational aggregate select me nahi chalta, isliye alag groupBy + map.
-  const memberships = await prisma.homeMember.findMany({
-    where: { userId: { in: userIds } },
-    select: { userId: true, homeId: true },
-  });
-  const espCounts = await prisma.espDevice.groupBy({
-    by: ["homeId"],
-    where: { homeId: { in: memberships.map((m) => m.homeId) } },
-    _count: { _all: true },
-  });
-  const espByHome = new Map(espCounts.map((e) => [e.homeId, e._count._all]));
-  const boardsByUser = new Map<number, number>();
-  for (const m of memberships) {
-    boardsByUser.set(m.userId, (boardsByUser.get(m.userId) ?? 0) + (espByHome.get(m.homeId) ?? 0));
-  }
-  const usageRows = await prisma.deviceUsage.groupBy({
-    by: ["userId"],
-    where: { userId: { in: userIds } },
-    _sum: { onMinutes: true },
-  });
-  const usageByUser = new Map(usageRows.map((r) => [r.userId, r._sum.onMinutes ?? 0]));
-
-  ok(
-    res,
-    users.map((u) => ({
-      id: u.id,
-      username: u.username,
-      email: u.email,
-      role: u.role,
-      status: u.status,
-      createdAt: u.createdAt,
-
-      _count: u._count,
-      boards: boardsByUser.get(u.id) ?? 0,
-      usageMinutes: usageByUser.get(u.id) ?? 0,
-    })),
-  );
-});
-
-/** Ek user ka full context — homes, orders, keys, boards, usage (support/view ke liye). */
-adminRouter.get("/users/:id", async (req, res) => {
-  const id = Number(req.params.id);
-  const user = await prisma.user.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      username: true,
-      email: true,
-      role: true,
-      status: true,
-      createdAt: true,
-      _count: {
-        select: {
-          ownedHomes: true,
-          orders: true,
-          apiKeys: true,
-          createdDevices: true,
-          claimedSerials: true,
-          warrantyClaims: true,
-          contactMessages: true,
-        },
-      },
-      memberships: {
-        select: {
-          home: { select: { id: true, name: true } },
-          role: true,
-        },
-        orderBy: { role: "asc" },
-      },
-      orders: {
-        select: {
-          id: true,
-          orderNumber: true,
-          status: true,
-          paymentStatus: true,
-          totalAmount: true,
-          createdAt: true,
-        },
-        orderBy: { createdAt: "desc" },
-        take: 10,
-      },
-      apiKeys: {
-        select: {
-          id: true,
-          keyPrefix: true,
-          label: true,
-          createdAt: true,
-          expiresAt: true,
-          revokedAt: true,
-          lastUsedAt: true,
-          home: { select: { name: true } },
-        },
-        orderBy: { createdAt: "desc" },
-        take: 20,
-      },
-    },
-  });
-  if (!user) throw new AppError("NOT_FOUND", "User not found", 404);
-
-  const espCounts = await prisma.espDevice.groupBy({
-    by: ["homeId"],
-    where: { homeId: { in: user.memberships.map((m) => m.home.id) } },
-    _count: { _all: true },
-  });
-  const boards = espCounts.reduce((n, e) => n + e._count._all, 0);
-  const usageAgg = await prisma.deviceUsage.aggregate({
-    where: { userId: user.id },
-    _sum: { onMinutes: true },
-  });
-
-  ok(res, {
-    ...user,
-    boards,
-    usageMinutes: usageAgg._sum.onMinutes ?? 0,
-  });
-});
+// ---------- Stats & Settings & Users ----------
+adminRouter.get("/stats", adminController.getStats);
+adminRouter.get("/settings", adminController.getSettings);
+adminRouter.put("/settings", validateBody(settingsSchema), adminController.putSettings);
+adminRouter.post("/settings/test-email", adminController.testSmtpEmail);
+adminRouter.post("/settings/ai-test", adminController.testAiConnection);
+adminRouter.get("/users", adminController.getUsers);
+adminRouter.get("/users/:id", adminController.getUserById);
 
 const createUserSchema = z.object({
   username: z.string().min(3).max(50),
@@ -3001,4 +2684,114 @@ adminRouter.post("/reset", validateBody(resetSchema), async (req, res) => {
         ? "Factory reset ho gaya — ab install wizard se fresh setup karo"
         : "Data reset ho gaya — admin + catalog rahe, baaki sab clear",
   });
+});
+
+// ─── APK Release Upload Endpoint ───────────────────────────────────────────
+const apkDir = webPublicMobileAppDir;
+try {
+  fs.mkdirSync(apkDir, { recursive: true });
+} catch (e) {}
+
+const apkUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, apkDir),
+    filename: (_req, file, cb) => {
+      cb(null, `upload_${Date.now()}_${file.originalname}`);
+    },
+  }),
+  limits: { fileSize: 300 * 1024 * 1024 }, // 300 MB limit for APK files
+});
+
+adminRouter.get("/apk/status", async (_req, res) => {
+  try {
+    const settings = await getSiteSettings();
+    
+    // Check candidate APK file paths
+    const candidatePaths = [
+      path.join(webPublicMobileAppDir, "SwitchNest_Latest.apk"),
+      path.join(mobileAppDir, "SwitchNest_Latest.apk"),
+    ];
+
+    let fileInfo = { exists: false, sizeMb: "0", modifiedAt: null as string | null };
+
+    for (const targetPath of candidatePaths) {
+      if (fs.existsSync(targetPath)) {
+        const stats = fs.statSync(targetPath);
+        fileInfo = {
+          exists: true,
+          sizeMb: (stats.size / (1024 * 1024)).toFixed(1),
+          modifiedAt: stats.mtime.toISOString(),
+        };
+        break;
+      }
+    }
+
+    ok(res, {
+      version: settings.mobileAppVersion || "1.0.11",
+      minVersion: settings.mobileAppMinVersion || "1.0.0",
+      releaseNotes: settings.mobileAppReleaseNotes || "",
+      updateMessage: settings.mobileAppUpdateMessage || "",
+      isMandatory: settings.mobileAppIsMandatory === true,
+      fileInfo,
+    });
+  } catch (e: any) {
+    res.status(500).json({ success: false, error: { message: e.message || "Failed to fetch APK status" } });
+  }
+});
+
+adminRouter.post("/apk/upload", apkUpload.single("apkFile"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: { message: "No APK file provided in request." } });
+    }
+
+    const { version, releaseNotes, updateMessage, isMandatory, minVersion } = req.body;
+    const cleanVersion = (version || "1.0.11").trim();
+
+    const uploadedPath = req.file.path;
+    const latestApkPath = path.join(webPublicMobileAppDir, "SwitchNest_Latest.apk");
+    const versionedApkPath = path.join(webPublicMobileAppDir, `SwitchNest_v${cleanVersion}.apk`);
+
+    // Copy to web public mobile-app directory
+    fs.copyFileSync(uploadedPath, latestApkPath);
+    fs.copyFileSync(uploadedPath, versionedApkPath);
+
+    // Also copy to root mobile-app directory if exists
+    if (fs.existsSync(mobileAppDir)) {
+      try {
+        fs.copyFileSync(uploadedPath, path.join(mobileAppDir, "SwitchNest_Latest.apk"));
+        fs.copyFileSync(uploadedPath, path.join(mobileAppDir, `SwitchNest_v${cleanVersion}.apk`));
+      } catch (e) {
+        console.warn("[apk-upload] mobileAppDir copy warning:", e);
+      }
+    }
+
+    try { fs.unlinkSync(uploadedPath); } catch {}
+
+    // Update Site Settings with new mobile app version info
+    const updatedSettings = await updateSiteSettings({
+      mobileAppVersion: cleanVersion,
+      mobileAppMinVersion: minVersion || "1.0.0",
+      mobileAppReleaseNotes: releaseNotes || "",
+      mobileAppUpdateMessage: updateMessage || `New SwitchNest v${cleanVersion} is ready!`,
+      mobileAppIsMandatory: isMandatory === "true" || isMandatory === true,
+    });
+
+    const stats = fs.statSync(latestApkPath);
+
+    await audit(req.user!.sub, "admin.apk_upload", {
+      entity: "mobile_app",
+      meta: { version: cleanVersion, sizeMb: (stats.size / (1024 * 1024)).toFixed(1) }
+    });
+
+    ok(res, {
+      message: `Successfully published Mobile APK v${cleanVersion}`,
+      version: updatedSettings.mobileAppVersion,
+      sizeMb: (stats.size / (1024 * 1024)).toFixed(1),
+      modifiedAt: stats.mtime.toISOString(),
+    });
+  } catch (e: any) {
+    console.error("[apk-upload] Error processing APK upload:", e);
+    res.status(500).json({ success: false, error: { message: e.message || "Failed to upload APK file" } });
+  }
 });
