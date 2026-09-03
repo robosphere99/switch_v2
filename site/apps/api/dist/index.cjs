@@ -36860,7 +36860,7 @@ var require_cloudinary_core = __commonJS({
               __webpack_require__.d(__webpack_exports__, "Cloudinary", function() {
                 return (
                   /* reexport */
-                  cloudinary2
+                  cloudinary3
                 );
               });
               __webpack_require__.d(__webpack_exports__, "Condition", function() {
@@ -42973,10 +42973,10 @@ var require_cloudinary_core = __commonJS({
                 }]);
               })();
               assign_root_assign_default()(cloudinary_Cloudinary, constants_namespaceObject);
-              var cloudinary2 = cloudinary_Cloudinary;
+              var cloudinary3 = cloudinary_Cloudinary;
               var cloudinary_core = __webpack_exports__["default"] = {
                 ClientHintsMetaTag: clienthintsmetatag,
-                Cloudinary: cloudinary2,
+                Cloudinary: cloudinary3,
                 Condition: condition,
                 Configuration: src_configuration,
                 crc32: src_crc32,
@@ -44211,13 +44211,13 @@ var require_utils = __commonJS({
     function base_api_url() {
       var path14 = arguments.length > 0 && arguments[0] !== void 0 ? arguments[0] : [];
       var options = arguments.length > 1 && arguments[1] !== void 0 ? arguments[1] : {};
-      var cloudinary2 = ensureOption(options, "upload_prefix", UPLOAD_PREFIX);
+      var cloudinary3 = ensureOption(options, "upload_prefix", UPLOAD_PREFIX);
       var cloud_name = ensureOption(options, "cloud_name");
       var encode_path = function encode_path2(unencoded_path) {
         return encodeURIComponent(unencoded_path).replace("'", "%27");
       };
       var encoded_path = Array.isArray(path14) ? path14.map(encode_path) : encode_path(path14);
-      return [cloudinary2, "v1_1", cloud_name].concat(encoded_path).join("/");
+      return [cloudinary3, "v1_1", cloud_name].concat(encoded_path).join("/");
     }
     function api_url() {
       var action = arguments.length > 0 && arguments[0] !== void 0 ? arguments[0] : "upload";
@@ -47575,9 +47575,9 @@ var require_call_account_api = __commonJS({
     var ensurePresenceOf = utils.ensurePresenceOf;
     function call_account_api(method, uri, params, callback, options) {
       ensurePresenceOf({ method, uri });
-      var cloudinary2 = ensureOption(options, "upload_prefix", "https://api.cloudinary.com");
+      var cloudinary3 = ensureOption(options, "upload_prefix", "https://api.cloudinary.com");
       var account_id = ensureOption(options, "account_id");
-      var api_url = [cloudinary2, "v1_1", "provisioning", "accounts", account_id].concat(uri).join("/");
+      var api_url = [cloudinary3, "v1_1", "provisioning", "accounts", account_id].concat(uri).join("/");
       var auth = {
         key: ensureOption(options, "provisioning_api_key"),
         secret: ensureOption(options, "provisioning_api_secret")
@@ -48482,20 +48482,20 @@ var require_cloudinary = __commonJS({
     };
     exports2.PreloadedFile = require_preloaded_file();
     exports2.Cache = require_cache();
-    var cloudinary2 = module2.exports;
-    var optionConsume = cloudinary2.utils.option_consume;
+    var cloudinary3 = module2.exports;
+    var optionConsume = cloudinary3.utils.option_consume;
     exports2.url = function url(public_id, options) {
       options = _.extend({}, options);
-      return cloudinary2.utils.url(public_id, options);
+      return cloudinary3.utils.url(public_id, options);
     };
     var _require = require_srcsetUtils();
     var generateImageResponsiveAttributes = _require.generateImageResponsiveAttributes;
     var generateMediaAttr = _require.generateMediaAttr;
     function chainTransformations(options) {
       var transformation = arguments.length > 1 && arguments[1] !== void 0 ? arguments[1] : [];
-      var urlOptions = cloudinary2.utils.extractUrlParams(options);
-      var currentTransformation = cloudinary2.utils.extractTransformationParams(options);
-      transformation = cloudinary2.utils.build_array(transformation);
+      var urlOptions = cloudinary3.utils.extractUrlParams(options);
+      var currentTransformation = cloudinary3.utils.extractTransformationParams(options);
+      transformation = cloudinary3.utils.build_array(transformation);
       urlOptions.transformation = [currentTransformation].concat(_toConsumableArray(transformation));
       return urlOptions;
     }
@@ -48503,10 +48503,10 @@ var require_cloudinary = __commonJS({
       var localOptions = _.extend({}, options);
       var srcsetParam = optionConsume(localOptions, "srcset");
       var attributes = optionConsume(localOptions, "attributes", {});
-      var src = cloudinary2.utils.url(source, localOptions);
+      var src = cloudinary3.utils.url(source, localOptions);
       if ("html_width" in localOptions) localOptions.width = optionConsume(localOptions, "html_width");
       if ("html_height" in localOptions) localOptions.height = optionConsume(localOptions, "html_height");
-      var client_hints = optionConsume(localOptions, "client_hints", cloudinary2.config().client_hints);
+      var client_hints = optionConsume(localOptions, "client_hints", cloudinary3.config().client_hints);
       var responsive = optionConsume(localOptions, "responsive");
       var hidpi = optionConsume(localOptions, "hidpi");
       if ((responsive || hidpi) && !client_hints) {
@@ -48515,24 +48515,24 @@ var require_cloudinary = __commonJS({
         var current_class = optionConsume(localOptions, "class");
         if (current_class) classes.push(current_class);
         localOptions.class = classes.join(" ");
-        src = optionConsume(localOptions, "responsive_placeholder", cloudinary2.config().responsive_placeholder);
+        src = optionConsume(localOptions, "responsive_placeholder", cloudinary3.config().responsive_placeholder);
         if (src === "blank") {
-          src = cloudinary2.BLANK;
+          src = cloudinary3.BLANK;
         }
       }
       var html = "<img ";
       if (src) html += "src='" + src + "' ";
       var responsiveAttributes = {};
-      if (cloudinary2.utils.isString(srcsetParam)) {
+      if (cloudinary3.utils.isString(srcsetParam)) {
         responsiveAttributes.srcset = srcsetParam;
       } else {
         responsiveAttributes = generateImageResponsiveAttributes(source, attributes, srcsetParam, options);
       }
-      if (!cloudinary2.utils.isEmpty(responsiveAttributes)) {
+      if (!cloudinary3.utils.isEmpty(responsiveAttributes)) {
         delete localOptions.width;
         delete localOptions.height;
       }
-      html += cloudinary2.utils.html_attrs(_.extend(localOptions, responsiveAttributes, attributes)) + "/>";
+      html += cloudinary3.utils.html_attrs(_.extend(localOptions, responsiveAttributes, attributes)) + "/>";
       return html;
     };
     exports2.video = function video(public_id, options) {
@@ -48542,18 +48542,18 @@ var require_cloudinary = __commonJS({
       var source_transformation = optionConsume(options, "source_transformation", {});
       var sources = optionConsume(options, "sources", []);
       var fallback = optionConsume(options, "fallback_content", "");
-      if (source_types.length === 0) source_types = cloudinary2.utils.DEFAULT_VIDEO_SOURCE_TYPES;
+      if (source_types.length === 0) source_types = cloudinary3.utils.DEFAULT_VIDEO_SOURCE_TYPES;
       var video_options = _.cloneDeep(options);
       if (video_options.hasOwnProperty("poster")) {
         if (_.isPlainObject(video_options.poster)) {
           if (video_options.poster.hasOwnProperty("public_id")) {
-            video_options.poster = cloudinary2.utils.url(video_options.poster.public_id, video_options.poster);
+            video_options.poster = cloudinary3.utils.url(video_options.poster.public_id, video_options.poster);
           } else {
-            video_options.poster = cloudinary2.utils.url(public_id, _.extend({}, cloudinary2.utils.DEFAULT_POSTER_OPTIONS, video_options.poster));
+            video_options.poster = cloudinary3.utils.url(public_id, _.extend({}, cloudinary3.utils.DEFAULT_POSTER_OPTIONS, video_options.poster));
           }
         }
       } else {
-        video_options.poster = cloudinary2.utils.url(public_id, _.extend({}, cloudinary2.utils.DEFAULT_POSTER_OPTIONS, options));
+        video_options.poster = cloudinary3.utils.url(public_id, _.extend({}, cloudinary3.utils.DEFAULT_POSTER_OPTIONS, options));
       }
       if (!video_options.poster) delete video_options.poster;
       var html = "<video ";
@@ -48562,13 +48562,13 @@ var require_cloudinary = __commonJS({
       var has_sources = _.isArray(sources) && sources.length > 0;
       var source = public_id;
       if (!multi_source_types && !has_sources) {
-        source = source + "." + cloudinary2.utils.build_array(source_types)[0];
+        source = source + "." + cloudinary3.utils.build_array(source_types)[0];
       }
-      var src = cloudinary2.utils.url(source, video_options);
+      var src = cloudinary3.utils.url(source, video_options);
       if (!multi_source_types && !has_sources) video_options.src = src;
       if (video_options.hasOwnProperty("html_width")) video_options.width = optionConsume(video_options, "html_width");
       if (video_options.hasOwnProperty("html_height")) video_options.height = optionConsume(video_options, "html_height");
-      html = html + cloudinary2.utils.html_attrs(video_options) + ">";
+      html = html + cloudinary3.utils.html_attrs(video_options) + ">";
       if (multi_source_types && !has_sources) {
         sources = source_types.map(function(source_type) {
           return {
@@ -48582,41 +48582,41 @@ var require_cloudinary = __commonJS({
           var source_type = source_data.type;
           var codecs = source_data.codecs;
           var transformation = source_data.transformations || {};
-          src = cloudinary2.utils.url(source + "." + source_type, _.extend({ resource_type: "video" }, _.cloneDeep(options), _.cloneDeep(transformation)));
-          return cloudinary2.utils.create_source_tag(src, source_type, codecs);
+          src = cloudinary3.utils.url(source + "." + source_type, _.extend({ resource_type: "video" }, _.cloneDeep(options), _.cloneDeep(transformation)));
+          return cloudinary3.utils.create_source_tag(src, source_type, codecs);
         }).join("");
       }
       return `${html}${fallback}</video>`;
     };
     exports2.source = function source(public_id) {
       var options = arguments.length > 1 && arguments[1] !== void 0 ? arguments[1] : {};
-      var srcsetParam = cloudinary2.utils.extend({}, options.srcset, cloudinary2.config().srcset);
+      var srcsetParam = cloudinary3.utils.extend({}, options.srcset, cloudinary3.config().srcset);
       var attributes = options.attributes || {};
-      cloudinary2.utils.extend(attributes, generateImageResponsiveAttributes(public_id, attributes, srcsetParam, options));
+      cloudinary3.utils.extend(attributes, generateImageResponsiveAttributes(public_id, attributes, srcsetParam, options));
       if (!attributes.srcset) {
-        attributes.srcset = cloudinary2.url(public_id, options);
+        attributes.srcset = cloudinary3.url(public_id, options);
       }
       if (!attributes.media && options.media) {
         attributes.media = generateMediaAttr(options.media);
       }
-      return `<source ${cloudinary2.utils.html_attrs(attributes)}>`;
+      return `<source ${cloudinary3.utils.html_attrs(attributes)}>`;
     };
     exports2.picture = function picture(public_id) {
       var options = arguments.length > 1 && arguments[1] !== void 0 ? arguments[1] : {};
       var sources = options.sources || [];
-      options = cloudinary2.utils.clone(options);
+      options = cloudinary3.utils.clone(options);
       delete options.sources;
-      cloudinary2.utils.patchFetchFormat(options);
+      cloudinary3.utils.patchFetchFormat(options);
       return "<picture>" + sources.map(function(source) {
         var sourceOptions = chainTransformations(options, source.transformation);
         sourceOptions.media = source;
-        return cloudinary2.source(public_id, sourceOptions);
-      }).join("") + cloudinary2.image(public_id, options) + "</picture>";
+        return cloudinary3.source(public_id, sourceOptions);
+      }).join("") + cloudinary3.image(public_id, options) + "</picture>";
     };
-    exports2.cloudinary_js_config = cloudinary2.utils.cloudinary_js_config;
-    exports2.CF_SHARED_CDN = cloudinary2.utils.CF_SHARED_CDN;
-    exports2.AKAMAI_SHARED_CDN = cloudinary2.utils.AKAMAI_SHARED_CDN;
-    exports2.SHARED_CDN = cloudinary2.utils.SHARED_CDN;
+    exports2.cloudinary_js_config = cloudinary3.utils.cloudinary_js_config;
+    exports2.CF_SHARED_CDN = cloudinary3.utils.CF_SHARED_CDN;
+    exports2.AKAMAI_SHARED_CDN = cloudinary3.utils.AKAMAI_SHARED_CDN;
+    exports2.SHARED_CDN = cloudinary3.utils.SHARED_CDN;
     exports2.BLANK = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
     exports2.v2 = require_v2();
   }
@@ -49995,11 +49995,11 @@ var require_utils2 = __commonJS({
       return prefix;
     }
     function base_api_url(path14 = [], options = {}) {
-      let cloudinary2 = ensureOption(options, "upload_prefix", UPLOAD_PREFIX);
+      let cloudinary3 = ensureOption(options, "upload_prefix", UPLOAD_PREFIX);
       let cloud_name = ensureOption(options, "cloud_name");
       let encode_path = (unencoded_path) => encodeURIComponent(unencoded_path).replace("'", "%27");
       let encoded_path = Array.isArray(path14) ? path14.map(encode_path) : encode_path(path14);
-      return [cloudinary2, "v1_1", cloud_name].concat(encoded_path).join("/");
+      return [cloudinary3, "v1_1", cloud_name].concat(encoded_path).join("/");
     }
     function api_url(action = "upload", options = {}) {
       let resource_type = options.resource_type || "image";
@@ -51816,9 +51816,9 @@ var require_call_account_api2 = __commonJS({
     var { ensurePresenceOf } = utils;
     function call_account_api(method, uri, params, callback, options) {
       ensurePresenceOf({ method, uri });
-      const cloudinary2 = ensureOption(options, "upload_prefix", "https://api.cloudinary.com");
+      const cloudinary3 = ensureOption(options, "upload_prefix", "https://api.cloudinary.com");
       const account_id = ensureOption(options, "account_id");
-      const api_url = [cloudinary2, "v1_1", "provisioning", "accounts", account_id].concat(uri).join("/");
+      const api_url = [cloudinary3, "v1_1", "provisioning", "accounts", account_id].concat(uri).join("/");
       const auth = {
         key: ensureOption(options, "provisioning_api_key"),
         secret: ensureOption(options, "provisioning_api_secret")
@@ -52463,17 +52463,17 @@ var require_cloudinary2 = __commonJS({
     };
     exports2.PreloadedFile = require_preloaded_file2();
     exports2.Cache = require_cache2();
-    var cloudinary2 = module2.exports;
-    var optionConsume = cloudinary2.utils.option_consume;
+    var cloudinary3 = module2.exports;
+    var optionConsume = cloudinary3.utils.option_consume;
     exports2.url = function url(public_id, options) {
       options = _.extend({}, options);
-      return cloudinary2.utils.url(public_id, options);
+      return cloudinary3.utils.url(public_id, options);
     };
     var { generateImageResponsiveAttributes, generateMediaAttr } = require_srcsetUtils2();
     function chainTransformations(options, transformation = []) {
-      let urlOptions = cloudinary2.utils.extractUrlParams(options);
-      let currentTransformation = cloudinary2.utils.extractTransformationParams(options);
-      transformation = cloudinary2.utils.build_array(transformation);
+      let urlOptions = cloudinary3.utils.extractUrlParams(options);
+      let currentTransformation = cloudinary3.utils.extractTransformationParams(options);
+      transformation = cloudinary3.utils.build_array(transformation);
       urlOptions.transformation = [currentTransformation, ...transformation];
       return urlOptions;
     }
@@ -52481,10 +52481,10 @@ var require_cloudinary2 = __commonJS({
       let localOptions = _.extend({}, options);
       let srcsetParam = optionConsume(localOptions, "srcset");
       let attributes = optionConsume(localOptions, "attributes", {});
-      let src = cloudinary2.utils.url(source, localOptions);
+      let src = cloudinary3.utils.url(source, localOptions);
       if ("html_width" in localOptions) localOptions.width = optionConsume(localOptions, "html_width");
       if ("html_height" in localOptions) localOptions.height = optionConsume(localOptions, "html_height");
-      let client_hints = optionConsume(localOptions, "client_hints", cloudinary2.config().client_hints);
+      let client_hints = optionConsume(localOptions, "client_hints", cloudinary3.config().client_hints);
       let responsive = optionConsume(localOptions, "responsive");
       let hidpi = optionConsume(localOptions, "hidpi");
       if ((responsive || hidpi) && !client_hints) {
@@ -52493,24 +52493,24 @@ var require_cloudinary2 = __commonJS({
         let current_class = optionConsume(localOptions, "class");
         if (current_class) classes.push(current_class);
         localOptions.class = classes.join(" ");
-        src = optionConsume(localOptions, "responsive_placeholder", cloudinary2.config().responsive_placeholder);
+        src = optionConsume(localOptions, "responsive_placeholder", cloudinary3.config().responsive_placeholder);
         if (src === "blank") {
-          src = cloudinary2.BLANK;
+          src = cloudinary3.BLANK;
         }
       }
       let html = "<img ";
       if (src) html += "src='" + src + "' ";
       let responsiveAttributes = {};
-      if (cloudinary2.utils.isString(srcsetParam)) {
+      if (cloudinary3.utils.isString(srcsetParam)) {
         responsiveAttributes.srcset = srcsetParam;
       } else {
         responsiveAttributes = generateImageResponsiveAttributes(source, attributes, srcsetParam, options);
       }
-      if (!cloudinary2.utils.isEmpty(responsiveAttributes)) {
+      if (!cloudinary3.utils.isEmpty(responsiveAttributes)) {
         delete localOptions.width;
         delete localOptions.height;
       }
-      html += cloudinary2.utils.html_attrs(_.extend(localOptions, responsiveAttributes, attributes)) + "/>";
+      html += cloudinary3.utils.html_attrs(_.extend(localOptions, responsiveAttributes, attributes)) + "/>";
       return html;
     };
     exports2.video = function video(public_id, options) {
@@ -52520,18 +52520,18 @@ var require_cloudinary2 = __commonJS({
       let source_transformation = optionConsume(options, "source_transformation", {});
       let sources = optionConsume(options, "sources", []);
       let fallback = optionConsume(options, "fallback_content", "");
-      if (source_types.length === 0) source_types = cloudinary2.utils.DEFAULT_VIDEO_SOURCE_TYPES;
+      if (source_types.length === 0) source_types = cloudinary3.utils.DEFAULT_VIDEO_SOURCE_TYPES;
       let video_options = _.cloneDeep(options);
       if (video_options.hasOwnProperty("poster")) {
         if (_.isPlainObject(video_options.poster)) {
           if (video_options.poster.hasOwnProperty("public_id")) {
-            video_options.poster = cloudinary2.utils.url(video_options.poster.public_id, video_options.poster);
+            video_options.poster = cloudinary3.utils.url(video_options.poster.public_id, video_options.poster);
           } else {
-            video_options.poster = cloudinary2.utils.url(public_id, _.extend({}, cloudinary2.utils.DEFAULT_POSTER_OPTIONS, video_options.poster));
+            video_options.poster = cloudinary3.utils.url(public_id, _.extend({}, cloudinary3.utils.DEFAULT_POSTER_OPTIONS, video_options.poster));
           }
         }
       } else {
-        video_options.poster = cloudinary2.utils.url(public_id, _.extend({}, cloudinary2.utils.DEFAULT_POSTER_OPTIONS, options));
+        video_options.poster = cloudinary3.utils.url(public_id, _.extend({}, cloudinary3.utils.DEFAULT_POSTER_OPTIONS, options));
       }
       if (!video_options.poster) delete video_options.poster;
       let html = "<video ";
@@ -52540,13 +52540,13 @@ var require_cloudinary2 = __commonJS({
       let has_sources = _.isArray(sources) && sources.length > 0;
       let source = public_id;
       if (!multi_source_types && !has_sources) {
-        source = source + "." + cloudinary2.utils.build_array(source_types)[0];
+        source = source + "." + cloudinary3.utils.build_array(source_types)[0];
       }
-      let src = cloudinary2.utils.url(source, video_options);
+      let src = cloudinary3.utils.url(source, video_options);
       if (!multi_source_types && !has_sources) video_options.src = src;
       if (video_options.hasOwnProperty("html_width")) video_options.width = optionConsume(video_options, "html_width");
       if (video_options.hasOwnProperty("html_height")) video_options.height = optionConsume(video_options, "html_height");
-      html = html + cloudinary2.utils.html_attrs(video_options) + ">";
+      html = html + cloudinary3.utils.html_attrs(video_options) + ">";
       if (multi_source_types && !has_sources) {
         sources = source_types.map((source_type) => ({
           type: source_type,
@@ -52558,39 +52558,39 @@ var require_cloudinary2 = __commonJS({
           let source_type = source_data.type;
           let codecs = source_data.codecs;
           let transformation = source_data.transformations || {};
-          src = cloudinary2.utils.url(source + "." + source_type, _.extend({ resource_type: "video" }, _.cloneDeep(options), _.cloneDeep(transformation)));
-          return cloudinary2.utils.create_source_tag(src, source_type, codecs);
+          src = cloudinary3.utils.url(source + "." + source_type, _.extend({ resource_type: "video" }, _.cloneDeep(options), _.cloneDeep(transformation)));
+          return cloudinary3.utils.create_source_tag(src, source_type, codecs);
         }).join("");
       }
       return `${html}${fallback}</video>`;
     };
     exports2.source = function source(public_id, options = {}) {
-      let srcsetParam = cloudinary2.utils.extend({}, options.srcset, cloudinary2.config().srcset);
+      let srcsetParam = cloudinary3.utils.extend({}, options.srcset, cloudinary3.config().srcset);
       let attributes = options.attributes || {};
-      cloudinary2.utils.extend(attributes, generateImageResponsiveAttributes(public_id, attributes, srcsetParam, options));
+      cloudinary3.utils.extend(attributes, generateImageResponsiveAttributes(public_id, attributes, srcsetParam, options));
       if (!attributes.srcset) {
-        attributes.srcset = cloudinary2.url(public_id, options);
+        attributes.srcset = cloudinary3.url(public_id, options);
       }
       if (!attributes.media && options.media) {
         attributes.media = generateMediaAttr(options.media);
       }
-      return `<source ${cloudinary2.utils.html_attrs(attributes)}>`;
+      return `<source ${cloudinary3.utils.html_attrs(attributes)}>`;
     };
     exports2.picture = function picture(public_id, options = {}) {
       let sources = options.sources || [];
-      options = cloudinary2.utils.clone(options);
+      options = cloudinary3.utils.clone(options);
       delete options.sources;
-      cloudinary2.utils.patchFetchFormat(options);
+      cloudinary3.utils.patchFetchFormat(options);
       return "<picture>" + sources.map((source) => {
         let sourceOptions = chainTransformations(options, source.transformation);
         sourceOptions.media = source;
-        return cloudinary2.source(public_id, sourceOptions);
-      }).join("") + cloudinary2.image(public_id, options) + "</picture>";
+        return cloudinary3.source(public_id, sourceOptions);
+      }).join("") + cloudinary3.image(public_id, options) + "</picture>";
     };
-    exports2.cloudinary_js_config = cloudinary2.utils.cloudinary_js_config;
-    exports2.CF_SHARED_CDN = cloudinary2.utils.CF_SHARED_CDN;
-    exports2.AKAMAI_SHARED_CDN = cloudinary2.utils.AKAMAI_SHARED_CDN;
-    exports2.SHARED_CDN = cloudinary2.utils.SHARED_CDN;
+    exports2.cloudinary_js_config = cloudinary3.utils.cloudinary_js_config;
+    exports2.CF_SHARED_CDN = cloudinary3.utils.CF_SHARED_CDN;
+    exports2.AKAMAI_SHARED_CDN = cloudinary3.utils.AKAMAI_SHARED_CDN;
+    exports2.SHARED_CDN = cloudinary3.utils.SHARED_CDN;
     exports2.BLANK = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
     exports2.v2 = require_v22();
   }
@@ -61828,6 +61828,7 @@ init_socket();
 // src/lib/attachmentStore.ts
 var fs10 = __toESM(require("fs"), 1);
 var path10 = __toESM(require("path"), 1);
+var import_cloudinary5 = __toESM(require_cloudinary3(), 1);
 function extFor(type, name) {
   const fromName = name.split(".").pop()?.toLowerCase();
   if (fromName && /^[a-z0-9]{1,8}$/.test(fromName)) return fromName;
@@ -61840,13 +61841,14 @@ function extFor(type, name) {
   if (type === "text/plain") return "txt";
   return "bin";
 }
-function saveAttachment(base64, type, name) {
+async function saveAttachment(base64, type, name) {
   const buf = Buffer.from(base64, "base64");
   if (buf.length === 0) throw new Error("Empty file");
-  const filename = `a_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}.${extFor(type, name)}`;
-  fs10.mkdirSync(attachmentDir, { recursive: true });
-  fs10.writeFileSync(path10.join(attachmentDir, filename), buf);
-  return filename;
+  const dataUri = `data:${type || extFor(type, name)};base64,${base64}`;
+  const res = await import_cloudinary5.v2.uploader.upload(dataUri, {
+    folder: "switchnest/support"
+  });
+  return res.secure_url;
 }
 function readAttachmentFile(filename) {
   const safe = path10.basename(filename);
@@ -61969,6 +61971,7 @@ async function sendAdminMessage(req, res) {
   const { userId, message } = req.body;
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, username: true, email: true } });
   if (!user) throw new AppError("NOT_FOUND", "User not found", 404);
+  const attachmentPath = req.body.attachmentData ? await saveAttachment(req.body.attachmentData, req.body.attachmentType, req.body.attachmentName) : null;
   const created = await supportModel().create({
     data: {
       userId,
@@ -61978,7 +61981,7 @@ async function sendAdminMessage(req, res) {
       attachmentName: req.body.attachmentName ?? null,
       attachmentType: req.body.attachmentType ?? null,
       attachmentData: null,
-      attachmentPath: req.body.attachmentData ? saveAttachment(req.body.attachmentData, req.body.attachmentType, req.body.attachmentName) : null,
+      attachmentPath,
       readByUser: false,
       readByAdmin: true
     }
@@ -62019,16 +62022,17 @@ async function getUserThread(req, res) {
 }
 async function sendUserMessage(req, res) {
   const userId = req.user.sub;
+  const attachmentPath = req.body.attachmentData ? await saveAttachment(req.body.attachmentData, req.body.attachmentType, req.body.attachmentName) : null;
   const created = await supportModel().create({
     data: {
-      userId,
+      userId: req.user.sub,
       senderRole: "user",
       senderName: req.user.username,
       message: req.body.message,
       attachmentName: req.body.attachmentName ?? null,
       attachmentType: req.body.attachmentType ?? null,
       attachmentData: null,
-      attachmentPath: req.body.attachmentData ? saveAttachment(req.body.attachmentData, req.body.attachmentType, req.body.attachmentName) : null,
+      attachmentPath,
       readByUser: true,
       readByAdmin: false
     }

@@ -116,6 +116,10 @@ export async function sendAdminMessage(req: Request, res: Response): Promise<voi
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, username: true, email: true } });
   if (!user) throw new AppError("NOT_FOUND", "User not found", 404);
 
+  const attachmentPath = req.body.attachmentData
+    ? await saveAttachment(req.body.attachmentData, req.body.attachmentType, req.body.attachmentName)
+    : null;
+
   const created = await supportModel().create({
     data: {
       userId,
@@ -125,9 +129,7 @@ export async function sendAdminMessage(req: Request, res: Response): Promise<voi
       attachmentName: req.body.attachmentName ?? null,
       attachmentType: req.body.attachmentType ?? null,
       attachmentData: null,
-      attachmentPath: req.body.attachmentData
-        ? saveAttachment(req.body.attachmentData, req.body.attachmentType, req.body.attachmentName)
-        : null,
+      attachmentPath,
       readByUser: false,
       readByAdmin: true,
     },
@@ -173,18 +175,20 @@ export async function getUserThread(req: Request, res: Response): Promise<void> 
 
 export async function sendUserMessage(req: Request, res: Response): Promise<void> {
   const userId = req.user!.sub;
+  const attachmentPath = req.body.attachmentData
+    ? await saveAttachment(req.body.attachmentData, req.body.attachmentType, req.body.attachmentName)
+    : null;
+
   const created = await supportModel().create({
     data: {
-      userId,
+      userId: req.user!.sub,
       senderRole: "user",
       senderName: req.user!.username,
       message: req.body.message,
       attachmentName: req.body.attachmentName ?? null,
       attachmentType: req.body.attachmentType ?? null,
       attachmentData: null,
-      attachmentPath: req.body.attachmentData
-        ? saveAttachment(req.body.attachmentData, req.body.attachmentType, req.body.attachmentName)
-        : null,
+      attachmentPath,
       readByUser: true,
       readByAdmin: false,
     },

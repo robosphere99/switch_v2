@@ -22,14 +22,20 @@ function extFor(type: string, name: string): string {
   return "bin";
 }
 
-/** Base64 blob → disk pe save. Returns random filename. */
-export function saveAttachment(base64: string, type: string, name: string): string {
+import { v2 as cloudinary } from "cloudinary";
+
+/** Base64 blob → disk pe save ya Cloudinary pe. Returns URL. */
+export async function saveAttachment(base64: string, type: string, name: string): Promise<string> {
   const buf = Buffer.from(base64, "base64");
   if (buf.length === 0) throw new Error("Empty file");
-  const filename = `a_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}.${extFor(type, name)}`;
-  fs.mkdirSync(attachmentDir, { recursive: true });
-  fs.writeFileSync(path.join(attachmentDir, filename), buf);
-  return filename;
+  
+  // Use data URI for Cloudinary upload
+  const dataUri = `data:${type || extFor(type, name)};base64,${base64}`;
+  const res = await cloudinary.uploader.upload(dataUri, {
+    folder: "switchnest/support",
+  });
+  
+  return res.secure_url;
 }
 
 /** Disk se file read — basename check (path traversal guard). Not found → null. */
