@@ -31,8 +31,14 @@ export async function saveAttachment(base64: string, type: string, name: string)
   
   // Use data URI for Cloudinary upload
   const dataUri = `data:${type || extFor(type, name)};base64,${base64}`;
+  const isImage = dataUri.startsWith("data:image/");
+  
   const res = await cloudinary.uploader.upload(dataUri, {
     folder: "switchnest/support",
+    ...(isImage && {
+      format: "webp",
+      transformation: [{ quality: "auto:eco", width: 1280, crop: "limit" }],
+    }),
   });
   
   return res.secure_url;

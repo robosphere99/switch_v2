@@ -53947,7 +53947,9 @@ var cloudinaryAvatarStorage = new import_multer_storage_cloudinary.CloudinarySto
   params: async (req, file) => {
     return {
       folder: "switchnest/avatars",
-      public_id: `${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9]/g, "_")}`
+      public_id: `${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9]/g, "_")}`,
+      format: "webp",
+      transformation: [{ quality: "auto:eco", width: 800, crop: "limit" }]
     };
   }
 });
@@ -53956,27 +53958,39 @@ var cloudinaryProductStorage = new import_multer_storage_cloudinary.CloudinarySt
   params: async (req, file) => {
     return {
       folder: "switchnest/products",
-      public_id: `${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9]/g, "_")}`
+      public_id: `${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9]/g, "_")}`,
+      format: "webp",
+      transformation: [{ quality: "auto:eco", width: 1280, crop: "limit" }]
     };
   }
 });
 var cloudinarySupportStorage = new import_multer_storage_cloudinary.CloudinaryStorage({
   cloudinary: import_cloudinary.v2,
   params: async (req, file) => {
+    const isImage = file.mimetype.startsWith("image/");
     return {
       folder: "switchnest/support",
       public_id: `${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9]/g, "_")}`,
-      resource_type: "auto"
-      // allow images, pdf, zip, etc.
+      resource_type: "auto",
+      ...isImage && {
+        format: "webp",
+        transformation: [{ quality: "auto:eco", width: 1280, crop: "limit" }]
+      }
     };
   }
 });
 var cloudinaryBillingStorage = new import_multer_storage_cloudinary.CloudinaryStorage({
   cloudinary: import_cloudinary.v2,
   params: async (req, file) => {
+    const isImage = file.mimetype.startsWith("image/");
     return {
       folder: "switchnest/billing",
-      public_id: `${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9]/g, "_")}`
+      public_id: `${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9]/g, "_")}`,
+      resource_type: "auto",
+      ...isImage && {
+        format: "webp",
+        transformation: [{ quality: "auto:eco", width: 1280, crop: "limit" }]
+      }
     };
   }
 });
@@ -61849,8 +61863,13 @@ async function saveAttachment(base64, type, name) {
   const buf = Buffer.from(base64, "base64");
   if (buf.length === 0) throw new Error("Empty file");
   const dataUri = `data:${type || extFor(type, name)};base64,${base64}`;
+  const isImage = dataUri.startsWith("data:image/");
   const res = await import_cloudinary5.v2.uploader.upload(dataUri, {
-    folder: "switchnest/support"
+    folder: "switchnest/support",
+    ...isImage && {
+      format: "webp",
+      transformation: [{ quality: "auto:eco", width: 1280, crop: "limit" }]
+    }
   });
   return res.secure_url;
 }

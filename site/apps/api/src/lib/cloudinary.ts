@@ -13,6 +13,8 @@ export const cloudinaryAvatarStorage = new CloudinaryStorage({
     return {
       folder: "switchnest/avatars",
       public_id: `${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9]/g, "_")}`,
+      format: "webp",
+      transformation: [{ quality: "auto:eco", width: 800, crop: "limit" }],
     };
   },
 });
@@ -23,6 +25,8 @@ export const cloudinaryProductStorage = new CloudinaryStorage({
     return {
       folder: "switchnest/products",
       public_id: `${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9]/g, "_")}`,
+      format: "webp",
+      transformation: [{ quality: "auto:eco", width: 1280, crop: "limit" }],
     };
   },
 });
@@ -30,10 +34,15 @@ export const cloudinaryProductStorage = new CloudinaryStorage({
 export const cloudinarySupportStorage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: async (req, file) => {
+    const isImage = file.mimetype.startsWith("image/");
     return {
       folder: "switchnest/support",
       public_id: `${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9]/g, "_")}`,
-      resource_type: "auto", // allow images, pdf, zip, etc.
+      resource_type: "auto",
+      ...(isImage && {
+        format: "webp",
+        transformation: [{ quality: "auto:eco", width: 1280, crop: "limit" }],
+      }),
     };
   },
 });
@@ -41,9 +50,15 @@ export const cloudinarySupportStorage = new CloudinaryStorage({
 export const cloudinaryBillingStorage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: async (req, file) => {
+    const isImage = file.mimetype.startsWith("image/");
     return {
       folder: "switchnest/billing",
       public_id: `${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9]/g, "_")}`,
+      resource_type: "auto",
+      ...(isImage && {
+        format: "webp",
+        transformation: [{ quality: "auto:eco", width: 1280, crop: "limit" }],
+      }),
     };
   },
 });
