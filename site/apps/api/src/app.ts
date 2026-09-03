@@ -23,22 +23,33 @@ const API_VERSION = "2.2.0";
 /** Health diagnostics — models/tables present hain ya nahi (deploy issue pehchanna). */
 async function schemaDiag() {
   try {
+    const p = prisma as unknown as Record<string, unknown> | null;
     const models = {
-      deviceAccess: typeof (prisma as unknown as Record<string, unknown>).deviceAccess === "object",
-      deviceUsage: typeof (prisma as unknown as Record<string, unknown>).deviceUsage === "object",
-      homeMemberRestricted: typeof (prisma as unknown as Record<string, unknown>).homeMember === "object",
-      supportChatSettings: typeof (prisma as unknown as Record<string, unknown>).supportChatSettings === "object",
+      deviceAccess: Boolean(p && typeof p.deviceAccess === "object"),
+      deviceUsage: Boolean(p && typeof p.deviceUsage === "object"),
+      homeMemberRestricted: Boolean(p && typeof p.homeMember === "object"),
+      supportChatSettings: Boolean(p && typeof p.supportChatSettings === "object"),
     };
     const table = async (t: string) => {
-      const r = await prisma.$queryRaw<{ c: bigint }[]>`
-        SELECT COUNT(*) AS c FROM information_schema.tables
-        WHERE table_schema = DATABASE() AND table_name = ${t}
-      `;
-      return Number(r[0]?.c ?? 0) > 0;
+      try {
+        const r = await prisma.$queryRaw<{ c: bigint }[]>`
+          SELECT COUNT(*) AS c FROM information_schema.tables
+          WHERE table_schema = DATABASE() AND table_name = ${t}
+        `;
+        return Number(r[0]?.c ?? 0) > 0;
+      } catch {
+        return false;
+      }
     };
-    return { models, tables: { device_access: await table("device_access"), device_usage: await table("device_usage") } };
-  } catch {
-    return { error: "diag failed" };
+    return {
+      models,
+      tables: {
+        device_access: await table("device_access"),
+        device_usage: await table("device_usage"),
+      },
+    };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "diag failed" };
   }
 }
 
@@ -84,18 +95,29 @@ export function createApp() {
     next();
   });
 
-  app.get("/api/health", async (_req, res) => {
-    res.json({
-      success: true,
-      data: { status: "ok", ts: new Date().toISOString(), schema: await schemaDiag(), build: API_VERSION },
-    });
-  });
-  app.get("/health", async (_req, res) => {
-    res.json({
-      success: true,
-      data: { status: "ok", ts: new Date().toISOString(), schema: await schemaDiag(), build: API_VERSION },
-    });
-  });
+  const handleHealth = async (_req: express.Request, res: express.Response) => {
+    try {
+      const diag = await schemaDiag();
+      res.json({
+        success: true,
+        data: { status: "ok", ts: new Date().toISOString(), schema: diag, build: API_VERSION },
+      });
+    } catch (err) {
+      // Health route should never crash or return 500
+      res.json({
+        success: true,
+        data: {
+          status: "degraded",
+          ts: new Date().toISOString(),
+          error: err instanceof Error ? err.message : "health check error",
+          build: API_VERSION,
+        },
+      });
+    }
+  };
+
+  app.get("/api/health", handleHealth);
+  app.get("/health", handleHealth);
 
   const getVersion = async (req: express.Request, res: express.Response) => {
     const requestHost = req.get('host') || '192.168.1.36:4000';

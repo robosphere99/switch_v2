@@ -90,13 +90,39 @@ async function checkOnce(): Promise<void> {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
     try {
-      const res = await fetch(`https://${lastSeenHost}/api/health`, {
-        signal: ctrl.signal,
-        headers: { "user-agent": "SwitchNestHealthMonitor/1.0" },
-      });
+      const url = lastSeenHost.startsWith("http://") || lastSeenHost.startsWith("https://")
+        ? `${lastSeenHost.replace(/\/+$/, "")}/api/health`
+        : `https://${lastSeenHost}/api/health`;
+      let res: Response;
+      try {
+        res = await fetch(url, {
+          signal: ctrl.signal,
+          headers: { "user-agent": "SwitchNestHealthMonitor/1.0" },
+        });
+      } catch (fetchErr) {
+        // If https failed with network/SSL error, try http fallback
+        if (url.startsWith("https://")) {
+          const httpUrl = url.replace(/^https:\/\//, "http://");
+          res = await fetch(httpUrl, {
+            signal: ctrl.signal,
+            headers: { "user-agent": "SwitchNestHealthMonitor/1.0" },
+          });
+        } else {
+          throw fetchErr;
+        }
+      }
       status = res.status;
       ok = res.status === 200;
-      if (!ok) err = `status_${res.status}`;
+      if (!ok) {
+        let snippet = "";
+        try {
+          const text = await res.text();
+          snippet = text ? text.slice(0, 120) : "";
+        } catch {
+          /* ignore */
+        }
+        err = snippet ? `status_${res.status}: ${snippet}` : `status_${res.status}`;
+      }
     } catch (e) {
       const anyErr = e as { name?: string; cause?: { code?: string } };
       err = anyErr?.name === "AbortError" ? "timeout" : String(anyErr?.cause?.code || anyErr?.name || e);
