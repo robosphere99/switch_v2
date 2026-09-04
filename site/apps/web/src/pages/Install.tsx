@@ -39,9 +39,9 @@ export function Install() {
   // DB form
   const [dbHost, setDbHost] = useState("127.0.0.1");
   const [dbPort, setDbPort] = useState("3306");
-  const [dbUser, setDbUser] = useState("switch_v2");
-  const [dbPass, setDbPass] = useState("switchnest@1234567890");
-  const [dbName, setDbName] = useState("switch_v2");
+  const [dbUser, setDbUser] = useState("");
+  const [dbPass, setDbPass] = useState("");
+  const [dbName, setDbName] = useState("");
   const [dbTesting, setDbTesting] = useState(false);
   const [dbTested, setDbTested] = useState(false);
   const [serverVersion, setServerVersion] = useState("");

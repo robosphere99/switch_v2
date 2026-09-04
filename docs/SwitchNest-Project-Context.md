@@ -7,7 +7,7 @@
 > Repo location (this machine): `C:\Users\robos\OneDrive\Documents\SwitchNest`
 >
 <!-- AUTO:STAMP:START -->
-> _Auto-updated: 2026-09-03 23:51 UTC · branch `main` · tree dirty (4 changes) · 385 commits_
+> _Auto-updated: 2026-09-04 01:50 UTC · branch `main` · tree dirty (3 changes) · 387 commits_
 <!-- AUTO:STAMP:END -->
 
 ---
@@ -112,6 +112,8 @@ that also serves real ESP32 hardware).
 <!-- AUTO:RECENT_COMMITS:START -->
 Sabse naye 20 commits:
 
+- `cb2c58b` (2026-09-04) fix: increase frontend axios timeout for image uploads to Cloudinary
+- `5cd0ce0` (2026-09-04) feat: migrate 1-to-1 WebRTC calling to Jitsi Meet / JaaS
 - `d2b88ab` (2026-09-04) feat(cloudinary): add image compression and optimizations for uploads
 - `cd250a9` (2026-09-04) fix(support): use cloudinary for base64 attachment uploads
 - `f752fe6` (2026-09-04) feat(api): migrate uploads to cloudinary & fix smtp fallback
@@ -130,8 +132,6 @@ Sabse naye 20 commits:
 - `105b21b` (2026-09-02) fix(iis): add global uncaughtException and unhandledRejection handlers to prevent process exits and 503 apppool stops
 - `7748e59` (2026-09-02) fix(iis): disable selfHealPrismaClient execFileSync to eliminate startup lag and 503 apppool stops
 - `6c537fb` (2026-09-02) fix(admin): add fallback in GET /api/admin/products and product_media.review_id light migration
-- `491bdf6` (2026-09-02) fix(shop): add product_media table migration and add fallback in GET /api/shop/products
-- `25fdc86` (2026-09-02) feat(db): add auto-seed default products catalog light migration
 <!-- AUTO:RECENT_COMMITS:END -->
 
 - 503 root-cause work: DB probe retry loop so the app self-heals, `nodeProcessCountPerApplication=1`,
