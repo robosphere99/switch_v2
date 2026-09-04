@@ -8,6 +8,7 @@ import path from "path";
 import fs from "fs";
 import { attachmentDir } from "../lib/paths";
 import * as supportController from "../controllers/support.controller";
+import * as callController from "../controllers/call.controller";
 
 export const supportRouter = Router();
 
@@ -110,3 +111,10 @@ supportRouter.get("/settings", requireAuth, supportController.getChatSettings);
 supportRouter.put("/settings/:peerUserId", requireAuth, supportController.updateChatSettings);
 supportRouter.delete("/messages/:id", requireAuth, supportController.deleteUserMessage);
 supportRouter.delete("/messages", requireAuth, supportController.clearUserThread);
+
+// Calling feature
+supportRouter.get("/calls", requireAuth, callController.getCallHistory);
+supportRouter.post("/calls", requireAuth, callController.initiateCall);
+supportRouter.post("/calls/:id/accept", requireAuth, callController.acceptCall);
+supportRouter.post("/calls/:id/reject", requireAuth, callController.rejectCall);
+supportRouter.post("/calls/:id/end", requireAuth, callController.endCall);

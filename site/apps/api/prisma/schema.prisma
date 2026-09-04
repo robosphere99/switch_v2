@@ -147,6 +147,8 @@ model User {
   warrantyClaims WarrantyClaim[]
   contactMessages ContactMessage[]
   supportMessages SupportMessage[]
+  callsMade       SupportCall[] @relation("CallsMade")
+  callsReceived   SupportCall[] @relation("CallsReceived")
   chatSettings    SupportChatSettings[]
   oauthCodes      OAuthAuthCode[]
   oauthTokens     OAuthToken[]
@@ -679,6 +681,25 @@ model SupportMessage {
   @@index([userId, createdAt])
   @@index([readByAdmin])
   @@map("support_messages")
+}
+
+model SupportCall {
+  id         Int      @id @default(autoincrement())
+  callerId   Int      @map("caller_id")
+  receiverId Int      @map("receiver_id")
+  type       String   @db.VarChar(10) // audio | video
+  status     String   @db.VarChar(20) // ringing | accepted | rejected | missed | ended
+  roomId     String   @unique @db.VarChar(255) @map("room_id")
+  startedAt  DateTime @default(now()) @map("started_at")
+  answeredAt DateTime? @map("answered_at")
+  endedAt    DateTime? @map("ended_at")
+
+  caller   User @relation("CallsMade", fields: [callerId], references: [id], onDelete: Cascade)
+  receiver User @relation("CallsReceived", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@index([callerId])
+  @@index([receiverId])
+  @@map("support_calls")
 }
 
 /** Per-view chat settings — mute + pin. userId = setting ka owner (user ya admin), peerUserId = baat karne wala. */

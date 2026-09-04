@@ -7,7 +7,7 @@
 > Repo location (this machine): `C:\Users\robos\OneDrive\Documents\SwitchNest`
 >
 <!-- AUTO:STAMP:START -->
-> _Auto-updated: 2026-09-03 21:41 UTC · branch `main` · tree dirty (58 changes) · 382 commits_
+> _Auto-updated: 2026-09-03 23:51 UTC · branch `main` · tree dirty (4 changes) · 385 commits_
 <!-- AUTO:STAMP:END -->
 
 ---
@@ -112,6 +112,9 @@ that also serves real ESP32 hardware).
 <!-- AUTO:RECENT_COMMITS:START -->
 Sabse naye 20 commits:
 
+- `d2b88ab` (2026-09-04) feat(cloudinary): add image compression and optimizations for uploads
+- `cd250a9` (2026-09-04) fix(support): use cloudinary for base64 attachment uploads
+- `f752fe6` (2026-09-04) feat(api): migrate uploads to cloudinary & fix smtp fallback
 - `87dc5bb` (2026-09-04) feat: improve health checkup
 - `cffa1a3` (2026-09-04) refactor(api): complete MVC architecture refactoring, redone product cards, set JWT expirations
 - `9852a99` (2026-09-02) feat(terminal): add HTTP polling command queue fallback for admin board terminal commands
@@ -129,9 +132,6 @@ Sabse naye 20 commits:
 - `6c537fb` (2026-09-02) fix(admin): add fallback in GET /api/admin/products and product_media.review_id light migration
 - `491bdf6` (2026-09-02) fix(shop): add product_media table migration and add fallback in GET /api/shop/products
 - `25fdc86` (2026-09-02) feat(db): add auto-seed default products catalog light migration
-- `492be4e` (2026-09-02) fix(iis): remove process.exit call from selfHealPrismaClient to prevent HTTP 503 apppool crash
-- `502efcf` (2026-09-02) cleanup: remove temporary debug-log endpoint
-- `78a0e18` (2026-09-02) fix(db): add users.expo_push_token light migration to resolve user creation 500 error
 <!-- AUTO:RECENT_COMMITS:END -->
 
 - 503 root-cause work: DB probe retry loop so the app self-heals, `nodeProcessCountPerApplication=1`,

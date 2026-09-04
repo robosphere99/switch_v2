@@ -810,93 +810,6 @@ var init_src = __esm({
   }
 });
 
-// src/services/push.service.ts
-var push_service_exports = {};
-__export(push_service_exports, {
-  sendPushToUser: () => sendPushToUser
-});
-import { Expo } from "expo-server-sdk";
-async function sendPushToUser(userId, title, body, payload, category = "system") {
-  try {
-    let pushCondition = {};
-    switch (category) {
-      case "device":
-        pushCondition = { pushDeviceToggles: true };
-        break;
-      case "support":
-        pushCondition = { pushSupportUpdates: true };
-        break;
-      case "power":
-        pushCondition = { pushPowerAlerts: true };
-        break;
-      case "order":
-        pushCondition = { pushOrderUpdates: true };
-        break;
-      case "promo":
-        pushCondition = { pushPromotional: true };
-        break;
-      case "security":
-        pushCondition = { pushSecurityAlerts: true };
-        break;
-      default:
-        pushCondition = { pushSystemAlerts: true };
-        break;
-    }
-    const subscriptions = await prisma.pushSubscription.findMany({
-      where: {
-        userId,
-        ...pushCondition
-      },
-      select: { token: true }
-    });
-    if (!subscriptions || subscriptions.length === 0) return false;
-    const messages = [];
-    for (const sub of subscriptions) {
-      const pushToken = sub.token;
-      if (!Expo.isExpoPushToken(pushToken)) {
-        console.warn(`[Push Engine] Token ${pushToken} is invalid. Purging from registry.`);
-        await prisma.$executeRawUnsafe(`DELETE FROM \`PushSubscription\` WHERE token = '${pushToken}'`).catch(() => {
-        });
-        continue;
-      }
-      messages.push({
-        to: pushToken,
-        sound: "default",
-        // Forces a hardware audio alert
-        priority: "high",
-        // Bypass battery optimization throttling constraints
-        title,
-        body,
-        data: payload || {},
-        categoryId: category,
-        channelId: "support-calls"
-      });
-    }
-    if (messages.length === 0) return false;
-    const chunks = expo.chunkPushNotifications(messages);
-    for (const chunk of chunks) {
-      try {
-        const ticketChunk = await expo.sendPushNotificationsAsync(chunk);
-        console.log(`[Push Engine] Dispatched payload ${ticketChunk[0].id || "batch"} to hardware bridging layer.`);
-      } catch (ticketError) {
-        console.error("[Push Engine] Segment Delivery Error:", ticketError);
-      }
-    }
-    return true;
-  } catch (e) {
-    console.error("[Push Engine] Fatal notification construction error:", e);
-    return false;
-  }
-}
-var expo;
-var init_push_service = __esm({
-  "src/services/push.service.ts"() {
-    "use strict";
-    init_prisma();
-    expo = new Expo({ accessToken: process.env.EXPO_ACCESS_TOKEN });
-  }
-});
-
 // src/services/mqtt.service.ts
 var mqtt_service_exports = {};
 __export(mqtt_service_exports, {
@@ -1221,6 +1134,7 @@ __export(socket_exports, {
   emitToSession: () => emitToSession,
   emitToUser: () => emitToUser,
   initSocket: () => initSocket,
+  io: () => io,
   leaveHomeRoom: () => leaveHomeRoom
 });
 import { Server } from "socket.io";
@@ -1263,56 +1177,6 @@ function initSocket(server) {
     } catch {
     }
     socket.emit(REALTIME_EVENTS.socketReady, { homes: joined });
-    console.log(`[socket] user ${userId} connected (${joined} homes)`);
-    const pendingCall = activeCalls.get(userId);
-    if (pendingCall && Date.now() - pendingCall.timestamp < 6e4) {
-      socket.emit("webrtc:signal", {
-        senderId: pendingCall.adminId,
-        type: "call-request",
-        payload: { callType: pendingCall.callType }
-      });
-    }
-    socket.on("webrtc:signal", (data) => {
-      const { targetId, type, payload } = data || {};
-      if (targetId) {
-        const roomName = `user:${targetId}`;
-        const room = io?.sockets.adapter.rooms.get(roomName);
-        if (type === "call-request") {
-          activeCalls.set(targetId, { adminId: userId, callType: payload?.callType || "video", timestamp: Date.now() });
-          setTimeout(() => activeCalls.delete(targetId), 6e4);
-          if (!room || room.size === 0) {
-            Promise.resolve().then(() => (init_push_service(), push_service_exports)).then(({ sendPushToUser: sendPushToUser2 }) => {
-              sendPushToUser2(
-                targetId,
-                "Incoming Support Call",
-                "Admin is calling you for support. Tap to answer.",
-                { type: "webrtc-call", callType: payload?.callType || "video", adminId: userId },
-                "support"
-              ).catch(console.error);
-            });
-            socket.emit("webrtc:signal", {
-              senderId: targetId,
-              type: "call-offline-push-sent"
-            });
-          }
-        } else if (type === "call-end" || type === "call-reject" || type === "call-accept") {
-          activeCalls.delete(targetId);
-          activeCalls.delete(userId);
-          if (type === "call-accept" || type === "call-reject") {
-            socket.to(`user:${userId}`).emit("webrtc:signal", {
-              senderId: targetId,
-              type: "call-end",
-              payload: { reason: "handled-elsewhere" }
-            });
-          }
-        }
-        socket.to(roomName).emit("webrtc:signal", {
-          senderId: userId,
-          type,
-          payload
-        });
-      }
-    });
     socket.on("admin:subscribe-logs", (data) => {
       if (!isAdmin) return;
       const { espId } = data || {};
@@ -1408,7 +1272,7 @@ async function leaveHomeRoom(userId, homeId) {
 function emitToBoardLogs(espId, logMsg) {
   io?.to(`board-logs-${espId}`).emit("admin:board-log", logMsg);
 }
-var io, activeCalls;
+var io;
 var init_socket = __esm({
   "src/lib/socket.ts"() {
     "use strict";
@@ -1416,7 +1280,6 @@ var init_socket = __esm({
     init_env();
     init_prisma();
     io = null;
-    activeCalls = /* @__PURE__ */ new Map();
   }
 });
 
@@ -36100,11 +35963,11 @@ var require_encodeDoubleArray = __commonJS({
 var require_auth_token = __commonJS({
   "../../node_modules/cloudinary/lib-es5/auth_token.js"(exports, module) {
     "use strict";
-    var crypto10 = __require("crypto");
+    var crypto11 = __require("crypto");
     var smart_escape = require_smart_escape();
     var unsafe = /([ "#%&'/:;<=>?@[\]^`{|}~]+)/g;
     function digest(message, key) {
-      return crypto10.createHmac("sha256", Buffer.from(key, "hex")).update(message).digest("hex");
+      return crypto11.createHmac("sha256", Buffer.from(key, "hex")).update(message).digest("hex");
     }
     function escapeToLower(url) {
       var safeUrl = smart_escape(url, unsafe);
@@ -43371,7 +43234,7 @@ var require_utils = __commonJS({
         return Array.from(arr);
       }
     }
-    var crypto10 = __require("crypto");
+    var crypto11 = __require("crypto");
     var querystring = __require("querystring");
     var urlParse = __require("url").parse;
     var compact = require_compact();
@@ -44230,7 +44093,7 @@ var require_utils = __commonJS({
       return base_api_url([resource_type, action], options);
     }
     function random_public_id() {
-      return crypto10.randomBytes(12).toString("base64").replace(/[^a-z0-9]/g, "");
+      return crypto11.randomBytes(12).toString("base64").replace(/[^a-z0-9]/g, "");
     }
     function signed_preloaded_image(result) {
       return `${result.resource_type}/upload/v${result.version}/${filter([result.public_id, result.format], utils.present).join(".")}#${result.signature}`;
@@ -44249,7 +44112,7 @@ var require_utils = __commonJS({
       if (!SUPPORTED_SIGNATURE_ALGORITHMS.includes(signature_algorithm)) {
         throw new Error(`Signature algorithm ${signature_algorithm} is not supported. Supported algorithms: ${SUPPORTED_SIGNATURE_ALGORITHMS.join(", ")}`);
       }
-      var hash = crypto10.createHash(signature_algorithm).update(input).digest();
+      var hash = crypto11.createHash(signature_algorithm).update(input).digest();
       return Buffer.from(hash).toString(encoding);
     }
     function clear_blank(hash) {
@@ -48831,11 +48694,11 @@ var require_encodeDoubleArray2 = __commonJS({
 // ../../node_modules/cloudinary/lib/auth_token.js
 var require_auth_token2 = __commonJS({
   "../../node_modules/cloudinary/lib/auth_token.js"(exports, module) {
-    var crypto10 = __require("crypto");
+    var crypto11 = __require("crypto");
     var smart_escape = require_smart_escape2();
     var unsafe = /([ "#%&'/:;<=>?@[\]^`{|}~]+)/g;
     function digest(message, key) {
-      return crypto10.createHmac("sha256", Buffer.from(key, "hex")).update(message).digest("hex");
+      return crypto11.createHmac("sha256", Buffer.from(key, "hex")).update(message).digest("hex");
     }
     function escapeToLower(url) {
       const safeUrl = smart_escape(url, unsafe);
@@ -49173,7 +49036,7 @@ var require_consts2 = __commonJS({
 // ../../node_modules/cloudinary/lib/utils/index.js
 var require_utils2 = __commonJS({
   "../../node_modules/cloudinary/lib/utils/index.js"(exports, module) {
-    var crypto10 = __require("crypto");
+    var crypto11 = __require("crypto");
     var querystring = __require("querystring");
     var urlParse = __require("url").parse;
     var compact = require_compact();
@@ -50010,7 +49873,7 @@ var require_utils2 = __commonJS({
       return base_api_url([resource_type, action], options);
     }
     function random_public_id() {
-      return crypto10.randomBytes(12).toString("base64").replace(/[^a-z0-9]/g, "");
+      return crypto11.randomBytes(12).toString("base64").replace(/[^a-z0-9]/g, "");
     }
     function signed_preloaded_image(result) {
       return `${result.resource_type}/upload/v${result.version}/${filter([result.public_id, result.format], utils.present).join(".")}#${result.signature}`;
@@ -50027,7 +49890,7 @@ var require_utils2 = __commonJS({
       if (!SUPPORTED_SIGNATURE_ALGORITHMS.includes(signature_algorithm)) {
         throw new Error(`Signature algorithm ${signature_algorithm} is not supported. Supported algorithms: ${SUPPORTED_SIGNATURE_ALGORITHMS.join(", ")}`);
       }
-      const hash = crypto10.createHash(signature_algorithm).update(input).digest();
+      const hash = crypto11.createHash(signature_algorithm).update(input).digest();
       return Buffer.from(hash).toString(encoding);
     }
     function clear_blank(hash) {
@@ -52882,6 +52745,93 @@ var init_notificationQuery = __esm({
   "src/services/notificationQuery.ts"() {
     "use strict";
     SCHEDULE_TITLE_RE = /Schedule fired/i;
+  }
+});
+
+// src/services/push.service.ts
+var push_service_exports = {};
+__export(push_service_exports, {
+  sendPushToUser: () => sendPushToUser
+});
+import { Expo } from "expo-server-sdk";
+async function sendPushToUser(userId, title, body, payload, category = "system") {
+  try {
+    let pushCondition = {};
+    switch (category) {
+      case "device":
+        pushCondition = { pushDeviceToggles: true };
+        break;
+      case "support":
+        pushCondition = { pushSupportUpdates: true };
+        break;
+      case "power":
+        pushCondition = { pushPowerAlerts: true };
+        break;
+      case "order":
+        pushCondition = { pushOrderUpdates: true };
+        break;
+      case "promo":
+        pushCondition = { pushPromotional: true };
+        break;
+      case "security":
+        pushCondition = { pushSecurityAlerts: true };
+        break;
+      default:
+        pushCondition = { pushSystemAlerts: true };
+        break;
+    }
+    const subscriptions = await prisma.pushSubscription.findMany({
+      where: {
+        userId,
+        ...pushCondition
+      },
+      select: { token: true }
+    });
+    if (!subscriptions || subscriptions.length === 0) return false;
+    const messages = [];
+    for (const sub of subscriptions) {
+      const pushToken = sub.token;
+      if (!Expo.isExpoPushToken(pushToken)) {
+        console.warn(`[Push Engine] Token ${pushToken} is invalid. Purging from registry.`);
+        await prisma.$executeRawUnsafe(`DELETE FROM \`PushSubscription\` WHERE token = '${pushToken}'`).catch(() => {
+        });
+        continue;
+      }
+      messages.push({
+        to: pushToken,
+        sound: "default",
+        // Forces a hardware audio alert
+        priority: "high",
+        // Bypass battery optimization throttling constraints
+        title,
+        body,
+        data: payload || {},
+        categoryId: category,
+        channelId: "support-calls"
+      });
+    }
+    if (messages.length === 0) return false;
+    const chunks = expo.chunkPushNotifications(messages);
+    for (const chunk of chunks) {
+      try {
+        const ticketChunk = await expo.sendPushNotificationsAsync(chunk);
+        console.log(`[Push Engine] Dispatched payload ${ticketChunk[0].id || "batch"} to hardware bridging layer.`);
+      } catch (ticketError) {
+        console.error("[Push Engine] Segment Delivery Error:", ticketError);
+      }
+    }
+    return true;
+  } catch (e) {
+    console.error("[Push Engine] Fatal notification construction error:", e);
+    return false;
+  }
+}
+var expo;
+var init_push_service = __esm({
+  "src/services/push.service.ts"() {
+    "use strict";
+    init_prisma();
+    expo = new Expo({ accessToken: process.env.EXPO_ACCESS_TOKEN });
   }
 });
 
@@ -58927,9 +58877,9 @@ adminRouter.post("/api-keys", async (req, res) => {
     homeId = home?.id ?? null;
   }
   const label = String(req.body?.label ?? "factory").slice(0, 100);
-  const crypto10 = await import("node:crypto");
-  const plain = `rs_${crypto10.randomBytes(9).toString("base64url").replace(/-/g, "").slice(0, 16)}`;
-  const keyHash = crypto10.createHash("sha256").update(plain).digest("hex");
+  const crypto11 = await import("node:crypto");
+  const plain = `rs_${crypto11.randomBytes(9).toString("base64url").replace(/-/g, "").slice(0, 16)}`;
+  const keyHash = crypto11.createHash("sha256").update(plain).digest("hex");
   const keyPrefix = plain.slice(0, 8);
   await prisma.apiKey.create({ data: { userId, homeId, label, keyHash, keyPrefix } });
   await audit(req.user.sub, "admin.apikey.create", {
@@ -59665,9 +59615,9 @@ adminRouter.post("/esp/:id/key", async (req, res) => {
     include: { home: { select: { id: true, ownerId: true } } }
   });
   if (!esp?.home) throw new AppError("NOT_FOUND", "ESP ya home nahi mila");
-  const crypto10 = await import("node:crypto");
-  const plain = `rs_${crypto10.randomBytes(9).toString("base64url").replace(/-/g, "").slice(0, 16)}`;
-  const keyHash = crypto10.createHash("sha256").update(plain).digest("hex");
+  const crypto11 = await import("node:crypto");
+  const plain = `rs_${crypto11.randomBytes(9).toString("base64url").replace(/-/g, "").slice(0, 16)}`;
+  const keyHash = crypto11.createHash("sha256").update(plain).digest("hex");
   const keyPrefix = plain.slice(0, 8);
   await prisma.apiKey.create({
     data: {
@@ -59928,8 +59878,8 @@ adminRouter.get("/devices/:id/support", async (req, res) => {
 });
 adminRouter.post("/esp/:id/rotate-console-password", async (req, res) => {
   const id = Number(req.params.id);
-  const crypto10 = await import("node:crypto");
-  const newPass = crypto10.randomBytes(4).toString("hex");
+  const crypto11 = await import("node:crypto");
+  const newPass = crypto11.randomBytes(4).toString("hex");
   const esp = await prisma.espDevice.findUnique({ where: { id } });
   if (!esp) throw new AppError("NOT_FOUND", "ESP not found", 404);
   await prisma.espDevice.update({
@@ -60439,9 +60389,9 @@ adminRouter.get("/orders/:id/provision", async (req, res) => {
       wifiPassword = null;
     }
   }
-  const crypto10 = await import("node:crypto");
-  const plain = `rs_${crypto10.randomBytes(9).toString("base64url").replace(/-/g, "").slice(0, 16)}`;
-  const keyHash = crypto10.createHash("sha256").update(plain).digest("hex");
+  const crypto11 = await import("node:crypto");
+  const plain = `rs_${crypto11.randomBytes(9).toString("base64url").replace(/-/g, "").slice(0, 16)}`;
+  const keyHash = crypto11.createHash("sha256").update(plain).digest("hex");
   const keyPrefix = plain.slice(0, 8);
   const home = await prisma.home.findFirst({ where: { ownerId: order.userId } });
   if (home) {
@@ -62469,6 +62419,225 @@ async function clearAdminThread(req, res) {
   ok(res, { cleared: r.count });
 }
 
+// src/controllers/call.controller.ts
+init_prisma();
+init_socket();
+init_push_service();
+import jwt5 from "jsonwebtoken";
+import crypto9 from "crypto";
+function generateJitsiJwt(roomId, user, isModerator = false) {
+  const appId = process.env.JITSI_APP_ID;
+  const privateKey = process.env.JITSI_PRIVATE_KEY;
+  const kid = process.env.JITSI_API_KEY || process.env.JITSI_KID;
+  if (!appId || !privateKey || !kid) {
+    return null;
+  }
+  const now = Math.floor(Date.now() / 1e3);
+  const exp = now + 7200;
+  const payload = {
+    aud: "jitsi",
+    iss: "chat",
+    sub: appId,
+    room: "*",
+    nbf: now - 10,
+    exp,
+    context: {
+      user: {
+        id: user.id.toString(),
+        name: user.name,
+        email: user.email,
+        avatar: user.avatarUrl || "",
+        moderator: isModerator
+      },
+      features: {
+        livestreaming: false,
+        recording: false
+      }
+    }
+  };
+  try {
+    return jwt5.sign(payload, privateKey, { algorithm: "RS256", keyid: kid });
+  } catch (err) {
+    console.error("Failed to sign Jitsi JWT", err);
+    return null;
+  }
+}
+async function initiateCall(req, res) {
+  const adminId = req.user.sub;
+  const { targetUserId, callType } = req.body;
+  if (!targetUserId || !callType) {
+    res.status(400).json({ error: "Missing required fields" });
+    return;
+  }
+  const parsedTargetId = parseInt(targetUserId, 10);
+  const targetUser = await prisma.user.findUnique({ where: { id: parsedTargetId } });
+  if (!targetUser) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+  const adminUser = await prisma.user.findUnique({ where: { id: adminId } });
+  if (!adminUser) {
+    res.status(404).json({ error: "Admin not found" });
+    return;
+  }
+  const rawRoomId = `switchnest-support-${crypto9.randomBytes(16).toString("hex")}`;
+  const appId = process.env.JITSI_APP_ID;
+  const roomId = appId ? `${appId}/${rawRoomId}` : rawRoomId;
+  const call = await prisma.supportCall.create({
+    data: {
+      callerId: adminId,
+      receiverId: parsedTargetId,
+      type: callType,
+      status: "ringing",
+      roomId
+    }
+  });
+  const jitsiToken = generateJitsiJwt(roomId, {
+    id: adminUser.id,
+    name: adminUser.username,
+    email: adminUser.email,
+    avatarUrl: adminUser.avatarUrl || void 0
+  }, true);
+  const payload = {
+    callId: call.id,
+    callType,
+    roomId,
+    callerName: adminUser.username
+  };
+  emitToUser(parsedTargetId, "webrtc:signal", {
+    senderId: adminId,
+    type: "call-request",
+    payload
+  });
+  const roomName = `user:${parsedTargetId}`;
+  const room = io?.sockets.adapter.rooms.get(roomName);
+  if (!room || room.size === 0) {
+    sendPushToUser(
+      parsedTargetId,
+      "Incoming Support Call",
+      "Admin is calling you for support. Tap to answer.",
+      { type: "webrtc-call", callType, callId: call.id },
+      "support"
+    ).catch(console.error);
+  }
+  res.json({
+    callId: call.id,
+    roomId,
+    jitsiToken,
+    domain: process.env.JITSI_DOMAIN || "meet.jit.si"
+  });
+}
+async function acceptCall(req, res) {
+  const userId = req.user.sub;
+  const callId = parseInt(req.params.id, 10);
+  const call = await prisma.supportCall.findUnique({ where: { id: callId } });
+  if (!call || call.receiverId !== userId) {
+    res.status(404).json({ error: "Call not found or unauthorized" });
+    return;
+  }
+  if (call.status !== "ringing") {
+    res.status(400).json({ error: `Call is already ${call.status}` });
+    return;
+  }
+  const updatedCall = await prisma.supportCall.update({
+    where: { id: callId },
+    data: { status: "accepted", answeredAt: /* @__PURE__ */ new Date() }
+  });
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  const jitsiToken = generateJitsiJwt(call.roomId, {
+    id: user.id,
+    name: user.username,
+    email: user.email,
+    avatarUrl: user.avatarUrl || void 0
+  }, false);
+  emitToUser(call.callerId, "webrtc:signal", {
+    senderId: userId,
+    type: "call-accept",
+    payload: { callId }
+  });
+  emitToUser(userId, "webrtc:signal", {
+    senderId: userId,
+    type: "call-end",
+    payload: { reason: "handled-elsewhere" }
+  });
+  res.json({
+    callId: updatedCall.id,
+    roomId: call.roomId,
+    jitsiToken,
+    domain: process.env.JITSI_DOMAIN || "meet.jit.si"
+  });
+}
+async function rejectCall(req, res) {
+  const userId = req.user.sub;
+  const callId = parseInt(req.params.id, 10);
+  const call = await prisma.supportCall.findUnique({ where: { id: callId } });
+  if (!call || call.receiverId !== userId) {
+    res.status(404).json({ error: "Call not found or unauthorized" });
+    return;
+  }
+  if (call.status !== "ringing") {
+    res.status(400).json({ error: `Call is already ${call.status}` });
+    return;
+  }
+  await prisma.supportCall.update({
+    where: { id: callId },
+    data: { status: "rejected", endedAt: /* @__PURE__ */ new Date() }
+  });
+  emitToUser(call.callerId, "webrtc:signal", {
+    senderId: userId,
+    type: "call-reject",
+    payload: { callId }
+  });
+  res.json({ success: true });
+}
+async function endCall(req, res) {
+  const userId = req.user.sub;
+  const callId = parseInt(req.params.id, 10);
+  const call = await prisma.supportCall.findUnique({ where: { id: callId } });
+  if (!call) {
+    res.status(404).json({ error: "Call not found" });
+    return;
+  }
+  if (call.callerId !== userId && call.receiverId !== userId && req.user.role !== "system_admin") {
+    res.status(403).json({ error: "Unauthorized" });
+    return;
+  }
+  if (call.status === "ended" || call.status === "rejected" || call.status === "missed") {
+    res.json({ success: true });
+    return;
+  }
+  const newStatus = call.status === "ringing" ? "missed" : "ended";
+  await prisma.supportCall.update({
+    where: { id: callId },
+    data: { status: newStatus, endedAt: /* @__PURE__ */ new Date() }
+  });
+  const targetId = call.callerId === userId ? call.receiverId : call.callerId;
+  emitToUser(targetId, "webrtc:signal", {
+    senderId: userId,
+    type: "call-end",
+    payload: { callId }
+  });
+  res.json({ success: true });
+}
+async function getCallHistory(req, res) {
+  const userId = req.user.sub;
+  const calls = await prisma.supportCall.findMany({
+    where: {
+      OR: [
+        { callerId: userId },
+        { receiverId: userId }
+      ]
+    },
+    orderBy: { startedAt: "desc" },
+    take: 50,
+    include: {
+      caller: { select: { id: true, username: true, email: true, avatarUrl: true } },
+      receiver: { select: { id: true, username: true, email: true, avatarUrl: true } }
+    }
+  });
+  res.json(calls);
+}
+
 // src/routes/support.routes.ts
 var supportRouter = Router16();
 var upload4 = multer4({
@@ -62552,11 +62721,16 @@ supportRouter.get("/settings", requireAuth, getChatSettings);
 supportRouter.put("/settings/:peerUserId", requireAuth, updateChatSettings);
 supportRouter.delete("/messages/:id", requireAuth, deleteUserMessage);
 supportRouter.delete("/messages", requireAuth, clearUserThread);
+supportRouter.get("/calls", requireAuth, getCallHistory);
+supportRouter.post("/calls", requireAuth, initiateCall);
+supportRouter.post("/calls/:id/accept", requireAuth, acceptCall);
+supportRouter.post("/calls/:id/reject", requireAuth, rejectCall);
+supportRouter.post("/calls/:id/end", requireAuth, endCall);
 
 // src/routes/oauth.routes.ts
 init_prisma();
 import { Router as Router17 } from "express";
-import crypto9 from "crypto";
+import crypto10 from "crypto";
 import { z as z14 } from "zod";
 var oauthRouter = Router17();
 var authorizeSchema = z14.object({
@@ -62607,7 +62781,7 @@ oauthRouter.post("/authorize", requireAuth, async (req, res) => {
       status: "active"
     }
   });
-  const code = crypto9.randomBytes(32).toString("hex");
+  const code = crypto10.randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + 10 * 60 * 1e3);
   await prisma.oAuthAuthCode.create({
     data: {
@@ -62652,8 +62826,8 @@ oauthRouter.post("/token", async (req, res) => {
       return res.status(400).json({ error: "invalid_grant", error_description: "Code expired" });
     }
     await prisma.oAuthAuthCode.delete({ where: { id: authCode.id } });
-    const accessToken = crypto9.randomBytes(48).toString("hex");
-    const refreshToken = crypto9.randomBytes(48).toString("hex");
+    const accessToken = crypto10.randomBytes(48).toString("hex");
+    const refreshToken = crypto10.randomBytes(48).toString("hex");
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1e3);
     await prisma.oAuthToken.create({
       data: {
@@ -62689,7 +62863,7 @@ oauthRouter.post("/token", async (req, res) => {
       await prisma.oAuthToken.delete({ where: { id: tokenRecord.id } });
       return res.status(400).json({ error: "invalid_grant", error_description: "Integration revoked" });
     }
-    const newAccessToken = crypto9.randomBytes(48).toString("hex");
+    const newAccessToken = crypto10.randomBytes(48).toString("hex");
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1e3);
     const updated = await prisma.oAuthToken.update({
       where: { id: tokenRecord.id },

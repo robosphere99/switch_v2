@@ -6,10 +6,8 @@ import { REALTIME_EVENTS } from "@robosphere/shared";
 import { env, corsOrigins } from "../config/env";
 import { prisma } from "./prisma";
 
-let io: Server | null = null;
+export let io: Server | null = null;
 
-// Track pending WebRTC calls for users who are currently offline or backgrounded
-const activeCalls = new Map<number, { adminId: number, callType: string, timestamp: number }>();
 
 /** Attach Socket.IO to the HTTP server. Call once at startup. */
 export function initSocket(server: HttpServer): Server {
@@ -58,68 +56,6 @@ export function initSocket(server: HttpServer): Server {
     }
     // Connection ack — web ko "live" indicator ke liye (rooms count ke saath).
     socket.emit(REALTIME_EVENTS.socketReady, { homes: joined });
-    console.log(`[socket] user ${userId} connected (${joined} homes)`);
-
-    // Sync any pending WebRTC calls if the user was offline/backgrounded
-    const pendingCall = activeCalls.get(userId);
-    if (pendingCall && (Date.now() - pendingCall.timestamp < 60000)) {
-      socket.emit('webrtc:signal', {
-        senderId: pendingCall.adminId,
-        type: 'call-request',
-        payload: { callType: pendingCall.callType }
-      });
-    }
-
-    // WebRTC Generic Signaling
-    socket.on('webrtc:signal', (data) => {
-      const { targetId, type, payload } = data || {};
-      if (targetId) {
-        const roomName = `user:${targetId}`;
-        const room = io?.sockets.adapter.rooms.get(roomName);
-
-        if (type === 'call-request') {
-          activeCalls.set(targetId, { adminId: userId, callType: payload?.callType || 'video', timestamp: Date.now() });
-          setTimeout(() => activeCalls.delete(targetId), 60000);
-
-          if (!room || room.size === 0) {
-            // User is offline or backgrounded -> Wake them up with a Push Notification!
-            import("../services/push.service").then(({ sendPushToUser }) => {
-              sendPushToUser(
-                targetId,
-                "Incoming Support Call",
-                "Admin is calling you for support. Tap to answer.",
-                { type: 'webrtc-call', callType: payload?.callType || 'video', adminId: userId },
-                "support"
-              ).catch(console.error);
-            });
-            
-            // Inform the admin UI that we are waking the user up
-            socket.emit('webrtc:signal', {
-              senderId: targetId,
-              type: 'call-offline-push-sent'
-            });
-          }
-        } else if (type === 'call-end' || type === 'call-reject' || type === 'call-accept') {
-          activeCalls.delete(targetId);
-          activeCalls.delete(userId);
-
-          if (type === 'call-accept' || type === 'call-reject') {
-            // End the call for other sessions of this user so they stop ringing
-            socket.to(`user:${userId}`).emit('webrtc:signal', {
-              senderId: targetId,
-              type: 'call-end',
-              payload: { reason: 'handled-elsewhere' }
-            });
-          }
-        }
-
-        socket.to(roomName).emit('webrtc:signal', {
-          senderId: userId,
-          type,
-          payload
-        });
-      }
-    });
 
     // Terminal Logging & Commands for Admins
     socket.on('admin:subscribe-logs', (data) => {
