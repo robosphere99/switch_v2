@@ -2,6 +2,11 @@ import { Router } from "express";
 import mysql from "mysql2/promise";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+// ESM me __dirname nahi hota — yeh polyfill hai
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 import bcrypt from "bcryptjs";
 import { env } from "../config/env";
 import { resetPrismaClient, getEffectiveDbUrl } from "../lib/prisma";
@@ -213,6 +218,7 @@ function getSchemaSql(): string {
     path.resolve(__dirname, "../prisma/schema.sql"),
     path.resolve(__dirname, "schema.sql"),
     path.resolve(__dirname, "prisma/schema.sql"),
+    path.resolve(__dirname, "../../prisma/schema.sql"),
   ];
   for (const p of candidates) {
     if (fs.existsSync(p)) {
