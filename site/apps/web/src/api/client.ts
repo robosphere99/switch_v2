@@ -3,7 +3,7 @@ import { useAuthStore } from "../stores/auth";
 
 export const api = axios.create({
   baseURL: "/api",
-  timeout: 10_000,
+  timeout: 60_000, // Increased to 60s for image uploads
 });
 
 // Attach the JWT access token to every request.
