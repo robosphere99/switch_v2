@@ -1,0 +1,28 @@
+{
+  "name": "robosphere-site",
+  "version": "0.1.0",
+  "private": true,
+  "description": "RoboSphere v2 — multi-tenant smart home IoT platform (monorepo)",
+  "workspaces": [
+    "frontend/*",
+    "backend/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @robosphere/api",
+    "dev:api": "npm run dev -w @robosphere/api",
+    "dev:web": "npm run dev -w @robosphere/web",
+    "build": "npm run build -w @robosphere/api && npm run build -w @robosphere/web",
+    "typecheck": "npm run typecheck -w @robosphere/api && npm run typecheck -w @robosphere/web && npm run typecheck -w @robosphere/shared",
+    "test": "npm run test -w @robosphere/api && npm run test -w @robosphere/web",
+    "db:generate": "npm run db:generate -w @robosphere/api",
+    "db:migrate": "npm run db:migrate -w @robosphere/api",
+    "db:push": "npm run db:push -w @robosphere/api",
+    "db:seed": "npm run db:seed -w @robosphere/api",
+    "docs:generate": "npm run docs:generate -w @robosphere/api",
+    "docs:check": "npm run docs:check -w @robosphere/api"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

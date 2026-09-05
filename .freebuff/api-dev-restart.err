@@ -1,0 +1,837 @@
+[boot] node v22.16.0 | cwd = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api
+[boot] PORT env = "0" -> API_PORT = 4000
+[boot] log file = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\logs\app.log
+[boot] createApp done
+[boot] socket init done
+[boot] listen target: 4000
+[boot] main() setup complete — background DB init starting
+[boot] db probe: connecting...
+[boot] LISTENING on 0.0.0.0:4000
+[boot] db probe: schema ready = true
+[boot] request tracker: loaded
+[boot] node v22.16.0 | cwd = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api
+[boot] PORT env = "0" -> API_PORT = 4000
+[boot] log file = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\logs\app.log
+[boot] createApp done
+[boot] socket init done
+[boot] listen target: 4000
+[boot] main() setup complete — background DB init starting
+[boot] db probe: connecting...
+[boot] LISTENING on 0.0.0.0:4000
+[boot] db probe: schema ready = true
+[boot] request tracker: loaded
+'"C:\WINDOWS\System32\inetsrv\appcmd.exe"' is not recognized as an internal or external command,
+operable program or batch file.
+The specified channel could not be found.
+
+Failed to open event query.
+The specified channel could not be found.
+'"C:\WINDOWS\System32\inetsrv\appcmd.exe"' is not recognized as an internal or external command,
+operable program or batch file.
+The specified channel could not be found.
+
+Failed to open event query.
+The specified channel could not be found.
+'"C:\WINDOWS\System32\inetsrv\appcmd.exe"' is not recognized as an internal or external command,
+operable program or batch file.
+The specified channel could not be found.
+
+Failed to open event query.
+The specified channel could not be found.
+'"C:\WINDOWS\System32\inetsrv\appcmd.exe"' is not recognized as an internal or external command,
+operable program or batch file.
+The specified channel could not be found.
+
+Failed to open event query.
+The specified channel could not be found.
+'"C:\WINDOWS\System32\inetsrv\appcmd.exe"' is not recognized as an internal or external command,
+operable program or batch file.
+The specified channel could not be found.
+
+Failed to open event query.
+The specified channel could not be found.
+'"C:\WINDOWS\System32\inetsrv\appcmd.exe"' is not recognized as an internal or external command,
+operable program or batch file.
+The specified channel could not be found.
+
+Failed to open event query.
+The specified channel could not be found.
+'"C:\WINDOWS\System32\inetsrv\appcmd.exe"' is not recognized as an internal or external command,
+operable program or batch file.
+The specified channel could not be found.
+
+Failed to open event query.
+The specified channel could not be found.
+'"C:\WINDOWS\System32\inetsrv\appcmd.exe"' is not recognized as an internal or external command,
+operable program or batch file.
+The specified channel could not be found.
+
+Failed to open event query.
+The specified channel could not be found.
+'"C:\WINDOWS\System32\inetsrv\appcmd.exe"' is not recognized as an internal or external command,
+operable program or batch file.
+The specified channel could not be found.
+
+Failed to open event query.
+The specified channel could not be found.
+'"C:\WINDOWS\System32\inetsrv\appcmd.exe"' is not recognized as an internal or external command,
+operable program or batch file.
+The specified channel could not be found.
+
+Failed to open event query.
+The specified channel could not be found.
+'"C:\WINDOWS\System32\inetsrv\appcmd.exe"' is not recognized as an internal or external command,
+operable program or batch file.
+The specified channel could not be found.
+
+Failed to open event query.
+The specified channel could not be found.
+'"C:\WINDOWS\System32\inetsrv\appcmd.exe"' is not recognized as an internal or external command,
+operable program or batch file.
+The specified channel could not be found.
+
+Failed to open event query.
+The specified channel could not be found.
+'"C:\WINDOWS\System32\inetsrv\appcmd.exe"' is not recognized as an internal or external command,
+operable program or batch file.
+The specified channel could not be found.
+
+Failed to open event query.
+The specified channel could not be found.
+'"C:\WINDOWS\System32\inetsrv\appcmd.exe"' is not recognized as an internal or external command,
+operable program or batch file.
+The specified channel could not be found.
+
+Failed to open event query.
+The specified channel could not be found.
+'"C:\WINDOWS\System32\inetsrv\appcmd.exe"' is not recognized as an internal or external command,
+operable program or batch file.
+The specified channel could not be found.
+
+Failed to open event query.
+The specified channel could not be found.
+'"C:\WINDOWS\System32\inetsrv\appcmd.exe"' is not recognized as an internal or external command,
+operable program or batch file.
+The specified channel could not be found.
+
+Failed to open event query.
+The specified channel could not be found.
+'"C:\WINDOWS\System32\inetsrv\appcmd.exe"' is not recognized as an internal or external command,
+operable program or batch file.
+The specified channel could not be found.
+
+Failed to open event query.
+The specified channel could not be found.
+'"C:\WINDOWS\System32\inetsrv\appcmd.exe"' is not recognized as an internal or external command,
+operable program or batch file.
+The specified channel could not be found.
+
+Failed to open event query.
+The specified channel could not be found.
+'"C:\WINDOWS\System32\inetsrv\appcmd.exe"' is not recognized as an internal or external command,
+operable program or batch file.
+The specified channel could not be found.
+
+Failed to open event query.
+The specified channel could not be found.
+'"C:\WINDOWS\System32\inetsrv\appcmd.exe"' is not recognized as an internal or external command,
+operable program or batch file.
+The specified channel could not be found.
+
+Failed to open event query.
+The specified channel could not be found.
+'"C:\WINDOWS\System32\inetsrv\appcmd.exe"' is not recognized as an internal or external command,
+operable program or batch file.
+The specified channel could not be found.
+
+Failed to open event query.
+The specified channel could not be found.
+'"C:\WINDOWS\System32\inetsrv\appcmd.exe"' is not recognized as an internal or external command,
+operable program or batch file.
+The specified channel could not be found.
+
+Failed to open event query.
+The specified channel could not be found.
+'"C:\WINDOWS\System32\inetsrv\appcmd.exe"' is not recognized as an internal or external command,
+operable program or batch file.
+The specified channel could not be found.
+
+Failed to open event query.
+The specified channel could not be found.
+'"C:\WINDOWS\System32\inetsrv\appcmd.exe"' is not recognized as an internal or external command,
+operable program or batch file.
+The specified channel could not be found.
+
+Failed to open event query.
+The specified channel could not be found.
+'"C:\WINDOWS\System32\inetsrv\appcmd.exe"' is not recognized as an internal or external command,
+operable program or batch file.
+The specified channel could not be found.
+
+Failed to open event query.
+The specified channel could not be found.
+'"C:\WINDOWS\System32\inetsrv\appcmd.exe"' is not recognized as an internal or external command,
+operable program or batch file.
+The specified channel could not be found.
+
+Failed to open event query.
+The specified channel could not be found.
+'"C:\WINDOWS\System32\inetsrv\appcmd.exe"' is not recognized as an internal or external command,
+operable program or batch file.
+The specified channel could not be found.
+
+Failed to open event query.
+The specified channel could not be found.
+'"C:\WINDOWS\System32\inetsrv\appcmd.exe"' is not recognized as an internal or external command,
+operable program or batch file.
+The specified channel could not be found.
+
+Failed to open event query.
+The specified channel could not be found.
+'"C:\WINDOWS\System32\inetsrv\appcmd.exe"' is not recognized as an internal or external command,
+operable program or batch file.
+The specified channel could not be found.
+
+Failed to open event query.
+The specified channel could not be found.
+'"C:\WINDOWS\System32\inetsrv\appcmd.exe"' is not recognized as an internal or external command,
+operable program or batch file.
+The specified channel could not be found.
+
+Failed to open event query.
+The specified channel could not be found.
+[2026-08-18T06:55:16.197Z] [ERROR] Unhandled error BadRequestError: request aborted
+    at IncomingMessage.onAborted (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\raw-body\index.js:245:10)
+    at IncomingMessage.emit (node:events:518:28)
+    at IncomingMessage._destroy (node:_http_incoming:221:10)
+    at _destroy (node:internal/streams/destroy:122:10)
+    at IncomingMessage.destroy (node:internal/streams/destroy:84:5)
+    at abortIncoming (node:_http_server:809:9)
+    at socketOnClose (node:_http_server:803:3)
+    at Socket.emit (node:events:530:35)
+    at TCP.<anonymous> (node:net:351:12)
+[2026-08-18T06:55:46.196Z] [ERROR] Unhandled error BadRequestError: request aborted
+    at IncomingMessage.onAborted (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\raw-body\index.js:245:10)
+    at IncomingMessage.emit (node:events:518:28)
+    at IncomingMessage._destroy (node:_http_incoming:221:10)
+    at _destroy (node:internal/streams/destroy:122:10)
+    at IncomingMessage.destroy (node:internal/streams/destroy:84:5)
+    at abortIncoming (node:_http_server:809:9)
+    at socketOnClose (node:_http_server:803:3)
+    at Socket.emit (node:events:530:35)
+    at TCP.<anonymous> (node:net:351:12)
+[boot] node v22.16.0 | cwd = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api
+[boot] PORT env = "0" -> API_PORT = 4000
+[boot] log file = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\logs\app.log
+[boot] createApp done
+[boot] socket init done
+[boot] listen target: 4000
+[boot] main() setup complete — background DB init starting
+[boot] db probe: connecting...
+[boot] LISTENING on 0.0.0.0:4000
+[boot] db probe: schema ready = true
+[boot] request tracker: loaded
+[boot] node v22.16.0 | cwd = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api
+[boot] PORT env = "0" -> API_PORT = 4000
+[boot] log file = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\logs\app.log
+[boot] createApp done
+[boot] socket init done
+[boot] listen target: 4000
+[boot] main() setup complete — background DB init starting
+[boot] db probe: connecting...
+[boot] LISTENING on 0.0.0.0:4000
+[boot] db probe: schema ready = true
+[boot] request tracker: loaded
+[boot] node v22.16.0 | cwd = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api
+[boot] PORT env = "0" -> API_PORT = 4000
+[boot] log file = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\logs\app.log
+[boot] createApp done
+[boot] socket init done
+[boot] listen target: 4000
+[boot] main() setup complete — background DB init starting
+[boot] db probe: connecting...
+[boot] LISTENING on 0.0.0.0:4000
+[boot] db probe: schema ready = true
+[boot] request tracker: loaded
+[keyExpiry] tick error: 
+Invalid `prisma.apiKey.findMany()` invocation in
+C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\services\keyExpiry.service.ts:52:40
+
+  49 const cta = await keysCtaUrl();
+  50 
+  51 // ---------- Phase 1: expiring soon (7 din ke andar) ----------
+→ 52 const expiring = await prisma.apiKey.findMany({
+       where: {
+         expiresAt: {
+           not: null,
+           lte: new Date("2026-08-25T07:10:16.972Z"),
+           gt: new Date("2026-08-18T07:10:16.972Z")
+         },
+         expiryWarnedAt: null,
+         ~~~~~~~~~~~~~~
+     ?   AND?: ApiKeyWhereInput | ApiKeyWhereInput[],
+     ?   OR?: ApiKeyWhereInput[],
+     ?   NOT?: ApiKeyWhereInput | ApiKeyWhereInput[],
+     ?   id?: IntFilter | Int,
+     ?   userId?: IntFilter | Int,
+     ?   homeId?: IntNullableFilter | Int | Null,
+     ?   label?: StringNullableFilter | String | Null,
+     ?   keyHash?: StringFilter | String,
+     ?   keyPrefix?: StringFilter | String,
+     ?   createdAt?: DateTimeFilter | DateTime,
+     ?   lastUsedAt?: DateTimeNullableFilter | DateTime | Null,
+     ?   user?: UserScalarRelationFilter | UserWhereInput,
+     ?   home?: HomeNullableScalarRelationFilter | HomeWhereInput | Null
+       },
+       include: {
+         home: {
+           select: {
+             name: true
+           }
+         },
+         user: {
+           select: {
+             id: true,
+             username: true,
+             email: true
+           }
+         }
+       },
+       orderBy: {
+         expiresAt: "asc"
+       },
+       take: 200
+     })
+
+Unknown argument `expiryWarnedAt`. Available options are marked with ?.
+[boot] node v22.16.0 | cwd = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api
+[boot] PORT env = "0" -> API_PORT = 4000
+[boot] log file = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\logs\app.log
+[boot] createApp done
+[boot] socket init done
+[boot] listen target: 4000
+[boot] main() setup complete — background DB init starting
+[boot] db probe: connecting...
+[boot] LISTENING on 0.0.0.0:4000
+[boot] db probe: schema ready = true
+[boot] request tracker: loaded
+[keyExpiry] tick error: 
+Invalid `prisma.apiKey.findMany()` invocation in
+C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\services\keyExpiry.service.ts:52:40
+
+  49 const cta = await keysCtaUrl();
+  50 
+  51 // ---------- Phase 1: expiring soon (7 din ke andar) ----------
+→ 52 const expiring = await prisma.apiKey.findMany(
+The column `switchnest.api_keys.expiry_warned_at` does not exist in the current database.
+[2026-08-18T07:11:09.802Z] [ERROR] Unhandled error PrismaClientKnownRequestError: 
+Invalid `prisma.apiKey.findUnique()` invocation in
+C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:37
+
+  49   return next(new AppError("UNAUTHORIZED", "Missing api_key", 401));
+  50 }
+  51 
+→ 52 const key = await prisma.apiKey.findUnique(
+The column `switchnest.api_keys.expiry_warned_at` does not exist in the current database.
+    at ei.handleRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:174:12)
+    at ei.request (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:143:12)
+    at async a (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\getPrismaClient.ts:833:24)
+    at async requireApiKey (C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:17)
+[2026-08-18T07:11:10.074Z] [ERROR] Unhandled error PrismaClientKnownRequestError: 
+Invalid `prisma.apiKey.findUnique()` invocation in
+C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:37
+
+  49   return next(new AppError("UNAUTHORIZED", "Missing api_key", 401));
+  50 }
+  51 
+→ 52 const key = await prisma.apiKey.findUnique(
+The column `switchnest.api_keys.expiry_warned_at` does not exist in the current database.
+    at ei.handleRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:174:12)
+    at ei.request (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:143:12)
+    at async a (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\getPrismaClient.ts:833:24)
+    at async requireApiKey (C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:17)
+[2026-08-18T07:11:10.334Z] [ERROR] Unhandled error PrismaClientKnownRequestError: 
+Invalid `prisma.apiKey.findUnique()` invocation in
+C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:37
+
+  49   return next(new AppError("UNAUTHORIZED", "Missing api_key", 401));
+  50 }
+  51 
+→ 52 const key = await prisma.apiKey.findUnique(
+The column `switchnest.api_keys.expiry_warned_at` does not exist in the current database.
+    at ei.handleRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:174:12)
+    at ei.request (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:143:12)
+    at async a (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\getPrismaClient.ts:833:24)
+    at async requireApiKey (C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:17)
+[2026-08-18T07:11:10.628Z] [ERROR] Unhandled error PrismaClientKnownRequestError: 
+Invalid `prisma.apiKey.findUnique()` invocation in
+C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:37
+
+  49   return next(new AppError("UNAUTHORIZED", "Missing api_key", 401));
+  50 }
+  51 
+→ 52 const key = await prisma.apiKey.findUnique(
+The column `switchnest.api_keys.expiry_warned_at` does not exist in the current database.
+    at ei.handleRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:174:12)
+    at ei.request (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:143:12)
+    at async a (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\getPrismaClient.ts:833:24)
+    at async requireApiKey (C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:17)
+[2026-08-18T07:11:10.897Z] [ERROR] Unhandled error PrismaClientKnownRequestError: 
+Invalid `prisma.apiKey.findUnique()` invocation in
+C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:37
+
+  49   return next(new AppError("UNAUTHORIZED", "Missing api_key", 401));
+  50 }
+  51 
+→ 52 const key = await prisma.apiKey.findUnique(
+The column `switchnest.api_keys.expiry_warned_at` does not exist in the current database.
+    at ei.handleRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:174:12)
+    at ei.request (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:143:12)
+    at async a (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\getPrismaClient.ts:833:24)
+    at async requireApiKey (C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:17)
+[2026-08-18T07:11:11.161Z] [ERROR] Unhandled error PrismaClientKnownRequestError: 
+Invalid `prisma.apiKey.findUnique()` invocation in
+C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:37
+
+  49   return next(new AppError("UNAUTHORIZED", "Missing api_key", 401));
+  50 }
+  51 
+→ 52 const key = await prisma.apiKey.findUnique(
+The column `switchnest.api_keys.expiry_warned_at` does not exist in the current database.
+    at ei.handleRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:174:12)
+    at ei.request (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:143:12)
+    at async a (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\getPrismaClient.ts:833:24)
+    at async requireApiKey (C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:17)
+[2026-08-18T07:11:11.421Z] [ERROR] Unhandled error PrismaClientKnownRequestError: 
+Invalid `prisma.apiKey.findUnique()` invocation in
+C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:37
+
+  49   return next(new AppError("UNAUTHORIZED", "Missing api_key", 401));
+  50 }
+  51 
+→ 52 const key = await prisma.apiKey.findUnique(
+The column `switchnest.api_keys.expiry_warned_at` does not exist in the current database.
+    at ei.handleRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:174:12)
+    at ei.request (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:143:12)
+    at async a (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\getPrismaClient.ts:833:24)
+    at async requireApiKey (C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:17)
+[2026-08-18T07:11:11.681Z] [ERROR] Unhandled error PrismaClientKnownRequestError: 
+Invalid `prisma.apiKey.findUnique()` invocation in
+C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:37
+
+  49   return next(new AppError("UNAUTHORIZED", "Missing api_key", 401));
+  50 }
+  51 
+→ 52 const key = await prisma.apiKey.findUnique(
+The column `switchnest.api_keys.expiry_warned_at` does not exist in the current database.
+    at ei.handleRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:174:12)
+    at ei.request (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:143:12)
+    at async a (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\getPrismaClient.ts:833:24)
+    at async requireApiKey (C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:17)
+[2026-08-18T07:11:11.879Z] [ERROR] Unhandled error PrismaClientKnownRequestError: 
+Invalid `prisma.apiKey.findUnique()` invocation in
+C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:37
+
+  49   return next(new AppError("UNAUTHORIZED", "Missing api_key", 401));
+  50 }
+  51 
+→ 52 const key = await prisma.apiKey.findUnique(
+The column `switchnest.api_keys.expiry_warned_at` does not exist in the current database.
+    at ei.handleRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:174:12)
+    at ei.request (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:143:12)
+    at async a (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\getPrismaClient.ts:833:24)
+    at async requireApiKey (C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:17)
+[2026-08-18T07:11:13.709Z] [ERROR] Unhandled error PrismaClientKnownRequestError: 
+Invalid `prisma.apiKey.findMany()` invocation in
+C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\routes\admin.routes.ts:517:36
+
+  514 // ---------- API keys ----------
+  515 
+  516 adminRouter.get("/api-keys", async (_req, res) => {
+→ 517   const keys = await prisma.apiKey.findMany(
+The column `switchnest.api_keys.expiry_warned_at` does not exist in the current database.
+    at ei.handleRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:174:12)
+    at ei.request (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:143:12)
+    at async a (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\getPrismaClient.ts:833:24)
+    at async <anonymous> (C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\routes\admin.routes.ts:517:16)
+[2026-08-18T07:11:15.035Z] [ERROR] Unhandled error PrismaClientKnownRequestError: 
+Invalid `prisma.apiKey.findMany()` invocation in
+C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\routes\admin.routes.ts:517:36
+
+  514 // ---------- API keys ----------
+  515 
+  516 adminRouter.get("/api-keys", async (_req, res) => {
+→ 517   const keys = await prisma.apiKey.findMany(
+The column `switchnest.api_keys.expiry_warned_at` does not exist in the current database.
+    at ei.handleRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:174:12)
+    at ei.request (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:143:12)
+    at async a (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\getPrismaClient.ts:833:24)
+    at async <anonymous> (C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\routes\admin.routes.ts:517:16)
+[boot] node v22.16.0 | cwd = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api
+[boot] PORT env = "0" -> API_PORT = 4000
+[boot] log file = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\logs\app.log
+[boot] createApp done
+[boot] socket init done
+[boot] listen target: 4000
+[boot] main() setup complete — background DB init starting
+[boot] db probe: connecting...
+[boot] LISTENING on 0.0.0.0:4000
+[boot] db probe: schema ready = true
+[boot] request tracker: loaded
+[keyExpiry] tick error: 
+Invalid `prisma.apiKey.findMany()` invocation in
+C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\services\keyExpiry.service.ts:52:40
+
+  49 const cta = await keysCtaUrl();
+  50 
+  51 // ---------- Phase 1: expiring soon (7 din ke andar) ----------
+→ 52 const expiring = await prisma.apiKey.findMany(
+The column `switchnest.api_keys.expiry_warned_at` does not exist in the current database.
+[2026-08-18T07:11:31.975Z] [ERROR] Unhandled error PrismaClientKnownRequestError: 
+Invalid `prisma.apiKey.findUnique()` invocation in
+C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:37
+
+  49   return next(new AppError("UNAUTHORIZED", "Missing api_key", 401));
+  50 }
+  51 
+→ 52 const key = await prisma.apiKey.findUnique(
+The column `switchnest.api_keys.expiry_warned_at` does not exist in the current database.
+    at ei.handleRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:174:12)
+    at ei.request (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:143:12)
+    at async a (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\getPrismaClient.ts:833:24)
+    at async requireApiKey (C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:17)
+[2026-08-18T07:11:32.237Z] [ERROR] Unhandled error PrismaClientKnownRequestError: 
+Invalid `prisma.apiKey.findUnique()` invocation in
+C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:37
+
+  49   return next(new AppError("UNAUTHORIZED", "Missing api_key", 401));
+  50 }
+  51 
+→ 52 const key = await prisma.apiKey.findUnique(
+The column `switchnest.api_keys.expiry_warned_at` does not exist in the current database.
+    at ei.handleRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:174:12)
+    at ei.request (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:143:12)
+    at async a (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\getPrismaClient.ts:833:24)
+    at async requireApiKey (C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:17)
+[2026-08-18T07:11:32.512Z] [ERROR] Unhandled error PrismaClientKnownRequestError: 
+Invalid `prisma.apiKey.findUnique()` invocation in
+C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:37
+
+  49   return next(new AppError("UNAUTHORIZED", "Missing api_key", 401));
+  50 }
+  51 
+→ 52 const key = await prisma.apiKey.findUnique(
+The column `switchnest.api_keys.expiry_warned_at` does not exist in the current database.
+    at ei.handleRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:174:12)
+    at ei.request (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:143:12)
+    at async a (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\getPrismaClient.ts:833:24)
+    at async requireApiKey (C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:17)
+[2026-08-18T07:11:32.772Z] [ERROR] Unhandled error PrismaClientKnownRequestError: 
+Invalid `prisma.apiKey.findUnique()` invocation in
+C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:37
+
+  49   return next(new AppError("UNAUTHORIZED", "Missing api_key", 401));
+  50 }
+  51 
+→ 52 const key = await prisma.apiKey.findUnique(
+The column `switchnest.api_keys.expiry_warned_at` does not exist in the current database.
+    at ei.handleRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:174:12)
+    at ei.request (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:143:12)
+    at async a (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\getPrismaClient.ts:833:24)
+    at async requireApiKey (C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:17)
+[2026-08-18T07:11:33.031Z] [ERROR] Unhandled error PrismaClientKnownRequestError: 
+Invalid `prisma.apiKey.findUnique()` invocation in
+C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:37
+
+  49   return next(new AppError("UNAUTHORIZED", "Missing api_key", 401));
+  50 }
+  51 
+→ 52 const key = await prisma.apiKey.findUnique(
+The column `switchnest.api_keys.expiry_warned_at` does not exist in the current database.
+    at ei.handleRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:174:12)
+    at ei.request (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:143:12)
+    at async a (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\getPrismaClient.ts:833:24)
+    at async requireApiKey (C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:17)
+[2026-08-18T07:11:33.293Z] [ERROR] Unhandled error PrismaClientKnownRequestError: 
+Invalid `prisma.apiKey.findUnique()` invocation in
+C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:37
+
+  49   return next(new AppError("UNAUTHORIZED", "Missing api_key", 401));
+  50 }
+  51 
+→ 52 const key = await prisma.apiKey.findUnique(
+The column `switchnest.api_keys.expiry_warned_at` does not exist in the current database.
+    at ei.handleRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:174:12)
+    at ei.request (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:143:12)
+    at async a (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\getPrismaClient.ts:833:24)
+    at async requireApiKey (C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:17)
+[2026-08-18T07:11:33.553Z] [ERROR] Unhandled error PrismaClientKnownRequestError: 
+Invalid `prisma.apiKey.findUnique()` invocation in
+C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:37
+
+  49   return next(new AppError("UNAUTHORIZED", "Missing api_key", 401));
+  50 }
+  51 
+→ 52 const key = await prisma.apiKey.findUnique(
+The column `switchnest.api_keys.expiry_warned_at` does not exist in the current database.
+    at ei.handleRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:174:12)
+    at ei.request (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:143:12)
+    at async a (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\getPrismaClient.ts:833:24)
+    at async requireApiKey (C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:17)
+[2026-08-18T07:11:33.819Z] [ERROR] Unhandled error PrismaClientKnownRequestError: 
+Invalid `prisma.apiKey.findUnique()` invocation in
+C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:37
+
+  49   return next(new AppError("UNAUTHORIZED", "Missing api_key", 401));
+  50 }
+  51 
+→ 52 const key = await prisma.apiKey.findUnique(
+The column `switchnest.api_keys.expiry_warned_at` does not exist in the current database.
+    at ei.handleRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:174:12)
+    at ei.request (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:143:12)
+    at async a (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\getPrismaClient.ts:833:24)
+    at async requireApiKey (C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:17)
+[2026-08-18T07:11:33.920Z] [ERROR] Unhandled error PrismaClientKnownRequestError: 
+Invalid `prisma.apiKey.findMany()` invocation in
+C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\routes\admin.routes.ts:517:36
+
+  514 // ---------- API keys ----------
+  515 
+  516 adminRouter.get("/api-keys", async (_req, res) => {
+→ 517   const keys = await prisma.apiKey.findMany(
+The column `switchnest.api_keys.expiry_warned_at` does not exist in the current database.
+    at ei.handleRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:174:12)
+    at ei.request (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:143:12)
+    at async a (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\getPrismaClient.ts:833:24)
+    at async <anonymous> (C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\routes\admin.routes.ts:517:16)
+[2026-08-18T07:11:34.081Z] [ERROR] Unhandled error PrismaClientKnownRequestError: 
+Invalid `prisma.apiKey.findUnique()` invocation in
+C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:37
+
+  49   return next(new AppError("UNAUTHORIZED", "Missing api_key", 401));
+  50 }
+  51 
+→ 52 const key = await prisma.apiKey.findUnique(
+The column `switchnest.api_keys.expiry_warned_at` does not exist in the current database.
+    at ei.handleRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:174:12)
+    at ei.request (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:143:12)
+    at async a (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\getPrismaClient.ts:833:24)
+    at async requireApiKey (C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:17)
+[2026-08-18T07:11:34.343Z] [ERROR] Unhandled error PrismaClientKnownRequestError: 
+Invalid `prisma.apiKey.findUnique()` invocation in
+C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:37
+
+  49   return next(new AppError("UNAUTHORIZED", "Missing api_key", 401));
+  50 }
+  51 
+→ 52 const key = await prisma.apiKey.findUnique(
+The column `switchnest.api_keys.expiry_warned_at` does not exist in the current database.
+    at ei.handleRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:174:12)
+    at ei.request (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:143:12)
+    at async a (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\getPrismaClient.ts:833:24)
+    at async requireApiKey (C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:17)
+[2026-08-18T07:11:34.605Z] [ERROR] Unhandled error PrismaClientKnownRequestError: 
+Invalid `prisma.apiKey.findUnique()` invocation in
+C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:37
+
+  49   return next(new AppError("UNAUTHORIZED", "Missing api_key", 401));
+  50 }
+  51 
+→ 52 const key = await prisma.apiKey.findUnique(
+The column `switchnest.api_keys.expiry_warned_at` does not exist in the current database.
+    at ei.handleRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:174:12)
+    at ei.request (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:143:12)
+    at async a (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\getPrismaClient.ts:833:24)
+    at async requireApiKey (C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:17)
+[2026-08-18T07:11:34.872Z] [ERROR] Unhandled error PrismaClientKnownRequestError: 
+Invalid `prisma.apiKey.findUnique()` invocation in
+C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:37
+
+  49   return next(new AppError("UNAUTHORIZED", "Missing api_key", 401));
+  50 }
+  51 
+→ 52 const key = await prisma.apiKey.findUnique(
+The column `switchnest.api_keys.expiry_warned_at` does not exist in the current database.
+    at ei.handleRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:174:12)
+    at ei.request (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:143:12)
+    at async a (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\getPrismaClient.ts:833:24)
+    at async requireApiKey (C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:17)
+[2026-08-18T07:11:35.126Z] [ERROR] Unhandled error PrismaClientKnownRequestError: 
+Invalid `prisma.apiKey.findUnique()` invocation in
+C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:37
+
+  49   return next(new AppError("UNAUTHORIZED", "Missing api_key", 401));
+  50 }
+  51 
+→ 52 const key = await prisma.apiKey.findUnique(
+The column `switchnest.api_keys.expiry_warned_at` does not exist in the current database.
+    at ei.handleRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:174:12)
+    at ei.request (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:143:12)
+    at async a (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\getPrismaClient.ts:833:24)
+    at async requireApiKey (C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:17)
+[2026-08-18T07:11:35.246Z] [ERROR] Unhandled error PrismaClientKnownRequestError: 
+Invalid `prisma.apiKey.findMany()` invocation in
+C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\routes\admin.routes.ts:517:36
+
+  514 // ---------- API keys ----------
+  515 
+  516 adminRouter.get("/api-keys", async (_req, res) => {
+→ 517   const keys = await prisma.apiKey.findMany(
+The column `switchnest.api_keys.expiry_warned_at` does not exist in the current database.
+    at ei.handleRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:174:12)
+    at ei.request (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:143:12)
+    at async a (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\getPrismaClient.ts:833:24)
+    at async <anonymous> (C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\routes\admin.routes.ts:517:16)
+[2026-08-18T07:11:35.389Z] [ERROR] Unhandled error PrismaClientKnownRequestError: 
+Invalid `prisma.apiKey.findUnique()` invocation in
+C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:37
+
+  49   return next(new AppError("UNAUTHORIZED", "Missing api_key", 401));
+  50 }
+  51 
+→ 52 const key = await prisma.apiKey.findUnique(
+The column `switchnest.api_keys.expiry_warned_at` does not exist in the current database.
+    at ei.handleRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:174:12)
+    at ei.request (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:143:12)
+    at async a (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\getPrismaClient.ts:833:24)
+    at async requireApiKey (C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:17)
+[2026-08-18T07:11:35.649Z] [ERROR] Unhandled error PrismaClientKnownRequestError: 
+Invalid `prisma.apiKey.findUnique()` invocation in
+C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:37
+
+  49   return next(new AppError("UNAUTHORIZED", "Missing api_key", 401));
+  50 }
+  51 
+→ 52 const key = await prisma.apiKey.findUnique(
+The column `switchnest.api_keys.expiry_warned_at` does not exist in the current database.
+    at ei.handleRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:174:12)
+    at ei.request (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:143:12)
+    at async a (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\getPrismaClient.ts:833:24)
+    at async requireApiKey (C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:17)
+[2026-08-18T07:11:35.913Z] [ERROR] Unhandled error PrismaClientKnownRequestError: 
+Invalid `prisma.apiKey.findUnique()` invocation in
+C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:37
+
+  49   return next(new AppError("UNAUTHORIZED", "Missing api_key", 401));
+  50 }
+  51 
+→ 52 const key = await prisma.apiKey.findUnique(
+The column `switchnest.api_keys.expiry_warned_at` does not exist in the current database.
+    at ei.handleRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:174:12)
+    at ei.request (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:143:12)
+    at async a (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\getPrismaClient.ts:833:24)
+    at async requireApiKey (C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:17)
+[2026-08-18T07:11:36.183Z] [ERROR] Unhandled error PrismaClientKnownRequestError: 
+Invalid `prisma.apiKey.findUnique()` invocation in
+C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:37
+
+  49   return next(new AppError("UNAUTHORIZED", "Missing api_key", 401));
+  50 }
+  51 
+→ 52 const key = await prisma.apiKey.findUnique(
+The column `switchnest.api_keys.expiry_warned_at` does not exist in the current database.
+    at ei.handleRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:174:12)
+    at ei.request (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:143:12)
+    at async a (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\getPrismaClient.ts:833:24)
+    at async requireApiKey (C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:17)
+[2026-08-18T07:11:36.447Z] [ERROR] Unhandled error PrismaClientKnownRequestError: 
+Invalid `prisma.apiKey.findUnique()` invocation in
+C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:37
+
+  49   return next(new AppError("UNAUTHORIZED", "Missing api_key", 401));
+  50 }
+  51 
+→ 52 const key = await prisma.apiKey.findUnique(
+The column `switchnest.api_keys.expiry_warned_at` does not exist in the current database.
+    at ei.handleRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:174:12)
+    at ei.request (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:143:12)
+    at async a (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\getPrismaClient.ts:833:24)
+    at async requireApiKey (C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:17)
+[2026-08-18T07:11:36.718Z] [ERROR] Unhandled error PrismaClientKnownRequestError: 
+Invalid `prisma.apiKey.findUnique()` invocation in
+C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:37
+
+  49   return next(new AppError("UNAUTHORIZED", "Missing api_key", 401));
+  50 }
+  51 
+→ 52 const key = await prisma.apiKey.findUnique(
+The column `switchnest.api_keys.expiry_warned_at` does not exist in the current database.
+    at ei.handleRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:174:12)
+    at ei.request (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:143:12)
+    at async a (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\getPrismaClient.ts:833:24)
+    at async requireApiKey (C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:17)
+[2026-08-18T07:11:36.900Z] [ERROR] Unhandled error PrismaClientKnownRequestError: 
+Invalid `prisma.apiKey.findUnique()` invocation in
+C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:37
+
+  49   return next(new AppError("UNAUTHORIZED", "Missing api_key", 401));
+  50 }
+  51 
+→ 52 const key = await prisma.apiKey.findUnique(
+The column `switchnest.api_keys.expiry_warned_at` does not exist in the current database.
+    at ei.handleRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:228:13)
+    at ei.handleAndLogRequestError (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:174:12)
+    at ei.request (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\RequestHandler.ts:143:12)
+    at async a (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@prisma\client\src\runtime\getPrismaClient.ts:833:24)
+    at async requireApiKey (C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\middleware\apiKey.ts:52:17)
+[boot] node v22.16.0 | cwd = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api
+[boot] PORT env = "0" -> API_PORT = 4000
+[boot] log file = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\logs\app.log
+[boot] createApp done
+[boot] socket init done
+[boot] listen target: 4000
+[boot] main() setup complete — background DB init starting
+[boot] db probe: connecting...
+[boot] LISTENING on 0.0.0.0:4000
+[boot] db probe: schema ready = true
+[boot] request tracker: loaded
+[boot] node v22.16.0 | cwd = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api
+[boot] PORT env = "0" -> API_PORT = 4000
+[boot] log file = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\logs\app.log
+[boot] createApp done
+[boot] socket init done
+[boot] listen target: 4000
+[boot] main() setup complete — background DB init starting
+[boot] db probe: connecting...
+[boot] LISTENING on 0.0.0.0:4000
+[boot] db probe: schema ready = true
+[boot] request tracker: loaded
+npm error Lifecycle script `dev` failed with error:
+npm error code 1
+npm error path C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api
+npm error workspace @robosphere/api@0.1.0
+npm error location C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api
+npm error command failed
+npm error command C:\WINDOWS\system32\cmd.exe /d /s /c tsx watch src/index.ts

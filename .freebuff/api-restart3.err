@@ -1,0 +1,18 @@
+[boot] node v22.16.0 | cwd = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api
+[boot] PORT env = "0" -> API_PORT = 4000
+[boot] log file = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\logs\app.log
+[boot] createApp done
+[boot] socket init done
+[boot] listen target: 4000
+[boot] main() setup complete — background DB init starting
+[boot] db probe: connecting...
+[boot] LISTENING on 0.0.0.0:4000
+[boot] db probe: schema ready = true
+[boot] request tracker: loaded
+npm error Lifecycle script `dev` failed with error:
+npm error code 1
+npm error path C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api
+npm error workspace @robosphere/api@0.1.0
+npm error location C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api
+npm error command failed
+npm error command C:\WINDOWS\system32\cmd.exe /d /s /c tsx watch src/index.ts

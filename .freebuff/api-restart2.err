@@ -1,0 +1,248 @@
+[boot] node v22.16.0 | cwd = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api
+[boot] PORT env = "0" -> API_PORT = 4000
+[boot] log file = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\logs\app.log
+[boot] createApp done
+[boot] socket init done
+[boot] listen target: 4000
+[boot] main() setup complete — background DB init starting
+[boot] db probe: connecting...
+[boot] LISTENING on 0.0.0.0:4000
+[boot] db probe: schema ready = true
+[boot] request tracker: loaded
+[boot] node v22.16.0 | cwd = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api
+[boot] PORT env = "0" -> API_PORT = 4000
+[boot] log file = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\logs\app.log
+[boot] createApp done
+[boot] socket init done
+[boot] listen target: 4000
+[boot] main() setup complete — background DB init starting
+[boot] db probe: connecting...
+[server] listen error: Error: listen EADDRINUSE: address already in use 0.0.0.0:4000
+    at Server.setupListenHandle [as _listen2] (node:net:1939:16)
+    at listenInCluster (node:net:1996:12)
+    at node:net:2205:7
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[boot] db probe: schema ready = true
+[boot] request tracker: loaded
+[boot] node v22.16.0 | cwd = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api
+[boot] PORT env = "0" -> API_PORT = 4000
+[boot] log file = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\logs\app.log
+[boot] createApp done
+[boot] socket init done
+[boot] listen target: 4000
+[boot] main() setup complete — background DB init starting
+[boot] db probe: connecting...
+[boot] LISTENING on 0.0.0.0:4000
+[boot] db probe: schema ready = true
+[boot] request tracker: loaded
+[boot] node v22.16.0 | cwd = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api
+[boot] PORT env = "0" -> API_PORT = 4000
+[boot] log file = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\logs\app.log
+[boot] createApp done
+[boot] socket init done
+[boot] listen target: 4000
+[boot] main() setup complete — background DB init starting
+[boot] db probe: connecting...
+[boot] LISTENING on 0.0.0.0:4000
+[boot] db probe: schema ready = true
+[boot] request tracker: loaded
+[boot] node v22.16.0 | cwd = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api
+[boot] PORT env = "0" -> API_PORT = 4000
+[boot] log file = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\logs\app.log
+[boot] createApp done
+[boot] socket init done
+[boot] listen target: 4000
+[boot] main() setup complete — background DB init starting
+[boot] db probe: connecting...
+[boot] LISTENING on 0.0.0.0:4000
+[boot] db probe: schema ready = true
+[boot] request tracker: loaded
+[boot] node v22.16.0 | cwd = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api
+[boot] PORT env = "0" -> API_PORT = 4000
+[boot] log file = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\logs\app.log
+[boot] createApp done
+[boot] socket init done
+[boot] listen target: 4000
+[boot] main() setup complete — background DB init starting
+[boot] db probe: connecting...
+[boot] LISTENING on 0.0.0.0:4000
+[boot] db probe: schema ready = true
+[boot] request tracker: loaded
+[boot] node v22.16.0 | cwd = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api
+[boot] PORT env = "0" -> API_PORT = 4000
+[boot] log file = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\logs\app.log
+[boot] createApp done
+[boot] socket init done
+[boot] listen target: 4000
+[boot] main() setup complete — background DB init starting
+[boot] db probe: connecting...
+[boot] LISTENING on 0.0.0.0:4000
+[boot] db probe: schema ready = true
+[boot] request tracker: loaded
+[boot] node v22.16.0 | cwd = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api
+[boot] PORT env = "0" -> API_PORT = 4000
+[boot] log file = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\logs\app.log
+[boot] createApp done
+[boot] socket init done
+[boot] listen target: 4000
+[boot] main() setup complete — background DB init starting
+[boot] db probe: connecting...
+[boot] LISTENING on 0.0.0.0:4000
+[boot] db probe: schema ready = true
+[boot] request tracker: loaded
+[boot] node v22.16.0 | cwd = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api
+[boot] PORT env = "0" -> API_PORT = 4000
+[boot] log file = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\logs\app.log
+[boot] createApp done
+[boot] socket init done
+[boot] listen target: 4000
+[boot] main() setup complete — background DB init starting
+[boot] db probe: connecting...
+[boot] LISTENING on 0.0.0.0:4000
+[boot] db probe: schema ready = true
+[boot] request tracker: loaded
+[boot] node v22.16.0 | cwd = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api
+[boot] PORT env = "0" -> API_PORT = 4000
+[boot] log file = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\logs\app.log
+[boot] createApp done
+[boot] socket init done
+[boot] listen target: 4000
+[boot] main() setup complete — background DB init starting
+[boot] db probe: connecting...
+[server] listen error: Error: listen EADDRINUSE: address already in use 0.0.0.0:4000
+    at Server.setupListenHandle [as _listen2] (node:net:1939:16)
+    at listenInCluster (node:net:1996:12)
+    at node:net:2205:7
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[boot] db probe: schema ready = true
+[boot] request tracker: loaded
+[boot] node v22.16.0 | cwd = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api
+[boot] PORT env = "0" -> API_PORT = 4000
+[boot] log file = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\logs\app.log
+[boot] createApp done
+[boot] socket init done
+[boot] listen target: 4000
+[boot] main() setup complete — background DB init starting
+[boot] db probe: connecting...
+[server] listen error: Error: listen EADDRINUSE: address already in use 0.0.0.0:4000
+    at Server.setupListenHandle [as _listen2] (node:net:1939:16)
+    at listenInCluster (node:net:1996:12)
+    at node:net:2205:7
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[boot] db probe: schema ready = true
+[boot] request tracker: loaded
+[boot] node v22.16.0 | cwd = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api
+[boot] PORT env = "0" -> API_PORT = 4000
+[boot] log file = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\logs\app.log
+[boot] createApp done
+[boot] socket init done
+[boot] listen target: 4000
+[boot] main() setup complete — background DB init starting
+[boot] db probe: connecting...
+[boot] LISTENING on 0.0.0.0:4000
+[boot] db probe: schema ready = true
+[boot] request tracker: loaded
+[boot] node v22.16.0 | cwd = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api
+[boot] PORT env = "0" -> API_PORT = 4000
+[boot] log file = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\logs\app.log
+[boot] createApp done
+[boot] socket init done
+[boot] listen target: 4000
+[boot] main() setup complete — background DB init starting
+[boot] db probe: connecting...
+[boot] LISTENING on 0.0.0.0:4000
+[boot] db probe: schema ready = true
+[boot] request tracker: loaded
+[boot] node v22.16.0 | cwd = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api
+[boot] PORT env = "0" -> API_PORT = 4000
+[boot] log file = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\logs\app.log
+[boot] createApp done
+[boot] socket init done
+[boot] listen target: 4000
+[boot] main() setup complete — background DB init starting
+[boot] db probe: connecting...
+[server] listen error: Error: listen EADDRINUSE: address already in use 0.0.0.0:4000
+    at Server.setupListenHandle [as _listen2] (node:net:1939:16)
+    at listenInCluster (node:net:1996:12)
+    at node:net:2205:7
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[boot] db probe: schema ready = true
+[boot] request tracker: loaded
+[boot] node v22.16.0 | cwd = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api
+[boot] PORT env = "0" -> API_PORT = 4000
+[boot] log file = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\logs\app.log
+[boot] createApp done
+[boot] socket init done
+[boot] listen target: 4000
+[boot] main() setup complete — background DB init starting
+[boot] db probe: connecting...
+[boot] LISTENING on 0.0.0.0:4000
+[boot] db probe: schema ready = true
+[boot] request tracker: loaded
+[boot] node v22.16.0 | cwd = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api
+[boot] PORT env = "0" -> API_PORT = 4000
+[boot] log file = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\logs\app.log
+[boot] createApp done
+[boot] socket init done
+[boot] listen target: 4000
+[boot] main() setup complete — background DB init starting
+[boot] db probe: connecting...
+[boot] LISTENING on 0.0.0.0:4000
+[boot] db probe: schema ready = true
+[boot] request tracker: loaded
+[boot] node v22.16.0 | cwd = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api
+[boot] PORT env = "0" -> API_PORT = 4000
+[boot] log file = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\logs\app.log
+[boot] createApp done
+[boot] socket init done
+[boot] listen target: 4000
+[boot] main() setup complete — background DB init starting
+[boot] db probe: connecting...
+[server] listen error: Error: listen EADDRINUSE: address already in use 0.0.0.0:4000
+    at Server.setupListenHandle [as _listen2] (node:net:1939:16)
+    at listenInCluster (node:net:1996:12)
+    at node:net:2205:7
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[boot] db probe: schema ready = true
+[boot] request tracker: loaded
+[boot] node v22.16.0 | cwd = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api
+[boot] PORT env = "0" -> API_PORT = 4000
+[boot] log file = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\logs\app.log
+[boot] createApp done
+[boot] socket init done
+[boot] listen target: 4000
+[boot] main() setup complete — background DB init starting
+[boot] db probe: connecting...
+[boot] LISTENING on 0.0.0.0:4000
+[boot] db probe: schema ready = true
+[boot] request tracker: loaded
+[boot] node v22.16.0 | cwd = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api
+[boot] PORT env = "0" -> API_PORT = 4000
+[boot] log file = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\logs\app.log
+[boot] createApp done
+[boot] socket init done
+[boot] listen target: 4000
+[boot] main() setup complete — background DB init starting
+[boot] db probe: connecting...
+[server] listen error: Error: listen EADDRINUSE: address already in use 0.0.0.0:4000
+    at Server.setupListenHandle [as _listen2] (node:net:1939:16)
+    at listenInCluster (node:net:1996:12)
+    at node:net:2205:7
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[boot] db probe: schema ready = true
+[boot] request tracker: loaded
+[boot] node v22.16.0 | cwd = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api
+[boot] PORT env = "0" -> API_PORT = 4000
+[boot] log file = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\logs\app.log
+[boot] createApp done
+[boot] socket init done
+[boot] listen target: 4000
+[boot] main() setup complete — background DB init starting
+[boot] db probe: connecting...
+[server] listen error: Error: listen EADDRINUSE: address already in use 0.0.0.0:4000
+    at Server.setupListenHandle [as _listen2] (node:net:1939:16)
+    at listenInCluster (node:net:1996:12)
+    at node:net:2205:7
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[boot] db probe: schema ready = true
+[boot] request tracker: loaded

@@ -1,0 +1,564 @@
+[2m1:06:22 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m1:06:22 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=cmrf7zca[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:06:24 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=cmshq3k4[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:06:29 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=cmwd1vrk[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:06:29 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/homes/6[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:06:30 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/homes/6[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:06:30 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/notifications/unread-count[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:06:31 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/homes[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:06:31 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/homes/6/schedules[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:06:31 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/notifications/unread-count[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:06:32 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/homes[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:06:32 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/homes/6/schedules[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:06:34 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/homes/6/devices[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:06:34 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=cn08bif4[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:06:35 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/homes/6/devices[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:06:39 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=cn43hvf2[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:06:44 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=cn7yrjkc[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:06:47 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/homes/6/schedules[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:06:48 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/homes/6/schedules[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:06:49 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=cnbu1yel[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:06:50 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/homes/6/devices[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:06:50 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/homes/6[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:06:51 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/homes/6/devices[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:06:51 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/homes/6[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:06:54 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=cnfpb2o8[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:06:59 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=cnjkmh8i[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:07:01 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/firmware/current[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:07:01 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/notifications/unread-count[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:07:02 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/firmware/current[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:07:02 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/homes[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:07:02 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/notifications/unread-count[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:07:03 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/homes[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:07:03 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/homes/6/schedules[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:07:04 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=cnnfyggw[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:07:04 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/homes/6/schedules[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:10:02 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m1:10:03 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/firmware/current[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:10:04 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=cri1um1r[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:10:04 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/firmware/current[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:10:07 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m1:10:07 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/homes/6/devices[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:10:07 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/homes/6[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:10:08 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=crlnbvmk[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:10:08 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/homes/6/devices[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:10:08 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/homes/6[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:10:21 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m1:10:22 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/homes/6/schedules[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:10:22 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=crw8rs58[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:10:23 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/homes/6/schedules[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:10:39 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m1:10:41 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=csag1i0n[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:10:55 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m1:11:27 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m1:11:27 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m1:11:29 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=ctbn0r28[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:11:29 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=ctbqjzv4[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:19:06 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m1:19:06 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m1:19:06 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m1:19:07 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=d35h34lr[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:19:08 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=d35szmjm[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:23:05 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m1:23:05 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m1:23:05 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m1:23:06 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=d89fpsjy[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:23:06 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=d89vjae6[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:23:14 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m1:23:15 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=d8gocok8[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:23:19 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m1:32:03 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m1:32:04 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=djt10tvd[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:32:09 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m1:32:10 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=djxjhmw6[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:33:50 pm[22m [31m[1m[vite][22m[39m [31mInternal server error: C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\web\src\pages\Admin.tsx: Unexpected token, expected "," (1870:18)
+
+[0m [90m 1868 |[31m                       [33m<[31m[33m/[31m[33mbutton[31m[33m>[31m
+ [90m 1869 |[31m                     )}
+[31m[1m>[22m[31m[90m 1870 |[31m                   [33m<[31m[33m/[31m[33mdiv[31m[33m>[31m
+ [90m      |[31m                   [31m[1m^[22m[31m
+ [90m 1871 |[31m                 ))}
+ [90m 1872 |[31m               [33m<[31m[33m/[31m[33mdiv[31m[33m>[31m
+ [90m 1873 |[31m             )}[0m[39m
+  Plugin: [35mvite:react-babel[39m
+  File: [36mC:/Users/robos/OneDrive/Documents/SwitchNest/site/apps/web/src/pages/Admin.tsx[39m:1870:18
+[33m  1907|            <p className="mb-2 text-xs font-semibold uppercase text-gray-500">Devices</p>
+  1908|            <div className="space-y-1">
+  1909|              {viewHome.devices.map((d) => (
+     |                 ^
+  1910|                <div key={d.id} className="flex justify-between rounded border border-gray-200 bg-night-900 px-3 py-1.5 text-sm">
+  1911|                  <span>{d.name} <span className="text-xs text-gray-500">#{d.id} · {d.type}</span></span>[39m
+      at constructor (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:369:19)
+      at TypeScriptParserMixin.raise (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:6620:19)
+      at TypeScriptParserMixin.unexpected (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:6640:16)
+      at TypeScriptParserMixin.expect (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:6920:12)
+      at TypeScriptParserMixin.parseParenAndDistinguishExpression (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:11687:14)
+      at TypeScriptParserMixin.parseExprAtom (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:11357:23)
+      at TypeScriptParserMixin.parseExprAtom (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:4780:20)
+      at TypeScriptParserMixin.parseExprSubscripts (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:11102:23)
+      at TypeScriptParserMixin.parseUpdate (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:11087:21)
+      at TypeScriptParserMixin.parseMaybeUnary (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:11067:23)
+      at TypeScriptParserMixin.parseMaybeUnary (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:9858:18)
+      at TypeScriptParserMixin.parseMaybeUnaryOrPrivate (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:10920:61)
+      at TypeScriptParserMixin.parseExprOpBaseRightExpr (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:11007:34)
+      at TypeScriptParserMixin.parseExprOpRightExpr (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:11002:21)
+      at TypeScriptParserMixin.parseExprOp (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:10968:27)
+      at TypeScriptParserMixin.parseExprOp (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:9327:18)
+      at TypeScriptParserMixin.parseExprOp (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:10974:21)
+      at TypeScriptParserMixin.parseExprOp (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:9327:18)
+      at TypeScriptParserMixin.parseExprOps (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:10929:17)
+      at TypeScriptParserMixin.parseMaybeConditional (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:10902:23)
+      at TypeScriptParserMixin.parseMaybeAssign (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:10852:21)
+      at TypeScriptParserMixin.parseMaybeAssign (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:9807:20)
+      at TypeScriptParserMixin.parseExpressionBase (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:10805:23)
+      at C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:10801:39
+      at TypeScriptParserMixin.allowInAnd (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:12455:12)
+      at TypeScriptParserMixin.parseExpression (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:10801:17)
+      at TypeScriptParserMixin.jsxParseExpressionContainer (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:4648:31)
+      at TypeScriptParserMixin.jsxParseElementAt (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:4727:36)
+      at TypeScriptParserMixin.jsxParseElement (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:4765:17)
+      at TypeScriptParserMixin.parseExprAtom (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:4775:19)
+      at TypeScriptParserMixin.parseExprSubscripts (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:11102:23)
+      at TypeScriptParserMixin.parseUpdate (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:11087:21)
+      at TypeScriptParserMixin.parseMaybeUnary (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:11067:23)
+      at TypeScriptParserMixin.parseMaybeUnary (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:9858:18)
+      at TypeScriptParserMixin.parseMaybeUnaryOrPrivate (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:10920:61)
+      at TypeScriptParserMixin.parseExprOps (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:10925:23)
+      at TypeScriptParserMixin.parseMaybeConditional (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:10902:23)
+      at TypeScriptParserMixin.parseMaybeAssign (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:10852:21)
+      at C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:9796:39
+      at TypeScriptParserMixin.tryParse (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:6928:20)
+      at TypeScriptParserMixin.parseMaybeAssign (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:9796:18)
+      at C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:10821:39
+      at TypeScriptParserMixin.allowInAnd (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:12455:12)
+      at TypeScriptParserMixin.parseMaybeAssignAllowIn (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:10821:17)
+      at TypeScriptParserMixin.parseMaybeAssignAllowInOrVoidPattern (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:12522:17)
+      at TypeScriptParserMixin.parseParenAndDistinguishExpression (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:11701:28)
+      at TypeScriptParserMixin.parseExprAtom (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:11357:23)
+      at TypeScriptParserMixin.parseExprAtom (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:4780:20)
+      at TypeScriptParserMixin.parseExprSubscripts (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:11102:23)
+      at TypeScriptParserMixin.parseUpdate (C:\Users\robos\OneDrive\Documents\SwitchNest\site\node_modules\@babel\parser\lib\index.js:11087:21)
+[2m1:38:22 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m1:38:22 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m1:38:23 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=drx70huc[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:38:23 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=drxeblbe[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:38:24 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/admin/devices[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:42:26 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m1:42:26 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m1:42:27 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=dx61bi41[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:42:32 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m1:42:32 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m1:42:32 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/admin/firmware[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:42:32 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/admin/api-keys[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:42:32 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/admin/stats[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:42:33 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/admin/esp/issues[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:42:33 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/admin/users[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:42:33 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/admin/homes[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:42:33 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=dxa5x8zp[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:42:33 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=dxakeag2[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:42:33 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/admin/api-keys[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:42:33 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/admin/firmware[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:43:53 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m1:43:53 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m1:43:53 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=dz090t09[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m1:43:54 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=dz0jq9ha[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m2:34:35 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m2:34:35 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m2:34:35 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m2:34:35 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m2:34:35 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m2:34:36 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/admin/stats[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m2:34:36 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/admin/esp[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m2:34:36 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=fs8bfksz[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m2:34:37 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=fs8ejasf[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m2:34:37 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/admin/devices[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m2:34:37 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=fs8mnnvv[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m2:34:46 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m2:34:46 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m2:34:46 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m2:34:46 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m2:34:47 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/admin/esp[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m2:34:48 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=fsgw2ri8[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m2:34:48 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=fsgw39pe[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m2:34:48 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/admin/esp[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m2:34:48 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=fsgwl69u[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m2:34:48 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=fsgx3bun[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m2:34:48 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/admin/devices[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m2:37:55 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m2:37:55 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m2:37:55 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m2:37:55 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m2:37:55 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m2:37:55 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m2:37:55 pm[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m2:37:56 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=fwibrd4g[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m2:37:56 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=fwijcb83[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m2:37:56 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=fwijvcku[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m2:37:57 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=fwiq3vww[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m2:37:57 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=fwiq49za[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m2:37:57 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=fwiq50nr[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+[2m2:37:57 pm[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /socket.io/?EIO=4&transport=polling&t=fwiq51qm[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1139:18)
+    at afterConnectMultiple (node:net:1714:7)
+npm error Lifecycle script `dev` failed with error:
+npm error code 1
+npm error path C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\web
+npm error workspace @robosphere/web@0.1.0
+npm error location C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\web
+npm error command failed
+npm error command C:\WINDOWS\system32\cmd.exe /d /s /c vite

@@ -7,21 +7,22 @@ echo ================================================
 echo.
 
 set "ROOT=%~dp0"
+set "SITE=%ROOT%site"
 set "MYSQLD=C:\xampp\mysql\bin\mysqld.exe"
 set "MY_INI=C:\xampp\mysql\bin\my.ini"
 
 REM ---------- 0) First-run setup (fresh user) ----------
-if exist "%ROOT%node_modules" goto deps_ok
+if exist "%SITE%\node_modules" goto deps_ok
 echo [0/4] Pehli baar setup - npm install ho raha hai...
 echo        (is me 1-2 minute lag sakte hain)
-cd /d "%ROOT%"
+cd /d "%SITE%"
 call npm install
 if errorlevel 1 goto fail_install
 :deps_ok
 
-if exist "%ROOT%backend\api\node_modules\.prisma\client" goto prisma_ok
+if exist "%SITE%\node_modules\.prisma\client" goto prisma_ok
 echo [0/4] Prisma client generate ho raha hai...
-cd /d "%ROOT%"
+cd /d "%SITE%"
 call npm run db:generate
 if errorlevel 1 goto fail_prisma
 :prisma_ok
@@ -54,7 +55,7 @@ REM ---------- 2) API server (port 4000) ----------
 echo [2/4] API server (port 4000)...
 netstat -ano | findstr ":4000" | findstr "LISTENING" >nul 2>&1
 if %errorlevel%==0 goto api_ok
-start "SwitchNest API" /D "%ROOT%" cmd /k "npm run dev:api"
+start "SwitchNest API" /D "%SITE%" cmd /k "npm run dev:api"
 echo        API window khul gayi
 goto api_done
 :api_ok
@@ -65,7 +66,7 @@ REM ---------- 3) Web server (port 5173) ----------
 echo [3/4] Web server (port 5173)...
 netstat -ano | findstr ":5173" | findstr "LISTENING" >nul 2>&1
 if %errorlevel%==0 goto web_ok
-start "SwitchNest Web" /D "%ROOT%" cmd /k "npm run dev:web"
+start "SwitchNest Web" /D "%SITE%" cmd /k "npm run dev:web"
 echo        Web window khul gayi
 goto web_done
 :web_ok
@@ -81,7 +82,21 @@ echo.
 echo ================================================
 echo    Sab ready!
 echo      Site:    http://localhost:5173
-echo      API:     http://localhost:4000
+echo      API:     http://localhost:4000/api/health
+
+REM ---- login hint: .env se asli admin email/password - change ho to yahan bhi sahi dikhe ----
+set "ADMIN_EM=admin@switchnest.local"
+set "ADMIN_PW=admin123"
+if exist "%SITE%\.env" (
+  for /f "usebackq tokens=1,* delims==" %%a in ("%SITE%\.env") do (
+    if /i "%%a"=="ADMIN_PASSWORD" set "ADMIN_PW=%%b"
+    if /i "%%a"=="ADMIN_EMAIL" set "ADMIN_EM=%%b"
+  )
+)
+set "ADMIN_PW=%ADMIN_PW:"=%"
+set "ADMIN_EM=%ADMIN_EM:"=%"
+
+echo      Login:   %ADMIN_EM% / %ADMIN_PW%
 echo.
 echo    Band karne ke liye API/Web windows close karo.
 echo ================================================

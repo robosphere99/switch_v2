@@ -1,0 +1,123 @@
+[boot] node v22.16.0 | cwd = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api
+[boot] PORT env = "0" -> API_PORT = 4000
+[boot] log file = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\logs\app.log
+[boot] createApp done
+[boot] socket init done
+[boot] listen target: 4000
+[boot] main() setup complete — background DB init starting
+[boot] db probe: connecting...
+[boot] LISTENING on 0.0.0.0:4000
+[boot] db probe: schema ready = true
+[boot] request tracker: loaded
+[boot] node v22.16.0 | cwd = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api
+[boot] PORT env = "0" -> API_PORT = 4000
+[boot] log file = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\logs\app.log
+[boot] createApp done
+[boot] socket init done
+[boot] listen target: 4000
+[boot] main() setup complete — background DB init starting
+[boot] db probe: connecting...
+[boot] LISTENING on 0.0.0.0:4000
+[boot] db probe: schema ready = true
+[boot] request tracker: loaded
+[boot] node v22.16.0 | cwd = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api
+[boot] PORT env = "0" -> API_PORT = 4000
+[boot] log file = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\logs\app.log
+[boot] createApp done
+[boot] socket init done
+[boot] listen target: 4000
+[boot] main() setup complete — background DB init starting
+[boot] db probe: connecting...
+[boot] LISTENING on 0.0.0.0:4000
+[boot] db probe: schema ready = true
+[boot] request tracker: loaded
+[keyExpiry] tick error: 
+Invalid `prisma.apiKey.findMany()` invocation in
+C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\services\keyExpiry.service.ts:181:42
+
+  178 // (revokedAt check) usse turant block kare. Sab expired keys cover hoti
+  179 // hain (notified ho ya na ho) — idempotent: revokedAt set ho chuki ho to
+  180 // phir kabhi touch nahi hoti.
+→ 181 const candidates = await prisma.apiKey.findMany({
+        where: {
+          expiresAt: {
+            lt: new Date("2026-08-18T07:29:30.823Z")
+          }
+        },
+        select: {
+          id: true,
+          expiresAt: true,
+          revokedAt: true,
+          ~~~~~~~~~
+      ?   userId?: true,
+      ?   homeId?: true,
+      ?   label?: true,
+      ?   keyHash?: true,
+      ?   keyPrefix?: true,
+      ?   createdAt?: true,
+      ?   lastUsedAt?: true,
+      ?   expiryWarnedAt?: true,
+      ?   expiryFinalWarnedAt?: true,
+      ?   expiryNotifiedAt?: true,
+      ?   user?: true,
+      ?   home?: true
+        }
+      })
+
+Unknown field `revokedAt` for select statement on model `ApiKey`. Available options are marked with ?.
+[boot] node v22.16.0 | cwd = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api
+[boot] PORT env = "0" -> API_PORT = 4000
+[boot] log file = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\logs\app.log
+[boot] createApp done
+[boot] socket init done
+[boot] listen target: 4000
+[boot] main() setup complete — background DB init starting
+[boot] db probe: connecting...
+[boot] LISTENING on 0.0.0.0:4000
+[boot] db probe: schema ready = true
+[boot] request tracker: loaded
+[keyExpiry] tick error: 
+Invalid `prisma.apiKey.findMany()` invocation in
+C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api\src\services\keyExpiry.service.ts:181:42
+
+  178 // (revokedAt check) usse turant block kare. Sab expired keys cover hoti
+  179 // hain (notified ho ya na ho) — idempotent: revokedAt set ho chuki ho to
+  180 // phir kabhi touch nahi hoti.
+→ 181 const candidates = await prisma.apiKey.findMany({
+        where: {
+          expiresAt: {
+            lt: new Date("2026-08-18T07:29:34.480Z")
+          }
+        },
+        select: {
+          id: true,
+          expiresAt: true,
+          revokedAt: true,
+          ~~~~~~~~~
+      ?   userId?: true,
+      ?   homeId?: true,
+      ?   label?: true,
+      ?   keyHash?: true,
+      ?   keyPrefix?: true,
+      ?   createdAt?: true,
+      ?   lastUsedAt?: true,
+      ?   expiryWarnedAt?: true,
+      ?   expiryFinalWarnedAt?: true,
+      ?   expiryNotifiedAt?: true,
+      ?   user?: true,
+      ?   home?: true
+        }
+      })
+
+Unknown field `revokedAt` for select statement on model `ApiKey`. Available options are marked with ?.
+[boot] node v22.16.0 | cwd = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\api
+[boot] PORT env = "0" -> API_PORT = 4000
+[boot] log file = C:\Users\robos\OneDrive\Documents\SwitchNest\site\apps\logs\app.log
+[boot] createApp done
+[boot] socket init done
+[boot] listen target: 4000
+[boot] main() setup complete — background DB init starting
+[boot] db probe: connecting...
+[boot] LISTENING on 0.0.0.0:4000
+[boot] db probe: schema ready = true
+[boot] request tracker: loaded
