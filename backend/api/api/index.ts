@@ -1,8 +1,5 @@
-import { createServer } from "http";
-import { app } from "../src/app.js";
+import { createApp } from "../src/app";
 
-const server = createServer(app);
+const app = createApp();
 
-export default (req: any, res: any) => {
-  server.emit("request", req, res);
-};
+export default app;
