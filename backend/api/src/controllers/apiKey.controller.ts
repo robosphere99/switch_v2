@@ -21,9 +21,6 @@ export async function listApiKeys(req: Request, res: Response): Promise<void> {
           select: {
             id: true,
             name: true,
-            espDevices: {
-              select: { id: true, name: true, serialCode: true, modelCode: true, offline: true, lastSeen: true },
-            },
           },
         },
       },
