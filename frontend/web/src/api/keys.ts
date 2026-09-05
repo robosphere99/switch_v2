@@ -5,6 +5,18 @@ export interface ApiKeyView {
   id: number;
   userId: number;
   homeId: number | null;
+  home?: {
+    id: number;
+    name: string;
+    espDevices?: {
+      id: number;
+      name: string;
+      serialCode: string;
+      modelCode: string;
+      offline: boolean;
+      lastSeen: string;
+    }[];
+  };
   label: string | null;
   keyPrefix: string;
   createdAt: string;

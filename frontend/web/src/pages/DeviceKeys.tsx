@@ -134,10 +134,29 @@ export function DeviceKeys() {
                 key={k.id}
                 className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 bg-night-900 px-4 py-2.5 text-sm"
               >
-                <div>
-                  <span className="font-mono text-xs text-brand">{k.keyPrefix}…</span>
-                  {k.label && <span className="ml-2 text-gray-600">{k.label}</span>}
-                  <div className="mt-0.5 text-[11px] text-gray-500">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-sm font-semibold text-brand">{k.keyPrefix}…</span>
+                    {k.label && <span className="text-gray-200 font-medium">{k.label}</span>}
+                  </div>
+                  
+                  {k.home && (
+                    <div className="mt-1.5 flex flex-col gap-1 text-xs">
+                      <div className="text-gray-400">
+                        <span className="font-medium text-gray-300">Home:</span> {k.home.name}
+                      </div>
+                      {k.home.espDevices && k.home.espDevices.length > 0 ? (
+                        <div className="text-gray-400">
+                          <span className="font-medium text-gray-300">Boards:</span>{" "}
+                          {k.home.espDevices.map(esp => esp.name || esp.serialCode).join(", ")}
+                        </div>
+                      ) : (
+                        <div className="text-gray-500 italic">No boards linked yet</div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="mt-2 text-[11px] text-gray-500">
                     created {new Date(k.createdAt).toLocaleDateString()}
                     {k.expiresAt && ` · expires ${new Date(k.expiresAt).toLocaleDateString()}`}
                     {k.lastUsedAt && ` · last used ${new Date(k.lastUsedAt).toLocaleString()}`}
