@@ -503,34 +503,16 @@ async function runLightMigrations(): Promise<void> {
 
 async function dbHasSchema(): Promise<boolean> {
   try {
+    // PostgreSQL uses current_schema() instead of DATABASE()
     const rows = await prisma.$queryRaw<{ c: bigint }[]>`
       SELECT COUNT(*) AS c FROM information_schema.tables
-      WHERE table_schema = DATABASE() AND table_name = 'users'
+      WHERE table_schema = current_schema() AND table_name = 'users'
     `;
     if (Number(rows[0]?.c ?? 0) > 0) return true;
   } catch (err) {
-    logger.warn("Schema probe via Prisma failed — trying direct mysql probe:", err instanceof Error ? err.message : String(err));
+    logger.warn("Schema probe via Prisma failed:", err instanceof Error ? err.message : String(err));
   }
-  try {
-    const mysql = (await import("mysql2/promise")).default;
-    const dbUrl = getEffectiveDbUrl();
-    const u = new URL(dbUrl);
-    const conn = await mysql.createConnection({
-      host: u.hostname === "localhost" ? "127.0.0.1" : u.hostname,
-      port: Number(u.port || 3306),
-      user: decodeURIComponent(u.username),
-      password: decodeURIComponent(u.password),
-      database: decodeURIComponent(u.pathname.replace(/^\//, "")),
-      connectTimeout: 5000,
-    });
-    const [rows] = await conn.query(
-      "SELECT COUNT(*) AS c FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'users'",
-    );
-    await conn.end().catch(() => undefined);
-    return Number((rows as Array<{ c: number }>)[0]?.c ?? 0) > 0;
-  } catch {
-    return false;
-  }
+  return false;
 }
 
 // Production resilience: ek request ki galti se poora app crash na ho
@@ -666,15 +648,8 @@ async function initDatabase(): Promise<void> {
     try {
       await prisma.$connect();
     } catch (err) {
-      // Primary connect fail hua to Plesk MariaDB credentials try karo
-      const pleskUrl = "mysql://switch_v2:switchnest%401234567890@127.0.0.1:3306/switch_v2";
-      try {
-        await resetPrismaClient(pleskUrl);
-        await prisma.$connect();
-      } catch {
-        boot("db probe: NOT reachable —", err instanceof Error ? err.message : String(err));
-        return false;
-      }
+      boot("db probe: NOT reachable —", err instanceof Error ? err.message : String(err));
+      return false;
     }
     if (await dbHasSchema()) {
       logger.info("✅ Database connected (schema ready)");
