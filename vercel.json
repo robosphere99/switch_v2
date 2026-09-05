@@ -1,9 +1,0 @@
-{
-  "name": "switchnest-backend",
-  "version": 2,
-  "buildCommand": "if [ -d 'backend/api' ]; then cd backend/api && npm install && npm run build:prod; else npm install && npm run build:prod; fi",
-  "outputDirectory": "backend/api/dist",
-  "rewrites": [
-    { "source": "/api/(.*)", "destination": "/backend/api/api/index.ts" }
-  ]
-}
