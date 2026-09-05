@@ -41,6 +41,7 @@ import { useAuthStore } from "./stores/auth";
 
 export default function App() {
   useRealtime();
+  // Force Vercel rebuild to apply API proxy changes
   const loadSite = useSiteStore((s) => s.load);
   const user = useAuthStore((s) => s.user);
 
