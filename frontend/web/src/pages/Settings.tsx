@@ -222,8 +222,8 @@ export function Settings() {
                                         <ActionIcon className="h-5 w-5" />
                                     </div>
                                     <div className="flex-1">
-                                        <p className="text-gray-800 text-sm">
-                                            <span className="font-bold">{capitalize(item.actor?.username || 'System')}</span> {msgFormatted} <span className="font-semibold text-night-900">{item.device?.name || 'Device'}</span>
+                                        <p className="text-gray-800 dark:text-gray-200 text-sm">
+                                            <span className="font-bold">{capitalize(item.actor?.username || 'System')}</span> {msgFormatted} <span className="font-semibold text-brand">{item.device?.name || 'Device'}</span>
                                         </p>
                                         <div className="flex items-center text-xs text-gray-500 mt-1">
                                             <Clock className="w-3.5 h-3.5 mr-1.5" />

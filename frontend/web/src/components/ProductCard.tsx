@@ -57,7 +57,11 @@ export const ProductCard = forwardRef<
     >
       {/* Top Left Badge */}
       <div className="absolute left-3 top-3 z-10">
-        {isSoldOut ? (
+        {p.upcoming ? (
+          <span className="inline-flex items-center justify-center rounded-full bg-blue-500 px-3 py-0.5 text-[11px] font-bold text-white shadow-sm">
+            Upcoming
+          </span>
+        ) : isSoldOut ? (
           <span className="inline-flex items-center justify-center rounded-full bg-amber-500 px-3 py-0.5 text-[11px] font-bold text-white shadow-sm">
             Sold Out
           </span>
@@ -137,7 +141,15 @@ export const ProductCard = forwardRef<
 
         {/* Action */}
         <div className="mt-auto">
-          {isSoldOut ? (
+          {p.upcoming ? (
+            <button
+              disabled
+              onClick={(e) => e.stopPropagation()}
+              className="w-full rounded-xl border border-blue-200 bg-blue-50 py-2.5 text-sm font-medium text-blue-400 cursor-not-allowed dark:border-night-600 dark:bg-night-700 dark:text-blue-500"
+            >
+              Coming Soon
+            </button>
+          ) : isSoldOut ? (
             <button
               disabled
               onClick={(e) => e.stopPropagation()}

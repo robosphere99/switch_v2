@@ -142,6 +142,7 @@ export interface SiteSettingsPayload {
   smtpPass?: string;
   smtpFrom?: string;
   smtpSecure?: boolean;
+  smtpPaused?: boolean;
   /** AI assistant config — UI se (env ke bajaye). Blank key = purana rakho. */
   aiProvider?: "openai" | "gemini" | "ollama" | "";
   aiApiKey?: string;
@@ -873,5 +874,50 @@ export async function uploadApkRelease(
       }
     },
   });
+  return data;
+}
+
+// ---------- Broadcast ----------
+export async function sendBroadcast(data: { title: string; message: string; sendInApp: boolean; sendEmail: boolean }): Promise<ApiResponse<{ sent: number; emailed: number }>> {
+  const { data: res } = await api.post("/admin/broadcast", {
+    title: data.title,
+    body: data.message,
+    sendEmail: data.sendEmail,
+  });
+  return res;
+}
+
+// ---------- Coupons ----------
+export interface AdminCoupon {
+  id: number;
+  code: string;
+  discountType: "percentage" | "fixed";
+  discountValue: string;
+  minOrderAmount: string | null;
+  maxDiscount: string | null;
+  usageLimit: number | null;
+  usedCount: number;
+  expiresAt: string | null;
+  active: boolean;
+  createdAt: string;
+}
+
+export async function listCoupons(): Promise<ApiResponse<AdminCoupon[]>> {
+  const { data } = await api.get("/admin/coupons");
+  return data;
+}
+
+export async function createCoupon(data: Partial<AdminCoupon>): Promise<ApiResponse<AdminCoupon>> {
+  const { data: res } = await api.post("/admin/coupons", data);
+  return res;
+}
+
+export async function updateCoupon(id: number, data: Partial<AdminCoupon>): Promise<ApiResponse<AdminCoupon>> {
+  const { data: res } = await api.patch(`/admin/coupons/${id}`, data);
+  return res;
+}
+
+export async function deleteCoupon(id: number): Promise<ApiResponse<{ deleted: boolean }>> {
+  const { data } = await api.delete(`/admin/coupons/${id}`);
   return data;
 }

@@ -7,6 +7,7 @@ import { createRazorpayOrder, razorpayConfigured, verifyRazorpaySignature } from
 import { exec } from "child_process";
 import { promisify } from "util";
 import os from "os";
+import { signBillToken } from "../lib/billVerify";
 
 const execAsync = promisify(exec);
 
@@ -82,7 +83,7 @@ export async function addProductReview(req: Request, res: Response): Promise<voi
 }
 
 export async function createShopOrder(req: Request, res: Response): Promise<void> {
-  const { items, shipping, wifi, paymentMethod } = req.body ?? {};
+  const { items, shipping, wifi, paymentMethod, couponCode } = req.body ?? {};
   if (!Array.isArray(items) || !items.length) {
     throw new AppError("BAD_REQUEST", "Cart is empty");
   }
@@ -109,6 +110,7 @@ export async function createShopOrder(req: Request, res: Response): Promise<void
       ? { ssid: String(wifi.ssid ?? ""), password: String(wifi.password ?? "") }
       : undefined,
     paymentMethod: method as "cod" | "upi" | "manual",
+    couponCode: typeof couponCode === "string" && couponCode ? couponCode.trim() : undefined,
   });
 
   await audit(req.user!.sub, "shop.order.create", {
@@ -122,7 +124,7 @@ export async function createShopOrder(req: Request, res: Response): Promise<void
 export async function getShopOrders(req: Request, res: Response): Promise<void> {
   const orders = await prisma.order.findMany({
     where: { userId: req.user!.sub },
-    include: { items: true },
+    include: { items: true, coupon: { select: { code: true } } },
     orderBy: { createdAt: "desc" },
   });
 
@@ -140,10 +142,16 @@ export async function getShopOrders(req: Request, res: Response): Promise<void> 
   ok(
     res,
     orders.map((o) => {
-      const codes = o.items.map((i) => i.serialCode).filter(Boolean) as string[];
+      const items = o.items.map(i => ({
+        ...i,
+        isClaimed: i.serialCode ? claimedSet.has(i.serialCode) : false
+      }));
+      const codes = items.map((i) => i.serialCode).filter(Boolean) as string[];
       return {
         ...o,
+        items,
         allClaimed: codes.length > 0 && codes.every((c) => claimedSet.has(c)),
+        verifyToken: signBillToken(o.id),
       };
     })
   );
@@ -294,4 +302,24 @@ export async function getCurrentWifi(req: Request, res: Response): Promise<void>
     console.error("Failed to query WiFi interface:", err);
     ok(res, { ssid: null });
   }
+}
+
+export async function validateCoupon(req: Request, res: Response): Promise<void> {
+  const code = req.query.code ? String(req.query.code).trim() : "";
+  if (!code) throw new AppError("BAD_REQUEST", "Coupon code required");
+
+  const coupon = await prisma.coupon.findUnique({ where: { code } });
+  if (!coupon) throw new AppError("NOT_FOUND", "Invalid coupon code");
+  if (!coupon.active) throw new AppError("BAD_REQUEST", "Coupon is inactive");
+  if (coupon.expiresAt && coupon.expiresAt < new Date()) throw new AppError("BAD_REQUEST", "Coupon has expired");
+  if (coupon.usageLimit && coupon.usedCount >= coupon.usageLimit) throw new AppError("BAD_REQUEST", "Coupon usage limit reached");
+
+  ok(res, {
+    id: coupon.id,
+    code: coupon.code,
+    discountType: coupon.discountType,
+    discountValue: Number(coupon.discountValue),
+    minOrderAmount: coupon.minOrderAmount ? Number(coupon.minOrderAmount) : null,
+    maxDiscount: coupon.maxDiscount ? Number(coupon.maxDiscount) : null,
+  });
 }

@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { listMyBoards, renameEsp, setEspLed, setDeviceStatus, updateDevice, type MyBoard } from "../api/devices";
 import { Switch } from "../components/Switch";
 import { historyEvent } from "../lib/boardHistory";
+import { Wifi, WifiOff, Cpu, AlertCircle } from "lucide-react";
 
 const TYPE_ICONS: Record<string, string> = {
   bulb: "💡",
@@ -73,6 +74,8 @@ export function MyBoards() {
   const [copiedMac, setCopiedMac] = useState<number | null>(null);
   const [draftName, setDraftName] = useState<string>("");
   const [renamingId, setRenamingId] = useState<number | null>(null);
+  const [statusFilter, setStatusFilter] = useState<"all" | "online" | "offline" | "unset">("all");
+  const [homeFilter, setHomeFilter] = useState<number | "all">("all");
 
   const boards = useQuery({
     queryKey: ["my-boards"],
@@ -127,28 +130,127 @@ export function MyBoards() {
     (n, g) => n + g.boards.filter((b) => isBoardOnline(b)).length,
     0,
   );
+  const offlineCount = groups.reduce(
+    (n, g) => n + g.boards.filter((b) => !isBoardOnline(b) && (b.devices.length > 0 || b.serialCode)).length,
+    0,
+  );
+  const unsetCount = groups.reduce(
+    (n, g) => n + g.boards.filter((b) => b.devices.every(d => !d.channel)).length,
+    0,
+  );
+
+  const filteredGroups = useMemo(() => {
+    return groups
+      .filter(g => homeFilter === "all" || g.homeId === homeFilter)
+      .map(g => ({
+        ...g,
+        boards: g.boards.filter(b => {
+          if (statusFilter === "online") return isBoardOnline(b);
+          if (statusFilter === "offline") return !isBoardOnline(b) && (b.devices.length > 0 || b.serialCode);
+          if (statusFilter === "unset") return b.devices.every(d => !d.channel);
+          return true;
+        }),
+      }))
+      .filter(g => g.boards.length > 0);
+  }, [groups, statusFilter, homeFilter]);
 
   return (
     <div className="page-enter mx-auto max-w-6xl px-4 py-10">
       <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">🛰️ My Boards</h1>
+          <h1 className="text-3xl font-bold dark:text-white">🛰️ My Boards</h1>
           <p className="mt-1 text-sm text-gray-500">
             Saare ESP boards ek jagah — firmware, status aur devices ke saath
           </p>
         </div>
-        <div className="flex items-center gap-3 text-sm">
-          <span className="rounded-full border border-gray-200 bg-night-800 px-4 py-1.5 font-semibold">
-            📡 {totalBoards} board{totalBoards === 1 ? "" : "s"}
-          </span>
-          <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-4 py-1.5 font-semibold text-emerald-400">
-            ● {onlineCount} online
-          </span>
-        </div>
+        {/* Home filter */}
+        {groups.length > 1 && (
+          <select
+            value={homeFilter}
+            onChange={e => setHomeFilter(e.target.value === "all" ? "all" : Number(e.target.value))}
+            className="rounded-lg border border-gray-700 bg-night-800 px-3 py-2 text-sm text-gray-300 outline-none focus:border-brand"
+          >
+            <option value="all">🏠 All Homes</option>
+            {groups.map(g => (
+              <option key={g.homeId} value={g.homeId}>{g.homeName}</option>
+            ))}
+          </select>
+        )}
+      </div>
+
+      {/* ── Stats Blocks ────────────────────────────────────── */}
+      <div className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <button
+          onClick={() => setStatusFilter("all")}
+          className={`flex items-center gap-3 rounded-xl border p-4 text-left transition-all ${
+            statusFilter === "all"
+              ? "border-brand/50 bg-brand/10 shadow-lg shadow-brand/10"
+              : "border-night-600 bg-night-800 hover:border-night-500"
+          }`}
+        >
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-night-700">
+            <Cpu className="h-5 w-5 text-gray-300" />
+          </div>
+          <div>
+            <div className="text-2xl font-bold text-white">{totalBoards}</div>
+            <div className="text-xs font-medium text-gray-500">Total Boards</div>
+          </div>
+        </button>
+
+        <button
+          onClick={() => setStatusFilter("online")}
+          className={`flex items-center gap-3 rounded-xl border p-4 text-left transition-all ${
+            statusFilter === "online"
+              ? "border-emerald-500/50 bg-emerald-500/10 shadow-lg shadow-emerald-500/10"
+              : "border-night-600 bg-night-800 hover:border-night-500"
+          }`}
+        >
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500/15">
+            <Wifi className="h-5 w-5 text-emerald-400" />
+          </div>
+          <div>
+            <div className="text-2xl font-bold text-emerald-400">{onlineCount}</div>
+            <div className="text-xs font-medium text-gray-500">Online</div>
+          </div>
+        </button>
+
+        <button
+          onClick={() => setStatusFilter("offline")}
+          className={`flex items-center gap-3 rounded-xl border p-4 text-left transition-all ${
+            statusFilter === "offline"
+              ? "border-red-500/50 bg-red-500/10 shadow-lg shadow-red-500/10"
+              : "border-night-600 bg-night-800 hover:border-night-500"
+          }`}
+        >
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-500/15">
+            <WifiOff className="h-5 w-5 text-red-400" />
+          </div>
+          <div>
+            <div className="text-2xl font-bold text-red-400">{offlineCount}</div>
+            <div className="text-xs font-medium text-gray-500">Offline</div>
+          </div>
+        </button>
+
+        <button
+          onClick={() => setStatusFilter("unset")}
+          className={`flex items-center gap-3 rounded-xl border p-4 text-left transition-all ${
+            statusFilter === "unset"
+              ? "border-amber-500/50 bg-amber-500/10 shadow-lg shadow-amber-500/10"
+              : "border-night-600 bg-night-800 hover:border-night-500"
+          }`}
+        >
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-500/15">
+            <AlertCircle className="h-5 w-5 text-amber-400" />
+          </div>
+          <div>
+            <div className="text-2xl font-bold text-amber-400">{unsetCount}</div>
+            <div className="text-xs font-medium text-gray-500">Not Set Up</div>
+          </div>
+        </button>
       </div>
 
       {error && (
-        <div className="mb-6 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-600">
+        <div className="mb-6 rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-400">
           ⚠️ {error}
         </div>
       )}
@@ -156,7 +258,7 @@ export function MyBoards() {
       {boards.isLoading && <p className="text-gray-500">Boards load ho rahe hain…</p>}
 
       {!boards.isLoading && groups.length === 0 && (
-        <div className="rounded-xl border border-dashed border-gray-200 bg-night-800 p-10 text-center text-gray-500">
+        <div className="rounded-xl border border-dashed border-night-600 bg-night-800 p-10 text-center text-gray-500">
           <span className="text-3xl">🛡️</span>
           <p className="mt-4 text-lg font-medium text-gray-300">No Hardware Access</p>
           <span className="text-sm mt-2 max-w-sm mx-auto block leading-relaxed">
@@ -165,11 +267,18 @@ export function MyBoards() {
         </div>
       )}
 
-      {groups.map((g) => (
+      {!boards.isLoading && filteredGroups.length === 0 && groups.length > 0 && (
+        <div className="rounded-xl border border-dashed border-night-600 bg-night-800 p-10 text-center">
+          <p className="text-gray-400">Koi board nahi mila is filter ke liye.</p>
+          <button onClick={() => setStatusFilter("all")} className="mt-3 text-sm text-brand hover:underline">Reset filter</button>
+        </div>
+      )}
+
+      {filteredGroups.map((g) => (
         <section key={g.homeId} className="mb-10">
-          <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold">
+          <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-gray-200">
             🏠 {g.homeName}
-            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gray-500">
+            <span className="rounded-full bg-night-700 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gray-400">
               {g.role}
             </span>
             <span className="text-xs font-normal text-gray-500">
@@ -256,13 +365,13 @@ export function MyBoards() {
                       title="Status LED toggle for this board"
                       className={`rounded-lg border px-2.5 py-1 font-bold shadow-sm transition disabled:opacity-40 ${b.ledEnabled !== false
                         ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/30"
-                        : "border-gray-300/40 bg-night-900 text-gray-400 hover:border-brand hover:text-brand"
+                        : "border-night-600 bg-night-900 text-gray-400 hover:border-brand hover:text-brand"
                         }`}
                     >
                       💡 LED {b.ledEnabled !== false ? "ON" : "OFF"}
                     </button>
                     {b.modelCode && (
-                      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-gray-600">
+                      <span className="rounded-full bg-night-700 px-2 py-0.5 text-gray-400">
                         {b.modelCode}
                       </span>
                     )}
@@ -272,16 +381,16 @@ export function MyBoards() {
                       </span>
                     )}
                     {b.ipAddress && (
-                      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-gray-600">
+                      <span className="rounded-full bg-night-700 px-2 py-0.5 text-gray-400">
                         🌐 {b.ipAddress}
                       </span>
                     )}
                     {b.ssid && (
-                      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-gray-600">
+                      <span className="rounded-full bg-night-700 px-2 py-0.5 text-gray-400">
                         📶 {b.ssid}
                       </span>
                     )}
-                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-gray-500">
+                    <span className="rounded-full bg-night-700 px-2 py-0.5 text-gray-500">
                       🕒 {lastSeenText(b.lastSeen)}
                     </span>
                   </div>
@@ -581,8 +690,7 @@ export function MyBoards() {
             })}
           </div>
         </section >
-      ))
-      }
+      ))}
     </div >
   );
 }

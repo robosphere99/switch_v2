@@ -9,9 +9,10 @@ import { cloudinaryBillingStorage } from "../lib/cloudinary";
 
 const upload = multer({ storage: cloudinaryBillingStorage, limits: { fileSize: 50 * 1024 * 1024 } }); // 50MB
 
-// Public: products & reviews
+// Public: products & reviews & coupons
 shopRouter.get("/products", shopController.getProducts);
 shopRouter.get("/products/:id/reviews", shopController.getProductReviews);
+shopRouter.get("/coupons/validate", requireAuth, shopController.validateCoupon);
 
 // Media Upload
 shopRouter.post("/upload", requireAuth, upload.single("file"), shopController.uploadMedia);

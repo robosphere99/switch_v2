@@ -14,7 +14,8 @@ export function signBillToken(orderId: number): string {
   const sig = crypto
     .createHmac("sha256", SECRET)
     .update(`bill:${orderId}`)
-    .digest("base64url");
+    .digest("base64url")
+    .slice(0, 10);
   return `${orderId}.${sig}`;
 }
 
@@ -26,10 +27,14 @@ export function verifyBillToken(token: string): { orderId: number } | null {
   const sig = token.slice(dot + 1);
   const orderId = Number(idPart);
   if (!Number.isSafeInteger(orderId) || orderId <= 0) return null;
-  const expected = crypto
+  const expectedFull = crypto
     .createHmac("sha256", SECRET)
     .update(`bill:${orderId}`)
     .digest("base64url");
+  
+  // Support both new 10-char short sigs and old full sigs for backward compatibility.
+  const expected = sig.length === 10 ? expectedFull.slice(0, 10) : expectedFull;
+
   const a = Buffer.from(sig);
   const b = Buffer.from(expected);
   if (a.length !== b.length) return null;

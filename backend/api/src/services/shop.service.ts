@@ -10,6 +10,7 @@ export interface CreateOrderInput {
   shipping: { name: string; phone: string; address: string };
   wifi?: { ssid?: string; password?: string };
   paymentMethod: "cod" | "upi" | "manual";
+  couponCode?: string;
 }
 
 const ORDER_STATUS_FLOW: Record<string, string[]> = {
@@ -75,6 +76,33 @@ export async function createOrder(input: CreateOrderInput) {
     total += Number(prod.price) * it.quantity;
   }
 
+  let discountAmount = 0;
+  let appliedCouponId: number | null = null;
+
+  if (input.couponCode) {
+    const coupon = await prisma.coupon.findUnique({ where: { code: input.couponCode } });
+    if (!coupon) throw new AppError("BAD_REQUEST", "Invalid coupon code");
+    if (!coupon.active) throw new AppError("BAD_REQUEST", "Coupon is inactive");
+    if (coupon.expiresAt && coupon.expiresAt < new Date()) throw new AppError("BAD_REQUEST", "Coupon has expired");
+    if (coupon.usageLimit && coupon.usedCount >= coupon.usageLimit) throw new AppError("BAD_REQUEST", "Coupon usage limit reached");
+    if (coupon.minOrderAmount && total < Number(coupon.minOrderAmount)) throw new AppError("BAD_REQUEST", `Minimum order amount of ₹${coupon.minOrderAmount} required`);
+
+    let discount = 0;
+    if (coupon.discountType === "percentage") {
+      discount = (total * Number(coupon.discountValue)) / 100;
+      if (coupon.maxDiscount && discount > Number(coupon.maxDiscount)) {
+        discount = Number(coupon.maxDiscount);
+      }
+    } else {
+      discount = Number(coupon.discountValue);
+    }
+    
+    discountAmount = Math.min(discount, total);
+    appliedCouponId = coupon.id;
+  }
+  
+  const finalTotal = total - discountAmount;
+
   const wifiPasswordEnc = input.wifi?.password ? encryptSecret(input.wifi.password) : null;
 
   const order = await prisma.$transaction(async (tx) => {
@@ -84,12 +112,14 @@ export async function createOrder(input: CreateOrderInput) {
         userId: input.userId,
         paymentMethod: input.paymentMethod,
         paymentStatus: input.paymentMethod === "cod" ? "pending" : "unpaid",
-        totalAmount: total,
+        totalAmount: finalTotal,
         shippingName: input.shipping.name,
         shippingPhone: input.shipping.phone,
         shippingAddress: input.shipping.address,
         wifiSsid: input.wifi?.ssid?.trim() || null,
         wifiPasswordEnc,
+        couponId: appliedCouponId,
+        discountAmount: discountAmount,
       },
     });
     for (const it of input.items) {
@@ -110,6 +140,14 @@ export async function createOrder(input: CreateOrderInput) {
         },
       });
     }
+
+    if (appliedCouponId) {
+      await tx.coupon.update({
+        where: { id: appliedCouponId },
+        data: { usedCount: { increment: 1 } },
+      });
+    }
+
     return tx.order.findUniqueOrThrow({
       where: { id: created.id },
       include: { items: true },

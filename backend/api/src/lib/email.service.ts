@@ -21,6 +21,7 @@ export interface SmtpConfig {
   pass: string;
   from: string;
   secure: boolean;
+  paused: boolean;
 }
 
 export async function getSmtpConfig(): Promise<SmtpConfig> {
@@ -41,6 +42,7 @@ export async function getSmtpConfig(): Promise<SmtpConfig> {
     pass: pass || process.env.SMTP_PASS || process.env.EMAIL_PASS || "",
     from: s?.smtpFrom || process.env.SMTP_FROM || s?.supportEmail || user || env.ADMIN_EMAIL,
     secure: s?.smtpSecure || process.env.SMTP_SECURE === "true",
+    paused: s?.smtpPaused || false,
   };
 }
 
@@ -158,6 +160,10 @@ export async function sendEmail(opts: { to: string; subject: string; text: strin
   if (!cfg || !isEmailConfigured(cfg)) {
     logger.warn(`[email] SMTP configured nahi hai — email skip (to=${opts.to})`);
     return { ok: false, skipped: true, error: "SMTP not configured" };
+  }
+  if (cfg.paused) {
+    logger.info(`[email] SMTP sending is PAUSED — email skip (to=${opts.to})`);
+    return { ok: false, skipped: true, error: "SMTP sending is paused" };
   }
 
   return new Promise((resolve) => {

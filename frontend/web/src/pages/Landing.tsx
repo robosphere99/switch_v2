@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { getProducts, type Product } from "../api/shop";
 import { AboutUsSection, ContactUsSection, HowItWorksSection, LocateUsSection } from "../components/LandingSections";
-import { ArrowRight, ShoppingBag, Zap } from "lucide-react";
+import { ArrowRight, ChevronLeft, ChevronRight, ShoppingBag, Zap } from "lucide-react";
 import { ProductCard } from "../components/ProductCard";
 import { useCartStore } from "../stores/cart";
 
@@ -47,17 +47,60 @@ const FEATURES = [
 
 export function Landing() {
   const [products, setProducts] = useState<Product[]>([]);
+  const [scrollProgress, setScrollProgress] = useState(0);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const items = useCartStore((s) => s.items);
   const add = useCartStore((s) => s.add);
   const setQuantity = useCartStore((s) => s.setQuantity);
   const remove = useCartStore((s) => s.remove);
 
+  const [isPaused, setIsPaused] = useState(false);
+
   useEffect(() => {
     getProducts()
       .then(setProducts)
       .catch(() => setProducts([]));
   }, []);
+
+  // Auto-slide effect every 3.5 seconds (pauses on hover)
+  useEffect(() => {
+    if (products.length <= 1 || isPaused) return;
+
+    const timer = setInterval(() => {
+      if (!scrollRef.current) return;
+      const { scrollLeft, scrollWidth, clientWidth } = scrollRef.current;
+      const maxScroll = scrollWidth - clientWidth;
+
+      if (scrollLeft + 20 >= maxScroll) {
+        scrollRef.current.scrollTo({ left: 0, behavior: "smooth" });
+      } else {
+        scrollRef.current.scrollBy({ left: 330, behavior: "smooth" });
+      }
+    }, 3500);
+
+    return () => clearInterval(timer);
+  }, [products, isPaused]);
+
+  const handleScroll = () => {
+    if (!scrollRef.current) return;
+    const { scrollLeft, scrollWidth, clientWidth } = scrollRef.current;
+    const maxScroll = scrollWidth - clientWidth;
+    if (maxScroll <= 0) {
+      setScrollProgress(0);
+    } else {
+      setScrollProgress(Math.min(100, Math.max(0, (scrollLeft / maxScroll) * 100)));
+    }
+  };
+
+  const scroll = (direction: "left" | "right") => {
+    if (!scrollRef.current) return;
+    const scrollAmount = 340;
+    scrollRef.current.scrollBy({
+      left: direction === "left" ? -scrollAmount : scrollAmount,
+      behavior: "smooth",
+    });
+  };
 
   return (
     <div className="page-enter">
@@ -120,54 +163,91 @@ export function Landing() {
       {/* ── Products Showcase ─────────────────────────────── */}
       {products.length > 0 && (
         <section className="mx-auto max-w-7xl px-4 pb-24 sm:px-6 lg:px-8">
-          <div className="mb-10 flex items-end justify-between">
+          <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <h2 className="section-title">Shop Smart Hardware</h2>
               <p className="section-subtitle">
                 Premium toughened glass touch switches, dimmers, &amp; universal IR blasters.
               </p>
             </div>
-            <Link
-              to="/shop"
-              className="flex items-center gap-1 text-sm font-semibold text-brand hover:underline shrink-0"
-            >
-              View all products
-              <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
+            <div className="flex items-center gap-3 self-end sm:self-auto">
+              {/* Slide Arrows */}
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => scroll("left")}
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 dark:border-night-600 bg-white dark:bg-night-800 text-gray-700 dark:text-gray-200 shadow-sm transition hover:bg-gray-50 dark:hover:bg-night-700 active:scale-95"
+                  aria-label="Slide left"
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => scroll("right")}
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 dark:border-night-600 bg-white dark:bg-night-800 text-gray-700 dark:text-gray-200 shadow-sm transition hover:bg-gray-50 dark:hover:bg-night-700 active:scale-95"
+                  aria-label="Slide right"
+                >
+                  <ChevronRight className="h-5 w-5" />
+                </button>
+              </div>
+
+              <Link
+                to="/shop"
+                className="flex items-center gap-1 text-sm font-semibold text-brand hover:underline shrink-0 ml-2"
+              >
+                View all
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </div>
           </div>
 
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-            {products.slice(0, 4).map((p) => {
+          {/* Horizontally Scrollable Container */}
+          <div
+            ref={scrollRef}
+            onScroll={handleScroll}
+            onMouseEnter={() => setIsPaused(true)}
+            onMouseLeave={() => setIsPaused(false)}
+            className="flex gap-5 overflow-x-auto pb-4 pt-2 scrollbar-none snap-x snap-mandatory scroll-smooth"
+            style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+          >
+            {products.map((p) => {
               const cartItem = items.find((i) => i.productId === p.id);
               const cartQuantity = cartItem ? cartItem.quantity : 0;
               return (
-                <ProductCard
-                  key={p.id}
-                  p={p}
-                  cartQuantity={cartQuantity}
-                  onClick={() => navigate(`/shop?product=${p.id}`)}
-                  onAdd={() => {
-                    add({
-                      productId: p.id,
-                      name: p.name,
-                      price: Number(p.price),
-                      quantity: 1,
-                      modelCode: p.modelCode,
-                    });
-                  }}
-                  onUpdateQuantity={(qty) => {
-                    if (qty <= 0) remove(p.id);
-                    else setQuantity(p.id, qty);
-                  }}
-                />
+                <div key={p.id} className="w-[280px] sm:w-[310px] shrink-0 snap-start">
+                  <ProductCard
+                    p={p}
+                    cartQuantity={cartQuantity}
+                    onClick={() => navigate(`/shop?product=${p.id}`)}
+                    onAdd={() => {
+                      add({
+                        productId: p.id,
+                        name: p.name,
+                        price: Number(p.price),
+                        quantity: 1,
+                        modelCode: p.modelCode,
+                      });
+                    }}
+                    onUpdateQuantity={(qty) => {
+                      if (qty <= 0) remove(p.id);
+                      else setQuantity(p.id, qty);
+                    }}
+                  />
+                </div>
               );
             })}
           </div>
 
-          {/* Scroll track indicator */}
-          <div className="mt-8 flex justify-center">
-            <div className="h-1 w-48 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
-              <div className="h-full w-1/3 rounded-full bg-gray-400 dark:bg-gray-500" />
+          {/* Dynamic Scroll Track Indicator */}
+          <div className="mt-6 flex justify-center">
+            <div className="h-1.5 w-48 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden relative">
+              <div
+                className="h-full rounded-full bg-brand transition-all duration-200 ease-out"
+                style={{
+                  width: "35%",
+                  transform: `translateX(${(scrollProgress / 100) * 185}%)`,
+                }}
+              />
             </div>
           </div>
         </section>

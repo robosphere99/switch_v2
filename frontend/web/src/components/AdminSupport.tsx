@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ArrowLeft, Bell, BellOff, CheckCheck, Copy, Inbox, MailOpen, MessageCircle, Pin, PinOff, Search, Send, Trash2, UserRound, X, Video, Phone, type LucideIcon } from "lucide-react";
+import { ArrowLeft, Bell, BellOff, CheckCheck, Copy, Inbox, MailOpen, MessageCircle, Megaphone, Pin, PinOff, Plus, Search, Send, Trash2, UserRound, X, Video, Phone, type LucideIcon } from "lucide-react";
 import { WebRTCCallModal } from "./WebRTCCallModal";
 import {
   clearSupportConversation,
@@ -13,6 +13,7 @@ import {
   sendSupportMessage,
   setSupportSettings,
   setSupportThreadRead,
+  sendBroadcast,
   type SupportAttachment,
   type SupportConversation,
 } from "../api/admin";
@@ -99,6 +100,8 @@ export function AdminSupport({
   const longPressFired = useRef(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const replyInputRef = useRef<HTMLInputElement>(null);
+  const [showBroadcast, setShowBroadcast] = useState(false);
+  const [showNewMsg, setShowNewMsg] = useState(false);
 
   const conversations = useQuery({
     queryKey: ["support", "admin", "conversations"],
@@ -293,16 +296,34 @@ export function AdminSupport({
             ({list ? list.conversations.length : "…"} conversations)
           </span>
         </h2>
-        {list && list.totalUnread > 0 && (
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => markAll.mutate()}
-            disabled={markAll.isPending}
-            className="rounded-lg border border-amber-500/40 px-3 py-1.5 text-xs font-semibold text-amber-600 transition hover:bg-amber-500/10 disabled:opacity-50"
-            title="Saari chats read mark karo — Admin button ka badge hat jayega"
+            onClick={() => setShowBroadcast(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-brand/40 bg-brand/10 px-3 py-1.5 text-xs font-semibold text-brand transition hover:bg-brand/20"
+            title="Broadcast Message to All Users"
           >
-            ✓ Mark all read ({list.totalUnread})
+            <Megaphone className="h-3.5 w-3.5" />
+            Broadcast
           </button>
-        )}
+          <button
+            onClick={() => setShowNewMsg(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-gray-600 bg-night-700 px-3 py-1.5 text-xs font-semibold text-gray-300 transition hover:bg-night-600"
+            title="Start new conversation"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            New Chat
+          </button>
+          {list && list.totalUnread > 0 && (
+            <button
+              onClick={() => markAll.mutate()}
+              disabled={markAll.isPending}
+              className="rounded-lg border border-amber-500/40 px-3 py-1.5 text-xs font-semibold text-amber-600 transition hover:bg-amber-500/10 disabled:opacity-50"
+              title="Saari chats read mark karo — Admin button ka badge hat jayega"
+            >
+              ✓ Mark all read ({list.totalUnread})
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex h-[calc(100vh-19rem)] min-h-[460px] flex-col md:flex-row">
@@ -730,6 +751,8 @@ export function AdminSupport({
         )}
       </div>
       <WebRTCCallModal />
+      {showBroadcast && <BroadcastModal onClose={() => setShowBroadcast(false)} />}
+      {showNewMsg && <NewMessageModal onClose={() => setShowNewMsg(false)} onSelect={(id) => { setShowNewMsg(false); onSelectUser(id); }} />}
     </div>
   );
 }
@@ -758,5 +781,120 @@ function MenuItem({
       <span className="min-w-0 flex-1">{label}</span>
       {sub && <span className="shrink-0 text-[10px] text-gray-500">{sub}</span>}
     </button>
+  );
+}
+
+// ---------------- Broadcast Modal ----------------
+
+import { globalSearch } from "../api/admin";
+
+function BroadcastModal({ onClose }: { onClose: () => void }) {
+  const [subject, setSubject] = useState("");
+  const [message, setMessage] = useState("");
+  const [sendInApp, setSendInApp] = useState(true);
+  const [sendEmail, setSendEmail] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  const handleSend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSending(true);
+    setMsg("");
+    try {
+      await sendBroadcast({ title: subject, message, sendInApp, sendEmail });
+      setMsg("✅ Broadcast job queued successfully!");
+      setTimeout(onClose, 2000);
+    } catch (err: any) {
+      setMsg(`❌ Error: ${err.message}`);
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={onClose}>
+      <div className="w-full max-w-md rounded-2xl bg-night-800 p-6 shadow-2xl border border-brand/20" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-white flex items-center gap-2"><Megaphone className="h-5 w-5 text-brand" /> Broadcast Message</h2>
+          <button onClick={onClose} className="rounded-full p-1.5 text-gray-500 hover:bg-night-700 hover:text-white transition"><X className="h-5 w-5" /></button>
+        </div>
+        <form onSubmit={handleSend} className="space-y-4">
+          <div>
+            <label className="mb-1 block text-sm font-semibold text-gray-400">Subject / Title</label>
+            <input required value={subject} onChange={(e) => setSubject(e.target.value)} className="w-full rounded-lg border border-night-600 bg-night-900 px-3 py-2 text-sm text-white focus:border-brand focus:outline-none" />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-semibold text-gray-400">Message Content</label>
+            <textarea required rows={4} value={message} onChange={(e) => setMessage(e.target.value)} className="w-full resize-none rounded-lg border border-night-600 bg-night-900 px-3 py-2 text-sm text-white focus:border-brand focus:outline-none" />
+          </div>
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+              <input type="checkbox" checked={sendInApp} onChange={(e) => setSendInApp(e.target.checked)} className="h-4 w-4 rounded accent-brand" />
+              In-App Notification
+            </label>
+            <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+              <input type="checkbox" checked={sendEmail} onChange={(e) => setSendEmail(e.target.checked)} className="h-4 w-4 rounded accent-brand" />
+              Email Alert
+            </label>
+          </div>
+          {msg && <p className={`text-sm font-semibold ${msg.includes("✅") ? "text-green-400" : "text-red-400"}`}>{msg}</p>}
+          <button disabled={sending || (!sendInApp && !sendEmail)} type="submit" className="btn-primary w-full py-2.5 disabled:opacity-50 mt-2">
+            {sending ? "Queueing..." : "Send Broadcast"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ---------------- New Message Modal ----------------
+
+function NewMessageModal({ onClose, onSelect }: { onClose: () => void; onSelect: (userId: number) => void }) {
+  const [q, setQ] = useState("");
+  const { data: searchResult, isLoading } = useQuery({
+    queryKey: ["admin-user-search", q],
+    queryFn: async () => {
+      const res = await globalSearch(q);
+      return res.success ? res.data : null;
+    },
+    enabled: q.length >= 2,
+  });
+  const users = searchResult?.users;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={onClose}>
+      <div className="flex flex-col w-full max-w-md rounded-2xl bg-night-800 p-6 shadow-2xl border border-brand/20 min-h-[400px] max-h-[80vh]" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between shrink-0">
+          <h2 className="text-lg font-bold text-white flex items-center gap-2"><Search className="h-5 w-5 text-brand" /> Start New Chat</h2>
+          <button onClick={onClose} className="rounded-full p-1.5 text-gray-500 hover:bg-night-700 hover:text-white transition"><X className="h-5 w-5" /></button>
+        </div>
+
+        <input
+          autoFocus
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search user by name, email, phone..."
+          className="w-full shrink-0 rounded-lg border border-night-600 bg-night-900 px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-brand"
+        />
+
+        <div className="mt-4 flex-1 overflow-y-auto space-y-2 pr-1">
+          {isLoading && q.length >= 2 && <p className="text-center text-sm text-gray-500 py-4">Searching...</p>}
+          {!isLoading && users?.length === 0 && q.length >= 2 && <p className="text-center text-sm text-gray-500 py-4">No users found.</p>}
+          {!isLoading && q.length < 2 && <p className="text-center text-sm text-gray-500 py-4">Type at least 2 characters to search.</p>}
+          {users?.map((u) => (
+            <button
+              key={u.id}
+              onClick={() => onSelect(u.id)}
+              className="flex w-full items-center justify-between rounded-xl bg-night-900/50 border border-night-700/50 p-3 hover:bg-night-700 hover:border-brand/30 transition text-left group"
+            >
+              <div>
+                <p className="text-sm font-bold text-gray-200 group-hover:text-white">{u.username}</p>
+                <p className="text-xs text-gray-500">{u.email}</p>
+              </div>
+              <MessageCircle className="h-4 w-4 text-brand opacity-50 group-hover:opacity-100 transition" />
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }

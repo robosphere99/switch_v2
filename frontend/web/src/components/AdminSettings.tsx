@@ -246,6 +246,7 @@ export function AdminSettings() {
     smtpPass: string;
     smtpFrom: string;
     smtpSecure: boolean;
+    smtpPaused: boolean;
     aiProvider: string;
     aiApiKey: string;
     aiBaseUrl: string;
@@ -268,6 +269,7 @@ export function AdminSettings() {
     smtpPass: "",
     smtpFrom: s?.smtpFrom ?? "",
     smtpSecure: s?.smtpSecure ?? false,
+    smtpPaused: s?.smtpPaused ?? false,
     aiProvider: s?.aiProvider ?? "",
     aiApiKey: "",
     aiBaseUrl: s?.aiBaseUrl ?? "",
@@ -299,6 +301,7 @@ export function AdminSettings() {
         ...(current.smtpPass ? { smtpPass: current.smtpPass } : {}),
         smtpFrom: current.smtpFrom,
         smtpSecure: current.smtpSecure,
+        smtpPaused: current.smtpPaused,
         // AI config — env ke bajaye UI se
         aiProvider: (current.aiProvider || "") as "openai" | "gemini" | "ollama" | "",
         ...(current.aiApiKey ? { aiApiKey: current.aiApiKey } : {}),
@@ -671,8 +674,29 @@ export function AdminSettings() {
               SSL/TLS (port 465) — <span className="text-gray-500">off rahega to STARTTLS (587) try hoga</span>
             </span>
           </label>
+          <label className="flex items-center gap-2 text-sm sm:col-span-2">
+            <input
+              type="checkbox"
+              checked={current.smtpPaused}
+              onChange={(e) => setForm({ ...current, smtpPaused: e.target.checked })}
+              className="h-4 w-4 rounded border-gray-300"
+            />
+            <span>
+              Pause email sending — <span className="text-gray-500">Temporarily stop sending emails without deleting credentials</span>
+            </span>
+          </label>
         </div>
         <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button
+            onClick={() => {
+              setMailMsg(null);
+              saveSettings.mutate();
+            }}
+            disabled={saveBusy}
+            className="rounded-lg bg-brand px-5 py-2.5 text-sm font-semibold text-white transition hover:brightness-110 disabled:opacity-40"
+          >
+            {saveBusy ? "Saving…" : "💾 Save SMTP settings"}
+          </button>
           <input
             type="email"
             value={testEmailTo}
@@ -690,6 +714,15 @@ export function AdminSettings() {
           </button>
           <span className="flex items-center gap-1 text-xs text-gray-500">
             <Mail className="h-3.5 w-3.5" /> {testEmailTo ? "Is email pe jayega" : "Admin email pe jayega"}
+          </span>
+          <span className="ml-auto flex items-center gap-1 text-xs font-semibold">
+            {current.smtpPaused ? (
+              <span className="text-amber-500">⏸️ Paused (Emails OFF)</span>
+            ) : current.smtpHost && current.smtpUser ? (
+              <span className="text-emerald-500">🟢 Active (Emails ON)</span>
+            ) : (
+              <span className="text-gray-500">⚪ Not Configured</span>
+            )}
           </span>
         </div>
         {mailMsg && (

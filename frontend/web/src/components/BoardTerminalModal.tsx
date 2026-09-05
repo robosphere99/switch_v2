@@ -37,11 +37,15 @@ export function BoardTerminalModal({ espId, mac, isOpen, onClose }: BoardTermina
 
     // Listener
     const handleLog = (log: string) => {
-      setLogs((prev) => [...prev, {
-        id: Math.random().toString(36).substring(7),
-        time: new Date().toLocaleTimeString([], { hour12: false }),
-        text: log
-      }]);
+      setLogs((prev) => {
+        // Prevent duplicate consecutive logs (React Strict Mode double-firing)
+        if (prev.length > 0 && prev[prev.length - 1].text === log) return prev;
+        return [...prev, {
+          id: Math.random().toString(36).substring(7),
+          time: new Date().toLocaleTimeString([], { hour12: false }),
+          text: log
+        }];
+      });
     };
     
     socket.on("admin:board-log", handleLog);
@@ -61,13 +65,7 @@ export function BoardTerminalModal({ espId, mac, isOpen, onClose }: BoardTermina
     e.preventDefault();
     if (!cmd.trim()) return;
     
-    // Echo locally so we know we sent it
-    setLogs((prev) => [...prev, {
-      id: Math.random().toString(36).substring(7),
-      time: new Date().toLocaleTimeString([], { hour12: false }),
-      text: `[Admin] Sending: ${cmd.trim()}`
-    }]);
-    
+    // The server will broadcast `[Admin] Sending: ...` back to us via `admin:board-log`
     getSocket().emit("admin:send-cmd", { espId, cmd: cmd.trim() });
     setCmd("");
   };

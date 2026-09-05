@@ -20,7 +20,24 @@ export interface Product {
   features: Record<string, unknown> | null;
   imageUrl: string | null;
   active: boolean;
+  upcoming: boolean;
+  rating: string | number;
+  totalReviews: number;
   createdAt: string;
+  media?: ProductMediaItem[];
+}
+
+export interface ProductReview {
+  id: number;
+  productId: number;
+  userId: number;
+  rating: string | number;
+  comment: string | null;
+  createdAt: string;
+  user: {
+    username: string;
+    avatarUrl: string | null;
+  };
   media?: ProductMediaItem[];
 }
 
@@ -32,6 +49,7 @@ export interface OrderItem {
   price: string;
   quantity: number;
   serialCode: string | null;
+  isClaimed?: boolean;
 }
 
 export interface Order {
@@ -54,6 +72,8 @@ export interface Order {
   verifyToken?: string;
   items: OrderItem[];
   user?: { id: number; username: string; email: string };
+  discountAmount?: string;
+  coupon?: { code: string };
 }
 
 export interface SerialRow {
@@ -95,8 +115,13 @@ export interface SerialDetail {
 // ---------- Shop (public) ----------
 
 export async function getProducts(): Promise<Product[]> {
-  const { data } = await api.get("/shop/products");
-  return data.data;
+  const res = await api.get("/shop/products");
+  return res.data.data;
+}
+
+export async function getProductReviews(productId: number): Promise<ProductReview[]> {
+  const res = await api.get(`/shop/products/${productId}/reviews`);
+  return res.data.data;
 }
 
 // ---------- Orders ----------
@@ -106,8 +131,14 @@ export async function createOrder(payload: {
   shipping: { name: string; phone: string; address: string };
   wifi?: { ssid: string; password: string };
   paymentMethod: "cod" | "upi" | "manual";
+  couponCode?: string;
 }): Promise<Order> {
   const { data } = await api.post("/shop/orders", payload);
+  return data.data;
+}
+
+export async function validateCoupon(code: string): Promise<{ id: number; code: string; discountType: "percentage" | "fixed"; discountValue: number; minOrderAmount: number | null; maxDiscount: number | null }> {
+  const { data } = await api.get(`/shop/coupons/validate?code=${encodeURIComponent(code)}`);
   return data.data;
 }
 
@@ -147,6 +178,7 @@ export async function createAdminProduct(payload: {
   description?: string;
   features?: string;
   imageUrl?: string;
+  upcoming?: boolean;
 }): Promise<Product> {
   const { data } = await api.post("/admin/products", payload);
   return data.data;
@@ -154,7 +186,7 @@ export async function createAdminProduct(payload: {
 
 export async function updateAdminProduct(
   id: number,
-  payload: Partial<{ name: string; price: number; description: string; features: string; imageUrl: string; active: boolean }>,
+  payload: Partial<{ name: string; price: number; description: string; features: string; imageUrl: string; active: boolean; upcoming: boolean }>,
 ): Promise<Product> {
   const { data } = await api.patch(`/admin/products/${id}`, payload);
   return data.data;

@@ -60,6 +60,7 @@ const settingsSchema = z
     smtpPass: z.string().max(200).optional(),
     smtpFrom: z.string().email().max(150).optional().or(z.literal("")),
     smtpSecure: z.boolean().optional(),
+    smtpPaused: z.boolean().optional(),
     aiProvider: z.enum(["openai", "gemini", "ollama", ""]).optional(),
     aiApiKey: z.string().max(200).optional(),
     aiBaseUrl: z.string().max(200).optional().or(z.literal("")),
@@ -2057,7 +2058,7 @@ adminRouter.get("/products", async (_req, res) => {
 });
 
 adminRouter.post("/products", async (req, res) => {
-  const { name, modelCode, relayCount, price, description, features, imageUrl, stockCount } = req.body ?? {};
+  const { name, modelCode, relayCount, price, description, features, imageUrl, stockCount, upcoming } = req.body ?? {};
   if (!name || !modelCode || price == null) {
     throw new AppError("BAD_REQUEST", "name, modelCode and price are required");
   }
@@ -2071,6 +2072,7 @@ adminRouter.post("/products", async (req, res) => {
       features: features ? (typeof features === "string" ? JSON.parse(features) : features) : undefined,
       imageUrl: imageUrl ? String(imageUrl).slice(0, 255) : undefined,
       stockCount: stockCount != null ? Number(stockCount) : 0,
+      upcoming: upcoming != null ? Boolean(upcoming) : false,
     },
   });
   await audit(req.user!.sub, "admin.product.create", { entity: "product", entityId: product.id, meta: { modelCode } });
@@ -2079,7 +2081,7 @@ adminRouter.post("/products", async (req, res) => {
 
 adminRouter.patch("/products/:id", async (req, res) => {
   const id = Number(req.params.id);
-  const { name, price, description, features, imageUrl, active, stockCount } = req.body ?? {};
+  const { name, price, description, features, imageUrl, active, stockCount, upcoming } = req.body ?? {};
   const product = await prisma.product.update({
     where: { id },
     data: {
@@ -2090,6 +2092,7 @@ adminRouter.patch("/products/:id", async (req, res) => {
       imageUrl: imageUrl != null ? String(imageUrl).slice(0, 255) : undefined,
       stockCount: stockCount != null ? Number(stockCount) : undefined,
       active: active != null ? Boolean(active) : undefined,
+      upcoming: upcoming != null ? Boolean(upcoming) : undefined,
     },
   });
   await audit(req.user!.sub, "admin.product.update", { entity: "product", entityId: id });
@@ -2652,14 +2655,14 @@ adminRouter.post("/reset", validateBody(resetSchema), async (req, res) => {
 
   const ALL_TABLES = [
     "api_keys", "app_meta", "assistant_chats", "assistant_messages", "audit_logs",
-    "contact_messages", "device_access", "device_commands", "device_configurations",
+    "contact_messages", "coupons", "device_access", "device_commands", "device_configurations",
     "device_logs", "device_usage", "devices", "esp_devices", "firmware_versions",
     "home_members", "homes", "invitations", "notifications", "order_items", "orders",
     "products", "refresh_tokens", "rooms", "schedules", "serial_registry",
-    "support_chat_settings", "support_messages", "users", "warranty_claims",
+    "support_calls", "support_chat_settings", "support_messages", "users", "warranty_claims",
   ];
   // "data" mode me yeh tables waise ki waise rehti hain (admin login + catalog + firmware).
-  const KEEP_IN_DATA = new Set(["products", "app_meta", "users", "firmware_versions"]);
+  const KEEP_IN_DATA = new Set(["products", "app_meta", "users", "firmware_versions", "coupons"]);
 
   const tablesToWipe =
     mode === "factory" ? ALL_TABLES : ALL_TABLES.filter((t) => !KEEP_IN_DATA.has(t));
@@ -2810,4 +2813,55 @@ adminRouter.post("/apk/upload", apkUpload.single("apkFile"), async (req, res) =>
     console.error("[apk-upload] Error processing APK upload:", e);
     res.status(500).json({ success: false, error: { message: e.message || "Failed to upload APK file" } });
   }
+});
+
+// ---------- Shop: Coupons ----------
+adminRouter.get("/coupons", async (req, res) => {
+  const coupons = await prisma.coupon.findMany({ orderBy: { createdAt: "desc" } });
+  ok(res, coupons);
+});
+
+adminRouter.post("/coupons", async (req, res) => {
+  const { code, discountType, discountValue, minOrderAmount, maxDiscount, usageLimit, expiresAt, active } = req.body ?? {};
+  if (!code || !discountValue) throw new AppError("BAD_REQUEST", "code and discountValue are required");
+  const coupon = await prisma.coupon.create({
+    data: {
+      code: String(code).trim().toUpperCase(),
+      discountType: discountType === "fixed" ? "fixed" : "percentage",
+      discountValue: Number(discountValue),
+      minOrderAmount: minOrderAmount ? Number(minOrderAmount) : null,
+      maxDiscount: maxDiscount ? Number(maxDiscount) : null,
+      usageLimit: usageLimit ? Number(usageLimit) : null,
+      expiresAt: expiresAt ? new Date(expiresAt) : null,
+      active: active != null ? Boolean(active) : true,
+    },
+  });
+  await audit(req.user!.sub, "admin.coupon.create", { entity: "coupon", entityId: coupon.id, meta: { code } });
+  ok(res, coupon, 201);
+});
+
+adminRouter.patch("/coupons/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  const { active, code, discountType, discountValue, minOrderAmount, maxDiscount, usageLimit } = req.body ?? {};
+  const coupon = await prisma.coupon.update({
+    where: { id },
+    data: {
+      active: active != null ? Boolean(active) : undefined,
+      code: typeof code === "string" ? code : undefined,
+      discountType: typeof discountType === "string" ? discountType : undefined,
+      discountValue: discountValue !== undefined ? String(discountValue) : undefined,
+      minOrderAmount: minOrderAmount !== undefined ? (minOrderAmount ? String(minOrderAmount) : null) : undefined,
+      maxDiscount: maxDiscount !== undefined ? (maxDiscount ? String(maxDiscount) : null) : undefined,
+      usageLimit: usageLimit !== undefined ? (usageLimit ? Number(usageLimit) : null) : undefined,
+    },
+  });
+  await audit(req.user!.sub, "admin.coupon.update", { entity: "coupon", entityId: id });
+  ok(res, coupon);
+});
+
+adminRouter.delete("/coupons/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  await prisma.coupon.delete({ where: { id } });
+  await audit(req.user!.sub, "admin.coupon.delete", { entity: "coupon", entityId: id });
+  ok(res, { deleted: true });
 });

@@ -27,6 +27,7 @@ export interface SiteSettings {
   smtpPass: string; // encrypted at rest
   smtpFrom: string;
   smtpSecure: boolean;
+  smtpPaused: boolean;
   // AI assistant — provider/key/model (UI se, env ke bajaye); public pe strip
   aiProvider: string; // openai | gemini | ollama | "" (off → rule-based)
   aiApiKey: string; // encrypted at rest
@@ -60,6 +61,7 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   smtpPass: "",
   smtpFrom: "",
   smtpSecure: false,
+  smtpPaused: false,
   aiProvider: "",
   aiApiKey: "",
   aiBaseUrl: "",
@@ -90,11 +92,11 @@ export async function getSiteSettings(): Promise<SiteSettings> {
 
 /** Public endpoint ke liye — SMTP + AI credentials kabhi public nahi. */
 export async function getPublicSiteSettings(): Promise<
-  Omit<SiteSettings, "smtpHost" | "smtpPort" | "smtpUser" | "smtpPass" | "smtpFrom" | "smtpSecure" | "aiProvider" | "aiApiKey" | "aiBaseUrl" | "aiModel">
+  Omit<SiteSettings, "smtpHost" | "smtpPort" | "smtpUser" | "smtpPass" | "smtpFrom" | "smtpSecure" | "smtpPaused" | "aiProvider" | "aiApiKey" | "aiBaseUrl" | "aiModel">
 > {
   const s = await getSiteSettings();
   const {
-    smtpHost: _h, smtpPort: _p, smtpUser: _u, smtpPass: _pp, smtpFrom: _f, smtpSecure: _sc,
+    smtpHost: _h, smtpPort: _p, smtpUser: _u, smtpPass: _pp, smtpFrom: _f, smtpSecure: _sc, smtpPaused: _sp,
     aiProvider: _ap, aiApiKey: _ak, aiBaseUrl: _ab, aiModel: _am,
     ...pub
   } = s;

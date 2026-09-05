@@ -7,7 +7,6 @@ import {
   ChevronDown,
   Clock,
   Home,
-  KeyRound,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -20,6 +19,7 @@ import {
   Users,
   Wrench,
   Settings as SettingsIcon,
+  Activity,
   X,
   Zap
 } from "lucide-react";
@@ -65,7 +65,6 @@ const NAV_GROUPS: NavGroup[] = [
     title: "Orders & Devices",
     items: [
       { to: "/orders", label: "Orders", icon: Package, title: "My Orders" },
-      { to: "/activate", label: "Activate", icon: KeyRound },
       { to: "/warranty", label: "Warranty", icon: ShieldCheck },
       { to: "/keys", label: "Device Keys", icon: BadgeCheck },
     ],
@@ -76,7 +75,6 @@ const NAV_GROUPS: NavGroup[] = [
       { to: "/homes", label: "Homes", icon: Home },
       { to: "/boards", label: "Boards", icon: RadioTower },
       { to: "/members", label: "Family", icon: Users },
-      { to: "/settings", label: "Settings", icon: SettingsIcon },
     ],
   },
   {
@@ -90,6 +88,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     title: "Support & Help",
     items: [
+      { to: "/settings", label: "Audit Logs", icon: Activity },
       { to: "/support", label: "Support", icon: Wrench },
       { to: "/notifications", label: "Alerts", icon: Bell },
     ],

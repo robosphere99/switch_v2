@@ -1,6 +1,7 @@
 import { useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
-import { createOrder, initiatePayment, verifyPayment, demoPay, cancelOrder, type PayIntent } from "../api/shop";
+import { createOrder, initiatePayment, verifyPayment, demoPay, cancelOrder, validateCoupon, type PayIntent } from "../api/shop";
 import { useCartStore } from "../stores/cart";
 
 function loadRazorpayScript(): Promise<boolean> {
@@ -28,6 +29,7 @@ export function Checkout() {
   const [address, setAddress] = useState("");
   const [wifiEnabled, setWifiEnabled] = useState(false);
   const [ssid, setSsid] = useState("");
+  const [showPass, setShowPass] = useState(false);
   const [wifiPass, setWifiPass] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<"cod" | "upi">("cod");
   const [submitting, setSubmitting] = useState(false);
@@ -35,6 +37,42 @@ export function Checkout() {
 
   const [payIntent, setPayIntent] = useState<PayIntent | null>(null);
   const [payingFor, setPayingFor] = useState<number | null>(null);
+
+  const [couponCodeInput, setCouponCodeInput] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; type: "percentage" | "fixed"; value: number; max: number | null; min: number | null } | null>(null);
+  const [couponError, setCouponError] = useState<string | null>(null);
+
+  let discount = 0;
+  if (appliedCoupon) {
+    if (appliedCoupon.min && total < appliedCoupon.min) {
+      // Too small, no discount applied but it's handled on apply. We just do it for safety
+    } else {
+      if (appliedCoupon.type === "percentage") {
+        discount = (total * appliedCoupon.value) / 100;
+        if (appliedCoupon.max && discount > appliedCoupon.max) discount = appliedCoupon.max;
+      } else {
+        discount = appliedCoupon.value;
+      }
+      discount = Math.min(discount, total);
+    }
+  }
+
+  const finalTotal = total - discount;
+
+  async function handleApplyCoupon() {
+    setCouponError(null);
+    if (!couponCodeInput.trim()) return;
+    try {
+      const c = await validateCoupon(couponCodeInput);
+      if (c.minOrderAmount && total < c.minOrderAmount) {
+        setCouponError(`Min order amount is ₹${c.minOrderAmount}`);
+        return;
+      }
+      setAppliedCoupon({ code: c.code, type: c.discountType, value: c.discountValue, max: c.maxDiscount, min: c.minOrderAmount });
+    } catch (err: any) {
+      setCouponError(err?.response?.data?.error?.message ?? err?.message ?? "Invalid coupon code");
+    }
+  }
 
   async function handleCancelDemoPay(orderId: number) {
     setSubmitting(true);
@@ -82,6 +120,7 @@ export function Checkout() {
         shipping: { name, phone, address },
         wifi: wifiEnabled && ssid ? { ssid, password: wifiPass } : undefined,
         paymentMethod,
+        couponCode: appliedCoupon?.code,
       });
       createdOrderId = order.id;
 
@@ -188,11 +227,43 @@ export function Checkout() {
                 <span>₹{(i.price * i.quantity).toLocaleString("en-IN")}</span>
               </div>
             ))}
+            {discount > 0 && (
+              <div className="flex justify-between border-t border-brand/20 pt-3 text-sm font-semibold text-green-500">
+                <span>Discount ({appliedCoupon?.code})</span>
+                <span>-₹{discount.toLocaleString("en-IN")}</span>
+              </div>
+            )}
             <div className="flex justify-between border-t border-brand/20 pt-3 text-base font-bold">
               <span>Total</span>
-              <span>₹{total.toLocaleString("en-IN")}</span>
+              <span>₹{finalTotal.toLocaleString("en-IN")}</span>
             </div>
           </div>
+        </section>
+
+        {/* Coupons */}
+        <section className="rounded-xl border border-brand/20 bg-night-800 p-6">
+          <h2 className="mb-4 text-lg font-semibold">Apply Coupon</h2>
+          <div className="flex items-center gap-3">
+            <input
+              value={couponCodeInput}
+              onChange={(e) => setCouponCodeInput(e.target.value.toUpperCase())}
+              placeholder="Enter coupon code"
+              className="flex-1 rounded-lg border border-night-600 bg-night-900 px-3 py-2 text-sm uppercase"
+            />
+            <button
+              type="button"
+              onClick={handleApplyCoupon}
+              className="rounded-lg bg-night-700 px-4 py-2 font-semibold hover:bg-night-600"
+            >
+              Apply
+            </button>
+          </div>
+          {couponError && <p className="mt-2 text-sm text-red-500">{couponError}</p>}
+          {appliedCoupon && !couponError && (
+            <p className="mt-2 text-sm text-green-500">
+              Coupon '{appliedCoupon.code}' applied successfully!
+            </p>
+          )}
         </section>
 
         {/* Shipping */}
@@ -259,12 +330,24 @@ export function Checkout() {
               </div>
               <div>
                 <label className="mb-1 block text-sm text-gray-500">WiFi password</label>
-                <input
-                  type="password"
-                  value={wifiPass}
-                  onChange={(e) => setWifiPass(e.target.value)}
-                  className="w-full rounded-lg border border-night-600 bg-night-900 px-3 py-2 text-sm"
-                />
+                <div className="relative">
+                  <input
+                    type={showPass ? "text" : "password"}
+                    value={wifiPass}
+                    onChange={(e) => setWifiPass(e.target.value)}
+                    placeholder="Enter WiFi password"
+                    className="w-full rounded-lg border border-night-600 bg-night-900 px-3 py-2 pr-10 text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPass((v) => !v)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-200 transition"
+                    tabIndex={-1}
+                    title={showPass ? "Hide password" : "Show password"}
+                  >
+                    {showPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
               </div>
             </div>
           )}

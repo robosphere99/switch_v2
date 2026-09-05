@@ -543,6 +543,7 @@ model Product {
   features   Json?
   imageUrl   String?  @db.VarChar(255)
   active     Boolean  @default(true)
+  upcoming   Boolean  @default(false)
   stockCount Int      @default(0) @map("stock_count")
   rating     Decimal  @default(0.0) @db.Decimal(3, 2)
   totalReviews Int    @default(0) @map("total_reviews")
@@ -572,10 +573,13 @@ model Order {
   shippingAddress String        @db.VarChar(255)
   wifiSsid        String?       @db.VarChar(64)
   wifiPasswordEnc String?       @db.Text @map("wifi_password_enc")
+  couponId        Int?          @map("coupon_id")
+  discountAmount  Decimal       @default(0) @db.Decimal(10, 2) @map("discount_amount")
   createdAt       DateTime      @default(now()) @map("created_at")
   updatedAt       DateTime      @updatedAt @map("updated_at")
 
   user   User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  coupon Coupon?         @relation(fields: [couponId], references: [id], onDelete: SetNull)
   items  OrderItem[]
   serials SerialRegistry[]
 
@@ -700,6 +704,24 @@ model SupportCall {
   @@index([callerId])
   @@index([receiverId])
   @@map("support_calls")
+}
+
+model Coupon {
+  id             Int       @id @default(autoincrement())
+  code           String    @unique @db.VarChar(32)
+  discountType   String    @default("percentage") @db.VarChar(16) // "percentage" or "fixed"
+  discountValue  Decimal   @db.Decimal(10, 2)
+  minOrderAmount Decimal?  @db.Decimal(10, 2) @map("min_order_amount")
+  maxDiscount    Decimal?  @db.Decimal(10, 2) @map("max_discount")
+  usageLimit     Int?      @map("usage_limit")
+  usedCount      Int       @default(0) @map("used_count")
+  expiresAt      DateTime? @map("expires_at")
+  active         Boolean   @default(true)
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  orders         Order[]
+
+  @@map("coupons")
 }
 
 /** Per-view chat settings — mute + pin. userId = setting ka owner (user ya admin), peerUserId = baat karne wala. */

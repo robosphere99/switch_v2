@@ -1,16 +1,30 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link, useSearchParams } from "react-router-dom";
 import { getProducts, type Product } from "../api/shop";
 import { useCartStore } from "../stores/cart";
 import { ProductCard } from "../components/ProductCard";
 import { ProductDetailsModal } from "../components/ProductDetailsModal";
-import { ShoppingBag, X, Minus, Plus, Trash2, ArrowRight } from "lucide-react";
+import { ShoppingBag, X, Minus, Plus, Trash2, ArrowRight, Flame, Sparkles, Clock } from "lucide-react";
+
+const CATEGORIES = ["All", "Relays", "Dimmers", "Plugs & Extras"];
 
 export function Shop() {
   const [products, setProducts] = useState<Product[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [category, setCategory] = useState("All");
+  
+  // Last Visited State
+  const [recentViewIds, setRecentViewIds] = useState<number[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("recentProducts") || "[]");
+    } catch {
+      return [];
+    }
+  });
+
   const items = useCartStore((s) => s.items);
   const add = useCartStore((s) => s.add);
   const remove = useCartStore((s) => s.remove);
@@ -27,16 +41,78 @@ export function Shop() {
       .catch(() => setError("Products load nahi hue — API chal raha hai kya?"));
   }, []);
 
-  // Chat se aaye ho (?product=) to us card pe scroll + highlight + open modal
+  useEffect(() => {
+    if (cartOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "auto";
+    }
+    return () => {
+      document.body.style.overflow = "auto";
+    };
+  }, [cartOpen]);
+
+  const handleSelectProduct = (p: Product) => {
+    setSelectedProduct(p);
+    setRecentViewIds(prev => {
+      const next = [p.id, ...prev.filter(id => id !== p.id)].slice(0, 4);
+      localStorage.setItem("recentProducts", JSON.stringify(next));
+      return next;
+    });
+  };
+
   useEffect(() => {
     if (!highlightId || products.length === 0) return;
     const t = setTimeout(() => {
       cardRefs.current[highlightId]?.scrollIntoView({ behavior: "smooth", block: "center" });
       const p = products.find(p => p.id === highlightId);
-      if (p) setSelectedProduct(p);
+      if (p) handleSelectProduct(p);
     }, 350);
     return () => clearTimeout(t);
   }, [highlightId, products]);
+
+  // Derivations
+  const filteredProducts = products.filter(p => {
+    if (category === "All") return true;
+    const f = p.features as any;
+    if (category === "Relays") return f?.channels;
+    if (category === "Dimmers") return f?.dimmer || f?.fanDimmer;
+    if (category === "Plugs & Extras") return !f?.channels && !f?.dimmer && !f?.fanDimmer;
+    return true;
+  });
+
+  const trending = [...products].sort((a, b) => Number(b.price || 0) - Number(a.price || 0)).slice(0, 4);
+  const suggestions = [...products].filter(p => !trending.find(t => t.id === p.id)).sort(() => Math.random() - 0.5).slice(0, 4);
+  const recentProducts = recentViewIds.map(id => products.find(p => p.id === id)).filter(Boolean) as Product[];
+
+  const renderProductCard = (p: Product) => {
+    const cartItem = items.find(i => i.productId === p.id);
+    const cartQuantity = cartItem ? cartItem.quantity : 0;
+    return (
+      <ProductCard
+        key={p.id}
+        p={p}
+        cartQuantity={cartQuantity}
+        highlighted={highlightId === p.id}
+        ref={(el) => { cardRefs.current[p.id] = el; }}
+        onClick={() => handleSelectProduct(p)}
+        onUpdateQuantity={(qty) => {
+          if (qty <= 0) remove(p.id);
+          else setQuantity(p.id, qty);
+        }}
+        onAdd={() => {
+          add({
+            productId: p.id,
+            name: p.name,
+            price: Number(p.price),
+            quantity: 1,
+            modelCode: p.modelCode,
+          });
+          setCartOpen(true);
+        }}
+      />
+    );
+  };
 
   return (
     <div className="page-enter mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
@@ -66,38 +142,68 @@ export function Shop() {
         <div className="alert-error mb-8">{error}</div>
       )}
 
-      {/* Product grid */}
-      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {products.map((p) => {
-          const cartItem = items.find(i => i.productId === p.id);
-          const cartQuantity = cartItem ? cartItem.quantity : 0;
-
-          return (
-            <ProductCard
-              key={p.id}
-              p={p}
-              cartQuantity={cartQuantity}
-              highlighted={highlightId === p.id}
-              ref={(el) => { cardRefs.current[p.id] = el; }}
-              onClick={() => setSelectedProduct(p)}
-              onUpdateQuantity={(qty) => {
-                if (qty <= 0) remove(p.id);
-                else setQuantity(p.id, qty);
-              }}
-              onAdd={() => {
-                add({
-                  productId: p.id,
-                  name: p.name,
-                  price: Number(p.price),
-                  quantity: 1,
-                  modelCode: p.modelCode,
-                });
-                setCartOpen(true);
-              }}
-            />
-          );
-        })}
+      {/* Category Filters */}
+      <div className="mb-10 flex gap-2 overflow-x-auto thin-scrollbar pb-2">
+        {CATEGORIES.map(c => (
+          <button
+            key={c}
+            onClick={() => setCategory(c)}
+            className={`shrink-0 rounded-full px-5 py-2 text-sm font-semibold transition-all ${
+              category === c 
+                ? "bg-brand text-white shadow-md shadow-brand/20" 
+                : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50 dark:bg-night-800 dark:border-night-600 dark:text-gray-300 dark:hover:bg-night-700"
+            }`}
+          >
+            {c}
+          </button>
+        ))}
       </div>
+
+      {category === "All" && (
+        <div className="mb-12 flex flex-col lg:flex-row gap-8">
+          {/* Trending Section */}
+          <div className="flex-1">
+            <h2 className="mb-5 text-lg font-bold flex items-center gap-2 text-gray-900 dark:text-white">
+              <Flame className="h-5 w-5 text-orange-500" /> Trending Now
+            </h2>
+            <div className="grid gap-5 sm:grid-cols-2">
+              {trending.slice(0, 2).map(renderProductCard)}
+            </div>
+          </div>
+          
+          {/* Suggestions Section */}
+          <div className="flex-1">
+            <h2 className="mb-5 text-lg font-bold flex items-center gap-2 text-gray-900 dark:text-white">
+              <Sparkles className="h-5 w-5 text-brand" /> Recommended for You
+            </h2>
+            <div className="grid gap-5 sm:grid-cols-2">
+              {suggestions.slice(0, 2).map(renderProductCard)}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Main Product Grid */}
+      <div className="mb-16">
+        <h2 className="mb-5 text-lg font-bold text-gray-900 dark:text-white">
+          {category === "All" ? "All Products" : `${category} Products`}
+        </h2>
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {filteredProducts.map(renderProductCard)}
+        </div>
+      </div>
+
+      {/* Recently Viewed Section */}
+      {recentProducts.length > 0 && (
+        <div className="mt-16 pt-10 border-t border-gray-200 dark:border-night-700">
+          <h2 className="mb-5 text-lg font-bold flex items-center gap-2 text-gray-900 dark:text-white">
+            <Clock className="h-5 w-5 text-gray-500" /> Recently Viewed
+          </h2>
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {recentProducts.map(renderProductCard)}
+          </div>
+        </div>
+      )}
 
       {/* Product Details Modal */}
       {selectedProduct && (() => {
@@ -127,10 +233,9 @@ export function Shop() {
       })()}
 
       {/* ── Cart Slide-out ─────────────────────────────────── */}
-      {cartOpen && (
+      {cartOpen && createPortal(
         <div
-          className="fixed inset-0 z-50 flex justify-end"
-          style={{ background: "rgba(0,0,0,0.45)" }}
+          className="fixed inset-0 z-[100] flex justify-end bg-black/50 backdrop-blur-xs"
           onClick={() => setCartOpen(false)}
         >
           <div
@@ -139,7 +244,7 @@ export function Shop() {
             style={{ animation: "slideInRight 0.25s cubic-bezier(0.22,1,0.36,1) both" }}
           >
             {/* Cart header */}
-            <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4 dark:border-night-600">
+            <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4 dark:border-night-600 shrink-0">
               <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Your Cart</h2>
               <button
                 onClick={() => setCartOpen(false)}
@@ -204,7 +309,7 @@ export function Shop() {
 
             {/* Cart footer */}
             {items.length > 0 && (
-              <div className="border-t border-gray-100 px-6 py-5 dark:border-night-600">
+              <div className="border-t border-gray-100 px-6 py-5 dark:border-night-600 shrink-0 bg-white dark:bg-night-800">
                 <div className="mb-4 flex items-center justify-between">
                   <span className="text-sm text-gray-500">Total</span>
                   <span className="text-xl font-bold text-gray-900 dark:text-white">
@@ -213,13 +318,15 @@ export function Shop() {
                 </div>
                 <Link
                   to="/checkout"
-                  className="btn-primary w-full justify-center py-3"
+                  onClick={() => setCartOpen(false)}
+                  className="btn-primary w-full justify-center py-3 text-base font-bold shadow-lg shadow-brand/20"
                 >
                   Proceed to Checkout
                   <ArrowRight className="h-4 w-4" />
                 </Link>
                 <Link
                   to="/orders"
+                  onClick={() => setCartOpen(false)}
                   className="mt-3 block text-center text-sm text-gray-400 transition hover:text-brand"
                 >
                   View my orders →
@@ -227,7 +334,8 @@ export function Shop() {
               </div>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Cart slide-in animation */}

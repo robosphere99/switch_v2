@@ -170,10 +170,49 @@ const PRODUCTS = [
       "Touch dimmer with 4 brightness steps (off → 33% → 66% → 100%). WiFi + touch control, app dimming via steps.",
     features: { dimmer: true, steps: 4, touch: true, wifi: true, ota: true },
   },
+  {
+    name: "RGB LED Controller",
+    modelCode: "RGB-WIFI",
+    relayCount: 3,
+    price: 1299,
+    description:
+      "WiFi RGB strip controller. Control millions of colors, set dynamic scenes, and sync with music from the app.",
+    features: { rgb: true, scenes: true, wifi: true, voice: true },
+    upcoming: true,
+  },
+  {
+    name: "Smart Plug (16A)",
+    modelCode: "PLUG-16A",
+    relayCount: 1,
+    price: 999,
+    description:
+      "Heavy duty 16A smart plug for Geysers, ACs, and Heaters. Includes real-time power monitoring and auto-cut off.",
+    features: { powerMonitoring: true, load: "16A", wifi: true, voice: true },
+    upcoming: true,
+  },
 ];
 
 async function seedProducts() {
+  const commonFaqs = [
+    { question: "Does this require a hub?", answer: "No, it connects directly to your home WiFi. No extra hub needed." },
+    { question: "Can I control it from outside my home?", answer: "Yes, the SwitchNest app allows you to control it securely from anywhere." },
+    { question: "Is it compatible with voice assistants?", answer: "Yes, it works seamlessly with our AI voice assistant." }
+  ];
+  
+  const commonSpecs = [
+    { label: "Input Voltage", value: "90-250V AC 50/60Hz" },
+    { label: "Microcontroller", value: "ESP32 WROOM-32" },
+    { label: "Wireless", value: "WiFi 2.4GHz (802.11 b/g/n)" },
+    { label: "Enclosure", value: "Fire-retardant ABS Plastic" },
+  ];
+
   for (const p of PRODUCTS) {
+    const enrichedFeatures = {
+      ...(p.features as any),
+      faqs: commonFaqs,
+      specifications: commonSpecs,
+    };
+
     await prisma.product.upsert({
       where: { modelCode: p.modelCode },
       update: {
@@ -181,8 +220,9 @@ async function seedProducts() {
         relayCount: p.relayCount,
         price: p.price,
         description: p.description,
-        features: p.features as never,
+        features: enrichedFeatures,
         active: true,
+        upcoming: p.upcoming ?? false,
       },
       create: {
         name: p.name,
@@ -190,11 +230,39 @@ async function seedProducts() {
         relayCount: p.relayCount,
         price: p.price,
         description: p.description,
-        features: p.features as never,
+        features: enrichedFeatures,
         active: true,
+        upcoming: p.upcoming ?? false,
       },
     });
   }
   console.log(`   Products: ${PRODUCTS.length} shop products`);
+
+  // Seed Product Reviews
+  const demoUser = await prisma.user.findUnique({ where: { email: "demo@robosphere.local" } });
+  if (demoUser) {
+    const allProds = await prisma.product.findMany();
+    let reviewsAdded = 0;
+    for (const p of allProds) {
+      const existingReviews = await prisma.productReview.count({ where: { productId: p.id } });
+      if (existingReviews === 0) {
+        await prisma.productReview.createMany({
+          data: [
+            { productId: p.id, userId: demoUser.id, rating: 5, comment: "Absolutely fantastic! Setup took exactly 2 minutes. The WiFi range is excellent, and it responds instantly from the app." },
+            { productId: p.id, userId: demoUser.id, rating: 4, comment: "Good quality hardware. The PCB layout looks clean. Only giving 4 stars because the delivery was a day late." },
+            { productId: p.id, userId: demoUser.id, rating: 5, comment: "Value for money. Using it for my living room lights and it works perfectly." }
+          ]
+        });
+        await prisma.product.update({
+          where: { id: p.id },
+          data: { rating: 4.67, totalReviews: 3 }
+        });
+        reviewsAdded += 3;
+      }
+    }
+    if (reviewsAdded > 0) {
+      console.log(`   Reviews: Added ${reviewsAdded} mock reviews`);
+    }
+  }
 }
 
