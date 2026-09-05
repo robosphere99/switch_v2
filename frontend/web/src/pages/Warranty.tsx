@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { CopyText } from "../components/CopyText";
 import {
   fileWarrantyClaim,
   getMyWarranty,
@@ -14,11 +13,6 @@ const CLAIM_BADGE: Record<string, { label: string; cls: string }> = {
   resolved: { label: "🔧 Resolved", cls: "bg-blue-500/20 text-blue-700" },
 };
 
-const STATUS_LABEL: Record<string, string> = {
-  active: "🟢 Active",
-  claimed: "🟠 Claim Filed",
-  closed: "⚪ Closed",
-};
 
 export function Warranty() {
   const [serials, setSerials] = useState<WarrantyDevice[]>([]);
@@ -78,37 +72,9 @@ export function Warranty() {
         </div>
       )}
 
-      {/* My devices */}
-      <h2 className="mb-3 text-xl font-bold">My Devices ({serials.length})</h2>
-      {serials.length === 0 ? (
-        <div className="rounded-xl border border-brand/20 bg-night-800 p-8 text-center text-sm text-gray-500">
-          Koi claimed device nahi. <a href="/activate" className="text-brand underline">Serial activate karo</a>.
-        </div>
-      ) : (
-        <div className="mb-8 space-y-3">
-          {serials.map((s) => (
-            <div key={s.serialCode} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-brand/20 bg-night-800 p-4">
-              <div>
-                <div className="font-bold text-night-950">{s.product?.name ?? s.productName}</div>
-                <div className="text-xs text-gray-500">
-                  <CopyText text={s.serialCode} className="text-brand" title="Hold to copy serial">{s.serialCode}</CopyText> · {s.product?.modelCode ?? s.modelCode}
-                </div>
-              </div>
-              <div className="text-right">
-                <div className={`text-xs font-semibold ${STATUS_LABEL[s.warrantyStatus]?.startsWith("🟢") ? "text-green-400" : "text-amber-600"}`}>
-                  {STATUS_LABEL[s.warrantyStatus] ?? s.warrantyStatus}
-                </div>
-                <div className="text-xs text-gray-500">
-                  {s.warrantyExpiresAt ? `expires ${new Date(s.warrantyExpiresAt).toLocaleDateString()}` : "no expiry set"}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
 
       {/* Claim form */}
-      <h2 className="mb-3 text-xl font-bold">Naya Warranty Claim</h2>
+      <h2 className="mb-3 text-xl font-bold">File a Warranty Claim</h2>
       <form onSubmit={submit} className="mb-8 rounded-xl border border-brand/20 bg-night-800 p-6">
         <label className="mb-1 block text-sm text-gray-500">Serial Code *</label>
         <select
@@ -158,7 +124,7 @@ export function Warranty() {
       </form>
 
       {/* My claims */}
-      <h2 className="mb-3 text-xl font-bold">Meri Claims ({claims.length})</h2>
+      <h2 className="mb-3 text-xl font-bold">My Claims ({claims.length})</h2>
       {claims.length === 0 ? (
         <div className="rounded-xl border border-brand/20 bg-night-800 p-8 text-center text-sm text-gray-500">
           Koi claim nahi abhi.
