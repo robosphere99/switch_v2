@@ -135,7 +135,7 @@ export async function initiateCall(req: Request, res: Response): Promise<void> {
 
 export async function acceptCall(req: Request, res: Response): Promise<void> {
   const userId = req.user!.sub;
-  const callId = parseInt(req.params.id, 10);
+  const callId = parseInt(String(req.params.id), 10);
 
   const call = await prisma.supportCall.findUnique({ where: { id: callId } });
   if (!call || call.receiverId !== userId) {
@@ -186,7 +186,7 @@ export async function acceptCall(req: Request, res: Response): Promise<void> {
 
 export async function rejectCall(req: Request, res: Response): Promise<void> {
   const userId = req.user!.sub;
-  const callId = parseInt(req.params.id, 10);
+  const callId = parseInt(String(req.params.id), 10);
 
   const call = await prisma.supportCall.findUnique({ where: { id: callId } });
   if (!call || call.receiverId !== userId) {
@@ -216,7 +216,7 @@ export async function rejectCall(req: Request, res: Response): Promise<void> {
 
 export async function endCall(req: Request, res: Response): Promise<void> {
   const userId = req.user!.sub;
-  const callId = parseInt(req.params.id, 10);
+  const callId = parseInt(String(req.params.id), 10);
 
   const call = await prisma.supportCall.findUnique({ where: { id: callId } });
   if (!call) {

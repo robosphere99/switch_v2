@@ -139,3 +139,14 @@ export async function listCurrentFirmware(_req: Request, res: Response) {
   const versions = await deviceService.listCurrentFirmware();
   ok(res, versions);
 }
+
+export async function getUsageAnalyticsHandler(req: Request, res: Response) {
+  const { getUsageAnalytics } = await import("../services/analytics.service");
+  const days = Math.min(Math.max(Number(req.query.days) || 7, 1), 90);
+  ok(res, await getUsageAnalytics(Number(req.params.homeId), days));
+}
+
+export async function getAutomationSuggestionsHandler(req: Request, res: Response) {
+  const { getAutomationSuggestions } = await import("../services/automation.service");
+  ok(res, await getAutomationSuggestions(Number(req.params.homeId)));
+}

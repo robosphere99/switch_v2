@@ -147,3 +147,29 @@ export async function checkAvailability(req: Request, res: Response) {
   const result = await authService.checkAvailability(username as string, email as string);
   ok(res, result);
 }
+
+export async function upsertPushToken(req: Request, res: Response) {
+  const { token, deviceModel, pushDeviceToggles, pushSystemAlerts } = req.body;
+
+  const fallbackDT = pushDeviceToggles !== undefined ? pushDeviceToggles : true;
+  const fallbackSA = pushSystemAlerts !== undefined ? pushSystemAlerts : true;
+
+  await prisma.pushSubscription.upsert({
+    where: { token },
+    update: {
+      userId: req.user!.sub,
+      deviceModel: deviceModel || undefined,
+      pushDeviceToggles: fallbackDT,
+      pushSystemAlerts: fallbackSA
+    },
+    create: {
+      userId: req.user!.sub,
+      token,
+      deviceModel,
+      pushDeviceToggles: fallbackDT,
+      pushSystemAlerts: fallbackSA
+    }
+  });
+
+  res.json({ success: true, message: "Push token securely vaulted in multi-device registry" });
+}

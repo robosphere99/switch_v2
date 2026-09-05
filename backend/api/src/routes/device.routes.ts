@@ -5,8 +5,7 @@ import { ok } from "../lib/response";
 import { requireAuth } from "../middleware/auth";
 import { requireHomeMember } from "../middleware/requireRole";
 import { validateBody, validateParams } from "../middleware/validate";
-import { getUsageAnalytics } from "../services/analytics.service";
-import { getAutomationSuggestions } from "../services/automation.service";
+
 
 export const deviceRouter = Router();
 
@@ -154,10 +153,7 @@ deviceRouter.get(
   requireAuth,
   validateParams(idParams),
   requireHomeMember("viewer"),
-  async (req, res) => {
-    const days = Math.min(Math.max(Number(req.query.days) || 7, 1), 90);
-    ok(res, await getUsageAnalytics(Number(req.params.homeId), days));
-  },
+  deviceController.getUsageAnalyticsHandler,
 );
 
 /** Phase 7 — usage patterns se automation suggestions (viewer+ dekh sakta hai). */
@@ -166,7 +162,5 @@ deviceRouter.get(
   requireAuth,
   validateParams(idParams),
   requireHomeMember("viewer"),
-  async (req, res) => {
-    ok(res, await getAutomationSuggestions(Number(req.params.homeId)));
-  },
+  deviceController.getAutomationSuggestionsHandler,
 );

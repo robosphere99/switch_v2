@@ -8,7 +8,6 @@ import multer from "multer";
 import path from "node:path";
 import fs from "node:fs";
 import { uploadsDir } from "../lib/paths";
-import { prisma } from "../lib/prisma";
 
 import { cloudinaryAvatarStorage } from "../lib/cloudinary";
 
@@ -131,30 +130,4 @@ authRouter.delete("/sessions/other", requireAuth, authController.revokeOtherSess
 authRouter.delete("/sessions/all", requireAuth, authController.revokeAllSessions);
 authRouter.delete("/sessions/:id", requireAuth, authController.revokeSession);
 
-authRouter.post("/push-token", requireAuth, validateBody(pushTokenSchema), async (req, res) => {
-  // Save or sync the hardware push identifier in the Multi-Device registry
-  const { token, deviceModel, pushDeviceToggles, pushSystemAlerts } = req.body;
-  const { prisma } = await import("../lib/prisma");
-
-  const fallbackDT = pushDeviceToggles !== undefined ? pushDeviceToggles : true;
-  const fallbackSA = pushSystemAlerts !== undefined ? pushSystemAlerts : true;
-
-  await prisma.pushSubscription.upsert({
-    where: { token },
-    update: {
-      userId: req.user!.sub,
-      deviceModel: deviceModel || undefined,
-      pushDeviceToggles: fallbackDT,
-      pushSystemAlerts: fallbackSA
-    },
-    create: {
-      userId: req.user!.sub,
-      token,
-      deviceModel,
-      pushDeviceToggles: fallbackDT,
-      pushSystemAlerts: fallbackSA
-    }
-  });
-
-  res.json({ success: true, message: "Push token securely vaulted in multi-device registry" });
-});
+authRouter.post("/push-token", requireAuth, validateBody(pushTokenSchema), authController.upsertPushToken);

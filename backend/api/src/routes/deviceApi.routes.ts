@@ -3,8 +3,7 @@ import { z } from "zod";
 import { requireApiKey } from "../middleware/apiKey";
 import { rateLimit } from "../middleware/rateLimit";
 import { validateBody, validateQuery } from "../middleware/validate";
-import { ok } from "../lib/response";
-import * as deviceApi from "../services/deviceApi.service";
+import * as deviceApiController from "../controllers/deviceApi.controller";
 
 /**
  * Device-facing API (ESP32 / clients) — authenticated with a home-scoped
@@ -68,60 +67,6 @@ const heartbeatSchema = z.object({
   states: z.string().optional(),
 });
 
-deviceApiRouter.get(
-  "/read-all",
-  readLimiter,
-  validateQuery(keyQuery),
-  requireApiKey,
-  async (req, res) => {
-    const mac = req.query.mac as string | undefined;
-    if (mac) {
-      // V2 Smart Cloud mapping response
-      return ok(res, await deviceApi.readAll(req.apiKey!, mac));
-    }
-    // V1 legacy mapping response
-    return ok(res, { devices: await deviceApi.readAll(req.apiKey!) });
-  },
-);
-
-deviceApiRouter.post(
-  "/update",
-  mutateLimiter,
-  requireApiKey,
-  validateBody(updateSchema),
-  async (req, res) => {
-    // Forward the MAC and channel parameters to the service handler
-    return ok(res, await deviceApi.updateFromDevice(req.apiKey!, req.body.device_id, req.body.status, req.body.mac, req.body.channel));
-  }
-);
-
-deviceApiRouter.post(
-  "/heartbeat",
-  mutateLimiter,
-  requireApiKey,
-  validateBody(heartbeatSchema),
-  async (req, res) => {
-    const baseUrl = `${req.protocol}://${req.get("host")}`;
-    ok(
-      res,
-      await deviceApi.heartbeat(
-        req.apiKey!,
-        {
-          device_id: req.body.device_id,
-          ip: req.body.ip,
-          fw_version: req.body.fw_version,
-          mac: req.body.mac,
-          ssid: req.body.ssid,
-          serial: req.body.serial,
-          model: req.body.model,
-          states: req.body.states,
-        },
-        baseUrl,
-      ),
-    );
-  },
-);
-
 const otaProgressSchema = z.object({
   api_key: z.string().optional(),
   device_id: z.coerce.number().int().positive(),
@@ -129,43 +74,43 @@ const otaProgressSchema = z.object({
   status: z.string().max(32).optional(),
 });
 
+deviceApiRouter.get(
+  "/read-all",
+  readLimiter,
+  validateQuery(keyQuery),
+  requireApiKey,
+  deviceApiController.readAll,
+);
+
+deviceApiRouter.post(
+  "/update",
+  mutateLimiter,
+  requireApiKey,
+  validateBody(updateSchema),
+  deviceApiController.updateDevice
+);
+
+deviceApiRouter.post(
+  "/heartbeat",
+  mutateLimiter,
+  requireApiKey,
+  validateBody(heartbeatSchema),
+  deviceApiController.heartbeat
+);
+
 deviceApiRouter.post(
   "/ota-progress",
   mutateLimiter,
   requireApiKey,
   validateBody(otaProgressSchema),
-  async (req, res) =>
-    ok(res, await deviceApi.reportOtaProgress(req.apiKey!, {
-      device_id: req.body.device_id,
-      progress: req.body.progress,
-      status: req.body.status,
-    })),
+  deviceApiController.reportOtaProgress
 );
 
 deviceApiRouter.get(
   "/commands",
   validateQuery(keyQuery),
   requireApiKey,
-  async (req, res) => {
-    const long = req.query.long === "1" || req.query.long === "true";
-    const mac = req.query.mac as string | undefined;
-
-    if (!long) {
-      // Short poll
-      return ok(res, { commands: await deviceApi.pendingCommands(req.apiKey!, mac) });
-    }
-    const holdSec = Math.min(25, Math.max(1, Number(req.query.hold) || 20));
-    // Client disconnect pe abort
-    const ac = new AbortController();
-    res.on("close", () => ac.abort());
-    const commands = await deviceApi.pendingCommandsLongPoll(
-      req.apiKey!,
-      holdSec * 1000,
-      ac.signal,
-      mac
-    );
-    if (!res.headersSent) ok(res, { commands });
-  },
+  deviceApiController.getCommands
 );
 
 deviceApiRouter.post(
@@ -173,14 +118,5 @@ deviceApiRouter.post(
   mutateLimiter,
   requireApiKey,
   validateBody(ackSchema),
-  async (req, res) =>
-    ok(
-      res,
-      await deviceApi.ackCommand(
-        req.apiKey!,
-        req.body.command_id,
-        req.body.device_id,
-        req.body.status,
-      ),
-    ),
+  deviceApiController.ackCommand
 );

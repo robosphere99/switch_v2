@@ -1,0 +1,10 @@
+{"ts":"2026-09-05T08:14:23.691Z","type":"leak_start","pid":13920,"growthPct":20.2,"spanH":0.51,"rssFirst":119,"rssLast":143,"firstTs":"2026-09-05T07:43:33.304Z","lastTs":"2026-09-05T08:14:23.367Z"}
+{"ts":"2026-09-05T08:16:23.691Z","type":"leak_end","pid":13920,"growthPct":20.2}
+{"ts":"2026-09-05T08:18:23.694Z","type":"leak_start","pid":13920,"growthPct":21,"spanH":0.58,"rssFirst":119,"rssLast":144,"firstTs":"2026-09-05T07:43:33.304Z","lastTs":"2026-09-05T08:18:23.374Z"}
+{"ts":"2026-09-05T08:20:23.694Z","type":"leak_end","pid":13920,"growthPct":21}
+{"ts":"2026-09-05T08:22:23.695Z","type":"leak_start","pid":13920,"growthPct":21,"spanH":0.65,"rssFirst":119,"rssLast":144,"firstTs":"2026-09-05T07:43:33.304Z","lastTs":"2026-09-05T08:22:23.377Z"}
+{"ts":"2026-09-05T08:24:23.697Z","type":"leak_end","pid":13920,"growthPct":21}
+{"ts":"2026-09-05T10:03:07.844Z","type":"leak_start","pid":20492,"growthPct":24.5,"spanH":0.51,"rssFirst":110,"rssLast":137,"firstTs":"2026-09-05T09:32:17.363Z","lastTs":"2026-09-05T10:03:07.445Z"}
+{"ts":"2026-09-05T10:06:07.846Z","type":"leak_end","pid":20492,"growthPct":24.5}
+{"ts":"2026-09-05T10:11:07.851Z","type":"leak_start","pid":20492,"growthPct":21.8,"spanH":0.65,"rssFirst":110,"rssLast":134,"firstTs":"2026-09-05T09:32:17.363Z","lastTs":"2026-09-05T10:11:07.452Z"}
+{"ts":"2026-09-05T10:46:49.295Z","type":"leak_end","pid":20492,"growthPct":21.8}
