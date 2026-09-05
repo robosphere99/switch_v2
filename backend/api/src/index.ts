@@ -506,7 +506,7 @@ async function dbHasSchema(): Promise<boolean> {
     // PostgreSQL uses current_schema() instead of DATABASE()
     const rows = await prisma.$queryRaw<{ c: bigint }[]>`
       SELECT COUNT(*) AS c FROM information_schema.tables
-      WHERE table_schema = current_schema() AND table_name = 'users'
+      WHERE table_schema = current_schema() AND table_name IN ('User', 'users')
     `;
     if (Number(rows[0]?.c ?? 0) > 0) return true;
   } catch (err) {
