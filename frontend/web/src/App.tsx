@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { Navbar } from "./components/Navbar";
 import { ChatWidget } from "./components/ChatWidget";
@@ -33,8 +33,7 @@ import { AdminFlasherGuide } from "./components/AdminFlasherGuide";
 import { UserWebRTCCallModal } from "./components/UserWebRTCCallModal";
 import { Warranty } from "./pages/Warranty";
 import { Support } from "./pages/Support";
-import { Install } from "./pages/Install";
-import { getInstallStatus } from "./api/install";
+
 import { useSiteStore } from "./stores/site";
 import { api } from "./api/client";
 import { useAuthStore } from "./stores/auth";
