@@ -244,6 +244,7 @@ export async function heartbeat(
         firmwareVersion: fw,
         lastSeen: new Date(),
         offline: false,
+        lastApiKeyId: key.id,
       },
       update: {
         homeId,
@@ -254,6 +255,7 @@ export async function heartbeat(
         firmwareVersion: fw ?? undefined,
         lastSeen: new Date(),
         offline: false,
+        lastApiKeyId: key.id,
         ...(attachSerial && existing?.serialCode && attachSerial !== existing.serialCode
           ? { name: `${attachSerial} · ${ssid ?? "SwitchNest"}` }
           : {}),

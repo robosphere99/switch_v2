@@ -9,6 +9,13 @@ export interface ApiKeyView {
     id: number;
     name: string;
   };
+  espDevices?: {
+    id: number;
+    name: string | null;
+    serialCode: string | null;
+    offline: boolean;
+    lastSeen: string | null;
+  }[];
   label: string | null;
   keyPrefix: string;
   createdAt: string;

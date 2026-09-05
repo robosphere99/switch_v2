@@ -145,6 +145,13 @@ export function DeviceKeys() {
                       <div className="text-gray-400">
                         <span className="font-medium text-gray-300">Home:</span> {k.home.name}
                       </div>
+                      
+                      {k.espDevices && k.espDevices.length > 0 && (
+                        <div className="text-gray-400">
+                          <span className="font-medium text-gray-300">Used by:</span>{" "}
+                          {k.espDevices.map(esp => esp.name || esp.serialCode).join(", ")}
+                        </div>
+                      )}
                     </div>
                   )}
 

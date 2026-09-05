@@ -353,6 +353,7 @@ model EspDevice {
   firmwareVersion    String?   @db.VarChar(32) @map("firmware_version")
   lastSeen           DateTime? @map("last_seen")
   offline            Boolean   @default(false)
+  lastApiKeyId       Int?      @map("last_api_key_id")
   otaPendingVersion  String?   @db.VarChar(32) @map("ota_pending_version")
   otaRequestedAt     DateTime? @map("ota_requested_at")
   otaProgress        Int?      @map("ota_progress")
@@ -361,10 +362,12 @@ model EspDevice {
   createdAt          DateTime  @default(now()) @map("created_at")
   updatedAt          DateTime  @updatedAt @map("updated_at")
 
-  devices Device[]
-  home    Home      @relation(fields: [homeId], references: [id], onDelete: Cascade)
+  devices    Device[]
+  home       Home    @relation(fields: [homeId], references: [id], onDelete: Cascade)
+  lastApiKey ApiKey? @relation(fields: [lastApiKeyId], references: [id], onDelete: SetNull)
 
   @@index([homeId])
+  @@index([lastApiKeyId])
   @@map("esp_devices")
 }
 
@@ -444,8 +447,9 @@ model ApiKey {
   lastUsedAt DateTime? @map("last_used_at")
   revokedAt            DateTime? @map("revoked_at")
 
-  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  home Home? @relation(fields: [homeId], references: [id], onDelete: Cascade)
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  home       Home?       @relation(fields: [homeId], references: [id], onDelete: Cascade)
+  espDevices EspDevice[]
 
   @@index([userId])
   @@index([homeId])

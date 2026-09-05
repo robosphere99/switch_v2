@@ -17,11 +17,9 @@ export async function listApiKeys(req: Request, res: Response): Promise<void> {
     const keys = await prisma.apiKey.findMany({
       where: { userId: req.user!.sub },
       include: {
-        home: {
-          select: {
-            id: true,
-            name: true,
-          },
+        home: { select: { id: true, name: true } },
+        espDevices: {
+          select: { id: true, name: true, serialCode: true, offline: true, lastSeen: true },
         },
       },
       orderBy: { createdAt: "desc" },
