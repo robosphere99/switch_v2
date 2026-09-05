@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import { listMyBoards, renameEsp, setEspLed, setDeviceStatus, updateDevice, type MyBoard } from "../api/devices";
 import { Switch } from "../components/Switch";
 import { historyEvent } from "../lib/boardHistory";
@@ -69,6 +70,7 @@ function CopyField({ value, hint }: { value: string; hint?: string; label?: stri
 
 export function MyBoards() {
   const queryClient = useQueryClient();
+  const location = useLocation();
   const [error, setError] = useState("");
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [copiedMac, setCopiedMac] = useState<number | null>(null);
@@ -82,6 +84,22 @@ export function MyBoards() {
     queryFn: listMyBoards,
     refetchInterval: 10_000,
   });
+
+  useEffect(() => {
+    if (!boards.isLoading && location.hash) {
+      const id = location.hash.replace("#", "");
+      const el = document.getElementById(id);
+      if (el) {
+        setTimeout(() => {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          el.classList.add("ring-2", "ring-brand", "ring-offset-2", "ring-offset-night-900", "transition-all", "duration-1000");
+          setTimeout(() => {
+            el.classList.remove("ring-2", "ring-brand", "ring-offset-2", "ring-offset-night-900");
+          }, 2000);
+        }, 100);
+      }
+    }
+  }, [boards.isLoading, location.hash]);
 
   const toggle = useMutation({
     mutationFn: ({

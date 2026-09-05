@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { useState } from "react";
 import { listHomes } from "../api/homes";
 import { listApiKeys, createApiKey, revokeApiKey } from "../api/keys";
@@ -147,9 +148,19 @@ export function DeviceKeys() {
                       </div>
                       
                       {k.espDevices && k.espDevices.length > 0 && (
-                        <div className="text-gray-400">
+                        <div className="text-gray-400 flex items-center gap-1 flex-wrap">
                           <span className="font-medium text-gray-300">Used by:</span>{" "}
-                          {k.espDevices.map(esp => esp.name || esp.serialCode).join(", ")}
+                          {k.espDevices.map((esp, i) => (
+                            <span key={esp.id}>
+                              <Link 
+                                to={`/boards#board-${esp.id}`} 
+                                className="text-brand hover:underline transition-colors"
+                              >
+                                {esp.name || esp.serialCode}
+                              </Link>
+                              {i < k.espDevices!.length - 1 && ", "}
+                            </span>
+                          ))}
                         </div>
                       )}
                     </div>
