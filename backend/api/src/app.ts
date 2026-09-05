@@ -156,19 +156,7 @@ export function createApp() {
   app.use("/api/docs", docsRouter);
   app.use("/docs", docsRouter);
 
-  // Setup mode (DB install pending) — baaki saare routes 503.
-  const checkDbSetup = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    if (isDbReady()) return next();
-    res.status(503).json({
-      success: false,
-      error: {
-        code: "NOT_INSTALLED",
-        message: "Database not installed yet — run installation first (GET/POST /api/install)",
-      },
-    });
-  };
-
-  app.use("/api", checkDbSetup);
+  // Setup mode removed: Database is handled by Prisma and Neon via .env
   app.use("/api", apiRouter);
 
   // Serve published ESP32 firmware at /firmware/firmware.bin (OTA downloads).
