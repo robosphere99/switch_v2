@@ -79,7 +79,7 @@ export function Warranty() {
       )}
 
       {/* My devices */}
-      <h2 className="mb-3 text-xl font-bold">Meri Devices ({serials.length})</h2>
+      <h2 className="mb-3 text-xl font-bold">My Devices ({serials.length})</h2>
       {serials.length === 0 ? (
         <div className="rounded-xl border border-brand/20 bg-night-800 p-8 text-center text-sm text-gray-500">
           Koi claimed device nahi. <a href="/activate" className="text-brand underline">Serial activate karo</a>.
