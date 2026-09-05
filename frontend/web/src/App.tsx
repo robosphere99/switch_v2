@@ -1,5 +1,5 @@
 import { Suspense, useEffect, useState } from "react";
-import { Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
 import { Navbar } from "./components/Navbar";
 import { ChatWidget } from "./components/ChatWidget";
 import { ProtectedRoute } from "./components/ProtectedRoute";
@@ -139,7 +139,7 @@ export default function App() {
       <UserWebRTCCallModal />
       <main className="pb-24 md:pb-0">
         <Routes>
-          <Route path="/" element={<Landing />} />
+          <Route path="/" element={user ? <Navigate to="/dashboard" replace /> : <Landing />} />
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />

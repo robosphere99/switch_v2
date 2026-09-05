@@ -7,7 +7,6 @@ import {
   ChevronDown,
   Clock,
   Home,
-  LayoutDashboard,
   LogOut,
   Menu,
   Package,
@@ -55,9 +54,8 @@ type NavGroup = {
  */
 const NAV_GROUPS: NavGroup[] = [
   {
-    title: "Overview",
+    title: "Shop",
     items: [
-      { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { to: "/shop", label: "Shop", icon: ShoppingCart },
     ],
   },
@@ -132,9 +130,9 @@ export function Navbar() {
     <>
       <header className="sticky top-0 z-20 border-b border-gray-100 bg-white/80 backdrop-blur-md dark:border-night-600 dark:bg-night-800/90">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
-          {/* Logo — Admin login pe admin overview; warna home */}
+          {/* Logo — Admin login pe admin overview; logged-in users pe dashboard; warna landing */}
           <Link
-            to={user?.role === "system_admin" ? "/admin" : "/"}
+            to={user?.role === "system_admin" ? "/admin" : user ? "/dashboard" : "/"}
             className="shrink-0"
             onClick={() => setMobileOpen(false)}
           >
