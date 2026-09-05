@@ -1,0 +1,17 @@
+.git
+.vercel
+node_modules
+**/node_modules
+frontend
+mobile-app
+hardware
+logs
+backend/api/dist
+backend/api/node_modules
+frontend/web/dist
+frontend/web/.next
+.expo
+*.log
+.env
+.env.*
+!.env.example
