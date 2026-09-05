@@ -1,4 +1,4 @@
-// RoboSphere v2 — Prisma schema (MySQL)
+// RoboSphere v2 — Prisma schema (PostgreSQL / Neon)
 // The multi-tenant model: devices belong to HOMES, users access via home_members.
 
 generator client {
@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -678,7 +678,7 @@ model SupportMessage {
   message    String   @db.Text
   attachmentName String? @db.VarChar(255) @map("attachment_name")
   attachmentType String? @db.VarChar(100) @map("attachment_type")
-  attachmentData String? @db.MediumText @map("attachment_data") // purana base64 blob (legacy rows)
+  attachmentData String? @db.Text @map("attachment_data") // purana base64 blob (legacy rows)
   attachmentPath String? @db.VarChar(255) @map("attachment_path") // naya: file path (disk pe, DB me blob nahi)
   readByUser   Boolean @default(false) @map("read_by_user")
   readByAdmin  Boolean @default(true)  @map("read_by_admin")
