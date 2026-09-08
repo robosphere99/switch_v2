@@ -53142,7 +53142,7 @@ import * as path3 from "path";
 function findRepoRoot(start) {
   let dir = path3.resolve(start);
   for (let i = 0; i < 8; i++) {
-    if (fs3.existsSync(path3.join(dir, "hardware")) && (fs3.existsSync(path3.join(dir, "site", "apps", "api")) || fs3.existsSync(path3.join(dir, "backend", "api")))) {
+    if (fs3.existsSync(path3.join(dir, "hardware")) && (fs3.existsSync(path3.join(dir, "backend", "api")) || fs3.existsSync(path3.join(dir, "frontend", "web")) || fs3.existsSync(path3.join(dir, "site", "apps", "api")))) {
       return dir;
     }
     const parent = path3.dirname(dir);
@@ -53152,29 +53152,53 @@ function findRepoRoot(start) {
   return null;
 }
 var repoRoot = findRepoRoot(process.cwd());
-var isDist = process.cwd().endsWith("dist");
-var apiRoot = isDist ? path3.resolve(process.cwd(), "..") : process.cwd();
-var firmwareDir = repoRoot ? path3.join(repoRoot, "hardware", "firmware") : path3.resolve(process.cwd(), "../../../hardware/firmware");
-var mobileAppDir = repoRoot ? path3.join(repoRoot, "mobile-app") : path3.resolve(process.cwd(), "mobile-app");
+var isDist = process.cwd().endsWith("dist") || typeof __dirname !== "undefined" && __dirname.endsWith("dist");
+var apiRoot = isDist ? path3.resolve(process.cwd().endsWith("dist") ? process.cwd() : __dirname, "..") : repoRoot ? path3.join(repoRoot, "backend", "api") : process.cwd();
+var firmwareDir = repoRoot ? path3.join(repoRoot, "hardware", "firmware") : path3.resolve(apiRoot, "../../hardware/firmware");
+var mobileAppDir = repoRoot ? path3.join(repoRoot, "mobile-app") : path3.resolve(apiRoot, "../../mobile-app");
 function getMobileAppCandidateDirs() {
   const dirs = [
+    path3.resolve(apiRoot, "mobile-app"),
     path3.resolve(process.cwd(), "mobile-app"),
-    path3.resolve(process.cwd(), "../mobile-app"),
-    path3.resolve(process.cwd(), "../../mobile-app"),
-    path3.resolve(process.cwd(), "../../../mobile-app"),
+    path3.resolve(apiRoot, "../../mobile-app"),
     repoRoot ? path3.join(repoRoot, "mobile-app") : "",
-    repoRoot ? path3.join(repoRoot, "site", "apps", "web", "public", "mobile-app") : "",
-    path3.resolve(process.cwd(), "apps/web/public/mobile-app"),
-    path3.resolve(process.cwd(), "../web/public/mobile-app"),
-    path3.resolve(process.cwd(), "../../apps/web/public/mobile-app")
+    repoRoot ? path3.join(repoRoot, "frontend", "web", "public", "mobile-app") : "",
+    repoRoot ? path3.join(repoRoot, "site", "apps", "web", "public", "mobile-app") : ""
   ].filter((d) => Boolean(d));
   return Array.from(new Set(dirs));
 }
-var attachmentDir = repoRoot ? path3.join(repoRoot, "hardware", "attachments") : path3.resolve(process.cwd(), "../../../hardware/attachments");
-var webDist = repoRoot ? path3.join(repoRoot, "site", "apps", "web", "dist") : path3.resolve(apiRoot, "../web/dist");
-var swaggerUiDir = repoRoot ? path3.join(repoRoot, "site", "apps", "api", "public", "swagger-ui") : path3.resolve(apiRoot, "public/swagger-ui");
-var webPublicMobileAppDir = repoRoot ? path3.join(repoRoot, "site", "apps", "web", "public", "mobile-app") : path3.resolve(apiRoot, "../web/public/mobile-app");
-var uploadsDir = repoRoot ? path3.join(repoRoot, "site", "apps", "api", "uploads") : path3.resolve(apiRoot, "uploads");
+var attachmentDir = repoRoot ? path3.join(repoRoot, "hardware", "attachments") : path3.resolve(apiRoot, "../../hardware/attachments");
+var webDist = repoRoot ? fs3.existsSync(path3.join(repoRoot, "frontend", "web", "dist")) ? path3.join(repoRoot, "frontend", "web", "dist") : path3.join(repoRoot, "site", "apps", "web", "dist") : fs3.existsSync(path3.resolve(apiRoot, "../../frontend/web/dist")) ? path3.resolve(apiRoot, "../../frontend/web/dist") : path3.resolve(apiRoot, "../web/dist");
+var swaggerUiDir = repoRoot ? fs3.existsSync(path3.join(repoRoot, "backend", "api", "public", "swagger-ui")) ? path3.join(repoRoot, "backend", "api", "public", "swagger-ui") : path3.join(repoRoot, "site", "apps", "api", "public", "swagger-ui") : path3.resolve(apiRoot, "public/swagger-ui");
+var webPublicMobileAppDir = repoRoot ? fs3.existsSync(path3.join(repoRoot, "frontend", "web", "public", "mobile-app")) ? path3.join(repoRoot, "frontend", "web", "public", "mobile-app") : path3.join(repoRoot, "site", "apps", "web", "public", "mobile-app") : path3.resolve(apiRoot, "../../frontend/web/public/mobile-app");
+var uploadsDir = repoRoot ? fs3.existsSync(path3.join(repoRoot, "backend", "api", "uploads")) ? path3.join(repoRoot, "backend", "api", "uploads") : path3.join(repoRoot, "site", "apps", "api", "uploads") : path3.resolve(apiRoot, "uploads");
+function getSpaIndexHtmlPath() {
+  const candidates = [
+    path3.resolve(apiRoot, "index.html"),
+    path3.resolve(process.cwd(), "index.html"),
+    path3.resolve(process.cwd(), "backend", "api", "index.html"),
+    path3.resolve(webDist, "index.html"),
+    repoRoot ? path3.join(repoRoot, "backend", "api", "index.html") : "",
+    repoRoot ? path3.join(repoRoot, "frontend", "web", "dist", "index.html") : "",
+    repoRoot ? path3.join(repoRoot, "site", "apps", "web", "dist", "index.html") : ""
+  ].filter((p) => Boolean(p));
+  for (const candidate of candidates) {
+    if (fs3.existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+function getCandidateAssetDirs() {
+  const dirs = [
+    path3.resolve(apiRoot, "assets"),
+    path3.resolve(process.cwd(), "assets"),
+    path3.resolve(process.cwd(), "backend", "api", "assets"),
+    path3.resolve(webDist, "assets"),
+    repoRoot ? path3.join(repoRoot, "backend", "api", "assets") : "",
+    repoRoot ? path3.join(repoRoot, "frontend", "web", "dist", "assets") : "",
+    repoRoot ? path3.join(repoRoot, "site", "apps", "web", "dist", "assets") : ""
+  ].filter((d) => Boolean(d));
+  return Array.from(new Set(dirs.filter((d) => fs3.existsSync(d))));
+}
 
 // src/routes/index.ts
 import { Router as Router22 } from "express";
@@ -65908,22 +65932,35 @@ function createApp() {
       const diag = await schemaDiag();
       res.json({
         success: true,
-        data: { status: "ok", ts: (/* @__PURE__ */ new Date()).toISOString(), schema: diag, build: API_VERSION }
+        data: {
+          status: "ok",
+          ts: (/* @__PURE__ */ new Date()).toISOString(),
+          schema: diag,
+          build: API_VERSION
+        }
       });
     } catch (err) {
-      res.json({
-        success: true,
-        data: {
-          status: "degraded",
-          ts: (/* @__PURE__ */ new Date()).toISOString(),
-          error: err instanceof Error ? err.message : "health check error",
-          build: API_VERSION
+      res.status(500).json({
+        success: false,
+        error: {
+          code: "HEALTH_CHECK_FAILED",
+          message: err instanceof Error ? err.message : "Health check error"
         }
       });
     }
   };
-  app.get("/api/health", handleHealth);
   app.get("/health", handleHealth);
+  app.get("/api/health", handleHealth);
+  app.get("/api/setup-status", async (_req, res) => {
+    res.json({
+      success: true,
+      data: {
+        isInstalled: true,
+        dbReady: isDbReady(),
+        message: isDbReady() ? "SwitchNest is operational" : "Database initialization in progress"
+      }
+    });
+  });
   const getVersion = async (req, res) => {
     const requestHost = req.get("host") || "192.168.1.36:4000";
     const protocol = req.protocol || "http";
@@ -65946,7 +65983,6 @@ function createApp() {
   };
   app.get("/api/version", getVersion);
   app.get("/version", getVersion);
-  app.use("/api/install", installRouter);
   app.use("/install", installRouter);
   app.use("/api/public", publicRouter);
   app.use("/public", publicRouter);
@@ -65974,27 +66010,11 @@ function createApp() {
     }
     next();
   });
-  const apiRootHtml = path12.join(process.cwd(), "index.html");
-  const apiAssetsDir = path12.join(process.cwd(), "assets");
-  const webDistHtml = path12.join(webDist, "index.html");
-  const webDistAssets = path12.join(webDist, "assets");
-  if (fs13.existsSync(apiAssetsDir)) {
+  const assetDirs = getCandidateAssetDirs();
+  for (const dir of assetDirs) {
     app.use(
       "/assets",
-      express2.static(apiAssetsDir, {
-        maxAge: "1y",
-        immutable: true,
-        setHeaders: (res, filePath) => {
-          if (filePath.endsWith(".js")) res.setHeader("Content-Type", "application/javascript");
-          else if (filePath.endsWith(".css")) res.setHeader("Content-Type", "text/css");
-        }
-      })
-    );
-  }
-  if (fs13.existsSync(webDistAssets)) {
-    app.use(
-      "/assets",
-      express2.static(webDistAssets, {
+      express2.static(dir, {
         maxAge: "1y",
         immutable: true,
         setHeaders: (res, filePath) => {
@@ -66006,14 +66026,13 @@ function createApp() {
   }
   app.use("/assets", (req, res, next) => {
     if (req.path.endsWith(".js")) {
-      const targetDir = fs13.existsSync(apiAssetsDir) ? apiAssetsDir : fs13.existsSync(webDistAssets) ? webDistAssets : null;
-      if (targetDir) {
+      for (const dir of assetDirs) {
         try {
-          const files = fs13.readdirSync(targetDir);
+          const files = fs13.readdirSync(dir);
           const latestJs = files.find((f) => f.startsWith("index-") && f.endsWith(".js"));
           if (latestJs) {
             res.setHeader("Content-Type", "application/javascript");
-            return res.sendFile(path12.join(targetDir, latestJs));
+            return res.sendFile(path12.join(dir, latestJs));
           }
         } catch {
         }
@@ -66025,19 +66044,44 @@ function createApp() {
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0");
     res.setHeader("Pragma", "no-cache");
     res.setHeader("Expires", "0");
-    if (fs13.existsSync(apiRootHtml)) {
-      res.sendFile(apiRootHtml);
-    } else if (fs13.existsSync(webDistHtml)) {
-      res.sendFile(webDistHtml);
+    const htmlPath = getSpaIndexHtmlPath();
+    if (htmlPath) {
+      return res.sendFile(htmlPath);
     }
+    return res.status(200).send(`<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>SwitchNest</title></head>
+<body style="font-family:system-ui,-apple-system,sans-serif;background:#090d16;color:#f3f4f6;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
+  <div style="text-align:center;padding:2rem;background:#111827;border-radius:12px;border:1px solid #1f2937;max-width:480px;">
+    <h1 style="font-size:1.5rem;color:#60a5fa;margin-bottom:0.5rem;">SwitchNest Platform</h1>
+    <p style="color:#9ca3af;font-size:0.95rem;">Backend is online & operational (v${API_VERSION}).</p>
+    <p style="color:#6b7280;font-size:0.85rem;margin-top:1rem;">Initializing user interface assets...</p>
+  </div>
+</body>
+</html>`);
   };
-  if (fs13.existsSync(apiRootHtml)) {
-    app.use(express2.static(process.cwd()));
+  for (const dir of [apiRoot, process.cwd(), webDist]) {
+    if (dir && fs13.existsSync(dir)) {
+      app.use(express2.static(dir));
+    }
   }
-  if (fs13.existsSync(webDistHtml)) {
-    app.use(express2.static(webDist));
-  }
-  app.get(["/", "/login", "/signup", "/install", "/activate", "/print-serials", "/print-bill", "/warranty", "/forgot-password", "/reset-password", "/support", "/verify-bill"], sendSpaHtml);
+  app.get(
+    [
+      "/",
+      "/login",
+      "/signup",
+      "/install",
+      "/activate",
+      "/print-serials",
+      "/print-bill",
+      "/warranty",
+      "/forgot-password",
+      "/reset-password",
+      "/support",
+      "/verify-bill"
+    ],
+    sendSpaHtml
+  );
   app.use(["/install", "/dashboard", "/admin", "/shop"], sendSpaHtml);
   app.use((_req, res) => {
     res.status(404).json({
