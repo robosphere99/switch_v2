@@ -2596,7 +2596,12 @@ function createLocalStorage(folderName) {
         for (const baseDir of candidateDirs) {
           try {
             const targetFolder = import_node_path4.default.join(baseDir, folderName);
-            import_node_fs3.default.mkdirSync(targetFolder, { recursive: true });
+            if (!import_node_fs3.default.existsSync(targetFolder)) {
+              try {
+                import_node_fs3.default.mkdirSync(targetFolder, { recursive: true });
+              } catch {
+              }
+            }
             const filePath = import_node_path4.default.join(targetFolder, safeName);
             import_node_fs3.default.writeFileSync(filePath, buffer);
             savedPath = filePath;
@@ -2608,7 +2613,12 @@ function createLocalStorage(folderName) {
         if (!savedPath) {
           try {
             const fallbackFolder = import_node_path4.default.join(process.cwd(), "uploads", folderName);
-            import_node_fs3.default.mkdirSync(fallbackFolder, { recursive: true });
+            if (!import_node_fs3.default.existsSync(fallbackFolder)) {
+              try {
+                import_node_fs3.default.mkdirSync(fallbackFolder, { recursive: true });
+              } catch {
+              }
+            }
             const filePath = import_node_path4.default.join(fallbackFolder, safeName);
             import_node_fs3.default.writeFileSync(filePath, buffer);
             savedPath = filePath;

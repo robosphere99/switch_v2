@@ -2574,7 +2574,12 @@ function createLocalStorage(folderName) {
         for (const baseDir of candidateDirs) {
           try {
             const targetFolder = path7.join(baseDir, folderName);
-            fs6.mkdirSync(targetFolder, { recursive: true });
+            if (!fs6.existsSync(targetFolder)) {
+              try {
+                fs6.mkdirSync(targetFolder, { recursive: true });
+              } catch {
+              }
+            }
             const filePath = path7.join(targetFolder, safeName);
             fs6.writeFileSync(filePath, buffer);
             savedPath = filePath;
@@ -2586,7 +2591,12 @@ function createLocalStorage(folderName) {
         if (!savedPath) {
           try {
             const fallbackFolder = path7.join(process.cwd(), "uploads", folderName);
-            fs6.mkdirSync(fallbackFolder, { recursive: true });
+            if (!fs6.existsSync(fallbackFolder)) {
+              try {
+                fs6.mkdirSync(fallbackFolder, { recursive: true });
+              } catch {
+              }
+            }
             const filePath = path7.join(fallbackFolder, safeName);
             fs6.writeFileSync(filePath, buffer);
             savedPath = filePath;

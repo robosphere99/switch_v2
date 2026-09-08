@@ -31,7 +31,13 @@ export function createLocalStorage(folderName: string): StorageEngine {
         for (const baseDir of candidateDirs) {
           try {
             const targetFolder = path.join(baseDir, folderName);
-            fs.mkdirSync(targetFolder, { recursive: true });
+            if (!fs.existsSync(targetFolder)) {
+              try {
+                fs.mkdirSync(targetFolder, { recursive: true });
+              } catch {
+                /* directory may already exist or cannot be created */
+              }
+            }
             const filePath = path.join(targetFolder, safeName);
             fs.writeFileSync(filePath, buffer);
             savedPath = filePath;
@@ -45,7 +51,9 @@ export function createLocalStorage(folderName: string): StorageEngine {
           // Final fallback to process.cwd()/uploads/<folderName>
           try {
             const fallbackFolder = path.join(process.cwd(), "uploads", folderName);
-            fs.mkdirSync(fallbackFolder, { recursive: true });
+            if (!fs.existsSync(fallbackFolder)) {
+              try { fs.mkdirSync(fallbackFolder, { recursive: true }); } catch {}
+            }
             const filePath = path.join(fallbackFolder, safeName);
             fs.writeFileSync(filePath, buffer);
             savedPath = filePath;
