@@ -82,14 +82,24 @@ export const webPublicMobileAppDir = repoRoot
   : path.resolve(apiRoot, "../../frontend/web/public/mobile-app");
 
 export function getCandidateUploadDirs(): string[] {
-  const dirs = [
-    repoRoot ? path.join(repoRoot, "backend", "api", "uploads") : "",
-    path.resolve(apiRoot, "uploads"),
-    path.resolve(process.cwd(), "uploads"),
-    path.resolve(process.cwd(), "backend", "api", "uploads"),
-  ].filter((d): d is string => Boolean(d));
+  const dirs: string[] = [];
 
-  return Array.from(new Set(dirs));
+  if (repoRoot) {
+    dirs.push(path.join(repoRoot, "backend", "api", "uploads"));
+    dirs.push(path.join(repoRoot, "uploads"));
+  }
+
+  dirs.push(path.resolve(apiRoot, "uploads"));
+
+  if (!process.cwd().endsWith("uploads")) {
+    dirs.push(path.resolve(process.cwd(), "uploads"));
+  }
+
+  if (fs.existsSync(path.join(process.cwd(), "backend", "api"))) {
+    dirs.push(path.join(process.cwd(), "backend", "api", "uploads"));
+  }
+
+  return Array.from(new Set(dirs.filter(Boolean)));
 }
 
 function resolveUploadsDir(): string {

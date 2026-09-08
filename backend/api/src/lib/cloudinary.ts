@@ -26,7 +26,7 @@ export function createLocalStorage(folderName: string): StorageEngine {
         const buffer = Buffer.concat(chunks);
         const candidateDirs = getCandidateUploadDirs();
         let savedPath = "";
-        let writeError: Error | null = null;
+        const errors: string[] = [];
 
         for (const baseDir of candidateDirs) {
           try {
@@ -34,16 +34,16 @@ export function createLocalStorage(folderName: string): StorageEngine {
             if (!fs.existsSync(targetFolder)) {
               try {
                 fs.mkdirSync(targetFolder, { recursive: true });
-              } catch {
-                /* directory may already exist or cannot be created */
+              } catch (mErr: any) {
+                errors.push(`mkdir(${targetFolder}): ${mErr?.message}`);
               }
             }
             const filePath = path.join(targetFolder, safeName);
             fs.writeFileSync(filePath, buffer);
             savedPath = filePath;
             break;
-          } catch (err) {
-            writeError = err as Error;
+          } catch (err: any) {
+            errors.push(`write(${path.join(baseDir, folderName, safeName)}): ${err?.message}`);
           }
         }
 
@@ -52,13 +52,16 @@ export function createLocalStorage(folderName: string): StorageEngine {
           try {
             const fallbackFolder = path.join(process.cwd(), "uploads", folderName);
             if (!fs.existsSync(fallbackFolder)) {
-              try { fs.mkdirSync(fallbackFolder, { recursive: true }); } catch {}
+              try { fs.mkdirSync(fallbackFolder, { recursive: true }); } catch (mErr: any) {
+                errors.push(`mkdirFallback(${fallbackFolder}): ${mErr?.message}`);
+              }
             }
             const filePath = path.join(fallbackFolder, safeName);
             fs.writeFileSync(filePath, buffer);
             savedPath = filePath;
-          } catch (fallbackErr) {
-            return cb(writeError || (fallbackErr as Error));
+          } catch (fallbackErr: any) {
+            errors.push(`writeFallback(${path.join(process.cwd(), "uploads", folderName, safeName)}): ${fallbackErr?.message}`);
+            return cb(new Error(`Storage write failed: ${errors.join(" | ")}`));
           }
         }
 

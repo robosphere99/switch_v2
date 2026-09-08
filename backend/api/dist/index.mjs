@@ -1727,13 +1727,19 @@ var webDist = repoRoot ? fs3.existsSync(path3.join(repoRoot, "frontend", "web", 
 var swaggerUiDir = repoRoot ? fs3.existsSync(path3.join(repoRoot, "backend", "api", "public", "swagger-ui")) ? path3.join(repoRoot, "backend", "api", "public", "swagger-ui") : path3.join(repoRoot, "site", "apps", "api", "public", "swagger-ui") : path3.resolve(apiRoot, "public/swagger-ui");
 var webPublicMobileAppDir = repoRoot ? fs3.existsSync(path3.join(repoRoot, "frontend", "web", "public", "mobile-app")) ? path3.join(repoRoot, "frontend", "web", "public", "mobile-app") : path3.join(repoRoot, "site", "apps", "web", "public", "mobile-app") : path3.resolve(apiRoot, "../../frontend/web/public/mobile-app");
 function getCandidateUploadDirs() {
-  const dirs = [
-    repoRoot ? path3.join(repoRoot, "backend", "api", "uploads") : "",
-    path3.resolve(apiRoot, "uploads"),
-    path3.resolve(process.cwd(), "uploads"),
-    path3.resolve(process.cwd(), "backend", "api", "uploads")
-  ].filter((d) => Boolean(d));
-  return Array.from(new Set(dirs));
+  const dirs = [];
+  if (repoRoot) {
+    dirs.push(path3.join(repoRoot, "backend", "api", "uploads"));
+    dirs.push(path3.join(repoRoot, "uploads"));
+  }
+  dirs.push(path3.resolve(apiRoot, "uploads"));
+  if (!process.cwd().endsWith("uploads")) {
+    dirs.push(path3.resolve(process.cwd(), "uploads"));
+  }
+  if (fs3.existsSync(path3.join(process.cwd(), "backend", "api"))) {
+    dirs.push(path3.join(process.cwd(), "backend", "api", "uploads"));
+  }
+  return Array.from(new Set(dirs.filter(Boolean)));
 }
 function resolveUploadsDir() {
   const dirs = getCandidateUploadDirs();
@@ -2570,14 +2576,15 @@ function createLocalStorage(folderName) {
         const buffer = Buffer.concat(chunks);
         const candidateDirs = getCandidateUploadDirs();
         let savedPath = "";
-        let writeError = null;
+        const errors = [];
         for (const baseDir of candidateDirs) {
           try {
             const targetFolder = path7.join(baseDir, folderName);
             if (!fs6.existsSync(targetFolder)) {
               try {
                 fs6.mkdirSync(targetFolder, { recursive: true });
-              } catch {
+              } catch (mErr) {
+                errors.push(`mkdir(${targetFolder}): ${mErr?.message}`);
               }
             }
             const filePath = path7.join(targetFolder, safeName);
@@ -2585,7 +2592,7 @@ function createLocalStorage(folderName) {
             savedPath = filePath;
             break;
           } catch (err) {
-            writeError = err;
+            errors.push(`write(${path7.join(baseDir, folderName, safeName)}): ${err?.message}`);
           }
         }
         if (!savedPath) {
@@ -2594,14 +2601,16 @@ function createLocalStorage(folderName) {
             if (!fs6.existsSync(fallbackFolder)) {
               try {
                 fs6.mkdirSync(fallbackFolder, { recursive: true });
-              } catch {
+              } catch (mErr) {
+                errors.push(`mkdirFallback(${fallbackFolder}): ${mErr?.message}`);
               }
             }
             const filePath = path7.join(fallbackFolder, safeName);
             fs6.writeFileSync(filePath, buffer);
             savedPath = filePath;
           } catch (fallbackErr) {
-            return cb(writeError || fallbackErr);
+            errors.push(`writeFallback(${path7.join(process.cwd(), "uploads", folderName, safeName)}): ${fallbackErr?.message}`);
+            return cb(new Error(`Storage write failed: ${errors.join(" | ")}`));
           }
         }
         const publicUrl = `/uploads/${folderName}/${safeName}`;
