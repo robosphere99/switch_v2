@@ -14545,49 +14545,54 @@ var emqxAuth = async (req, res) => {
     if (key.expiresAt && key.expiresAt < /* @__PURE__ */ new Date()) {
       return res.status(401).json({ result: "deny" });
     }
-    let esp = await prisma.espDevice.findFirst({
-      where: { serialCode: serial, homeId: key.homeId },
-      select: { id: true, macAddress: true }
-    });
     const clientId = req.body.clientid || req.body.client_id;
     let realMac = `PENDING-${serial}`;
     if (clientId && typeof clientId === "string" && clientId.startsWith("sn-")) {
       realMac = clientId.replace("sn-", "").toLowerCase();
     }
-    if (!esp) {
+    let esp = await prisma.espDevice.findFirst({
+      where: {
+        OR: [
+          { serialCode: serial },
+          { macAddress: realMac }
+        ]
+      },
+      select: { id: true, macAddress: true, homeId: true }
+    });
+    if (esp) {
+      const updateData = {
+        offline: false,
+        homeId: key.homeId
+      };
+      if (realMac && realMac !== `PENDING-${serial}` && esp.macAddress !== realMac) {
+        updateData.macAddress = realMac;
+      }
+      if (esp.serialCode !== serial) {
+        updateData.serialCode = serial;
+      }
+      await prisma.espDevice.update({
+        where: { id: esp.id },
+        data: updateData
+      });
+    } else {
       const registry = await prisma.serialRegistry.findUnique({
         where: { serialCode: serial },
         include: { product: true }
       });
-      if (!registry) {
-        return res.status(401).json({ result: "deny" });
-      }
-      const existingMac = await prisma.espDevice.findUnique({ where: { macAddress: realMac } });
-      if (existingMac) {
-        esp = await prisma.espDevice.update({
-          where: { id: existingMac.id },
-          data: { serialCode: serial, homeId: key.homeId, modelCode: registry.product.modelCode },
-          select: { id: true, macAddress: true }
-        });
-      } else {
-        esp = await prisma.espDevice.create({
-          data: {
-            homeId: key.homeId,
-            macAddress: realMac,
-            name: `${registry.product.name} \xB7 ${serial}`,
-            serialCode: serial,
-            modelCode: registry.product.modelCode,
-            offline: false
-          },
-          select: { id: true, macAddress: true }
-        });
-      }
-      logger.info(`[mqtt-auth] Auto-provisioned ESP device ${serial} with MAC ${realMac}`);
-    } else if (esp.macAddress !== realMac && realMac !== `PENDING-${serial}`) {
-      await prisma.espDevice.update({
-        where: { id: esp.id },
-        data: { macAddress: realMac }
+      const productName = registry?.product?.name || "SwitchNest Module";
+      const modelCode = registry?.product?.modelCode || "4CH";
+      esp = await prisma.espDevice.create({
+        data: {
+          homeId: key.homeId,
+          macAddress: realMac,
+          name: `${productName} \xB7 ${serial}`,
+          serialCode: serial,
+          modelCode,
+          offline: false
+        },
+        select: { id: true, macAddress: true, homeId: true }
       });
+      logger.info(`[mqtt-auth] Auto-provisioned ESP device ${serial} with MAC ${realMac}`);
     }
     await prisma.apiKey.update({ where: { id: key.id }, data: { lastUsedAt: /* @__PURE__ */ new Date() } }).catch(() => void 0);
     logger.info(`[mqtt-auth] \u{1F511} ${serial} authenticated (home ${key.homeId}) via EMQX`);

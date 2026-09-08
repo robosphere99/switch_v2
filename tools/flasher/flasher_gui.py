@@ -56,7 +56,7 @@ BOOT_IP_RE = re.compile(r"(?:AP IP|IP)\s*:\s*(\d{1,3}(?:\.\d{1,3}){3})")
 # Server mode presets — (label, API URL, web URL). Localhost testing se live
 # site pe switch karte waqt URL bhoolna band — ek click me dono set.
 SERVER_PRESETS = [
-    ("Live site", "https://switch-v2-web.vercel.app", "https://switch-v2-web.vercel.app"),
+    ("Live site", "https://onlineswitch.bhartitechnical.com", "https://onlineswitch.bhartitechnical.com"),
 ]
 
 INSTALL_CMD = "pip install requests pyserial esptool"
@@ -1169,6 +1169,9 @@ class FlasherApp:
                 serial_code = self.e_serial.get().strip().upper()
                 model = self.cb_model.get().strip().upper()
                 esp_url = self.e_esp_server.get().strip()
+                is_live = self.cb_mode.get() != "Localhost"
+                if is_live or not esp_url or "vercel.app" in esp_url:
+                    esp_url = self.e_server.get().strip().rstrip("/")
 
                 if not ssid or not wpass:
                     raise RuntimeError("WiFi SSID/password required")
