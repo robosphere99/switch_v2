@@ -16,6 +16,25 @@ services:
       timeout: 5s
       retries: 20
 
+  emqx:
+    image: emqx:5.8
+    container_name: robosphere-emqx
+    restart: unless-stopped
+    ports:
+      - "1883:1883"     # MQTT TCP
+      - "8083:8083"     # MQTT over WebSocket
+      - "8084:8084"     # MQTT over WebSocket with TLS
+      - "8883:8883"     # MQTT with TLS
+      - "18083:18083"   # EMQX Dashboard
+    environment:
+      - EMQX_NODE__NAME=emqx@127.0.0.1
+    healthcheck:
+      test: ["CMD", "/opt/emqx/bin/emqx", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+
   # Uncomment once the Dockerfiles are tuned:
   # api:
   #   build: ./apps/api

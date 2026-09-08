@@ -159,15 +159,17 @@ static void reportProgress(int pct, const char *otaStatus) {
   if (serverURL.isEmpty() || apiKey.isEmpty())
     return;
 
-  static WiFiClient plainClient;
-  static WiFiClientSecure secureClient;
+  static WiFiClient* plainClient = nullptr;
+  static WiFiClientSecure* secureClient = nullptr;
   HTTPClient http;
   http.setTimeout(2000);
   if (serverURL.startsWith("https://")) {
-    secureClient.setInsecure();
-    http.begin(secureClient, serverURL + "/api/device/ota-progress");
+    if (!secureClient) secureClient = new WiFiClientSecure();
+    secureClient->setInsecure();
+    http.begin(*secureClient, serverURL + "/api/device/ota-progress");
   } else {
-    http.begin(serverURL + "/api/device/ota-progress");
+    if (!plainClient) plainClient = new WiFiClient();
+    http.begin(*plainClient, serverURL + "/api/device/ota-progress");
   }
   http.addHeader("Content-Type", "application/x-www-form-urlencoded");
 
@@ -201,14 +203,17 @@ bool startUpdate() {
 
   status = "Downloading";
 
-  // HTTPS URL ke liye secure client (setInsecure — no cert bundle), warna plain
-  static WiFiClient plainOtaClient;
-  static WiFiClientSecure secureOtaClient;
+  static WiFiClient* plainOtaClient = nullptr;
+  static WiFiClientSecure* secureOtaClient = nullptr;
   bool useSecure = firmwareURL.startsWith("https://");
-  if (useSecure)
-    secureOtaClient.setInsecure();
+  if (useSecure) {
+    if (!secureOtaClient) secureOtaClient = new WiFiClientSecure();
+    secureOtaClient->setInsecure();
+  } else {
+    if (!plainOtaClient) plainOtaClient = new WiFiClient();
+  }
   WiFiClient &client =
-      useSecure ? (WiFiClient &)secureOtaClient : (WiFiClient &)plainOtaClient;
+      useSecure ? (WiFiClient &)*secureOtaClient : (WiFiClient &)*plainOtaClient;
 
   httpUpdate.onStart([]() { Serial.println("OTA Started"); });
 

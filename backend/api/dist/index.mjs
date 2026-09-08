@@ -183,13 +183,6 @@ var init_logger = __esm({
 });
 
 // src/lib/prisma.ts
-var prisma_exports = {};
-__export(prisma_exports, {
-  getEffectiveDbUrl: () => getEffectiveDbUrl,
-  prisma: () => prisma,
-  resetPrismaClient: () => resetPrismaClient,
-  withConnLimit: () => withConnLimit
-});
 import { PrismaClient } from "@prisma/client";
 import dotenv2 from "dotenv";
 import path4 from "node:path";
@@ -302,6 +295,7 @@ async function getPublicSiteSettings() {
     smtpPass: _pp,
     smtpFrom: _f,
     smtpSecure: _sc,
+    smtpPaused: _sp,
     aiProvider: _ap,
     aiApiKey: _ak,
     aiBaseUrl: _ab,
@@ -350,6 +344,7 @@ var init_siteSettings_service = __esm({
       smtpPass: "",
       smtpFrom: "",
       smtpSecure: false,
+      smtpPaused: false,
       aiProvider: "",
       aiApiKey: "",
       aiBaseUrl: "",
@@ -390,7 +385,8 @@ async function getSmtpConfig() {
     user,
     pass: pass || process.env.SMTP_PASS || process.env.EMAIL_PASS || "",
     from: s?.smtpFrom || process.env.SMTP_FROM || s?.supportEmail || user || env.ADMIN_EMAIL,
-    secure: s?.smtpSecure || process.env.SMTP_SECURE === "true"
+    secure: s?.smtpSecure || process.env.SMTP_SECURE === "true",
+    paused: s?.smtpPaused || false
   };
 }
 function isEmailConfigured(cfg) {
@@ -487,6 +483,10 @@ async function sendEmail(opts) {
     logger.warn(`[email] SMTP configured nahi hai \u2014 email skip (to=${opts.to})`);
     return { ok: false, skipped: true, error: "SMTP not configured" };
   }
+  if (cfg.paused) {
+    logger.info(`[email] SMTP sending is PAUSED \u2014 email skip (to=${opts.to})`);
+    return { ok: false, skipped: true, error: "SMTP sending is paused" };
+  }
   return new Promise((resolve4) => {
     let sock;
     try {
@@ -558,8 +558,8 @@ async function sendEmail(opts) {
             r = await reader.next();
             if (!r[0]?.startsWith("235")) return fail2(`AUTH pass: ${r[0]}`);
           } else if (/PLAIN/.test(mech)) {
-            const token = Buffer.from(`\0${cfg.user}\0${cfg.pass}`, "utf8").toString("base64");
-            send(sock, `AUTH PLAIN ${token}`);
+            const token2 = Buffer.from(`\0${cfg.user}\0${cfg.pass}`, "utf8").toString("base64");
+            send(sock, `AUTH PLAIN ${token2}`);
             r = await reader.next();
             if (!r[0]?.startsWith("235")) return fail2(`AUTH PLAIN: ${r[0]}`);
           } else {
@@ -820,144 +820,62 @@ __export(mqtt_service_exports, {
   mqttPushRotatePassword: () => mqttPushRotatePassword,
   mqttPushToHome: () => mqttPushToHome,
   publishTermCommand: () => publishTermCommand,
+  pushPendingCommandsByMac: () => pushPendingCommandsByMac,
   startMqttBroker: () => startMqttBroker
 });
-import Aedes from "aedes";
-import { createServer as createNetServer } from "net";
-import crypto2 from "node:crypto";
-function hashKey(raw) {
-  return crypto2.createHash("sha256").update(raw).digest("hex");
-}
+import mqtt from "mqtt";
 function startMqttBroker() {
-  broker = new Aedes();
-  tcpServer = createNetServer(broker.handle);
-  broker.authenticate = async (client, username, password, callback) => {
-    try {
-      if (!username || !password) {
-        return callback(new Error("credentials required"), false);
-      }
-      const serial = username.toString().trim().toUpperCase();
-      const apiKeyPlain = password.toString().trim();
-      const key = await prisma.apiKey.findUnique({
-        where: { keyHash: hashKey(apiKeyPlain) },
-        select: { id: true, homeId: true, revokedAt: true, expiresAt: true }
-      });
-      if (!key || !key.homeId) {
-        return callback(new Error("invalid API key"), false);
-      }
-      if (key.revokedAt) {
-        return callback(new Error("API key revoked"), false);
-      }
-      if (key.expiresAt && key.expiresAt < /* @__PURE__ */ new Date()) {
-        return callback(new Error("API key expired"), false);
-      }
-      const esp = await prisma.espDevice.findFirst({
-        where: { serialCode: serial, homeId: key.homeId },
-        select: { id: true, macAddress: true }
-      });
-      if (!esp) {
-        return callback(new Error("device not registered"), false);
-      }
-      connectedDevices.set(client.id, {
-        homeId: key.homeId,
-        espId: esp.id,
-        mac: esp.macAddress.replace(/:/g, "").toLowerCase(),
-        serial
-      });
-      await prisma.apiKey.update({ where: { id: key.id }, data: { lastUsedAt: /* @__PURE__ */ new Date() } }).catch(() => void 0);
-      logger.info(`[mqtt] \u{1F511} ${serial} authenticated (home ${key.homeId})`);
-      callback(null, true);
-    } catch (err) {
-      logger.warn("[mqtt] auth error", err instanceof Error ? err.message : String(err));
-      callback(err instanceof Error ? err : new Error(String(err)), false);
-    }
-  };
-  broker.authorizePublish = (client, packet, callback) => {
-    const meta = client ? connectedDevices.get(client.id) : null;
-    if (!meta) return callback(new Error("unauthorized"));
-    const prefix = `sn/${meta.mac}/`;
-    if (!packet.topic.startsWith(prefix)) {
-      return callback(new Error("topic not allowed"));
-    }
-    callback(null);
-  };
-  broker.authorizeSubscribe = (client, sub, callback) => {
-    const meta = client ? connectedDevices.get(client.id) : null;
-    if (!meta) return callback(new Error("unauthorized"), null);
-    const prefix = `sn/${meta.mac}/`;
-    if (!sub.topic.startsWith(prefix)) {
-      return callback(new Error("topic not allowed"), null);
-    }
-    callback(null, sub);
-  };
-  broker.on("publish", async (packet, client) => {
-    if (!client) return;
-    const meta = connectedDevices.get(client.id);
-    if (!meta) return;
-    const topic = packet.topic;
-    if (topic === `sn/${meta.mac}/log`) {
-      try {
-        const payloadStr = packet.payload.toString();
-        emitToBoardLogs(meta.espId, payloadStr);
-      } catch (err) {
-        logger.warn(`[mqtt] log parse error from ${meta.serial}`, err instanceof Error ? err.message : String(err));
-      }
-      return;
-    }
-    if (topic === `sn/${meta.mac}/state`) {
-      try {
-        const payload = JSON.parse(packet.payload.toString());
-        await handleDeviceState(meta, payload);
-      } catch (err) {
-        logger.warn(`[mqtt] state parse error from ${meta.serial}`, err instanceof Error ? err.message : String(err));
-      }
-    }
+  logger.info(`\u{1F99F} Connecting to EMQX Broker at ${MQTT_BROKER_URL}...`);
+  client = mqtt.connect(MQTT_BROKER_URL, {
+    username: MQTT_USERNAME,
+    password: MQTT_PASSWORD,
+    clientId: `switchnest_backend_${Math.random().toString(16).slice(2, 8)}`,
+    clean: true,
+    reconnectPeriod: 5e3
   });
-  broker.on("client", async (client) => {
-    const meta = connectedDevices.get(client.id);
-    if (!meta) return;
-    logger.info(`[mqtt] \u2197 ${meta.serial} (${meta.mac}) connected`);
-    await prisma.espDevice.update({
-      where: { id: meta.espId },
-      data: { lastSeen: /* @__PURE__ */ new Date(), offline: false }
-    }).catch(() => null);
-    await prisma.device.updateMany({
-      where: { espId: meta.espId },
-      data: { lastSeen: /* @__PURE__ */ new Date(), offline: false }
-    }).catch(() => null);
-    await pushPendingCommands(meta);
-    await pushDeviceNames(meta);
-  });
-  broker.on("clientDisconnect", async (client) => {
-    const meta = connectedDevices.get(client.id);
-    if (!meta) return;
-    logger.info(`[mqtt] \u2198 ${meta.serial} (${meta.mac}) disconnected`);
-    connectedDevices.delete(client.id);
-    await prisma.espDevice.update({
-      where: { id: meta.espId },
-      data: { offline: true }
-    }).catch(() => null);
-    const devices = await prisma.device.findMany({
-      where: { espId: meta.espId },
-      select: { id: true }
+  client.on("connect", () => {
+    logger.info(`[mqtt-client] Connected to EMQX Broker`);
+    client?.subscribe("sn/+/state", { qos: 1 }, (err) => {
+      if (err) logger.error(`[mqtt-client] Subscribe error: sn/+/state`, err);
+      else logger.info(`[mqtt-client] Subscribed to sn/+/state`);
     });
-    await prisma.device.updateMany({
-      where: { espId: meta.espId },
-      data: { offline: true }
-    }).catch(() => null);
-    for (const d of devices) {
-      await emitDeviceUpdated(meta.homeId, d.id);
+    client?.subscribe("sn/+/log", { qos: 0 }, (err) => {
+      if (err) logger.error(`[mqtt-client] Subscribe error: sn/+/log`, err);
+      else logger.info(`[mqtt-client] Subscribed to sn/+/log`);
+    });
+  });
+  client.on("error", (err) => {
+    logger.warn(`[mqtt-client] Connection error`, err.message);
+  });
+  client.on("message", async (topic, payload) => {
+    try {
+      const parts = topic.split("/");
+      if (parts.length !== 3 || parts[0] !== "sn") return;
+      const mac = parts[1].toLowerCase();
+      const type = parts[2];
+      const esp = await prisma.espDevice.findFirst({
+        where: { macAddress: mac }
+        // Warning: DB might have colons, MAC in topic has no colons
+      });
+      const allEsps = await prisma.espDevice.findMany({ select: { id: true, macAddress: true, serialCode: true, homeId: true } });
+      const matchedEsp = allEsps.find((e) => e.macAddress.replace(/:/g, "").toLowerCase() === mac);
+      if (!matchedEsp) return;
+      if (type === "log") {
+        const payloadStr = payload.toString();
+        emitToBoardLogs(matchedEsp.id, payloadStr);
+        return;
+      }
+      if (type === "state") {
+        const data = JSON.parse(payload.toString());
+        await handleDeviceState(matchedEsp, data);
+      }
+    } catch (err) {
+      logger.warn(`[mqtt-client] Message parse error on topic ${topic}`, err instanceof Error ? err.message : String(err));
     }
-  });
-  tcpServer.listen(MQTT_PORT, () => {
-    logger.info(`\u{1F99F} MQTT Broker (Aedes) listening on tcp://0.0.0.0:${MQTT_PORT}`);
-  });
-  tcpServer.on("error", (err) => {
-    logger.warn(`[mqtt] TCP server error: ${err.message}`);
   });
 }
-async function handleDeviceState(meta, payload) {
-  const { homeId, espId, serial } = meta;
+async function handleDeviceState(espMeta, payload) {
+  const { homeId, id: espId } = espMeta;
   const espUpdate = {
     lastSeen: /* @__PURE__ */ new Date(),
     offline: false
@@ -997,9 +915,13 @@ async function handleDeviceState(meta, payload) {
     data: { lastSeen: /* @__PURE__ */ new Date(), offline: false }
   }).catch(() => null);
 }
-async function pushPendingCommands(meta) {
-  if (!broker) return;
-  const { homeId, espId, mac } = meta;
+async function pushPendingCommandsByMac(macRaw) {
+  if (!client) return;
+  const mac = macRaw.replace(/:/g, "").toLowerCase();
+  const allEsps = await prisma.espDevice.findMany({ select: { id: true, macAddress: true, homeId: true } });
+  const matchedEsp = allEsps.find((e) => e.macAddress.replace(/:/g, "").toLowerCase() === mac);
+  if (!matchedEsp) return;
+  const { homeId, id: espId } = matchedEsp;
   const devices = await prisma.device.findMany({
     where: { espId, homeId },
     select: { id: true, channel: true }
@@ -1019,109 +941,64 @@ async function pushPendingCommands(meta) {
   });
   const topic = `sn/${mac}/cmd`;
   const payload = JSON.stringify({ commands });
-  broker.publish(
-    { cmd: "publish", topic, payload: Buffer.from(payload), qos: 1, retain: false, dup: false },
-    () => {
-      logger.info(`[mqtt] \u2192 ${meta.serial} pushed ${commands.length} cmd(s)`);
-    }
-  );
-}
-async function pushDeviceNames(meta) {
-  if (!broker) return;
-  const { homeId, espId, mac } = meta;
-  const devices = await prisma.device.findMany({
-    where: { espId, homeId },
-    select: { channel: true, name: true }
+  client.publish(topic, payload, { qos: 1, retain: false }, (err) => {
+    if (!err) logger.info(`[mqtt-client] \u2192 ${mac} pushed ${commands.length} cmd(s)`);
   });
-  const chCount = devices.reduce((m, d) => Math.max(m, d.channel ?? 0), 4);
-  const names = new Array(chCount).fill("");
-  for (const d of devices) {
-    if (d.channel != null && d.channel >= 1) {
-      names[d.channel - 1] = d.name;
-    }
-  }
-  const topic = `sn/${mac}/cmd`;
-  const payload = JSON.stringify({ names });
-  broker.publish(
-    { cmd: "publish", topic, payload: Buffer.from(payload), qos: 1, retain: false, dup: false },
-    () => {
-    }
-  );
 }
 function mqttPushCommands(mac) {
-  const cleanMac = mac.replace(/:/g, "").toLowerCase();
-  const metaMac = mac.toLowerCase();
-  for (const [, meta] of connectedDevices) {
-    if (meta.mac === cleanMac || meta.mac === metaMac) {
-      void pushPendingCommands(meta);
-      return;
-    }
-  }
+  void pushPendingCommandsByMac(mac);
 }
 function mqttPushRotatePassword(mac, newPass) {
-  if (!broker) return;
-  const topic = `sn/${mac}/cmd`;
+  if (!client) return;
+  const cleanMac = mac.replace(/:/g, "").toLowerCase();
+  const topic = `sn/${cleanMac}/cmd`;
   const payload = JSON.stringify({
     commands: [{ id: Math.floor(Math.random() * 1e5), action: "rotate_console_pass", newPass }]
   });
-  broker.publish(
-    { cmd: "publish", topic, payload: Buffer.from(payload), qos: 1, retain: false, dup: false },
-    () => {
-      logger.info(`[mqtt] \u2192 ${mac} pushed rotate_console_pass`);
-    }
-  );
+  client.publish(topic, payload, { qos: 1, retain: false }, (err) => {
+    if (!err) logger.info(`[mqtt-client] \u2192 ${cleanMac} pushed rotate_console_pass`);
+  });
 }
-function mqttPushToHome(homeId) {
-  for (const [, meta] of connectedDevices) {
-    if (meta.homeId === homeId) {
-      void pushPendingCommands(meta);
-    }
+async function mqttPushToHome(homeId) {
+  const esps = await prisma.espDevice.findMany({ where: { homeId }, select: { macAddress: true } });
+  for (const esp of esps) {
+    void pushPendingCommandsByMac(esp.macAddress);
   }
 }
 function mqttConnectedCount() {
-  return connectedDevices.size;
+  return client?.connected ? 1 : 0;
 }
 function mqttConnectedDevices() {
-  return Array.from(connectedDevices.values()).map((m) => m.serial);
+  return [];
 }
 function publishTermCommand(mac, cmd) {
-  if (!broker) return;
+  if (!client) return;
   const cleanMac = mac.replace(/:/g, "").toLowerCase();
   const topic = `sn/${cleanMac}/term_cmd`;
-  broker.publish({
-    topic,
-    payload: Buffer.from(cmd),
-    qos: 1,
-    retain: false,
-    cmd: "publish",
-    dup: false
-  }, (err) => {
-    if (err) logger.error(`[mqtt] Failed to push terminal command to ${mac}`);
+  client.publish(topic, cmd, { qos: 1, retain: false }, (err) => {
+    if (err) logger.error(`[mqtt-client] Failed to push terminal command to ${mac}`);
   });
 }
 function mqttPushLedState(mac, enabled) {
-  if (!broker) return;
+  if (!client) return;
   const cleanMac = mac.replace(/:/g, "").toLowerCase();
   const topic = `sn/${cleanMac}/cmd`;
   const payload = JSON.stringify({ type: "set_led", enabled });
-  broker.publish(
-    { cmd: "publish", topic, payload: Buffer.from(payload), qos: 1, retain: false, dup: false },
-    () => {
-      logger.info(`[mqtt] \u2192 ${cleanMac} pushed LED state: ${enabled}`);
-    }
-  );
+  client.publish(topic, payload, { qos: 1, retain: false }, (err) => {
+    if (!err) logger.info(`[mqtt-client] \u2192 ${cleanMac} pushed LED state: ${enabled}`);
+  });
 }
-var MQTT_PORT, broker, tcpServer, connectedDevices;
+var MQTT_BROKER_URL, MQTT_USERNAME, MQTT_PASSWORD, client;
 var init_mqtt_service = __esm({
   "src/services/mqtt.service.ts"() {
     "use strict";
     init_prisma();
     init_socket();
     init_logger();
-    MQTT_PORT = Number(process.env.MQTT_PORT) || 1883;
-    broker = null;
-    tcpServer = null;
-    connectedDevices = /* @__PURE__ */ new Map();
+    MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || "mqtt://127.0.0.1:1883";
+    MQTT_USERNAME = process.env.MQTT_USERNAME || "switchnest_backend";
+    MQTT_PASSWORD = process.env.MQTT_PASSWORD || "backend_secret";
+    client = null;
   }
 });
 
@@ -1145,9 +1022,9 @@ function initSocket(server) {
   });
   io.use((socket, next) => {
     try {
-      const token = socket.handshake.auth?.token;
-      if (!token) throw new Error("missing token");
-      const payload = jwt.verify(token, env.JWT_ACCESS_SECRET);
+      const token2 = socket.handshake.auth?.token;
+      if (!token2) throw new Error("missing token");
+      const payload = jwt.verify(token2, env.JWT_ACCESS_SECRET);
       socket.data.userId = payload.sub;
       if (payload.sid) {
         socket.data.sessionId = payload.sid;
@@ -12136,15 +12013,15 @@ var require_es_promise_constructor = __commonJS({
     };
     var callReaction = function(reaction, state) {
       var value = state.value;
-      var ok2 = state.state === FULFILLED;
-      var handler = ok2 ? reaction.ok : reaction.fail;
+      var ok3 = state.state === FULFILLED;
+      var handler = ok3 ? reaction.ok : reaction.fail;
       var resolve4 = reaction.resolve;
       var reject = reaction.reject;
       var domain = reaction.domain;
       var result, then, exited;
       try {
         if (handler) {
-          if (!ok2) {
+          if (!ok3) {
             if (state.rejection === UNHANDLED) onHandleUnhandled(state);
             state.rejection = HANDLED;
           }
@@ -25002,7 +24879,7 @@ var require_web_url_search_params_constructor = __commonJS({
         });
       }
       if (isCallable(NativeRequest)) {
-        RequestConstructor = function Request4(input) {
+        RequestConstructor = function Request2(input) {
           anInstance(this, RequestPrototype);
           return new NativeRequest(input, arguments.length > 1 ? wrapRequestOptions(arguments[1]) : {});
         };
@@ -36147,13 +36024,13 @@ var require_isRemoteUrl = __commonJS({
 var require_getSDKVersions = __commonJS({
   "../../node_modules/cloudinary/lib-es5/utils/encoding/sdkAnalytics/getSDKVersions.js"(exports, module) {
     "use strict";
-    var fs14 = __require("fs");
+    var fs15 = __require("fs");
     var path14 = __require("path");
     var sdkCode = "M";
     function getSDKVersions() {
       var useSDKVersion = arguments.length > 0 && arguments[0] !== void 0 ? arguments[0] : "default";
       var useNodeVersion = arguments.length > 1 && arguments[1] !== void 0 ? arguments[1] : "default";
-      var pkgJSONFile = fs14.readFileSync(path14.join(__dirname, "../../../../package.json"), "utf-8");
+      var pkgJSONFile = fs15.readFileSync(path14.join(__dirname, "../../../../package.json"), "utf-8");
       var sdkSemver = useSDKVersion === "default" ? JSON.parse(pkgJSONFile).version : useSDKVersion;
       var techVersion = useNodeVersion === "default" ? process.versions.node : useNodeVersion;
       return {
@@ -43950,8 +43827,8 @@ var require_utils = __commonJS({
       }).join("/").replace(/ /g, "%20");
       if (sign_url && !isEmpty(auth_token)) {
         auth_token.url = urlParse(resultUrl).path;
-        var token = generate_token(auth_token);
-        resultUrl += `?${token}`;
+        var token2 = generate_token(auth_token);
+        resultUrl += `?${token2}`;
       }
       var urlAnalytics = ensureOption(options, "urlAnalytics", false);
       if (urlAnalytics === true) {
@@ -46107,7 +45984,7 @@ var require_uploader = __commonJS({
       subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } });
       if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass;
     }
-    var fs14 = __require("fs");
+    var fs15 = __require("fs");
     var _require = __require("path");
     var extname = _require.extname;
     var basename2 = _require.basename;
@@ -46172,7 +46049,7 @@ var require_uploader = __commonJS({
       }, options));
     };
     exports.upload_chunked = function upload_chunked(path14, callback, options) {
-      var file_reader = fs14.createReadStream(path14);
+      var file_reader = fs15.createReadStream(path14);
       var out_stream = exports.upload_chunked_stream(callback, options);
       return file_reader.pipe(out_stream);
     };
@@ -46620,7 +46497,7 @@ var require_uploader = __commonJS({
       }
       if (file != null) {
         post_request.write(file_header);
-        fs14.createReadStream(file).on("error", function(error) {
+        fs15.createReadStream(file).on("error", function(error) {
           callback({
             error
           });
@@ -48870,11 +48747,11 @@ var require_isRemoteUrl2 = __commonJS({
 // ../../node_modules/cloudinary/lib/utils/encoding/sdkAnalytics/getSDKVersions.js
 var require_getSDKVersions2 = __commonJS({
   "../../node_modules/cloudinary/lib/utils/encoding/sdkAnalytics/getSDKVersions.js"(exports, module) {
-    var fs14 = __require("fs");
+    var fs15 = __require("fs");
     var path14 = __require("path");
     var sdkCode = "M";
     function getSDKVersions(useSDKVersion = "default", useNodeVersion = "default") {
-      let pkgJSONFile = fs14.readFileSync(path14.join(__dirname, "../../../../package.json"), "utf-8");
+      let pkgJSONFile = fs15.readFileSync(path14.join(__dirname, "../../../../package.json"), "utf-8");
       let sdkSemver = useSDKVersion === "default" ? JSON.parse(pkgJSONFile).version : useSDKVersion;
       let techVersion = useNodeVersion === "default" ? process.versions.node : useNodeVersion;
       return {
@@ -49730,8 +49607,8 @@ var require_utils2 = __commonJS({
       }).join("/").replace(/ /g, "%20");
       if (sign_url && !isEmpty(auth_token)) {
         auth_token.url = urlParse(resultUrl).path;
-        let token = generate_token(auth_token);
-        resultUrl += `?${token}`;
+        let token2 = generate_token(auth_token);
+        resultUrl += `?${token2}`;
       }
       let urlAnalytics = ensureOption(options, "urlAnalytics", false);
       if (urlAnalytics === true) {
@@ -50480,7 +50357,7 @@ var require_upload_stream2 = __commonJS({
 // ../../node_modules/cloudinary/lib/uploader.js
 var require_uploader3 = __commonJS({
   "../../node_modules/cloudinary/lib/uploader.js"(exports) {
-    var fs14 = __require("fs");
+    var fs15 = __require("fs");
     var { extname, basename: basename2 } = __require("path");
     var Q = require_q();
     var Writable = __require("stream").Writable;
@@ -50539,7 +50416,7 @@ var require_uploader3 = __commonJS({
       }, options));
     };
     exports.upload_chunked = function upload_chunked(path14, callback, options) {
-      let file_reader = fs14.createReadStream(path14);
+      let file_reader = fs15.createReadStream(path14);
       let out_stream = exports.upload_chunked_stream(callback, options);
       return file_reader.pipe(out_stream);
     };
@@ -50948,7 +50825,7 @@ var require_uploader3 = __commonJS({
       }
       if (file != null) {
         post_request.write(file_header);
-        fs14.createReadStream(file).on("error", function(error) {
+        fs15.createReadStream(file).on("error", function(error) {
           callback({
             error
           });
@@ -53005,6 +52882,211 @@ var init_firmware_service = __esm({
   }
 });
 
+// src/services/analytics.service.ts
+var analytics_service_exports = {};
+__export(analytics_service_exports, {
+  computeUsageAnalytics: () => computeUsageAnalytics,
+  getUsageAnalytics: () => getUsageAnalytics
+});
+function computeUsageAnalytics(logs2, days, now = Date.now()) {
+  const perDay = /* @__PURE__ */ new Map();
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(Date.now() - i * 864e5);
+    perDay.set(d.toISOString().slice(0, 10), 0);
+  }
+  const deviceMap = /* @__PURE__ */ new Map();
+  const memberMap = /* @__PURE__ */ new Map();
+  for (const log2 of logs2) {
+    const day = log2.createdAt.toISOString().slice(0, 10);
+    perDay.set(day, (perDay.get(day) ?? 0) + 1);
+    const dev = deviceMap.get(log2.deviceId) ?? {
+      deviceId: log2.deviceId,
+      name: log2.deviceName,
+      toggles: 0,
+      onMs: 0
+    };
+    dev.toggles += 1;
+    const turnedOn = log2.logMessage.trim().endsWith("on");
+    if (turnedOn) {
+      dev.lastOnAt = log2.createdAt.getTime();
+    } else if (dev.lastOnAt !== void 0) {
+      dev.onMs += log2.createdAt.getTime() - dev.lastOnAt;
+      dev.lastOnAt = void 0;
+    }
+    deviceMap.set(log2.deviceId, dev);
+    const actorId = log2.actorId ?? -1;
+    const member = memberMap.get(actorId) ?? {
+      userId: log2.actorId,
+      username: log2.actorId === null ? "Auto (schedule/device)" : log2.actorName ?? "Unknown",
+      toggles: 0
+    };
+    member.toggles += 1;
+    memberMap.set(actorId, member);
+  }
+  for (const dev of deviceMap.values()) {
+    if (dev.lastOnAt !== void 0) {
+      dev.onMs += now - dev.lastOnAt;
+      dev.lastOnAt = void 0;
+    }
+  }
+  const perDevice = [...deviceMap.values()].map(({ deviceId, name, toggles, onMs }) => ({ deviceId, name, toggles, onMs })).sort((a, b) => b.toggles - a.toggles);
+  const perMember = [...memberMap.values()].sort((a, b) => b.toggles - a.toggles);
+  return {
+    days,
+    totals: {
+      toggles: logs2.length,
+      onMs: perDevice.reduce((s, d) => s + d.onMs, 0)
+    },
+    togglesPerDay: [...perDay.entries()].map(([date, count]) => ({ date, count })).sort((a, b) => a.date.localeCompare(b.date)),
+    perDevice,
+    perMember
+  };
+}
+async function getUsageAnalytics(homeId, days) {
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1e3);
+  const logs2 = await prisma.deviceLog.findMany({
+    where: {
+      logType: "status_change",
+      createdAt: { gte: since },
+      device: { homeId }
+    },
+    include: {
+      device: { select: { id: true, name: true } },
+      actor: { select: { id: true, username: true } }
+    },
+    orderBy: { createdAt: "asc" }
+  });
+  return computeUsageAnalytics(
+    logs2.map((l) => ({
+      deviceId: l.deviceId,
+      deviceName: l.device.name,
+      actorId: l.actorId,
+      actorName: l.actor?.username,
+      logMessage: l.logMessage,
+      createdAt: l.createdAt
+    })),
+    days
+  );
+}
+var init_analytics_service = __esm({
+  "src/services/analytics.service.ts"() {
+    "use strict";
+    init_prisma();
+  }
+});
+
+// src/services/automation.service.ts
+var automation_service_exports = {};
+__export(automation_service_exports, {
+  demoSuggestions: () => demoSuggestions,
+  getAutomationSuggestions: () => getAutomationSuggestions,
+  suggestAutomationsFromLogs: () => suggestAutomationsFromLogs
+});
+function suggestAutomationsFromLogs(logs2, minDays = MIN_DAYS, minConfidence = MIN_CONFIDENCE) {
+  const byDevice = /* @__PURE__ */ new Map();
+  for (const log2 of logs2) {
+    const msg = log2.logMessage.trim();
+    if (!msg.endsWith("on") && !msg.endsWith("off")) continue;
+    const action = msg.endsWith("on") ? "on" : "off";
+    const d = log2.createdAt;
+    const dateKey = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+    const hourKey2 = `${String(d.getHours()).padStart(2, "0")}:00`;
+    const dev = byDevice.get(log2.deviceId) ?? {
+      name: log2.deviceName,
+      days: /* @__PURE__ */ new Set(),
+      hours: /* @__PURE__ */ new Map()
+      // "07:00:on" -> set of dates
+    };
+    dev.days.add(dateKey);
+    const slotKey = `${hourKey2}|${action}`;
+    const slot = dev.hours.get(slotKey) ?? /* @__PURE__ */ new Set();
+    slot.add(dateKey);
+    dev.hours.set(slotKey, slot);
+    byDevice.set(log2.deviceId, dev);
+  }
+  const suggestions = [];
+  for (const [deviceId, dev] of byDevice) {
+    const totalDays = dev.days.size;
+    if (totalDays < minDays) continue;
+    for (const [slotKey, dates] of dev.hours) {
+      const [time, action] = slotKey.split("|");
+      const confidence = dates.size / totalDays;
+      if (confidence < minConfidence) continue;
+      const hour = Number(time.slice(0, 2));
+      const period = hour < 12 ? "subah" : hour < 17 ? "dopahar" : hour < 21 ? "shaam" : "raat";
+      suggestions.push({
+        deviceId,
+        deviceName: dev.name,
+        type: "daily",
+        time,
+        action,
+        confidence: Math.round(confidence * 100) / 100,
+        days: dates.size,
+        reason: `Aap "${dev.name}" ${time} baje (${period}) ${action === "on" ? "ON" : "OFF"} karte ho \u2014 ${dates.size}/${totalDays} din me.`
+      });
+    }
+  }
+  return suggestions.sort((a, b) => b.confidence - a.confidence).slice(0, 10);
+}
+function demoSuggestions(devices) {
+  return devices.slice(0, 3).map((d, i) => {
+    const p = DEMO_PATTERNS[i % DEMO_PATTERNS.length];
+    return {
+      deviceId: d.id,
+      deviceName: d.name,
+      type: "daily",
+      time: p.time,
+      action: p.action,
+      confidence: 0.6,
+      days: 3,
+      reason: `Demo: "${d.name}" ko ${p.time} baje ${p.action === "on" ? "ON" : "OFF"} karna \u2014 ${p.note}. (Aapke usage data se nahi \u2014 schedule bana ke try karo.)`,
+      demo: true
+    };
+  });
+}
+async function getAutomationSuggestions(homeId) {
+  const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1e3);
+  const logs2 = await prisma.deviceLog.findMany({
+    where: {
+      logType: "status_change",
+      createdAt: { gte: since },
+      device: { homeId }
+    },
+    include: { device: { select: { id: true, name: true } } },
+    orderBy: { createdAt: "asc" }
+  });
+  const real = suggestAutomationsFromLogs(
+    logs2.map((l) => ({
+      deviceId: l.deviceId,
+      deviceName: l.device.name,
+      logMessage: l.logMessage,
+      createdAt: l.createdAt
+    }))
+  );
+  if (real.length > 0) return real;
+  const devices = await prisma.device.findMany({
+    where: { homeId },
+    select: { id: true, name: true },
+    orderBy: { id: "asc" },
+    take: 10
+  });
+  return demoSuggestions(devices);
+}
+var MIN_DAYS, MIN_CONFIDENCE, DEMO_PATTERNS;
+var init_automation_service = __esm({
+  "src/services/automation.service.ts"() {
+    "use strict";
+    init_prisma();
+    MIN_DAYS = 2;
+    MIN_CONFIDENCE = 0.5;
+    DEMO_PATTERNS = [
+      { time: "07:00", action: "on", note: "subah ON \u2014 din ki shuruaat" },
+      { time: "18:00", action: "on", note: "shaam ON \u2014 ghar aate hi" },
+      { time: "21:30", action: "off", note: "raat OFF \u2014 sone se pehle" }
+    ];
+  }
+});
+
 // src/index.ts
 import { createServer } from "http";
 
@@ -53014,7 +53096,7 @@ import express2 from "express";
 import cors from "cors";
 import helmet from "helmet";
 import path12 from "node:path";
-import fs12 from "node:fs";
+import fs13 from "node:fs";
 
 // src/middleware/errorHandler.ts
 import { ZodError } from "zod";
@@ -53068,7 +53150,7 @@ import * as path3 from "path";
 function findRepoRoot(start) {
   let dir = path3.resolve(start);
   for (let i = 0; i < 8; i++) {
-    if (fs3.existsSync(path3.join(dir, "hardware")) && fs3.existsSync(path3.join(dir, "site", "apps", "api"))) {
+    if (fs3.existsSync(path3.join(dir, "hardware")) && (fs3.existsSync(path3.join(dir, "site", "apps", "api")) || fs3.existsSync(path3.join(dir, "backend", "api")))) {
       return dir;
     }
     const parent = path3.dirname(dir);
@@ -53103,7 +53185,7 @@ var webPublicMobileAppDir = repoRoot ? path3.join(repoRoot, "site", "apps", "web
 var uploadsDir = repoRoot ? path3.join(repoRoot, "site", "apps", "api", "uploads") : path3.resolve(apiRoot, "uploads");
 
 // src/routes/index.ts
-import { Router as Router21 } from "express";
+import { Router as Router22 } from "express";
 
 // src/routes/auth.routes.ts
 import { Router } from "express";
@@ -53116,7 +53198,7 @@ init_prisma();
 init_env();
 init_prisma();
 import bcrypt from "bcryptjs";
-import crypto3 from "node:crypto";
+import crypto2 from "node:crypto";
 import jwt2 from "jsonwebtoken";
 init_logger();
 
@@ -53177,8 +53259,8 @@ function toAuthUser(user) {
     address: user.address ?? null
   };
 }
-function hashToken(token) {
-  return crypto3.createHash("sha256").update(token).digest("hex");
+function hashToken(token2) {
+  return crypto2.createHash("sha256").update(token2).digest("hex");
 }
 function parseExpiryMs(durationStr) {
   const match = durationStr.match(/^(\d+)([smhd])$/);
@@ -53199,7 +53281,7 @@ function signAccessToken(user, sessionId) {
       email: user.email,
       role: user.role,
       ver: user.tokenVersion,
-      jti: crypto3.randomUUID(),
+      jti: crypto2.randomUUID(),
       sid: sessionId
     },
     env.JWT_ACCESS_SECRET,
@@ -53207,7 +53289,7 @@ function signAccessToken(user, sessionId) {
   );
 }
 function signRefreshToken(user) {
-  return jwt2.sign({ sub: user.id, ver: user.tokenVersion, jti: crypto3.randomUUID() }, env.JWT_REFRESH_SECRET, {
+  return jwt2.sign({ sub: user.id, ver: user.tokenVersion, jti: crypto2.randomUUID() }, env.JWT_REFRESH_SECRET, {
     expiresIn: env.JWT_REFRESH_EXPIRES
   });
 }
@@ -53507,7 +53589,7 @@ async function requestPasswordReset(email, origin) {
     where: { userId: user.id, usedAt: null },
     data: { usedAt: /* @__PURE__ */ new Date() }
   });
-  const rawToken = crypto3.randomBytes(32).toString("base64url");
+  const rawToken = crypto2.randomBytes(32).toString("base64url");
   const tokenHash = hashToken(rawToken);
   await prisma.passwordResetToken.create({
     data: {
@@ -53532,8 +53614,8 @@ async function requestPasswordReset(email, origin) {
   }
   return { sent: true };
 }
-async function resetPassword(token, newPassword) {
-  const tokenHash = hashToken(token);
+async function resetPassword(token2, newPassword) {
+  const tokenHash = hashToken(token2);
   const record = await prisma.passwordResetToken.findUnique({ where: { tokenHash } });
   if (!record || record.usedAt || record.expiresAt < /* @__PURE__ */ new Date()) {
     throw new AppError("INVALID_RESET_TOKEN", "Reset link invalid ya expired hai \u2014 naya link maango", 400);
@@ -53695,8 +53777,8 @@ async function forgotPassword(req, res) {
   ok(res, result);
 }
 async function resetPassword2(req, res) {
-  const { token, newPassword } = req.body;
-  await resetPassword(token, newPassword);
+  const { token: token2, newPassword } = req.body;
+  await resetPassword(token2, newPassword);
   ok(res, { message: "Password reset ho gaya \u2014 naye password se login karo" });
 }
 async function listSessions2(req, res) {
@@ -53752,6 +53834,28 @@ async function checkAvailability2(req, res) {
   const { username, email } = req.query;
   const result = await checkAvailability(username, email);
   ok(res, result);
+}
+async function upsertPushToken(req, res) {
+  const { token: token2, deviceModel, pushDeviceToggles, pushSystemAlerts } = req.body;
+  const fallbackDT = pushDeviceToggles !== void 0 ? pushDeviceToggles : true;
+  const fallbackSA = pushSystemAlerts !== void 0 ? pushSystemAlerts : true;
+  await prisma.pushSubscription.upsert({
+    where: { token: token2 },
+    update: {
+      userId: req.user.sub,
+      deviceModel: deviceModel || void 0,
+      pushDeviceToggles: fallbackDT,
+      pushSystemAlerts: fallbackSA
+    },
+    create: {
+      userId: req.user.sub,
+      token: token2,
+      deviceModel,
+      pushDeviceToggles: fallbackDT,
+      pushSystemAlerts: fallbackSA
+    }
+  });
+  res.json({ success: true, message: "Push token securely vaulted in multi-device registry" });
 }
 
 // src/middleware/auth.ts
@@ -53885,8 +53989,8 @@ function validateParams(schema) {
 import multer from "multer";
 
 // src/lib/cloudinary.ts
-var import_cloudinary = __toESM(require_cloudinary3(), 1);
-var import_multer_storage_cloudinary = __toESM(require_lib(), 1);
+var import_cloudinary = __toESM(require_cloudinary3());
+var import_multer_storage_cloudinary = __toESM(require_lib());
 import_cloudinary.v2.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
@@ -54046,29 +54150,7 @@ authRouter.get("/sessions", requireAuth, listSessions2);
 authRouter.delete("/sessions/other", requireAuth, revokeOtherSessions2);
 authRouter.delete("/sessions/all", requireAuth, revokeAllSessions2);
 authRouter.delete("/sessions/:id", requireAuth, revokeSession2);
-authRouter.post("/push-token", requireAuth, validateBody(pushTokenSchema), async (req, res) => {
-  const { token, deviceModel, pushDeviceToggles, pushSystemAlerts } = req.body;
-  const { prisma: prisma2 } = await Promise.resolve().then(() => (init_prisma(), prisma_exports));
-  const fallbackDT = pushDeviceToggles !== void 0 ? pushDeviceToggles : true;
-  const fallbackSA = pushSystemAlerts !== void 0 ? pushSystemAlerts : true;
-  await prisma2.pushSubscription.upsert({
-    where: { token },
-    update: {
-      userId: req.user.sub,
-      deviceModel: deviceModel || void 0,
-      pushDeviceToggles: fallbackDT,
-      pushSystemAlerts: fallbackSA
-    },
-    create: {
-      userId: req.user.sub,
-      token,
-      deviceModel,
-      pushDeviceToggles: fallbackDT,
-      pushSystemAlerts: fallbackSA
-    }
-  });
-  res.json({ success: true, message: "Push token securely vaulted in multi-device registry" });
-});
+authRouter.post("/push-token", requireAuth, validateBody(pushTokenSchema), upsertPushToken);
 
 // src/routes/home.routes.ts
 import { Router as Router2 } from "express";
@@ -54816,6 +54898,15 @@ async function requestOta2(req, res) {
   );
   ok(res, data);
 }
+async function getUsageAnalyticsHandler(req, res) {
+  const { getUsageAnalytics: getUsageAnalytics2 } = await Promise.resolve().then(() => (init_analytics_service(), analytics_service_exports));
+  const days = Math.min(Math.max(Number(req.query.days) || 7, 1), 90);
+  ok(res, await getUsageAnalytics2(Number(req.params.homeId), days));
+}
+async function getAutomationSuggestionsHandler(req, res) {
+  const { getAutomationSuggestions: getAutomationSuggestions2 } = await Promise.resolve().then(() => (init_automation_service(), automation_service_exports));
+  ok(res, await getAutomationSuggestions2(Number(req.params.homeId)));
+}
 
 // src/middleware/requireRole.ts
 init_src();
@@ -54905,12 +54996,12 @@ import { z as z4 } from "zod";
 
 // src/services/member.service.ts
 init_prisma();
-import crypto4 from "node:crypto";
+import crypto3 from "node:crypto";
 init_socket();
 init_notification_service();
 function generateInviteCode() {
   const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-  const bytes = crypto4.randomBytes(8);
+  const bytes = crypto3.randomBytes(8);
   return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
 }
 async function listMembers2(homeId, viewerRole) {
@@ -55275,191 +55366,6 @@ memberRouter.post("/invitations/accept", requireAuth, validateBody(acceptSchema)
 // src/routes/device.routes.ts
 import { Router as Router4 } from "express";
 import { z as z5 } from "zod";
-
-// src/services/analytics.service.ts
-init_prisma();
-function computeUsageAnalytics(logs2, days, now = Date.now()) {
-  const perDay = /* @__PURE__ */ new Map();
-  for (let i = days - 1; i >= 0; i--) {
-    const d = new Date(Date.now() - i * 864e5);
-    perDay.set(d.toISOString().slice(0, 10), 0);
-  }
-  const deviceMap = /* @__PURE__ */ new Map();
-  const memberMap = /* @__PURE__ */ new Map();
-  for (const log2 of logs2) {
-    const day = log2.createdAt.toISOString().slice(0, 10);
-    perDay.set(day, (perDay.get(day) ?? 0) + 1);
-    const dev = deviceMap.get(log2.deviceId) ?? {
-      deviceId: log2.deviceId,
-      name: log2.deviceName,
-      toggles: 0,
-      onMs: 0
-    };
-    dev.toggles += 1;
-    const turnedOn = log2.logMessage.trim().endsWith("on");
-    if (turnedOn) {
-      dev.lastOnAt = log2.createdAt.getTime();
-    } else if (dev.lastOnAt !== void 0) {
-      dev.onMs += log2.createdAt.getTime() - dev.lastOnAt;
-      dev.lastOnAt = void 0;
-    }
-    deviceMap.set(log2.deviceId, dev);
-    const actorId = log2.actorId ?? -1;
-    const member = memberMap.get(actorId) ?? {
-      userId: log2.actorId,
-      username: log2.actorId === null ? "Auto (schedule/device)" : log2.actorName ?? "Unknown",
-      toggles: 0
-    };
-    member.toggles += 1;
-    memberMap.set(actorId, member);
-  }
-  for (const dev of deviceMap.values()) {
-    if (dev.lastOnAt !== void 0) {
-      dev.onMs += now - dev.lastOnAt;
-      dev.lastOnAt = void 0;
-    }
-  }
-  const perDevice = [...deviceMap.values()].map(({ deviceId, name, toggles, onMs }) => ({ deviceId, name, toggles, onMs })).sort((a, b) => b.toggles - a.toggles);
-  const perMember = [...memberMap.values()].sort((a, b) => b.toggles - a.toggles);
-  return {
-    days,
-    totals: {
-      toggles: logs2.length,
-      onMs: perDevice.reduce((s, d) => s + d.onMs, 0)
-    },
-    togglesPerDay: [...perDay.entries()].map(([date, count]) => ({ date, count })).sort((a, b) => a.date.localeCompare(b.date)),
-    perDevice,
-    perMember
-  };
-}
-async function getUsageAnalytics(homeId, days) {
-  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1e3);
-  const logs2 = await prisma.deviceLog.findMany({
-    where: {
-      logType: "status_change",
-      createdAt: { gte: since },
-      device: { homeId }
-    },
-    include: {
-      device: { select: { id: true, name: true } },
-      actor: { select: { id: true, username: true } }
-    },
-    orderBy: { createdAt: "asc" }
-  });
-  return computeUsageAnalytics(
-    logs2.map((l) => ({
-      deviceId: l.deviceId,
-      deviceName: l.device.name,
-      actorId: l.actorId,
-      actorName: l.actor?.username,
-      logMessage: l.logMessage,
-      createdAt: l.createdAt
-    })),
-    days
-  );
-}
-
-// src/services/automation.service.ts
-init_prisma();
-var MIN_DAYS = 2;
-var MIN_CONFIDENCE = 0.5;
-function suggestAutomationsFromLogs(logs2, minDays = MIN_DAYS, minConfidence = MIN_CONFIDENCE) {
-  const byDevice = /* @__PURE__ */ new Map();
-  for (const log2 of logs2) {
-    const msg = log2.logMessage.trim();
-    if (!msg.endsWith("on") && !msg.endsWith("off")) continue;
-    const action = msg.endsWith("on") ? "on" : "off";
-    const d = log2.createdAt;
-    const dateKey = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-    const hourKey2 = `${String(d.getHours()).padStart(2, "0")}:00`;
-    const dev = byDevice.get(log2.deviceId) ?? {
-      name: log2.deviceName,
-      days: /* @__PURE__ */ new Set(),
-      hours: /* @__PURE__ */ new Map()
-      // "07:00:on" -> set of dates
-    };
-    dev.days.add(dateKey);
-    const slotKey = `${hourKey2}|${action}`;
-    const slot = dev.hours.get(slotKey) ?? /* @__PURE__ */ new Set();
-    slot.add(dateKey);
-    dev.hours.set(slotKey, slot);
-    byDevice.set(log2.deviceId, dev);
-  }
-  const suggestions = [];
-  for (const [deviceId, dev] of byDevice) {
-    const totalDays = dev.days.size;
-    if (totalDays < minDays) continue;
-    for (const [slotKey, dates] of dev.hours) {
-      const [time, action] = slotKey.split("|");
-      const confidence = dates.size / totalDays;
-      if (confidence < minConfidence) continue;
-      const hour = Number(time.slice(0, 2));
-      const period = hour < 12 ? "subah" : hour < 17 ? "dopahar" : hour < 21 ? "shaam" : "raat";
-      suggestions.push({
-        deviceId,
-        deviceName: dev.name,
-        type: "daily",
-        time,
-        action,
-        confidence: Math.round(confidence * 100) / 100,
-        days: dates.size,
-        reason: `Aap "${dev.name}" ${time} baje (${period}) ${action === "on" ? "ON" : "OFF"} karte ho \u2014 ${dates.size}/${totalDays} din me.`
-      });
-    }
-  }
-  return suggestions.sort((a, b) => b.confidence - a.confidence).slice(0, 10);
-}
-var DEMO_PATTERNS = [
-  { time: "07:00", action: "on", note: "subah ON \u2014 din ki shuruaat" },
-  { time: "18:00", action: "on", note: "shaam ON \u2014 ghar aate hi" },
-  { time: "21:30", action: "off", note: "raat OFF \u2014 sone se pehle" }
-];
-function demoSuggestions(devices) {
-  return devices.slice(0, 3).map((d, i) => {
-    const p = DEMO_PATTERNS[i % DEMO_PATTERNS.length];
-    return {
-      deviceId: d.id,
-      deviceName: d.name,
-      type: "daily",
-      time: p.time,
-      action: p.action,
-      confidence: 0.6,
-      days: 3,
-      reason: `Demo: "${d.name}" ko ${p.time} baje ${p.action === "on" ? "ON" : "OFF"} karna \u2014 ${p.note}. (Aapke usage data se nahi \u2014 schedule bana ke try karo.)`,
-      demo: true
-    };
-  });
-}
-async function getAutomationSuggestions(homeId) {
-  const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1e3);
-  const logs2 = await prisma.deviceLog.findMany({
-    where: {
-      logType: "status_change",
-      createdAt: { gte: since },
-      device: { homeId }
-    },
-    include: { device: { select: { id: true, name: true } } },
-    orderBy: { createdAt: "asc" }
-  });
-  const real = suggestAutomationsFromLogs(
-    logs2.map((l) => ({
-      deviceId: l.deviceId,
-      deviceName: l.device.name,
-      logMessage: l.logMessage,
-      createdAt: l.createdAt
-    }))
-  );
-  if (real.length > 0) return real;
-  const devices = await prisma.device.findMany({
-    where: { homeId },
-    select: { id: true, name: true },
-    orderBy: { id: "asc" },
-    take: 10
-  });
-  return demoSuggestions(devices);
-}
-
-// src/routes/device.routes.ts
 var deviceRouter = Router4();
 var idParams3 = z5.object({ homeId: z5.coerce.number().int().positive() });
 var deviceParams = z5.object({
@@ -55589,19 +55495,14 @@ deviceRouter.get(
   requireAuth,
   validateParams(idParams3),
   requireHomeMember("viewer"),
-  async (req, res) => {
-    const days = Math.min(Math.max(Number(req.query.days) || 7, 1), 90);
-    ok(res, await getUsageAnalytics(Number(req.params.homeId), days));
-  }
+  getUsageAnalyticsHandler
 );
 deviceRouter.get(
   "/:homeId/automations/suggestions",
   requireAuth,
   validateParams(idParams3),
   requireHomeMember("viewer"),
-  async (req, res) => {
-    ok(res, await getAutomationSuggestions(Number(req.params.homeId)));
-  }
+  getAutomationSuggestionsHandler
 );
 
 // src/routes/deviceApi.routes.ts
@@ -55610,9 +55511,9 @@ import { z as z6 } from "zod";
 
 // src/middleware/apiKey.ts
 init_prisma();
-import crypto5 from "node:crypto";
-function hashKey2(raw) {
-  return crypto5.createHash("sha256").update(raw).digest("hex");
+import crypto4 from "node:crypto";
+function hashKey(raw) {
+  return crypto4.createHash("sha256").update(raw).digest("hex");
 }
 function extractKey(req) {
   const header = req.headers.authorization;
@@ -55631,7 +55532,7 @@ var requireApiKey = async (req, _res, next) => {
     if (!raw) {
       return next(new AppError("UNAUTHORIZED", "Missing api_key", 401));
     }
-    const key = await prisma.apiKey.findUnique({ where: { keyHash: hashKey2(raw) } });
+    const key = await prisma.apiKey.findUnique({ where: { keyHash: hashKey(raw) } });
     if (!key) {
       return next(new AppError("UNAUTHORIZED", "Invalid api_key", 401));
     }
@@ -55824,7 +55725,8 @@ async function heartbeat(key, input, baseUrl) {
         ipAddress: ip,
         firmwareVersion: fw,
         lastSeen: /* @__PURE__ */ new Date(),
-        offline: false
+        offline: false,
+        lastApiKeyId: key.id
       },
       update: {
         homeId,
@@ -55835,6 +55737,7 @@ async function heartbeat(key, input, baseUrl) {
         firmwareVersion: fw ?? void 0,
         lastSeen: /* @__PURE__ */ new Date(),
         offline: false,
+        lastApiKeyId: key.id,
         ...attachSerial && existing?.serialCode && attachSerial !== existing.serialCode ? { name: `${attachSerial} \xB7 ${ssid ?? "SwitchNest"}` } : {}
       }
     });
@@ -56028,6 +55931,73 @@ async function ackCommand(key, commandId, deviceId, status) {
   return updated;
 }
 
+// src/controllers/deviceApi.controller.ts
+var readAll2 = async (req, res) => {
+  const mac = req.query.mac;
+  if (mac) {
+    return ok(res, await readAll(req.apiKey, mac));
+  }
+  return ok(res, { devices: await readAll(req.apiKey) });
+};
+var updateDevice2 = async (req, res) => {
+  return ok(res, await updateFromDevice(req.apiKey, req.body.device_id, req.body.status, req.body.mac, req.body.channel));
+};
+var heartbeat2 = async (req, res) => {
+  const baseUrl = `${req.protocol}://${req.get("host")}`;
+  ok(
+    res,
+    await heartbeat(
+      req.apiKey,
+      {
+        device_id: req.body.device_id,
+        ip: req.body.ip,
+        fw_version: req.body.fw_version,
+        mac: req.body.mac,
+        ssid: req.body.ssid,
+        serial: req.body.serial,
+        model: req.body.model,
+        states: req.body.states
+      },
+      baseUrl
+    )
+  );
+};
+var reportOtaProgress2 = async (req, res) => {
+  ok(res, await reportOtaProgress(req.apiKey, {
+    device_id: req.body.device_id,
+    progress: req.body.progress,
+    status: req.body.status
+  }));
+};
+var getCommands = async (req, res) => {
+  const long = req.query.long === "1" || req.query.long === "true";
+  const mac = req.query.mac;
+  if (!long) {
+    return ok(res, { commands: await pendingCommands(req.apiKey, mac) });
+  }
+  const holdSec = Math.min(25, Math.max(1, Number(req.query.hold) || 20));
+  const ac = new AbortController();
+  res.on("close", () => ac.abort());
+  const commands = await pendingCommandsLongPoll(
+    req.apiKey,
+    holdSec * 1e3,
+    ac.signal,
+    mac
+  );
+  if (!res.headersSent) ok(res, { commands });
+};
+var ackCommand2 = async (req, res) => {
+  ok(
+    res,
+    await ackCommand(
+      req.apiKey,
+      req.body.command_id,
+      req.body.device_id,
+      req.body.status
+    )
+  );
+};
+
 // src/routes/deviceApi.routes.ts
 var deviceApiRouter = Router5();
 var readLimiter = rateLimit({
@@ -56075,107 +56045,52 @@ var heartbeatSchema = z6.object({
   model: z6.string().optional(),
   states: z6.string().optional()
 });
-deviceApiRouter.get(
-  "/read-all",
-  readLimiter,
-  validateQuery(keyQuery),
-  requireApiKey,
-  async (req, res) => {
-    const mac = req.query.mac;
-    if (mac) {
-      return ok(res, await readAll(req.apiKey, mac));
-    }
-    return ok(res, { devices: await readAll(req.apiKey) });
-  }
-);
-deviceApiRouter.post(
-  "/update",
-  mutateLimiter,
-  requireApiKey,
-  validateBody(updateSchema2),
-  async (req, res) => {
-    return ok(res, await updateFromDevice(req.apiKey, req.body.device_id, req.body.status, req.body.mac, req.body.channel));
-  }
-);
-deviceApiRouter.post(
-  "/heartbeat",
-  mutateLimiter,
-  requireApiKey,
-  validateBody(heartbeatSchema),
-  async (req, res) => {
-    const baseUrl = `${req.protocol}://${req.get("host")}`;
-    ok(
-      res,
-      await heartbeat(
-        req.apiKey,
-        {
-          device_id: req.body.device_id,
-          ip: req.body.ip,
-          fw_version: req.body.fw_version,
-          mac: req.body.mac,
-          ssid: req.body.ssid,
-          serial: req.body.serial,
-          model: req.body.model,
-          states: req.body.states
-        },
-        baseUrl
-      )
-    );
-  }
-);
 var otaProgressSchema = z6.object({
   api_key: z6.string().optional(),
   device_id: z6.coerce.number().int().positive(),
   progress: z6.coerce.number().min(0).max(100),
   status: z6.string().max(32).optional()
 });
+deviceApiRouter.get(
+  "/read-all",
+  readLimiter,
+  validateQuery(keyQuery),
+  requireApiKey,
+  readAll2
+);
+deviceApiRouter.post(
+  "/update",
+  mutateLimiter,
+  requireApiKey,
+  validateBody(updateSchema2),
+  updateDevice2
+);
+deviceApiRouter.post(
+  "/heartbeat",
+  mutateLimiter,
+  requireApiKey,
+  validateBody(heartbeatSchema),
+  heartbeat2
+);
 deviceApiRouter.post(
   "/ota-progress",
   mutateLimiter,
   requireApiKey,
   validateBody(otaProgressSchema),
-  async (req, res) => ok(res, await reportOtaProgress(req.apiKey, {
-    device_id: req.body.device_id,
-    progress: req.body.progress,
-    status: req.body.status
-  }))
+  reportOtaProgress2
 );
 deviceApiRouter.get(
   "/commands",
   validateQuery(keyQuery),
   requireApiKey,
-  async (req, res) => {
-    const long = req.query.long === "1" || req.query.long === "true";
-    const mac = req.query.mac;
-    if (!long) {
-      return ok(res, { commands: await pendingCommands(req.apiKey, mac) });
-    }
-    const holdSec = Math.min(25, Math.max(1, Number(req.query.hold) || 20));
-    const ac = new AbortController();
-    res.on("close", () => ac.abort());
-    const commands = await pendingCommandsLongPoll(
-      req.apiKey,
-      holdSec * 1e3,
-      ac.signal,
-      mac
-    );
-    if (!res.headersSent) ok(res, { commands });
-  }
+  getCommands
 );
 deviceApiRouter.post(
   "/commands/ack",
   mutateLimiter,
   requireApiKey,
   validateBody(ackSchema),
-  async (req, res) => ok(
-    res,
-    await ackCommand(
-      req.apiKey,
-      req.body.command_id,
-      req.body.device_id,
-      req.body.status
-    )
-  )
+  ackCommand2
 );
 
 // src/routes/apiKey.routes.ts
@@ -56184,19 +56099,24 @@ import { z as z7 } from "zod";
 
 // src/controllers/apiKey.controller.ts
 init_prisma();
-import crypto6 from "node:crypto";
-function hashKey3(raw) {
-  return crypto6.createHash("sha256").update(raw).digest("hex");
+import crypto5 from "node:crypto";
+function hashKey2(raw) {
+  return crypto5.createHash("sha256").update(raw).digest("hex");
 }
 function generateKey() {
-  const raw = `rs_${crypto6.randomBytes(24).toString("hex")}`;
+  const raw = `rs_${crypto5.randomBytes(24).toString("hex")}`;
   return { raw, prefix: raw.slice(0, 8) };
 }
 async function listApiKeys(req, res) {
   try {
     const keys = await prisma.apiKey.findMany({
       where: { userId: req.user.sub },
-      include: { home: { select: { id: true, name: true } } },
+      include: {
+        home: { select: { id: true, name: true } },
+        espDevices: {
+          select: { id: true, name: true, serialCode: true, offline: true, lastSeen: true }
+        }
+      },
       orderBy: { createdAt: "desc" }
     });
     ok(res, keys);
@@ -56212,7 +56132,7 @@ async function createApiKey(req, res) {
       userId: req.user.sub,
       homeId: req.body.homeId,
       label: req.body.label,
-      keyHash: hashKey3(raw),
+      keyHash: hashKey2(raw),
       keyPrefix: prefix,
       expiresAt: req.body.expiresInDays ? new Date(Date.now() + req.body.expiresInDays * 24 * 60 * 60 * 1e3) : null
     }
@@ -57281,10 +57201,14 @@ assistantRouter.get("/chats/:chatId/messages", requireAuth, validateParams(chatP
 import { Router as Router11 } from "express";
 import { z as z12 } from "zod";
 import multer2 from "multer";
+import fs9 from "node:fs";
+
+// src/controllers/admin.controller.ts
+init_prisma();
+import bcrypt2 from "bcryptjs";
 import path8 from "node:path";
 import fs8 from "node:fs";
 import { execSync } from "node:child_process";
-init_prisma();
 
 // src/lib/healthMonitor.ts
 init_logger();
@@ -57359,7 +57283,7 @@ function adoptOpenIncident() {
 async function checkOnce() {
   checking = true;
   const t0 = Date.now();
-  let ok2 = false;
+  let ok3 = false;
   let status = null;
   let err = null;
   if (lastSeenHost) {
@@ -57385,8 +57309,8 @@ async function checkOnce() {
         }
       }
       status = res.status;
-      ok2 = res.status === 200;
-      if (!ok2) {
+      ok3 = res.status === 200;
+      if (!ok3) {
         let snippet = "";
         try {
           const text = await res.text();
@@ -57398,23 +57322,23 @@ async function checkOnce() {
     } catch (e) {
       const anyErr = e;
       err = anyErr?.name === "AbortError" ? "timeout" : String(anyErr?.cause?.code || anyErr?.name || e);
-      ok2 = false;
+      ok3 = false;
     } finally {
       clearTimeout(timer4);
     }
   } else {
-    ok2 = isDbReady();
-    status = ok2 ? 200 : 503;
-    err = ok2 ? null : "db_not_ready";
+    ok3 = isDbReady();
+    status = ok3 ? 200 : 503;
+    err = ok3 ? null : "db_not_ready";
   }
   const ms = Date.now() - t0;
   checking = false;
   checksTotal++;
-  if (ok2) checksOk++;
-  const ev = { ts: (/* @__PURE__ */ new Date()).toISOString(), type: "check", ok: ok2, status, ms: Math.round(ms), err };
+  if (ok3) checksOk++;
+  const ev = { ts: (/* @__PURE__ */ new Date()).toISOString(), type: "check", ok: ok3, status, ms: Math.round(ms), err };
   append(ev);
-  lastCheck = { ts: ev.ts, ok: ok2, status, ms: Math.round(ms), err };
-  if (!ok2) {
+  lastCheck = { ts: ev.ts, ok: ok3, status, ms: Math.round(ms), err };
+  if (!ok3) {
     failStreak++;
     if (failStreak >= INCIDENT_THRESHOLD && !activeIncident) {
       activeIncident = { id: `${Date.now()}`, startedAt: ev.ts, lastStatus: status, lastErr: err };
@@ -57692,7 +57616,7 @@ function getLeakMonitorState() {
   };
 }
 
-// src/routes/admin.routes.ts
+// src/controllers/admin.controller.ts
 init_audit_service();
 init_notification_service();
 init_socket();
@@ -57752,6 +57676,28 @@ async function createOrder(input) {
     }
     total2 += Number(prod.price) * it.quantity;
   }
+  let discountAmount = 0;
+  let appliedCouponId = null;
+  if (input.couponCode) {
+    const coupon = await prisma.coupon.findUnique({ where: { code: input.couponCode } });
+    if (!coupon) throw new AppError("BAD_REQUEST", "Invalid coupon code");
+    if (!coupon.active) throw new AppError("BAD_REQUEST", "Coupon is inactive");
+    if (coupon.expiresAt && coupon.expiresAt < /* @__PURE__ */ new Date()) throw new AppError("BAD_REQUEST", "Coupon has expired");
+    if (coupon.usageLimit && coupon.usedCount >= coupon.usageLimit) throw new AppError("BAD_REQUEST", "Coupon usage limit reached");
+    if (coupon.minOrderAmount && total2 < Number(coupon.minOrderAmount)) throw new AppError("BAD_REQUEST", `Minimum order amount of \u20B9${coupon.minOrderAmount} required`);
+    let discount = 0;
+    if (coupon.discountType === "percentage") {
+      discount = total2 * Number(coupon.discountValue) / 100;
+      if (coupon.maxDiscount && discount > Number(coupon.maxDiscount)) {
+        discount = Number(coupon.maxDiscount);
+      }
+    } else {
+      discount = Number(coupon.discountValue);
+    }
+    discountAmount = Math.min(discount, total2);
+    appliedCouponId = coupon.id;
+  }
+  const finalTotal = total2 - discountAmount;
   const wifiPasswordEnc = input.wifi?.password ? encryptSecret(input.wifi.password) : null;
   const order = await prisma.$transaction(async (tx) => {
     const created = await tx.order.create({
@@ -57760,12 +57706,14 @@ async function createOrder(input) {
         userId: input.userId,
         paymentMethod: input.paymentMethod,
         paymentStatus: input.paymentMethod === "cod" ? "pending" : "unpaid",
-        totalAmount: total2,
+        totalAmount: finalTotal,
         shippingName: input.shipping.name,
         shippingPhone: input.shipping.phone,
         shippingAddress: input.shipping.address,
         wifiSsid: input.wifi?.ssid?.trim() || null,
-        wifiPasswordEnc
+        wifiPasswordEnc,
+        couponId: appliedCouponId,
+        discountAmount
       }
     });
     for (const it of input.items) {
@@ -57784,6 +57732,12 @@ async function createOrder(input) {
           quantity: it.quantity,
           serialCode: serials[0] ?? null
         }
+      });
+    }
+    if (appliedCouponId) {
+      await tx.coupon.update({
+        where: { id: appliedCouponId },
+        data: { usedCount: { increment: 1 } }
       });
     }
     return tx.order.findUniqueOrThrow({
@@ -57970,30 +57924,31 @@ Activate page pe serial daal kar device add karo (box sticker pe bhi hain).`,
   return updated;
 }
 
-// src/routes/admin.routes.ts
+// src/controllers/admin.controller.ts
 init_crypto();
 
 // src/lib/billVerify.ts
 init_env();
-import crypto7 from "node:crypto";
-var SECRET = crypto7.createHash("sha256").update(env.JWT_ACCESS_SECRET).digest();
+import crypto6 from "node:crypto";
+var SECRET = crypto6.createHash("sha256").update(env.JWT_ACCESS_SECRET).digest();
 function signBillToken(orderId) {
-  const sig = crypto7.createHmac("sha256", SECRET).update(`bill:${orderId}`).digest("base64url");
+  const sig = crypto6.createHmac("sha256", SECRET).update(`bill:${orderId}`).digest("base64url").slice(0, 10);
   return `${orderId}.${sig}`;
 }
-function verifyBillToken(token) {
-  const dot = token.indexOf(".");
+function verifyBillToken(token2) {
+  const dot = token2.indexOf(".");
   if (dot <= 0) return null;
-  const idPart = token.slice(0, dot);
-  const sig = token.slice(dot + 1);
+  const idPart = token2.slice(0, dot);
+  const sig = token2.slice(dot + 1);
   const orderId = Number(idPart);
   if (!Number.isSafeInteger(orderId) || orderId <= 0) return null;
-  const expected = crypto7.createHmac("sha256", SECRET).update(`bill:${orderId}`).digest("base64url");
+  const expectedFull = crypto6.createHmac("sha256", SECRET).update(`bill:${orderId}`).digest("base64url");
+  const expected = sig.length === 10 ? expectedFull.slice(0, 10) : expectedFull;
   const a = Buffer.from(sig);
   const b = Buffer.from(expected);
   if (a.length !== b.length) return null;
   try {
-    if (!crypto7.timingSafeEqual(a, b)) return null;
+    if (!crypto6.timingSafeEqual(a, b)) return null;
   } catch {
     return null;
   }
@@ -58050,15 +58005,9 @@ function detectLanIp() {
   });
 }
 
-// src/routes/admin.routes.ts
+// src/controllers/admin.controller.ts
 init_firmware_service();
 init_logger();
-init_siteSettings_service();
-import bcrypt2 from "bcryptjs";
-
-// src/controllers/admin.controller.ts
-init_prisma();
-init_audit_service();
 
 // src/lib/requestTracker.ts
 init_prisma();
@@ -58148,6 +58097,8 @@ async function flushRequestTracker() {
 // src/controllers/admin.controller.ts
 init_siteSettings_service();
 init_email_service();
+var ciCache = { key: "", at: 0, value: { state: "pending", status: "unknown" } };
+var latestCache = { at: 0, value: null };
 var DAY_MS2 = 24 * 60 * 60 * 1e3;
 function dayKey2(d) {
   return d.toISOString().slice(0, 10);
@@ -58452,52 +58403,7 @@ async function getUserById(req, res) {
     usageMinutes: usageAgg._sum.onMinutes ?? 0
   });
 }
-
-// src/routes/admin.routes.ts
-var adminRouter = Router11();
-function requireAdmin(req, _res, next) {
-  if (req.user?.role !== "system_admin") {
-    return next(new AppError("FORBIDDEN", "Admin access required", 403));
-  }
-  next();
-}
-adminRouter.use(requireAuth, requireAdmin);
-var settingsSchema = z12.object({
-  siteName: z12.string().min(1).max(60).optional(),
-  supportEmail: z12.string().email().max(100).optional(),
-  supportPhone: z12.string().min(1).max(30).optional(),
-  supportAddress: z12.string().min(1).max(200).optional(),
-  supportHours: z12.string().min(1).max(100).optional(),
-  brandColor: z12.string().regex(/^#[0-9a-fA-F]{6}$/, "Hex color (#RRGGBB)").optional(),
-  siteUrl: z12.string().url().max(200).optional().or(z12.literal("")),
-  smtpHost: z12.string().max(150).optional(),
-  smtpPort: z12.number().int().min(1).max(65535).optional(),
-  smtpUser: z12.string().max(150).optional(),
-  smtpPass: z12.string().max(200).optional(),
-  smtpFrom: z12.string().email().max(150).optional().or(z12.literal("")),
-  smtpSecure: z12.boolean().optional(),
-  aiProvider: z12.enum(["openai", "gemini", "ollama", ""]).optional(),
-  aiApiKey: z12.string().max(200).optional(),
-  aiBaseUrl: z12.string().max(200).optional().or(z12.literal("")),
-  aiModel: z12.string().max(100).optional(),
-  supportTicketMediaRetentionDays: z12.number().int().min(1).max(3650).optional(),
-  chatHistoryRetentionDays: z12.number().int().min(1).max(3650).optional(),
-  deviceTelemetryRetentionDays: z12.number().int().min(1).max(3650).optional()
-}).refine((d) => Object.keys(d).length > 0, { message: "At least one field to update" });
-adminRouter.get("/stats", getStats);
-adminRouter.get("/settings", getSettings);
-adminRouter.put("/settings", validateBody(settingsSchema), putSettings);
-adminRouter.post("/settings/test-email", testSmtpEmail);
-adminRouter.post("/settings/ai-test", testAiConnection);
-adminRouter.get("/users", getUsers);
-adminRouter.get("/users/:id", getUserById);
-var createUserSchema = z12.object({
-  username: z12.string().min(3).max(50),
-  email: z12.string().email().max(100),
-  password: z12.string().min(6).max(255),
-  role: z12.enum(["user", "system_admin"]).optional()
-});
-adminRouter.post("/users", validateBody(createUserSchema), async (req, res) => {
+var postUsers = async (req, res) => {
   const { username, email, password, role } = req.body;
   const existingUsername = await prisma.user.findFirst({ where: { username }, select: { id: true } });
   if (existingUsername) throw new AppError("USER_EXISTS", `Username '${username}' is already taken. Please use another username.`, 409);
@@ -58523,8 +58429,8 @@ adminRouter.post("/users", validateBody(createUserSchema), async (req, res) => {
     meta: { username: user.username, email: user.email, role: user.role }
   });
   ok(res, user, 201);
-});
-adminRouter.post("/users/:id/send-reset-email", async (req, res) => {
+};
+var postUsersIdSendResetEmail = async (req, res) => {
   const id = Number(req.params.id);
   const user = await prisma.user.findUnique({
     where: { id },
@@ -58538,11 +58444,8 @@ adminRouter.post("/users/:id/send-reset-email", async (req, res) => {
     meta: { username: user.username, email: user.email }
   });
   ok(res, { sent: true, message: `Password reset email bheja (${user.email})` });
-});
-var resetPasswordSchema2 = z12.object({
-  password: z12.string().min(6).max(255)
-});
-adminRouter.post("/users/:id/reset-password", validateBody(resetPasswordSchema2), async (req, res) => {
+};
+var postUsersIdResetPassword = async (req, res) => {
   const id = Number(req.params.id);
   const user = await prisma.user.findUnique({
     where: { id },
@@ -58557,19 +58460,8 @@ adminRouter.post("/users/:id/reset-password", validateBody(resetPasswordSchema2)
     meta: { username: user.username, email: user.email }
   });
   ok(res, { reset: true, message: `Password reset ho gaya (${user.username})` });
-});
-var broadcastLimiter = rateLimit({
-  name: "admin:broadcast",
-  windowMs: 60 * 6e4,
-  max: 5,
-  message: "Bahut zyada broadcasts \u2014 1 ghanta baad try karo"
-});
-var broadcastSchema = z12.object({
-  title: z12.string().trim().min(1).max(120),
-  body: z12.string().trim().min(1).max(2e3),
-  sendEmail: z12.boolean().optional()
-});
-adminRouter.post("/broadcast", broadcastLimiter, validateBody(broadcastSchema), async (req, res) => {
+};
+var postBroadcast = async (req, res) => {
   const { title, body, sendEmail: sendEmail2 } = req.body;
   const targets = await prisma.user.findMany({
     where: { role: "user", status: "active" },
@@ -58593,8 +58485,8 @@ adminRouter.post("/broadcast", broadcastLimiter, validateBody(broadcastSchema), 
     meta: { title, targets: targets.length, emailed }
   });
   ok(res, { sent: targets.length, emailed });
-});
-adminRouter.patch("/users/:id/status", async (req, res) => {
+};
+var patchUsersIdStatus = async (req, res) => {
   const id = Number(req.params.id);
   if (id === req.user.sub) throw new AppError("BAD_REQUEST", "You cannot suspend your own account");
   const status = String(req.body.status ?? "");
@@ -58607,8 +58499,8 @@ adminRouter.patch("/users/:id/status", async (req, res) => {
   });
   await audit(req.user.sub, `admin.user.${status}`, { entity: "user", entityId: id, meta: { username: user.username } });
   ok(res, user);
-});
-adminRouter.patch("/users/:id/role", async (req, res) => {
+};
+var patchUsersIdRole = async (req, res) => {
   const id = Number(req.params.id);
   if (id === req.user.sub) throw new AppError("BAD_REQUEST", "You cannot change your own role");
   const role = String(req.body.role ?? "");
@@ -58621,8 +58513,8 @@ adminRouter.patch("/users/:id/role", async (req, res) => {
   });
   await audit(req.user.sub, `admin.user.role`, { entity: "user", entityId: id, meta: { username: user.username, role } });
   ok(res, user);
-});
-adminRouter.delete("/users/:id", async (req, res) => {
+};
+var deleteUsersId = async (req, res) => {
   const id = Number(req.params.id);
   if (id === req.user.sub) throw new AppError("BAD_REQUEST", "You cannot delete your own account");
   const user = await prisma.user.findUnique({ where: { id }, include: { ownedHomes: true } });
@@ -58655,8 +58547,8 @@ adminRouter.delete("/users/:id", async (req, res) => {
   } catch (err) {
     throw new AppError("INTERNAL_ERROR", "User delete failed: " + err.message);
   }
-});
-adminRouter.get("/homes", async (req, res) => {
+};
+var getHomes = async (req, res) => {
   const q = String(req.query.q ?? "").trim();
   const homes = await prisma.home.findMany({
     include: {
@@ -58668,8 +58560,8 @@ adminRouter.get("/homes", async (req, res) => {
     take: 200
   });
   ok(res, homes);
-});
-adminRouter.get("/homes/:id", async (req, res) => {
+};
+var getHomesId = async (req, res) => {
   const id = Number(req.params.id);
   const home = await prisma.home.findUnique({
     where: { id },
@@ -58683,8 +58575,8 @@ adminRouter.get("/homes/:id", async (req, res) => {
   });
   if (!home) throw new AppError("NOT_FOUND", "Home not found");
   ok(res, home);
-});
-adminRouter.patch("/homes/:id/status", async (req, res) => {
+};
+var patchHomesIdStatus = async (req, res) => {
   const id = Number(req.params.id);
   const status = String(req.body.status ?? "");
   if (!["active", "suspended"].includes(status)) {
@@ -58696,16 +58588,16 @@ adminRouter.patch("/homes/:id/status", async (req, res) => {
   });
   await audit(req.user.sub, `admin.home.${status}`, { homeId: id, entity: "home", entityId: id, meta: { name: home.name } });
   ok(res, home);
-});
-adminRouter.delete("/homes/:id", async (req, res) => {
+};
+var deleteHomesId = async (req, res) => {
   const id = Number(req.params.id);
   const home = await prisma.home.findUnique({ where: { id } });
   if (!home) throw new AppError("NOT_FOUND", "Home not found");
   await audit(req.user.sub, "admin.home.delete", { homeId: id, entity: "home", entityId: id, meta: { name: home.name } });
   await prisma.home.delete({ where: { id } });
   ok(res, { deleted: true });
-});
-adminRouter.get("/devices", async (req, res) => {
+};
+var getDevices = async (req, res) => {
   const q = String(req.query.q ?? "").trim();
   const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1e3);
   const devices = await prisma.device.findMany({
@@ -58745,8 +58637,8 @@ adminRouter.get("/devices", async (req, res) => {
       online: d.lastSeen !== null && d.lastSeen.getTime() > dayAgo.getTime()
     }))
   );
-});
-adminRouter.get("/search", async (req, res) => {
+};
+var getSearch = async (req, res) => {
   const q = String(req.query.q ?? "").trim();
   if (!q) return ok(res, { q, users: [], homes: [], devices: [], esps: [], orders: [], serials: [] });
   const qUp = q.toUpperCase();
@@ -58849,8 +58741,8 @@ adminRouter.get("/search", async (req, res) => {
     })
   ]);
   ok(res, { q, users, homes, devices, esps, orders, serials });
-});
-adminRouter.get("/api-keys", async (_req, res) => {
+};
+var getApiKeys = async (_req, res) => {
   try {
     const keys = await prisma.apiKey.findMany({
       include: {
@@ -58865,8 +58757,8 @@ adminRouter.get("/api-keys", async (_req, res) => {
     console.error(`[admin] api-keys query failed:`, err?.message ?? err);
     ok(res, []);
   }
-});
-adminRouter.post("/api-keys", async (req, res) => {
+};
+var postApiKeys = async (req, res) => {
   const userId = Number(req.body?.userId);
   if (!userId) throw new AppError("BAD_REQUEST", "userId required");
   const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -58888,16 +58780,16 @@ adminRouter.post("/api-keys", async (req, res) => {
     meta: { label, prefix: keyPrefix, userId }
   });
   ok(res, { apiKey: plain, keyPrefix, userId, homeId });
-});
-adminRouter.delete("/api-keys/:id", async (req, res) => {
+};
+var deleteApiKeysId = async (req, res) => {
   const id = Number(req.params.id);
   const key = await prisma.apiKey.findUnique({ where: { id } });
   if (!key) throw new AppError("NOT_FOUND", "API key not found");
   await audit(req.user.sub, "admin.apikey.revoke", { homeId: key.homeId, entity: "api_key", entityId: id, meta: { prefix: key.keyPrefix } });
   await prisma.apiKey.delete({ where: { id } });
   ok(res, { deleted: true });
-});
-adminRouter.get("/find", async (req, res) => {
+};
+var getFind = async (req, res) => {
   const q = String(req.query.q ?? "").trim();
   if (q.length < 2) {
     return ok(res, { q, users: [], orders: [], serials: [], boards: [], devices: [], messages: [], claims: [] });
@@ -59005,8 +58897,8 @@ adminRouter.get("/find", async (req, res) => {
     take: 10
   });
   ok(res, { q, users, orders, serials, boards, devices, messages, claims });
-});
-adminRouter.get("/audit", async (req, res) => {
+};
+var getAudit = async (req, res) => {
   const action = String(req.query.action ?? "");
   const where = action ? { action } : void 0;
   const logs2 = await prisma.auditLog.findMany({
@@ -59016,182 +58908,12 @@ adminRouter.get("/audit", async (req, res) => {
     take: 200
   });
   ok(res, logs2);
-});
-function buildDiagnosticsText(d) {
-  const L = [];
-  const sec = (t) => L.push(`
-${"=".repeat(70)}
-${t}
-${"=".repeat(70)}`);
-  L.push(`SwitchNest Diagnostics Export`);
-  L.push(`Exported: ${(/* @__PURE__ */ new Date()).toISOString()}`);
-  L.push(`Log file: ${d.logPath ?? "?"} (${d.logBytes ?? 0} bytes)`);
-  if (d.error) L.push(`Parse error: ${d.error}`);
-  sec("PROCESS");
-  L.push(`PID:            ${d.process.pid}`);
-  L.push(`Uptime:         ${Math.floor(d.process.uptimeSec / 60)}m ${d.process.uptimeSec % 60}s`);
-  L.push(`RSS:            ${d.process.rssMB} MB`);
-  L.push(`Heap:           ${d.process.heapMB} MB`);
-  L.push(`Node:           ${d.process.node}`);
-  L.push(`Started at:     ${d.process.startedAt}`);
-  if (d.parent) {
-    L.push(`Parent:         ${d.parent.name} (pid ${d.parent.pid})`);
-    L.push(`Parent start:   ${d.parent.startTime}`);
-    L.push(`Parent cmdline: ${d.parent.cmdline}`);
-  }
-  sec("STATS (log tail)");
-  L.push(`Requests (END):   ${d.stats.reqEnd}`);
-  L.push(`Requests (ABORT): ${d.stats.reqAbort}`);
-  L.push(`Boots in tail:    ${d.stats.bootsInTail}`);
-  L.push(`Exits in tail:    ${d.stats.exitsInTail}`);
-  sec("HEALTH CHECKER");
-  const hc = d.healthCheck;
-  if (hc.lastCheck) {
-    L.push(`Last check: ${hc.lastCheck.ts}  ${hc.lastCheck.ok ? "OK" : "FAIL"}  status=${hc.lastCheck.status ?? "-"}  ${hc.lastCheck.ms}ms  err=${hc.lastCheck.err ?? "-"}`);
-  } else {
-    L.push(`Last check: (none yet)`);
-  }
-  L.push(`Checks:     ${hc.checksOk}/${hc.checksTotal}  (success ${hc.successRate ?? "-"}%)`);
-  if (hc.activeIncident) {
-    L.push(`ACTIVE INCIDENT: ${hc.activeIncident.id}  since ${hc.activeIncident.startedAt}  last=${hc.activeIncident.lastStatus ?? hc.activeIncident.lastErr}`);
-  }
-  L.push(`Incidents:`);
-  if (hc.incidents.length === 0) L.push(`  (none)`);
-  for (const inc of hc.incidents) {
-    L.push(
-      `  ${inc.ts}  id=${inc.id}  ${inc.lastStatus ? `HTTP ${inc.lastStatus}` : inc.lastErr ?? "?"}` + (inc.end ? `  -> recovered ${inc.end.durationSec}s` : "  -> OPEN")
-    );
-  }
-  sec(`BOOT HISTORY (last ${d.boot.length})`);
-  for (const b of d.boot) L.push(`  ${b}`);
-  sec(`EXITS / RESTARTS (tail ${d.exits.length})`);
-  if (d.exits.length === 0) L.push(`  (no exits recorded)`);
-  for (const e of d.exits) L.push(`  ${e}`);
-  sec(`CRASHES / FATAL (tail ${d.crashes.length})`);
-  if (d.crashes.length === 0) L.push(`  (no crashguard/fatal lines)`);
-  for (const c of d.crashes) L.push(`  ${c}`);
-  sec(`SERVER ERRORS (tail ${d.serverErrors.length})`);
-  if (d.serverErrors.length === 0) L.push(`  (none)`);
-  for (const s of d.serverErrors) L.push(`  ${s}`);
-  sec(`HEARTBEAT SUMMARY (per process, ${d.hbSummary.length})`);
-  L.push(`  pid	hb	firstUptime	lastUptime	firstRss	lastRss	growthMB/hr`);
-  for (const h of d.hbSummary.slice(0, 60)) {
-    L.push(`  ${h.pid}	${h.count}	${h.firstUptime}	${h.lastUptime}	${h.firstRss}	${h.lastRss}	${h.rssGrowthPerHour}`);
-  }
-  sec(`MEMORY TREND (24h, ${d.hbSeries.length} points \u2014 first/last 10)`);
-  const sample = [...d.hbSeries.slice(0, 10), ...d.hbSeries.slice(-10)];
-  L.push(`  ts	pid	uptime	rss	heap`);
-  for (const p of sample) {
-    L.push(`  ${p.ts}	${p.pid}	${p.uptime}	${p.rss}	${p.heap ?? "-"}`);
-  }
-  sec("WEB.CONFIG");
-  if (d.webconfig) {
-    L.push(`Path: ${d.webconfig.path}`);
-    if (d.webconfig.iisnode) L.push(`iisnode: ${d.webconfig.iisnode}`);
-    if (d.webconfig.httpErrors) L.push(`httpErrors: ${d.webconfig.httpErrors}`);
-    if (d.webconfig.appPoolRecycling) L.push(`recycling: ${d.webconfig.appPoolRecycling}`);
-  } else {
-    L.push(`(not readable)`);
-  }
-  sec("APP POOL (appcmd)");
-  L.push(d.appPool ? d.appPool.slice(0, 3e3) : `(unavailable)`);
-  if (d.wpEvents) {
-    sec("WORKER PROCESS EVENTS (wevtutil)");
-    L.push(d.wpEvents.slice(0, 2e3));
-  }
-  L.push(`
-${"=".repeat(70)}`);
-  return L.join("\n");
-}
-var ciCache = { key: "", at: 0, value: { status: "unknown" } };
-async function fetchCiStatus(sha) {
-  const cacheKey = sha ?? "latest-main";
-  const now = Date.now();
-  if (ciCache.key === cacheKey && now - ciCache.at < 3e5) return ciCache.value;
-  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
-  const q = sha ? `head_sha=${sha}` : "branch=main";
-  const store2 = (v) => {
-    ciCache.key = cacheKey;
-    ciCache.at = now;
-    ciCache.value = v;
-    return v;
-  };
-  try {
-    const res = await fetch(`https://api.github.com/repos/robosphere99/switch_v2/actions/runs?${q}&per_page=1`, {
-      headers: {
-        Accept: "application/vnd.github+json",
-        "User-Agent": "switchnest-admin",
-        ...token ? { Authorization: `Bearer ${token}` } : {}
-      },
-      signal: AbortSignal.timeout(8e3)
-    });
-    if (res.status === 401 || res.status === 403 || res.status === 404) {
-      return store2(
-        token ? { status: "unknown", reason: `GitHub API ${res.status}` } : { status: "unknown", reason: "private repo \u2014 GITHUB_TOKEN env me daalo" }
-      );
-    }
-    if (!res.ok) return store2({ status: "unknown", reason: `GitHub API ${res.status}` });
-    const data = await res.json();
-    const run = data.workflow_runs?.[0];
-    if (!run) return store2({ status: "unknown", reason: "no workflow runs yet" });
-    const conclusion = run.conclusion;
-    return store2({
-      status: conclusion === "success" ? "pass" : conclusion === "failure" || conclusion === "cancelled" || conclusion === "timed_out" || conclusion === "action_required" ? "fail" : run.status === "completed" ? "unknown" : "pending",
-      runId: run.id,
-      workflow: run.name ?? void 0,
-      createdAt: run.created_at,
-      updatedAt: run.updated_at
-    });
-  } catch (e) {
-    return { status: "unknown", reason: e instanceof Error ? e.message : "network error" };
-  }
-}
-var latestCache = { at: 0, value: null };
-async function fetchLatestMain() {
-  const now = Date.now();
-  if (now - latestCache.at < 6e4) return latestCache.value;
-  const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
-  try {
-    const res = await fetch("https://api.github.com/repos/robosphere99/switch_v2/commits/main", {
-      headers: {
-        Accept: "application/vnd.github+json",
-        "User-Agent": "switchnest-admin",
-        ...token ? { Authorization: `Bearer ${token}` } : {}
-      },
-      signal: AbortSignal.timeout(8e3)
-    });
-    if (!res.ok) return latestCache.value;
-    const j = await res.json();
-    latestCache.value = { commit: j.sha || "", branch: "main", ts: j.commit?.committer?.date || "" };
-    latestCache.at = now;
-  } catch {
-  }
-  return latestCache.value;
-}
-function isAncestorOf(ancestor, head) {
-  try {
-    execSync(`git merge-base --is-ancestor ${ancestor} ${head}`, {
-      stdio: "ignore",
-      windowsHide: true,
-      timeout: 5e3
-    });
-    return true;
-  } catch {
-    return false;
-  }
-}
-adminRouter.get("/lan-info", async (_req, res) => {
+};
+var getLanInfo = async (_req, res) => {
   const lanIp = await detectLanIp();
   ok(res, { lanIp, espServerUrl: `http://${lanIp}:4000` });
-});
-var checkUrlLimiter = rateLimit({
-  name: "admin:check-url",
-  windowMs: 6e4,
-  max: 30,
-  message: "Bahut zyada URL checks \u2014 thodi der baad try karo"
-});
-var checkUrlSchema = z12.object({ url: z12.string().min(1).max(300) });
-adminRouter.post("/check-url", checkUrlLimiter, validateBody(checkUrlSchema), async (req, res) => {
+};
+var postCheckUrl = async (req, res) => {
   const raw = String(req.body.url ?? "").trim();
   if (!/^https?:\/\//i.test(raw)) {
     throw new AppError("VALIDATION_ERROR", "URL http:// ya https:// se shuru hona chahiye", 400);
@@ -59208,8 +58930,8 @@ adminRouter.post("/check-url", checkUrlLimiter, validateBody(checkUrlSchema), as
     const msg = aborted ? "Timeout \u2014 6s me koi response nahi (URL galat ya server down?)" : err instanceof Error ? err.message : String(err);
     ok(res, { ok: false, error: msg, ms: Date.now() - started });
   }
-});
-adminRouter.get("/deploy-info", async (_req, res) => {
+};
+var getDeployInfo = async (_req, res) => {
   let marker = null;
   const markerPath = path8.resolve(process.cwd(), "../logs/deploy.json");
   try {
@@ -59271,8 +58993,8 @@ adminRouter.get("/deploy-info", async (_req, res) => {
     processUptimeSec: Math.round(process.uptime()),
     startedAt: new Date(Date.now() - process.uptime() * 1e3).toISOString()
   });
-});
-adminRouter.get("/diagnostics", async (_req, res) => {
+};
+var getDiagnostics = async (_req, res) => {
   const TAIL_MAX2 = 5 * 1024 * 1024;
   const result = {
     logPath: logFilePath ?? null,
@@ -59470,8 +59192,8 @@ adminRouter.get("/diagnostics", async (_req, res) => {
     return res.send(txt);
   }
   ok(res, result);
-});
-adminRouter.get("/logs", async (_req, res) => {
+};
+var getLogs = async (_req, res) => {
   const n = Math.min(Number(_req.query.lines ?? 300) || 300, 1e3);
   const result = { path: logFilePath ?? null, totalLines: 0, lines: [], crashes: [], iisnodeLogs: [] };
   if (logFilePath && fs8.existsSync(logFilePath)) {
@@ -59516,21 +59238,8 @@ adminRouter.get("/logs", async (_req, res) => {
     }
   }
   ok(res, result);
-});
-try {
-  fs8.mkdirSync(firmwareDir, { recursive: true });
-} catch (err) {
-  console.warn(`[firmware] cannot create ${firmwareDir}:`, err instanceof Error ? err.message : err);
-}
-var upload2 = multer2({
-  storage: multer2.diskStorage({
-    destination: (_req, _file, cb) => cb(null, firmwareDir),
-    filename: (_req, _file, cb) => cb(null, "firmware.bin")
-  }),
-  limits: { fileSize: 8 * 1024 * 1024 }
-  // 8 MB is plenty for ESP32 .bin
-});
-adminRouter.get("/esp", async (req, res) => {
+};
+var getEsp = async (req, res) => {
   const q = String(req.query.q ?? "").trim();
   const current = await prisma.firmwareVersion.findFirst({ where: { isCurrent: true } });
   const esps = await prisma.espDevice.findMany({
@@ -59607,8 +59316,8 @@ adminRouter.get("/esp", async (req, res) => {
     take: 100
   });
   ok(res, { esps, unlinked, currentVersion: current?.version ?? null });
-});
-adminRouter.post("/esp/:id/key", async (req, res) => {
+};
+var postEspIdKey = async (req, res) => {
   const id = Number(req.params.id);
   const esp = await prisma.espDevice.findUnique({
     where: { id },
@@ -59634,8 +59343,8 @@ adminRouter.post("/esp/:id/key", async (req, res) => {
     meta: { homeId: esp.home.id }
   });
   ok(res, { apiKey: plain, keyPrefix });
-});
-adminRouter.get("/esp/issues", async (req, res) => {
+};
+var getEspIssues = async (req, res) => {
   const esps = await prisma.espDevice.findMany({
     select: {
       id: true,
@@ -59697,8 +59406,8 @@ adminRouter.get("/esp/issues", async (req, res) => {
     mismatchCount: filtered.filter((i) => i.nameMismatch).length,
     staleCount: filtered.filter((i) => i.stale).length
   });
-});
-adminRouter.patch("/esp/:id", async (req, res) => {
+};
+var patchEspId = async (req, res) => {
   const id = Number(req.params.id);
   const name = String(req.body?.name ?? "").trim().slice(0, 60);
   if (!name) throw new AppError("BAD_REQUEST", "Name required");
@@ -59731,8 +59440,8 @@ adminRouter.patch("/esp/:id", async (req, res) => {
     emitToHome(esp.homeId, "esp:updated", { id, name });
   }
   ok(res, esp);
-});
-adminRouter.get("/esp/:id/history", async (req, res) => {
+};
+var getEspIdHistory = async (req, res) => {
   const id = Number(req.params.id);
   const logs2 = await prisma.auditLog.findMany({
     where: {
@@ -59745,13 +59454,13 @@ adminRouter.get("/esp/:id/history", async (req, res) => {
     take: 50
   });
   ok(res, logs2);
-});
-adminRouter.get("/firmware", async (_req, res) => {
+};
+var getFirmware = async (_req, res) => {
   const versions = await prisma.firmwareVersion.findMany({ orderBy: { createdAt: "desc" } });
   const current = versions.find((v) => v.isCurrent) ?? null;
   ok(res, { versions, current });
-});
-adminRouter.post("/firmware", upload2.single("firmware"), async (req, res) => {
+};
+var postFirmware = async (req, res) => {
   const version = String(req.body.version ?? "").trim();
   const releaseNotes = String(req.body.release_notes ?? "").trim();
   const modelCode = String(req.body.model ?? "").trim().toUpperCase();
@@ -59787,8 +59496,8 @@ adminRouter.post("/firmware", upload2.single("firmware"), async (req, res) => {
     meta: { version, modelCode: modelCode || "universal", releaseNotes }
   });
   ok(res, { version, modelCode, releaseNotes, published: true, url });
-});
-adminRouter.post("/firmware/:id/activate", async (req, res) => {
+};
+var postFirmwareIdActivate = async (req, res) => {
   const id = Number(req.params.id);
   const fw = await prisma.firmwareVersion.findUnique({ where: { id } });
   if (!fw) throw new AppError("NOT_FOUND", "Firmware version not found", 404);
@@ -59802,8 +59511,8 @@ adminRouter.post("/firmware/:id/activate", async (req, res) => {
     meta: { version: fw.version }
   });
   ok(res, { id, version: fw.version, isCurrent: true });
-});
-adminRouter.post("/devices/:id/status", async (req, res) => {
+};
+var postDevicesIdStatus = async (req, res) => {
   const id = Number(req.params.id);
   const status = req.body?.status;
   if (status !== "on" && status !== "off") throw new AppError("VALIDATION_ERROR", "status must be 'on' or 'off'", 400);
@@ -59834,8 +59543,8 @@ adminRouter.post("/devices/:id/status", async (req, res) => {
     body: `Admin ne aapke device "${device.name}" ko ${status === "on" ? "chalu (ON)" : "band (OFF)"} kiya. Agar yeh galat hai to turant support ko batayein.`
   });
   ok(res, { id, status });
-});
-adminRouter.get("/devices/:id/support", async (req, res) => {
+};
+var getDevicesIdSupport = async (req, res) => {
   const id = Number(req.params.id);
   const device = await prisma.device.findUnique({
     where: { id },
@@ -59875,8 +59584,8 @@ adminRouter.get("/devices/:id/support", async (req, res) => {
   if (!device) throw new AppError("NOT_FOUND", "Device not found", 404);
   const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1e3);
   ok(res, { ...device, online: device.lastSeen !== null && device.lastSeen.getTime() > dayAgo.getTime() });
-});
-adminRouter.post("/esp/:id/rotate-console-password", async (req, res) => {
+};
+var postEspIdRotateConsolePassword = async (req, res) => {
   const id = Number(req.params.id);
   const crypto11 = await import("node:crypto");
   const newPass = crypto11.randomBytes(4).toString("hex");
@@ -59894,8 +59603,8 @@ adminRouter.post("/esp/:id/rotate-console-password", async (req, res) => {
     meta: { macAddress: esp.macAddress, newPass }
   });
   ok(res, { id, newPass });
-});
-adminRouter.post("/devices/:id/clear-commands", async (req, res) => {
+};
+var postDevicesIdClearCommands = async (req, res) => {
   const id = Number(req.params.id);
   const device = await prisma.device.findUnique({
     where: { id },
@@ -59924,8 +59633,8 @@ adminRouter.post("/devices/:id/clear-commands", async (req, res) => {
     });
   }
   ok(res, { cleared: cleared.count });
-});
-adminRouter.post("/devices/:id/push-ota", async (req, res) => {
+};
+var postDevicesIdPushOta = async (req, res) => {
   const id = Number(req.params.id);
   const device = await prisma.device.findUnique({
     where: { id },
@@ -59968,8 +59677,8 @@ adminRouter.post("/devices/:id/push-ota", async (req, res) => {
     model: current.modelCode || "universal",
     message: "OTA update pushed \u2014 the device will update on its next heartbeat"
   });
-});
-adminRouter.post("/devices/push-ota-all", async (req, res) => {
+};
+var postDevicesPushOtaAll = async (req, res) => {
   const current = await prisma.firmwareVersion.findFirst({ where: { isCurrent: true } });
   if (!current) {
     throw new AppError("NO_FIRMWARE", "No current firmware published yet \u2014 upload a .bin first", 400);
@@ -60011,8 +59720,8 @@ adminRouter.post("/devices/push-ota-all", async (req, res) => {
     )
   );
   ok(res, { count, version: current.version });
-});
-adminRouter.get("/esp/:id/probe", async (req, res) => {
+};
+var getEspIdProbe = async (req, res) => {
   const id = Number(req.params.id);
   const esp = await prisma.espDevice.findUnique({ where: { id } });
   if (!esp) throw new AppError("NOT_FOUND", "ESP not found", 404);
@@ -60039,8 +59748,8 @@ adminRouter.get("/esp/:id/probe", async (req, res) => {
   } finally {
     clearTimeout(timer4);
   }
-});
-adminRouter.get("/products", async (_req, res) => {
+};
+var getProducts = async (_req, res) => {
   try {
     const products = await prisma.product.findMany({
       orderBy: { id: "asc" },
@@ -60054,9 +59763,9 @@ adminRouter.get("/products", async (_req, res) => {
     });
     ok(res, products.map((p) => ({ ...p, media: [] })));
   }
-});
-adminRouter.post("/products", async (req, res) => {
-  const { name, modelCode, relayCount, price, description, features, imageUrl, stockCount } = req.body ?? {};
+};
+var postProducts = async (req, res) => {
+  const { name, modelCode, relayCount, price, description, features, imageUrl, stockCount, upcoming } = req.body ?? {};
   if (!name || !modelCode || price == null) {
     throw new AppError("BAD_REQUEST", "name, modelCode and price are required");
   }
@@ -60069,15 +59778,16 @@ adminRouter.post("/products", async (req, res) => {
       description: description ? String(description) : void 0,
       features: features ? typeof features === "string" ? JSON.parse(features) : features : void 0,
       imageUrl: imageUrl ? String(imageUrl).slice(0, 255) : void 0,
-      stockCount: stockCount != null ? Number(stockCount) : 0
+      stockCount: stockCount != null ? Number(stockCount) : 0,
+      upcoming: upcoming != null ? Boolean(upcoming) : false
     }
   });
   await audit(req.user.sub, "admin.product.create", { entity: "product", entityId: product.id, meta: { modelCode } });
   ok(res, product, 201);
-});
-adminRouter.patch("/products/:id", async (req, res) => {
+};
+var patchProductsId = async (req, res) => {
   const id = Number(req.params.id);
-  const { name, price, description, features, imageUrl, active, stockCount } = req.body ?? {};
+  const { name, price, description, features, imageUrl, active, stockCount, upcoming } = req.body ?? {};
   const product = await prisma.product.update({
     where: { id },
     data: {
@@ -60087,20 +59797,20 @@ adminRouter.patch("/products/:id", async (req, res) => {
       features: features ? typeof features === "string" ? JSON.parse(features) : features : void 0,
       imageUrl: imageUrl != null ? String(imageUrl).slice(0, 255) : void 0,
       stockCount: stockCount != null ? Number(stockCount) : void 0,
-      active: active != null ? Boolean(active) : void 0
+      active: active != null ? Boolean(active) : void 0,
+      upcoming: upcoming != null ? Boolean(upcoming) : void 0
     }
   });
   await audit(req.user.sub, "admin.product.update", { entity: "product", entityId: id });
   ok(res, product);
-});
-adminRouter.delete("/products/:id", async (req, res) => {
+};
+var deleteProductsId = async (req, res) => {
   const id = Number(req.params.id);
   await prisma.product.delete({ where: { id } });
   await audit(req.user.sub, "admin.product.delete", { entity: "product", entityId: id });
   ok(res, { deleted: true });
-});
-var productMediaUpload = multer2({ storage: cloudinaryProductStorage });
-adminRouter.post("/products/:id/media", productMediaUpload.single("file"), async (req, res) => {
+};
+var postProductsIdMedia = async (req, res) => {
   const productId = Number(req.params.id);
   if (!req.file) throw new AppError("BAD_REQUEST", "No file uploaded");
   const product = await prisma.product.findUnique({ where: { id: productId } });
@@ -60113,8 +59823,8 @@ adminRouter.post("/products/:id/media", productMediaUpload.single("file"), async
   });
   await audit(req.user.sub, "admin.product.media.add", { entity: "product", entityId: productId, meta: { mediaId: media.id } });
   ok(res, media, 201);
-});
-adminRouter.delete("/products/media/:mediaId", async (req, res) => {
+};
+var deleteProductsMediaMediaId = async (req, res) => {
   const mediaId = Number(req.params.mediaId);
   const media = await prisma.productMedia.findUnique({ where: { id: mediaId } });
   if (!media) throw new AppError("NOT_FOUND", "Media not found");
@@ -60126,8 +59836,8 @@ adminRouter.delete("/products/media/:mediaId", async (req, res) => {
   await prisma.productMedia.delete({ where: { id: mediaId } });
   await audit(req.user.sub, "admin.product.media.delete", { entity: "product", entityId: media.productId ?? void 0, meta: { mediaId } });
   ok(res, { deleted: true });
-});
-adminRouter.get("/orders", async (req, res) => {
+};
+var getOrders = async (req, res) => {
   const status = req.query.status ? String(req.query.status) : void 0;
   const orders = await prisma.order.findMany({
     where: status ? { status } : void 0,
@@ -60140,8 +59850,8 @@ adminRouter.get("/orders", async (req, res) => {
     take: 200
   });
   ok(res, orders);
-});
-adminRouter.get("/orders/:id", async (req, res) => {
+};
+var getOrdersId = async (req, res) => {
   const id = Number(req.params.id);
   const order = await prisma.order.findUnique({
     where: { id },
@@ -60153,8 +59863,8 @@ adminRouter.get("/orders/:id", async (req, res) => {
   });
   if (!order) throw new AppError("NOT_FOUND", "Order not found");
   ok(res, { ...order, verifyToken: signBillToken(order.id) });
-});
-adminRouter.patch("/orders/:id/status", async (req, res) => {
+};
+var patchOrdersIdStatus = async (req, res) => {
   const id = Number(req.params.id);
   const status = String(req.body?.status ?? "");
   const order = await updateOrderStatus(id, status);
@@ -60164,8 +59874,8 @@ adminRouter.patch("/orders/:id/status", async (req, res) => {
     meta: { orderNumber: order.orderNumber }
   });
   ok(res, order);
-});
-adminRouter.patch("/orders/:id/payment-status", async (req, res) => {
+};
+var patchOrdersIdPaymentStatus = async (req, res) => {
   const id = Number(req.params.id);
   const paymentStatus = String(req.body?.paymentStatus ?? "");
   const order = await prisma.order.update({
@@ -60181,8 +59891,8 @@ adminRouter.patch("/orders/:id/payment-status", async (req, res) => {
     meta: { orderNumber: order.orderNumber }
   });
   ok(res, order);
-});
-adminRouter.get("/serials", async (req, res) => {
+};
+var getSerials = async (req, res) => {
   const status = req.query.status ? String(req.query.status) : void 0;
   const productId = req.query.productId ? Number(req.query.productId) : void 0;
   const orderId = req.query.orderId ? Number(req.query.orderId) : void 0;
@@ -60232,8 +59942,8 @@ adminRouter.get("/serials", async (req, res) => {
     };
   });
   ok(res, enriched);
-});
-adminRouter.get("/serials/:code", async (req, res) => {
+};
+var getSerialsCode = async (req, res) => {
   const code = String(req.params.code ?? "").trim().toUpperCase();
   const serial = await prisma.serialRegistry.findUnique({
     where: { serialCode: code },
@@ -60246,8 +59956,8 @@ adminRouter.get("/serials/:code", async (req, res) => {
   });
   if (!serial) throw new AppError("NOT_FOUND", "Serial not found");
   ok(res, serial);
-});
-adminRouter.post("/serials/generate", async (req, res) => {
+};
+var postSerialsGenerate = async (req, res) => {
   const productId = Number(req.body?.productId);
   const count = Number(req.body?.count ?? 10);
   const codes = await generateSerials(productId, count);
@@ -60257,8 +59967,8 @@ adminRouter.post("/serials/generate", async (req, res) => {
     meta: { count, codes: codes.slice(0, 5) }
   });
   ok(res, { generated: codes.length, codes }, 201);
-});
-adminRouter.delete("/serials/:code", async (req, res) => {
+};
+var deleteSerialsCode = async (req, res) => {
   const code = String(req.params.code ?? "").trim().toUpperCase();
   const serial = await prisma.serialRegistry.findUnique({ where: { serialCode: code } });
   if (!serial) throw new AppError("NOT_FOUND", "Serial not found");
@@ -60272,8 +59982,8 @@ adminRouter.delete("/serials/:code", async (req, res) => {
     meta: { serialCode: code }
   });
   ok(res, { deleted: true });
-});
-adminRouter.delete("/serials", async (req, res) => {
+};
+var deleteSerials = async (req, res) => {
   const codes = req.body?.codes;
   if (!Array.isArray(codes) || codes.length === 0) {
     throw new AppError("BAD_REQUEST", "codes array required");
@@ -60298,8 +60008,8 @@ adminRouter.delete("/serials", async (req, res) => {
     meta: { count: available.length, skipped, codes: upperCodes.slice(0, 10) }
   });
   ok(res, { deleted: available.length, skipped });
-});
-adminRouter.post("/orders/:id/serials/generate", async (req, res) => {
+};
+var postOrdersIdSerialsGenerate = async (req, res) => {
   const id = Number(req.params.id);
   const order = await prisma.order.findUnique({
     where: { id },
@@ -60340,8 +60050,8 @@ adminRouter.post("/orders/:id/serials/generate", async (req, res) => {
     meta: { serialCode: code, orderNumber: order.orderNumber }
   });
   ok(res, { done: false, serialCode: code, modelCode }, 201);
-});
-adminRouter.get("/orders/:id/provision", async (req, res) => {
+};
+var getOrdersIdProvision = async (req, res) => {
   const include = {
     items: true,
     user: { select: { id: true, username: true, email: true } }
@@ -60417,8 +60127,8 @@ adminRouter.get("/orders/:id/provision", async (req, res) => {
     user: order.user,
     items
   });
-});
-adminRouter.post("/serials/:code/mark-tested", async (req, res) => {
+};
+var postSerialsCodeMarkTested = async (req, res) => {
   const code = String(req.params.code).trim().toUpperCase();
   const { consolePassword } = req.body ?? {};
   const serial = await prisma.serialRegistry.findUnique({ where: { serialCode: code } });
@@ -60459,8 +60169,8 @@ adminRouter.post("/serials/:code/mark-tested", async (req, res) => {
     }
   }
   ok(res, { tested: true, serialCode: code, testedAt: updated.testedAt });
-});
-adminRouter.get("/warranty", async (_req, res) => {
+};
+var getWarranty = async (_req, res) => {
   const claims = await prisma.warrantyClaim.findMany({
     include: { user: { select: { id: true, username: true, email: true } } },
     orderBy: { createdAt: "desc" }
@@ -60471,8 +60181,8 @@ adminRouter.get("/warranty", async (_req, res) => {
     select: { serialCode: true, warrantyStatus: true, warrantyExpiresAt: true, product: { select: { name: true, modelCode: true } } }
   });
   ok(res, claims.map((c) => ({ ...c, serial: serials.find((s) => s.serialCode === c.serialCode) ?? null })));
-});
-adminRouter.patch("/warranty/:id/status", async (req, res) => {
+};
+var patchWarrantyIdStatus = async (req, res) => {
   const id = Number(req.params.id);
   const status = String(req.body?.status ?? "");
   if (!["approved", "rejected", "resolved"].includes(status)) {
@@ -60524,31 +60234,27 @@ adminRouter.patch("/warranty/:id/status", async (req, res) => {
     console.error("[admin] warranty email failed", err);
   }
   ok(res, { id: updated.id, status: updated.status });
-});
-adminRouter.get("/contact", async (_req, res) => {
+};
+var getContact = async (_req, res) => {
   const msgs = await prisma.contactMessage.findMany({
     orderBy: { createdAt: "desc" },
     include: { user: { select: { id: true, username: true, email: true, role: true } } }
   });
   ok(res, msgs);
-});
-adminRouter.patch("/contact/:id/status", async (req, res) => {
+};
+var patchContactIdStatus = async (req, res) => {
   const id = Number(req.params.id);
   const status = String(req.body?.status ?? "");
   if (!["new", "read", "done"].includes(status)) throw new AppError("BAD_REQUEST", "Status new | read | done");
   const updated = await prisma.contactMessage.update({ where: { id }, data: { status } });
   ok(res, updated);
-});
-adminRouter.delete("/contact/:id", async (req, res) => {
+};
+var deleteContactId = async (req, res) => {
   const id = Number(req.params.id);
   await prisma.contactMessage.delete({ where: { id } });
   ok(res, { deleted: true });
-});
-var resetSchema = z12.object({
-  mode: z12.enum(["data", "factory"]),
-  confirm: z12.literal("RESET")
-});
-adminRouter.post("/reset", validateBody(resetSchema), async (req, res) => {
+};
+var postReset = async (req, res) => {
   const { mode } = req.body;
   const ALL_TABLES = [
     "api_keys",
@@ -60557,6 +60263,7 @@ adminRouter.post("/reset", validateBody(resetSchema), async (req, res) => {
     "assistant_messages",
     "audit_logs",
     "contact_messages",
+    "coupons",
     "device_access",
     "device_commands",
     "device_configurations",
@@ -60576,12 +60283,13 @@ adminRouter.post("/reset", validateBody(resetSchema), async (req, res) => {
     "rooms",
     "schedules",
     "serial_registry",
+    "support_calls",
     "support_chat_settings",
     "support_messages",
     "users",
     "warranty_claims"
   ];
-  const KEEP_IN_DATA = /* @__PURE__ */ new Set(["products", "app_meta", "users", "firmware_versions"]);
+  const KEEP_IN_DATA = /* @__PURE__ */ new Set(["products", "app_meta", "users", "firmware_versions", "coupons"]);
   const tablesToWipe = mode === "factory" ? ALL_TABLES : ALL_TABLES.filter((t) => !KEEP_IN_DATA.has(t));
   await prisma.$transaction(async (tx) => {
     await tx.$executeRawUnsafe("SET FOREIGN_KEY_CHECKS=0");
@@ -60610,23 +60318,8 @@ adminRouter.post("/reset", validateBody(resetSchema), async (req, res) => {
     mode,
     message: mode === "factory" ? "Factory reset ho gaya \u2014 ab install wizard se fresh setup karo" : "Data reset ho gaya \u2014 admin + catalog rahe, baaki sab clear"
   });
-});
-var apkDir = webPublicMobileAppDir;
-try {
-  fs8.mkdirSync(apkDir, { recursive: true });
-} catch (e) {
-}
-var apkUpload = multer2({
-  storage: multer2.diskStorage({
-    destination: (_req, _file, cb) => cb(null, apkDir),
-    filename: (_req, file, cb) => {
-      cb(null, `upload_${Date.now()}_${file.originalname}`);
-    }
-  }),
-  limits: { fileSize: 300 * 1024 * 1024 }
-  // 300 MB limit for APK files
-});
-adminRouter.get("/apk/status", async (_req, res) => {
+};
+var getApkStatus = async (_req, res) => {
   try {
     const settings = await getSiteSettings();
     const candidatePaths2 = [
@@ -60656,8 +60349,8 @@ adminRouter.get("/apk/status", async (_req, res) => {
   } catch (e) {
     res.status(500).json({ success: false, error: { message: e.message || "Failed to fetch APK status" } });
   }
-});
-adminRouter.post("/apk/upload", apkUpload.single("apkFile"), async (req, res) => {
+};
+var postApkUpload = async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, error: { message: "No APK file provided in request." } });
@@ -60703,7 +60396,382 @@ adminRouter.post("/apk/upload", apkUpload.single("apkFile"), async (req, res) =>
     console.error("[apk-upload] Error processing APK upload:", e);
     res.status(500).json({ success: false, error: { message: e.message || "Failed to upload APK file" } });
   }
+};
+var getCoupons = async (req, res) => {
+  const coupons = await prisma.coupon.findMany({ orderBy: { createdAt: "desc" } });
+  ok(res, coupons);
+};
+var postCoupons = async (req, res) => {
+  const { code, discountType, discountValue, minOrderAmount, maxDiscount, usageLimit, expiresAt, active } = req.body ?? {};
+  if (!code || !discountValue) throw new AppError("BAD_REQUEST", "code and discountValue are required");
+  const coupon = await prisma.coupon.create({
+    data: {
+      code: String(code).trim().toUpperCase(),
+      discountType: discountType === "fixed" ? "fixed" : "percentage",
+      discountValue: Number(discountValue),
+      minOrderAmount: minOrderAmount ? Number(minOrderAmount) : null,
+      maxDiscount: maxDiscount ? Number(maxDiscount) : null,
+      usageLimit: usageLimit ? Number(usageLimit) : null,
+      expiresAt: expiresAt ? new Date(expiresAt) : null,
+      active: active != null ? Boolean(active) : true
+    }
+  });
+  await audit(req.user.sub, "admin.coupon.create", { entity: "coupon", entityId: coupon.id, meta: { code } });
+  ok(res, coupon, 201);
+};
+var patchCouponsId = async (req, res) => {
+  const id = Number(req.params.id);
+  const { active, code, discountType, discountValue, minOrderAmount, maxDiscount, usageLimit } = req.body ?? {};
+  const coupon = await prisma.coupon.update({
+    where: { id },
+    data: {
+      active: active != null ? Boolean(active) : void 0,
+      code: typeof code === "string" ? code : void 0,
+      discountType: typeof discountType === "string" ? discountType : void 0,
+      discountValue: discountValue !== void 0 ? String(discountValue) : void 0,
+      minOrderAmount: minOrderAmount !== void 0 ? minOrderAmount ? String(minOrderAmount) : null : void 0,
+      maxDiscount: maxDiscount !== void 0 ? maxDiscount ? String(maxDiscount) : null : void 0,
+      usageLimit: usageLimit !== void 0 ? usageLimit ? Number(usageLimit) : null : void 0
+    }
+  });
+  await audit(req.user.sub, "admin.coupon.update", { entity: "coupon", entityId: id });
+  ok(res, coupon);
+};
+var deleteCouponsId = async (req, res) => {
+  const id = Number(req.params.id);
+  await prisma.coupon.delete({ where: { id } });
+  await audit(req.user.sub, "admin.coupon.delete", { entity: "coupon", entityId: id });
+  ok(res, { deleted: true });
+};
+function buildDiagnosticsText(d) {
+  const L = [];
+  const sec = (t) => L.push(`
+${"=".repeat(70)}
+${t}
+${"=".repeat(70)}`);
+  L.push(`SwitchNest Diagnostics Export`);
+  L.push(`Exported: ${(/* @__PURE__ */ new Date()).toISOString()}`);
+  L.push(`Log file: ${d.logPath ?? "?"} (${d.logBytes ?? 0} bytes)`);
+  if (d.error) L.push(`Parse error: ${d.error}`);
+  sec("PROCESS");
+  L.push(`PID:            ${d.process.pid}`);
+  L.push(`Uptime:         ${Math.floor(d.process.uptimeSec / 60)}m ${d.process.uptimeSec % 60}s`);
+  L.push(`RSS:            ${d.process.rssMB} MB`);
+  L.push(`Heap:           ${d.process.heapMB} MB`);
+  L.push(`Node:           ${d.process.node}`);
+  L.push(`Started at:     ${d.process.startedAt}`);
+  if (d.parent) {
+    L.push(`Parent:         ${d.parent.name} (pid ${d.parent.pid})`);
+    L.push(`Parent start:   ${d.parent.startTime}`);
+    L.push(`Parent cmdline: ${d.parent.cmdline}`);
+  }
+  sec("STATS (log tail)");
+  L.push(`Requests (END):   ${d.stats.reqEnd}`);
+  L.push(`Requests (ABORT): ${d.stats.reqAbort}`);
+  L.push(`Boots in tail:    ${d.stats.bootsInTail}`);
+  L.push(`Exits in tail:    ${d.stats.exitsInTail}`);
+  sec("HEALTH CHECKER");
+  const hc = d.healthCheck;
+  if (hc.lastCheck) {
+    L.push(`Last check: ${hc.lastCheck.ts}  ${hc.lastCheck.ok ? "OK" : "FAIL"}  status=${hc.lastCheck.status ?? "-"}  ${hc.lastCheck.ms}ms  err=${hc.lastCheck.err ?? "-"}`);
+  } else {
+    L.push(`Last check: (none yet)`);
+  }
+  L.push(`Checks:     ${hc.checksOk}/${hc.checksTotal}  (success ${hc.successRate ?? "-"}%)`);
+  if (hc.activeIncident) {
+    L.push(`ACTIVE INCIDENT: ${hc.activeIncident.id}  since ${hc.activeIncident.startedAt}  last=${hc.activeIncident.lastStatus ?? hc.activeIncident.lastErr}`);
+  }
+  L.push(`Incidents:`);
+  if (hc.incidents.length === 0) L.push(`  (none)`);
+  for (const inc of hc.incidents) {
+    L.push(
+      `  ${inc.ts}  id=${inc.id}  ${inc.lastStatus ? `HTTP ${inc.lastStatus}` : inc.lastErr ?? "?"}` + (inc.end ? `  -> recovered ${inc.end.durationSec}s` : "  -> OPEN")
+    );
+  }
+  sec(`BOOT HISTORY (last ${d.boot.length})`);
+  for (const b of d.boot) L.push(`  ${b}`);
+  sec(`EXITS / RESTARTS (tail ${d.exits.length})`);
+  if (d.exits.length === 0) L.push(`  (no exits recorded)`);
+  for (const e of d.exits) L.push(`  ${e}`);
+  sec(`CRASHES / FATAL (tail ${d.crashes.length})`);
+  if (d.crashes.length === 0) L.push(`  (no crashguard/fatal lines)`);
+  for (const c of d.crashes) L.push(`  ${c}`);
+  sec(`SERVER ERRORS (tail ${d.serverErrors.length})`);
+  if (d.serverErrors.length === 0) L.push(`  (none)`);
+  for (const s of d.serverErrors) L.push(`  ${s}`);
+  sec(`HEARTBEAT SUMMARY (per process, ${d.hbSummary.length})`);
+  L.push(`  pid	hb	firstUptime	lastUptime	firstRss	lastRss	growthMB/hr`);
+  for (const h of d.hbSummary.slice(0, 60)) {
+    L.push(`  ${h.pid}	${h.count}	${h.firstUptime}	${h.lastUptime}	${h.firstRss}	${h.lastRss}	${h.rssGrowthPerHour}`);
+  }
+  sec(`MEMORY TREND (24h, ${d.hbSeries.length} points \u2014 first/last 10)`);
+  const sample = [...d.hbSeries.slice(0, 10), ...d.hbSeries.slice(-10)];
+  L.push(`  ts	pid	uptime	rss	heap`);
+  for (const p of sample) {
+    L.push(`  ${p.ts}	${p.pid}	${p.uptime}	${p.rss}	${p.heap ?? "-"}`);
+  }
+  sec("WEB.CONFIG");
+  if (d.webconfig) {
+    L.push(`Path: ${d.webconfig.path}`);
+    if (d.webconfig.iisnode) L.push(`iisnode: ${d.webconfig.iisnode}`);
+    if (d.webconfig.httpErrors) L.push(`httpErrors: ${d.webconfig.httpErrors}`);
+    if (d.webconfig.appPoolRecycling) L.push(`recycling: ${d.webconfig.appPoolRecycling}`);
+  } else {
+    L.push(`(not readable)`);
+  }
+  sec("APP POOL (appcmd)");
+  L.push(d.appPool ? d.appPool.slice(0, 3e3) : `(unavailable)`);
+  if (d.wpEvents) {
+    sec("WORKER PROCESS EVENTS (wevtutil)");
+    L.push(d.wpEvents.slice(0, 2e3));
+  }
+  L.push(`
+${"=".repeat(70)}`);
+  return L.join("\n");
+}
+async function fetchCiStatus(sha) {
+  const cacheKey = sha ?? "latest-main";
+  const now = Date.now();
+  if (ciCache.key === cacheKey && now - ciCache.at < 3e5) return ciCache.value;
+  const token2 = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+  const q = sha ? `head_sha=${sha}` : "branch=main";
+  const store2 = (v) => {
+    ciCache.key = cacheKey;
+    ciCache.at = now;
+    ciCache.value = v;
+    return v;
+  };
+  try {
+    const res = await fetch(`https://api.github.com/repos/robosphere99/switch_v2/actions/runs?${q}&per_page=1`, {
+      headers: {
+        Accept: "application/vnd.github+json",
+        "User-Agent": "switchnest-admin",
+        ...token2 ? { Authorization: `Bearer ${token2}` } : {}
+      },
+      signal: AbortSignal.timeout(8e3)
+    });
+    if (res.status === 401 || res.status === 403 || res.status === 404) {
+      return store2(
+        token2 ? { status: "unknown", reason: `GitHub API ${res.status}` } : { status: "unknown", reason: "private repo \u2014 GITHUB_TOKEN env me daalo" }
+      );
+    }
+    if (!res.ok) return store2({ status: "unknown", reason: `GitHub API ${res.status}` });
+    const data = await res.json();
+    const run = data.workflow_runs?.[0];
+    if (!run) return store2({ status: "unknown", reason: "no workflow runs yet" });
+    const conclusion = run.conclusion;
+    return store2({
+      status: conclusion === "success" ? "pass" : conclusion === "failure" || conclusion === "cancelled" || conclusion === "timed_out" || conclusion === "action_required" ? "fail" : run.status === "completed" ? "unknown" : "pending",
+      runId: run.id,
+      workflow: run.name ?? void 0,
+      createdAt: run.created_at,
+      updatedAt: run.updated_at
+    });
+  } catch (e) {
+    return { status: "unknown", reason: e instanceof Error ? e.message : "network error" };
+  }
+}
+async function fetchLatestMain() {
+  const now = Date.now();
+  if (now - latestCache.at < 6e4) return latestCache.value;
+  const token2 = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
+  try {
+    const res = await fetch("https://api.github.com/repos/robosphere99/switch_v2/commits/main", {
+      headers: {
+        Accept: "application/vnd.github+json",
+        "User-Agent": "switchnest-admin",
+        ...token2 ? { Authorization: `Bearer ${token2}` } : {}
+      },
+      signal: AbortSignal.timeout(8e3)
+    });
+    if (!res.ok) return latestCache.value;
+    const j = await res.json();
+    latestCache.value = { commit: j.sha || "", branch: "main", ts: j.commit?.committer?.date || "" };
+    latestCache.at = now;
+  } catch {
+  }
+  return latestCache.value;
+}
+function isAncestorOf(ancestor, head) {
+  try {
+    execSync(`git merge-base --is-ancestor ${ancestor} ${head}`, {
+      stdio: "ignore",
+      windowsHide: true,
+      timeout: 5e3
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// src/routes/admin.routes.ts
+var adminRouter = Router11();
+function requireAdmin(req, _res, next) {
+  if (req.user?.role !== "system_admin") {
+    return next(new AppError("FORBIDDEN", "Admin access required", 403));
+  }
+  next();
+}
+adminRouter.use(requireAuth, requireAdmin);
+var settingsSchema = z12.object({
+  siteName: z12.string().min(1).max(60).optional(),
+  supportEmail: z12.string().email().max(100).optional(),
+  supportPhone: z12.string().min(1).max(30).optional(),
+  supportAddress: z12.string().min(1).max(200).optional(),
+  supportHours: z12.string().min(1).max(100).optional(),
+  brandColor: z12.string().regex(/^#[0-9a-fA-F]{6}$/, "Hex color (#RRGGBB)").optional(),
+  siteUrl: z12.string().url().max(200).optional().or(z12.literal("")),
+  smtpHost: z12.string().max(150).optional(),
+  smtpPort: z12.number().int().min(1).max(65535).optional(),
+  smtpUser: z12.string().max(150).optional(),
+  smtpPass: z12.string().max(200).optional(),
+  smtpFrom: z12.string().email().max(150).optional().or(z12.literal("")),
+  smtpSecure: z12.boolean().optional(),
+  smtpPaused: z12.boolean().optional(),
+  aiProvider: z12.enum(["openai", "gemini", "ollama", ""]).optional(),
+  aiApiKey: z12.string().max(200).optional(),
+  aiBaseUrl: z12.string().max(200).optional().or(z12.literal("")),
+  aiModel: z12.string().max(100).optional(),
+  supportTicketMediaRetentionDays: z12.number().int().min(1).max(3650).optional(),
+  chatHistoryRetentionDays: z12.number().int().min(1).max(3650).optional(),
+  deviceTelemetryRetentionDays: z12.number().int().min(1).max(3650).optional()
+}).refine((d) => Object.keys(d).length > 0, { message: "At least one field to update" });
+adminRouter.get("/stats", getStats);
+adminRouter.get("/settings", getSettings);
+adminRouter.put("/settings", validateBody(settingsSchema), putSettings);
+adminRouter.post("/settings/test-email", testSmtpEmail);
+adminRouter.post("/settings/ai-test", testAiConnection);
+adminRouter.get("/users", getUsers);
+adminRouter.get("/users/:id", getUserById);
+var createUserSchema = z12.object({
+  username: z12.string().min(3).max(50),
+  email: z12.string().email().max(100),
+  password: z12.string().min(6).max(255),
+  role: z12.enum(["user", "system_admin"]).optional()
 });
+adminRouter.post("/users", validateBody(createUserSchema), postUsers);
+adminRouter.post("/users/:id/send-reset-email", postUsersIdSendResetEmail);
+var resetPasswordSchema2 = z12.object({
+  password: z12.string().min(6).max(255)
+});
+adminRouter.post("/users/:id/reset-password", validateBody(resetPasswordSchema2), postUsersIdResetPassword);
+var broadcastLimiter = rateLimit({
+  name: "admin:broadcast",
+  windowMs: 60 * 6e4,
+  max: 5,
+  message: "Bahut zyada broadcasts \u2014 1 ghanta baad try karo"
+});
+var broadcastSchema = z12.object({
+  title: z12.string().trim().min(1).max(120),
+  body: z12.string().trim().min(1).max(2e3),
+  sendEmail: z12.boolean().optional()
+});
+adminRouter.post("/broadcast", broadcastLimiter, validateBody(broadcastSchema), postBroadcast);
+adminRouter.patch("/users/:id/status", patchUsersIdStatus);
+adminRouter.patch("/users/:id/role", patchUsersIdRole);
+adminRouter.delete("/users/:id", deleteUsersId);
+adminRouter.get("/homes", getHomes);
+adminRouter.get("/homes/:id", getHomesId);
+adminRouter.patch("/homes/:id/status", patchHomesIdStatus);
+adminRouter.delete("/homes/:id", deleteHomesId);
+adminRouter.get("/devices", getDevices);
+adminRouter.get("/search", getSearch);
+adminRouter.get("/api-keys", getApiKeys);
+adminRouter.post("/api-keys", postApiKeys);
+adminRouter.delete("/api-keys/:id", deleteApiKeysId);
+adminRouter.get("/find", getFind);
+adminRouter.get("/audit", getAudit);
+adminRouter.get("/lan-info", getLanInfo);
+var checkUrlLimiter = rateLimit({
+  name: "admin:check-url",
+  windowMs: 6e4,
+  max: 30,
+  message: "Bahut zyada URL checks \u2014 thodi der baad try karo"
+});
+var checkUrlSchema = z12.object({ url: z12.string().min(1).max(300) });
+adminRouter.post("/check-url", checkUrlLimiter, validateBody(checkUrlSchema), postCheckUrl);
+adminRouter.get("/deploy-info", getDeployInfo);
+adminRouter.get("/diagnostics", getDiagnostics);
+adminRouter.get("/logs", getLogs);
+try {
+  fs9.mkdirSync(firmwareDir, { recursive: true });
+} catch (err) {
+  console.warn(`[firmware] cannot create ${firmwareDir}:`, err instanceof Error ? err.message : err);
+}
+var upload2 = multer2({
+  storage: multer2.diskStorage({
+    destination: (_req, _file, cb) => cb(null, firmwareDir),
+    filename: (_req, _file, cb) => cb(null, "firmware.bin")
+  }),
+  limits: { fileSize: 8 * 1024 * 1024 }
+  // 8 MB is plenty for ESP32 .bin
+});
+adminRouter.get("/esp", getEsp);
+adminRouter.post("/esp/:id/key", postEspIdKey);
+adminRouter.get("/esp/issues", getEspIssues);
+adminRouter.patch("/esp/:id", patchEspId);
+adminRouter.get("/esp/:id/history", getEspIdHistory);
+adminRouter.get("/firmware", getFirmware);
+adminRouter.post("/firmware", upload2.single("firmware"), postFirmware);
+adminRouter.post("/firmware/:id/activate", postFirmwareIdActivate);
+adminRouter.post("/devices/:id/status", postDevicesIdStatus);
+adminRouter.get("/devices/:id/support", getDevicesIdSupport);
+adminRouter.post("/esp/:id/rotate-console-password", postEspIdRotateConsolePassword);
+adminRouter.post("/devices/:id/clear-commands", postDevicesIdClearCommands);
+adminRouter.post("/devices/:id/push-ota", postDevicesIdPushOta);
+adminRouter.post("/devices/push-ota-all", postDevicesPushOtaAll);
+adminRouter.get("/esp/:id/probe", getEspIdProbe);
+adminRouter.get("/products", getProducts);
+adminRouter.post("/products", postProducts);
+adminRouter.patch("/products/:id", patchProductsId);
+adminRouter.delete("/products/:id", deleteProductsId);
+var productMediaUpload = multer2({ storage: cloudinaryProductStorage });
+adminRouter.post("/products/:id/media", productMediaUpload.single("file"), postProductsIdMedia);
+adminRouter.delete("/products/media/:mediaId", deleteProductsMediaMediaId);
+adminRouter.get("/orders", getOrders);
+adminRouter.get("/orders/:id", getOrdersId);
+adminRouter.patch("/orders/:id/status", patchOrdersIdStatus);
+adminRouter.patch("/orders/:id/payment-status", patchOrdersIdPaymentStatus);
+adminRouter.get("/serials", getSerials);
+adminRouter.get("/serials/:code", getSerialsCode);
+adminRouter.post("/serials/generate", postSerialsGenerate);
+adminRouter.delete("/serials/:code", deleteSerialsCode);
+adminRouter.delete("/serials", deleteSerials);
+adminRouter.post("/orders/:id/serials/generate", postOrdersIdSerialsGenerate);
+adminRouter.get("/orders/:id/provision", getOrdersIdProvision);
+adminRouter.post("/serials/:code/mark-tested", postSerialsCodeMarkTested);
+adminRouter.get("/warranty", getWarranty);
+adminRouter.patch("/warranty/:id/status", patchWarrantyIdStatus);
+adminRouter.get("/contact", getContact);
+adminRouter.patch("/contact/:id/status", patchContactIdStatus);
+adminRouter.delete("/contact/:id", deleteContactId);
+var resetSchema = z12.object({
+  mode: z12.enum(["data", "factory"]),
+  confirm: z12.literal("RESET")
+});
+adminRouter.post("/reset", validateBody(resetSchema), postReset);
+var apkDir = webPublicMobileAppDir;
+try {
+  fs9.mkdirSync(apkDir, { recursive: true });
+} catch (e) {
+}
+var apkUpload = multer2({
+  storage: multer2.diskStorage({
+    destination: (_req, _file, cb) => cb(null, apkDir),
+    filename: (_req, file, cb) => {
+      cb(null, `upload_${Date.now()}_${file.originalname}`);
+    }
+  }),
+  limits: { fileSize: 300 * 1024 * 1024 }
+  // 300 MB limit for APK files
+});
+adminRouter.get("/apk/status", getApkStatus);
+adminRouter.post("/apk/upload", apkUpload.single("apkFile"), postApkUpload);
+adminRouter.get("/coupons", getCoupons);
+adminRouter.post("/coupons", postCoupons);
+adminRouter.patch("/coupons/:id", patchCouponsId);
+adminRouter.delete("/coupons/:id", deleteCouponsId);
 
 // src/routes/shop.routes.ts
 import { Router as Router12 } from "express";
@@ -60715,7 +60783,7 @@ init_audit_service();
 
 // src/services/payment.service.ts
 init_env();
-import crypto8 from "node:crypto";
+import crypto7 from "node:crypto";
 function razorpayConfigured() {
   return Boolean(env.RAZORPAY_KEY_ID && env.RAZORPAY_KEY_SECRET);
 }
@@ -60730,11 +60798,11 @@ async function createRazorpayOrder(amountInr, receipt) {
   return res.json();
 }
 function verifyRazorpaySignature(orderId, paymentId, signature) {
-  const expected = crypto8.createHmac("sha256", env.RAZORPAY_KEY_SECRET).update(`${orderId}|${paymentId}`).digest("hex");
+  const expected = crypto7.createHmac("sha256", env.RAZORPAY_KEY_SECRET).update(`${orderId}|${paymentId}`).digest("hex");
   return expected === signature;
 }
 function verifyRazorpayWebhook(rawBody, signature) {
-  const expected = crypto8.createHmac("sha256", env.RAZORPAY_KEY_SECRET).update(rawBody).digest("hex");
+  const expected = crypto7.createHmac("sha256", env.RAZORPAY_KEY_SECRET).update(rawBody).digest("hex");
   return expected === signature;
 }
 
@@ -60743,7 +60811,7 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import os4 from "os";
 var execAsync = promisify(exec);
-async function getProducts(_req, res) {
+async function getProducts2(_req, res) {
   try {
     const products = await prisma.product.findMany({
       where: { active: true },
@@ -60805,7 +60873,7 @@ async function addProductReview(req, res) {
   ok(res, review, 201);
 }
 async function createShopOrder(req, res) {
-  const { items, shipping, wifi, paymentMethod } = req.body ?? {};
+  const { items, shipping, wifi, paymentMethod, couponCode } = req.body ?? {};
   if (!Array.isArray(items) || !items.length) {
     throw new AppError("BAD_REQUEST", "Cart is empty");
   }
@@ -60828,7 +60896,8 @@ async function createShopOrder(req, res) {
       address: String(shipping.address).slice(0, 255)
     },
     wifi: wifi?.ssid || wifi?.password ? { ssid: String(wifi.ssid ?? ""), password: String(wifi.password ?? "") } : void 0,
-    paymentMethod: method
+    paymentMethod: method,
+    couponCode: typeof couponCode === "string" && couponCode ? couponCode.trim() : void 0
   });
   await audit(req.user.sub, "shop.order.create", {
     entity: "order",
@@ -60840,7 +60909,7 @@ async function createShopOrder(req, res) {
 async function getShopOrders(req, res) {
   const orders = await prisma.order.findMany({
     where: { userId: req.user.sub },
-    include: { items: true },
+    include: { items: true, coupon: { select: { code: true } } },
     orderBy: { createdAt: "desc" }
   });
   const serialCodes = [...new Set(orders.flatMap((o) => o.items.map((i) => i.serialCode).filter(Boolean)))];
@@ -60857,10 +60926,16 @@ async function getShopOrders(req, res) {
   ok(
     res,
     orders.map((o) => {
-      const codes = o.items.map((i) => i.serialCode).filter(Boolean);
+      const items = o.items.map((i) => ({
+        ...i,
+        isClaimed: i.serialCode ? claimedSet.has(i.serialCode) : false
+      }));
+      const codes = items.map((i) => i.serialCode).filter(Boolean);
       return {
         ...o,
-        allClaimed: codes.length > 0 && codes.every((c) => claimedSet.has(c))
+        items,
+        allClaimed: codes.length > 0 && codes.every((c) => claimedSet.has(c)),
+        verifyToken: signBillToken(o.id)
       };
     })
   );
@@ -61002,12 +61077,30 @@ async function getCurrentWifi(req, res) {
     ok(res, { ssid: null });
   }
 }
+async function validateCoupon(req, res) {
+  const code = req.query.code ? String(req.query.code).trim() : "";
+  if (!code) throw new AppError("BAD_REQUEST", "Coupon code required");
+  const coupon = await prisma.coupon.findUnique({ where: { code } });
+  if (!coupon) throw new AppError("NOT_FOUND", "Invalid coupon code");
+  if (!coupon.active) throw new AppError("BAD_REQUEST", "Coupon is inactive");
+  if (coupon.expiresAt && coupon.expiresAt < /* @__PURE__ */ new Date()) throw new AppError("BAD_REQUEST", "Coupon has expired");
+  if (coupon.usageLimit && coupon.usedCount >= coupon.usageLimit) throw new AppError("BAD_REQUEST", "Coupon usage limit reached");
+  ok(res, {
+    id: coupon.id,
+    code: coupon.code,
+    discountType: coupon.discountType,
+    discountValue: Number(coupon.discountValue),
+    minOrderAmount: coupon.minOrderAmount ? Number(coupon.minOrderAmount) : null,
+    maxDiscount: coupon.maxDiscount ? Number(coupon.maxDiscount) : null
+  });
+}
 
 // src/routes/shop.routes.ts
 var shopRouter = Router12();
 var upload3 = multer3({ storage: cloudinaryBillingStorage, limits: { fileSize: 50 * 1024 * 1024 } });
-shopRouter.get("/products", getProducts);
+shopRouter.get("/products", getProducts2);
 shopRouter.get("/products/:id/reviews", getProductReviews);
+shopRouter.get("/coupons/validate", requireAuth, validateCoupon);
 shopRouter.post("/upload", requireAuth, upload3.single("file"), uploadMedia);
 shopRouter.post("/products/:id/reviews", requireAuth, addProductReview);
 shopRouter.post("/orders", requireAuth, createShopOrder);
@@ -61286,7 +61379,7 @@ import { Router as Router15 } from "express";
 // src/controllers/public.controller.ts
 init_prisma();
 import path9 from "path";
-import fs9 from "fs";
+import fs10 from "fs";
 init_audit_service();
 init_siteSettings_service();
 async function getLanIp(_req, res) {
@@ -61299,7 +61392,7 @@ async function getLanIp(_req, res) {
 }
 function downloadApk(_req, res) {
   const apkPath = path9.resolve(process.cwd(), "../mobile/android/app/build/outputs/apk/debug/app-debug.apk");
-  if (fs9.existsSync(apkPath)) {
+  if (fs10.existsSync(apkPath)) {
     res.download(apkPath, "SwitchNest.apk");
   } else {
     res.status(404).json({ success: false, error: { code: "NOT_FOUND", message: "APK not built yet." } });
@@ -61794,9 +61887,9 @@ init_notification_service();
 init_socket();
 
 // src/lib/attachmentStore.ts
-import * as fs10 from "fs";
+import * as fs11 from "fs";
 import * as path10 from "path";
-var import_cloudinary5 = __toESM(require_cloudinary3(), 1);
+var import_cloudinary5 = __toESM(require_cloudinary3());
 function extFor(type, name) {
   const fromName = name.split(".").pop()?.toLowerCase();
   if (fromName && /^[a-z0-9]{1,8}$/.test(fromName)) return fromName;
@@ -61827,7 +61920,7 @@ function readAttachmentFile(filename) {
   const safe = path10.basename(filename);
   if (safe !== filename) return null;
   try {
-    return fs10.readFileSync(path10.join(attachmentDir, safe));
+    return fs11.readFileSync(path10.join(attachmentDir, safe));
   } catch {
     return null;
   }
@@ -61838,7 +61931,7 @@ function deleteAttachmentFile(filename) {
   const safe = path10.basename(filename);
   if (safe !== filename) return;
   try {
-    fs10.unlinkSync(path10.join(attachmentDir, safe));
+    fs11.unlinkSync(path10.join(attachmentDir, safe));
   } catch {
   }
 }
@@ -62424,7 +62517,7 @@ init_prisma();
 init_socket();
 init_push_service();
 import jwt5 from "jsonwebtoken";
-import crypto9 from "crypto";
+import crypto8 from "crypto";
 function generateJitsiJwt(roomId, user, isModerator = false) {
   const appId = process.env.JITSI_APP_ID;
   const privateKey = process.env.JITSI_PRIVATE_KEY;
@@ -62480,7 +62573,7 @@ async function initiateCall(req, res) {
     res.status(404).json({ error: "Admin not found" });
     return;
   }
-  const rawRoomId = `switchnest-support-${crypto9.randomBytes(16).toString("hex")}`;
+  const rawRoomId = `switchnest-support-${crypto8.randomBytes(16).toString("hex")}`;
   const appId = process.env.JITSI_APP_ID;
   const roomId = appId ? `${appId}/${rawRoomId}` : rawRoomId;
   const call = await prisma.supportCall.create({
@@ -62529,7 +62622,7 @@ async function initiateCall(req, res) {
 }
 async function acceptCall(req, res) {
   const userId = req.user.sub;
-  const callId = parseInt(req.params.id, 10);
+  const callId = parseInt(String(req.params.id), 10);
   const call = await prisma.supportCall.findUnique({ where: { id: callId } });
   if (!call || call.receiverId !== userId) {
     res.status(404).json({ error: "Call not found or unauthorized" });
@@ -62569,7 +62662,7 @@ async function acceptCall(req, res) {
 }
 async function rejectCall(req, res) {
   const userId = req.user.sub;
-  const callId = parseInt(req.params.id, 10);
+  const callId = parseInt(String(req.params.id), 10);
   const call = await prisma.supportCall.findUnique({ where: { id: callId } });
   if (!call || call.receiverId !== userId) {
     res.status(404).json({ error: "Call not found or unauthorized" });
@@ -62592,7 +62685,7 @@ async function rejectCall(req, res) {
 }
 async function endCall(req, res) {
   const userId = req.user.sub;
-  const callId = parseInt(req.params.id, 10);
+  const callId = parseInt(String(req.params.id), 10);
   const call = await prisma.supportCall.findUnique({ where: { id: callId } });
   if (!call) {
     res.status(404).json({ error: "Call not found" });
@@ -62728,32 +62821,22 @@ supportRouter.post("/calls/:id/reject", requireAuth, rejectCall);
 supportRouter.post("/calls/:id/end", requireAuth, endCall);
 
 // src/routes/oauth.routes.ts
-init_prisma();
 import { Router as Router17 } from "express";
-import crypto10 from "crypto";
 import { z as z14 } from "zod";
-var oauthRouter = Router17();
-var authorizeSchema = z14.object({
-  client_id: z14.string(),
-  redirect_uri: z14.string().url(),
-  state: z14.string(),
-  homeId: z14.number().int().positive(),
-  provider: z14.enum(["google", "alexa"])
-});
-oauthRouter.post("/authorize", requireAuth, async (req, res) => {
-  const parsed2 = authorizeSchema.safeParse(req.body);
-  if (!parsed2.success) {
-    throw new AppError("BAD_REQUEST", "Invalid oauth authorize payload", 400, parsed2.error.flatten());
-  }
-  const { client_id, redirect_uri, state, homeId, provider } = parsed2.data;
+
+// src/controllers/oauth.controller.ts
+init_prisma();
+import crypto9 from "crypto";
+var authorize = async (req, res) => {
+  const { client_id, redirect_uri, state, homeId, provider } = req.body;
   const userId = req.user.sub;
-  const client = await prisma.oAuthClient.findUnique({
+  const client2 = await prisma.oAuthClient.findUnique({
     where: { clientId: client_id }
   });
-  if (!client) {
+  if (!client2) {
     throw new AppError("BAD_REQUEST", "Invalid client_id");
   }
-  if (!client.redirectUris.includes(redirect_uri)) {
+  if (!client2.redirectUris.includes(redirect_uri)) {
     throw new AppError("BAD_REQUEST", "Invalid redirect_uri for this client");
   }
   const membership2 = await prisma.homeMember.findUnique({
@@ -62763,30 +62846,16 @@ oauthRouter.post("/authorize", requireAuth, async (req, res) => {
     throw new AppError("FORBIDDEN", "You are not a member of the selected Home.");
   }
   await prisma.integrationConnection.upsert({
-    where: {
-      userId_provider: {
-        userId,
-        provider
-      }
-    },
-    update: {
-      homeId,
-      status: "active",
-      updatedAt: /* @__PURE__ */ new Date()
-    },
-    create: {
-      userId,
-      homeId,
-      provider,
-      status: "active"
-    }
+    where: { userId_provider: { userId, provider } },
+    update: { homeId, status: "active", updatedAt: /* @__PURE__ */ new Date() },
+    create: { userId, homeId, provider, status: "active" }
   });
-  const code = crypto10.randomBytes(32).toString("hex");
+  const code = crypto9.randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + 10 * 60 * 1e3);
   await prisma.oAuthAuthCode.create({
     data: {
       code,
-      clientId: client.clientId,
+      clientId: client2.clientId,
       userId,
       homeId,
       redirectUri: redirect_uri,
@@ -62797,25 +62866,30 @@ oauthRouter.post("/authorize", requireAuth, async (req, res) => {
   url.searchParams.append("code", code);
   url.searchParams.append("state", state);
   ok(res, { redirectUrl: url.toString() });
-});
-oauthRouter.post("/token", async (req, res) => {
-  const { grant_type, client_id, client_secret, code, redirect_uri, refresh_token } = req.body;
+};
+var token = async (req, res) => {
+  const {
+    grant_type,
+    client_id,
+    client_secret,
+    code,
+    redirect_uri,
+    refresh_token
+  } = req.body;
   if (!client_id || !client_secret) {
     return res.status(401).json({ error: "invalid_client" });
   }
-  const client = await prisma.oAuthClient.findUnique({
+  const client2 = await prisma.oAuthClient.findUnique({
     where: { clientId: client_id }
   });
-  if (!client || client.clientSecret !== client_secret) {
+  if (!client2 || client2.clientSecret !== client_secret) {
     return res.status(401).json({ error: "invalid_client" });
   }
   if (grant_type === "authorization_code") {
     if (!code || !redirect_uri) {
       return res.status(400).json({ error: "invalid_request" });
     }
-    const authCode = await prisma.oAuthAuthCode.findUnique({
-      where: { code }
-    });
+    const authCode = await prisma.oAuthAuthCode.findUnique({ where: { code } });
     if (!authCode) {
       return res.status(400).json({ error: "invalid_grant", error_description: "Code not found" });
     }
@@ -62826,8 +62900,8 @@ oauthRouter.post("/token", async (req, res) => {
       return res.status(400).json({ error: "invalid_grant", error_description: "Code expired" });
     }
     await prisma.oAuthAuthCode.delete({ where: { id: authCode.id } });
-    const accessToken = crypto10.randomBytes(48).toString("hex");
-    const refreshToken = crypto10.randomBytes(48).toString("hex");
+    const accessToken = crypto9.randomBytes(48).toString("hex");
+    const refreshToken = crypto9.randomBytes(48).toString("hex");
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1e3);
     await prisma.oAuthToken.create({
       data: {
@@ -62844,7 +62918,6 @@ oauthRouter.post("/token", async (req, res) => {
       access_token: accessToken,
       refresh_token: refreshToken,
       expires_in: 30 * 24 * 60 * 60
-      // seconds
     });
   } else if (grant_type === "refresh_token") {
     if (!refresh_token) {
@@ -62857,58 +62930,54 @@ oauthRouter.post("/token", async (req, res) => {
       return res.status(400).json({ error: "invalid_grant" });
     }
     const conn = await prisma.integrationConnection.findFirst({
-      where: { userId: tokenRecord.userId, homeId: tokenRecord.homeId, status: "active" }
+      where: {
+        userId: tokenRecord.userId,
+        homeId: tokenRecord.homeId,
+        status: "active"
+      }
     });
     if (!conn) {
       await prisma.oAuthToken.delete({ where: { id: tokenRecord.id } });
-      return res.status(400).json({ error: "invalid_grant", error_description: "Integration revoked" });
+      return res.status(400).json({
+        error: "invalid_grant",
+        error_description: "Integration revoked"
+      });
     }
-    const newAccessToken = crypto10.randomBytes(48).toString("hex");
+    const newAccessToken = crypto9.randomBytes(48).toString("hex");
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1e3);
     const updated = await prisma.oAuthToken.update({
       where: { id: tokenRecord.id },
-      data: {
-        accessToken: newAccessToken,
-        expiresAt
-      }
+      data: { accessToken: newAccessToken, expiresAt }
     });
     return res.json({
       token_type: "Bearer",
       access_token: updated.accessToken,
       refresh_token: updated.refreshToken,
-      // Same as before
       expires_in: 30 * 24 * 60 * 60
     });
   }
   return res.status(400).json({ error: "unsupported_grant_type" });
+};
+
+// src/routes/oauth.routes.ts
+var oauthRouter = Router17();
+var authorizeSchema = z14.object({
+  client_id: z14.string(),
+  redirect_uri: z14.string().url(),
+  state: z14.string(),
+  homeId: z14.number().int().positive(),
+  provider: z14.enum(["google", "alexa"])
 });
+oauthRouter.post("/authorize", requireAuth, validateBody(authorizeSchema), authorize);
+oauthRouter.post("/token", token);
 
 // src/routes/google.routes.ts
 init_prisma();
 import { Router as Router18 } from "express";
-var googleRouter = Router18();
-var requireGoogleAuth = async (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "Missing Bearer token" });
-  }
-  const token = authHeader.substring(7);
-  const oauthToken = await prisma.oAuthToken.findUnique({
-    where: { accessToken: token }
-  });
-  if (!oauthToken || oauthToken.expiresAt < /* @__PURE__ */ new Date()) {
-    return res.status(401).json({ error: "Invalid or expired token" });
-  }
-  const conn = await prisma.integrationConnection.findFirst({
-    where: { userId: oauthToken.userId, homeId: oauthToken.homeId, provider: "google", status: "active" }
-  });
-  if (!conn) {
-    return res.status(401).json({ error: "Google integration revoked" });
-  }
-  req.oauthToken = oauthToken;
-  next();
-};
-googleRouter.post("/fulfillment", requireGoogleAuth, async (req, res) => {
+
+// src/controllers/google.controller.ts
+init_prisma();
+var fulfillment = async (req, res) => {
   const payload = req.body;
   const requestId = payload.requestId;
   const inputs = payload.inputs || [];
@@ -62922,24 +62991,17 @@ googleRouter.post("/fulfillment", requireGoogleAuth, async (req, res) => {
     const intent = inputs[0].intent;
     switch (intent) {
       case "action.devices.SYNC": {
-        const devices = await prisma.device.findMany({
-          where: { homeId, access: { some: { userId } } }
-          // using device_access or simple home check
-        });
         const allHomeDevices = await prisma.device.findMany({ where: { homeId } });
         const syncDevices = allHomeDevices.map((d) => ({
           id: String(d.id),
           type: d.type === "bulb" ? "action.devices.types.LIGHT" : d.type === "plug" ? "action.devices.types.OUTLET" : d.type === "ac" ? "action.devices.types.AC" : "action.devices.types.SWITCH",
-          traits: [
-            "action.devices.traits.OnOff"
-          ],
+          traits: ["action.devices.traits.OnOff"],
           name: {
             defaultNames: [d.name],
             name: d.name,
             nicknames: [d.name]
           },
           willReportState: false
-          // For now, basic implementation
         }));
         return res.json({
           requestId,
@@ -62965,9 +63027,7 @@ googleRouter.post("/fulfillment", requireGoogleAuth, async (req, res) => {
         });
         return res.json({
           requestId,
-          payload: {
-            devices: queryDevices
-          }
+          payload: { devices: queryDevices }
         });
       }
       case "action.devices.EXECUTE": {
@@ -62979,7 +63039,9 @@ googleRouter.post("/fulfillment", requireGoogleAuth, async (req, res) => {
           if (execution.command === "action.devices.commands.OnOff") {
             const turnOn = execution.params.on;
             for (const dId of deviceIds) {
-              const device = await prisma.device.findFirst({ where: { homeId, id: dId } });
+              const device = await prisma.device.findFirst({
+                where: { homeId, id: dId }
+              });
               if (!device) {
                 executeResponses.push({
                   ids: [String(dId)],
@@ -63014,9 +63076,7 @@ googleRouter.post("/fulfillment", requireGoogleAuth, async (req, res) => {
         }
         return res.json({
           requestId,
-          payload: {
-            commands: executeResponses
-          }
+          payload: { commands: executeResponses }
         });
       }
       case "action.devices.DISCONNECT": {
@@ -63032,23 +63092,54 @@ googleRouter.post("/fulfillment", requireGoogleAuth, async (req, res) => {
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
-});
+};
+
+// src/routes/google.routes.ts
+var googleRouter = Router18();
+var requireGoogleAuth = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) {
+    return res.status(401).json({ error: "Missing Bearer token" });
+  }
+  const token2 = authHeader.substring(7);
+  const oauthToken = await prisma.oAuthToken.findUnique({
+    where: { accessToken: token2 }
+  });
+  if (!oauthToken || oauthToken.expiresAt < /* @__PURE__ */ new Date()) {
+    return res.status(401).json({ error: "Invalid or expired token" });
+  }
+  const conn = await prisma.integrationConnection.findFirst({
+    where: {
+      userId: oauthToken.userId,
+      homeId: oauthToken.homeId,
+      provider: "google",
+      status: "active"
+    }
+  });
+  if (!conn) {
+    return res.status(401).json({ error: "Google integration revoked" });
+  }
+  req.oauthToken = oauthToken;
+  next();
+};
+googleRouter.post("/fulfillment", requireGoogleAuth, fulfillment);
 
 // src/routes/alexa.routes.ts
-init_prisma();
 import { Router as Router19 } from "express";
-var alexaRouter = Router19();
+
+// src/middleware/alexaAuth.ts
+init_prisma();
 var requireAlexaAuth = async (req, res, next) => {
   const directive = req.body.directive;
-  let token = null;
-  if (directive?.endpoint?.scope?.token) token = directive.endpoint.scope.token;
-  else if (directive?.payload?.scope?.token) token = directive.payload.scope.token;
-  else if (directive?.payload?.grantee?.token) token = directive.payload.grantee.token;
-  if (!token) {
+  let token2 = null;
+  if (directive?.endpoint?.scope?.token) token2 = directive.endpoint.scope.token;
+  else if (directive?.payload?.scope?.token) token2 = directive.payload.scope.token;
+  else if (directive?.payload?.grantee?.token) token2 = directive.payload.grantee.token;
+  if (!token2) {
     return res.status(401).json({ error: "Missing token in directive" });
   }
   const oauthToken = await prisma.oAuthToken.findUnique({
-    where: { accessToken: token }
+    where: { accessToken: token2 }
   });
   if (!oauthToken || oauthToken.expiresAt < /* @__PURE__ */ new Date()) {
     return res.status(401).json({ error: "Invalid or expired token" });
@@ -63062,7 +63153,10 @@ var requireAlexaAuth = async (req, res, next) => {
   req.oauthToken = oauthToken;
   next();
 };
-alexaRouter.post("/directive", requireAlexaAuth, async (req, res) => {
+
+// src/controllers/alexa.controller.ts
+init_prisma();
+var handleAlexaDirective = async (req, res) => {
   const directive = req.body.directive;
   const header = directive.header;
   const namespace = header.namespace;
@@ -63198,14 +63292,19 @@ alexaRouter.post("/directive", requireAlexaAuth, async (req, res) => {
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
-});
+};
+
+// src/routes/alexa.routes.ts
+var alexaRouter = Router19();
+alexaRouter.post("/directive", requireAlexaAuth, handleAlexaDirective);
 
 // src/routes/webhook.routes.ts
-init_prisma();
 import { Router as Router20 } from "express";
+
+// src/controllers/webhook.controller.ts
+init_prisma();
 init_logger();
-var webhookRouter = Router20();
-webhookRouter.post("/razorpay", async (req, res) => {
+var handleRazorpayWebhook = async (req, res) => {
   const signature = req.headers["x-razorpay-signature"];
   if (typeof signature !== "string") {
     logger.warn("Razorpay Webhook: Missing signature");
@@ -63278,11 +63377,32 @@ webhookRouter.post("/razorpay", async (req, res) => {
     logger.error("Razorpay Webhook Error:", error instanceof Error ? error.message : String(error));
     res.status(500).send("Internal Error");
   }
-});
+};
+
+// src/routes/webhook.routes.ts
+var webhookRouter = Router20();
+webhookRouter.post("/razorpay", handleRazorpayWebhook);
+
+// src/routes/firmware.routes.ts
+import { Router as Router21 } from "express";
+
+// src/controllers/firmware.controller.ts
+init_prisma();
+var getCurrentFirmware = async (_req, res) => {
+  const versions = await prisma.firmwareVersion.findMany({
+    where: { isCurrent: true },
+    select: { modelCode: true, version: true, releaseNotes: true },
+    orderBy: { modelCode: "asc" }
+  });
+  ok(res, versions);
+};
+
+// src/routes/firmware.routes.ts
+var firmwareRouter = Router21();
+firmwareRouter.get("/current", requireAuth, getCurrentFirmware);
 
 // src/routes/index.ts
-init_prisma();
-var apiRouter = Router21();
+var apiRouter = Router22();
 apiRouter.use("/auth", authRouter);
 apiRouter.use("/homes", homeRouter);
 apiRouter.use("/homes", memberRouter);
@@ -63303,6 +63423,7 @@ apiRouter.use("/oauth", oauthRouter);
 apiRouter.use("/integration/google", googleRouter);
 apiRouter.use("/integration/alexa", alexaRouter);
 apiRouter.use("/webhooks", webhookRouter);
+apiRouter.use("/firmware", firmwareRouter);
 var apiMounts = [
   { router: authRouter, prefix: "/auth" },
   { router: homeRouter, prefix: "/homes" },
@@ -63323,25 +63444,18 @@ var apiMounts = [
   { router: oauthRouter, prefix: "/oauth" },
   { router: googleRouter, prefix: "/integration/google" },
   { router: alexaRouter, prefix: "/integration/alexa" },
-  { router: webhookRouter, prefix: "/webhooks" }
+  { router: webhookRouter, prefix: "/webhooks" },
+  { router: firmwareRouter, prefix: "/firmware" }
 ];
-apiRouter.get("/firmware/current", requireAuth, async (_req, res) => {
-  const versions = await prisma.firmwareVersion.findMany({
-    where: { isCurrent: true },
-    select: { modelCode: true, version: true, releaseNotes: true },
-    orderBy: { modelCode: "asc" }
-  });
-  ok(res, versions);
-});
 
 // src/routes/install.routes.ts
-import { Router as Router22 } from "express";
+import { Router as Router23 } from "express";
 
 // src/controllers/install.controller.ts
 init_env();
 init_prisma();
 import mysql from "mysql2/promise";
-import fs11 from "node:fs";
+import fs12 from "node:fs";
 import path11 from "node:path";
 import bcrypt3 from "bcryptjs";
 init_logger();
@@ -63752,9 +63866,9 @@ function getSchemaSql() {
     path11.resolve(__dirname, "prisma/schema.sql")
   ];
   for (const p of candidates) {
-    if (fs11.existsSync(p)) {
+    if (fs12.existsSync(p)) {
       try {
-        const sql = fs11.readFileSync(p, "utf-8");
+        const sql = fs12.readFileSync(p, "utf-8");
         if (sql && sql.trim().length > 50) return sql;
       } catch {
       }
@@ -63915,6 +64029,17 @@ function dbFromBody(bodyDb) {
 }
 async function getInstallStatus(_req, res) {
   try {
+    if (isDbReady()) {
+      ok(res, {
+        installed: true,
+        dbReachable: true,
+        tablesReady: true,
+        dbConfigured: true,
+        db: { host: "neon.tech", port: 5432, user: "postgres", name: "postgres" },
+        admin: { username: "admin", email: "admin@switchnest.in", passwordSet: true }
+      });
+      return;
+    }
     const dbUrl = getEffectiveDbUrl();
     const parts = parseDatabaseUrl(dbUrl);
     const probe = await probeDb(parts);
@@ -64045,7 +64170,7 @@ CREATE TABLE IF NOT EXISTS \`users\` (
 `;
 
 // src/routes/install.routes.ts
-var installRouter = Router22();
+var installRouter = Router23();
 installRouter.get("/status", getInstallStatus);
 installRouter.post("/connect", connectStep);
 installRouter.post("/schema", schemaStep);
@@ -64053,7 +64178,7 @@ installRouter.post("/admin", adminStep);
 installRouter.post("/", fullInstall);
 
 // src/routes/docs.routes.ts
-import express, { Router as Router23 } from "express";
+import express, { Router as Router24 } from "express";
 
 // src/lib/openapi.ts
 function joinPath(prefix, p) {
@@ -65550,9 +65675,7 @@ function realtimeGuideHtml() {
   return buildHtml2();
 }
 
-// src/routes/docs.routes.ts
-var docsRouter = Router23();
-docsRouter.use("/assets", express.static(swaggerUiDir));
+// src/controllers/docs.controller.ts
 var SWAGGER_UI_HTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -65583,22 +65706,22 @@ var SWAGGER_UI_HTML = `<!DOCTYPE html>
   <script src="/api/docs/assets/swagger-init.js"></script>
 </body>
 </html>`;
-docsRouter.get("/", (_req, res) => {
+var getSwaggerUi = (_req, res) => {
   res.type("html").send(SWAGGER_UI_HTML);
-});
-docsRouter.get("/openapi.json", (_req, res) => {
+};
+var getOpenApiJson = (_req, res) => {
   res.json(getOpenApiSpec());
-});
-docsRouter.get("/esp32", (_req, res) => {
+};
+var getEsp32Guide = (_req, res) => {
   res.type("html").send(esp32GuideHtml("en"));
-});
-docsRouter.get("/esp32/hi", (_req, res) => {
+};
+var getEsp32GuideHi = (_req, res) => {
   res.type("html").send(esp32GuideHtml("hi"));
-});
-docsRouter.get("/realtime", (_req, res) => {
+};
+var getRealtimeGuide = (_req, res) => {
   res.type("html").send(realtimeGuideHtml());
-});
-docsRouter.get("/plain", (_req, res) => {
+};
+var getPlainList = (_req, res) => {
   const spec = getOpenApiSpec();
   const paths = spec.paths;
   const byTag = /* @__PURE__ */ new Map();
@@ -65642,7 +65765,137 @@ docsRouter.get("/plain", (_req, res) => {
     ${sections}
   </div>
 </body></html>`);
-});
+};
+
+// src/routes/docs.routes.ts
+var docsRouter = Router24();
+docsRouter.use("/assets", express.static(swaggerUiDir));
+docsRouter.get("/", getSwaggerUi);
+docsRouter.get("/openapi.json", getOpenApiJson);
+docsRouter.get("/esp32", getEsp32Guide);
+docsRouter.get("/esp32/hi", getEsp32GuideHi);
+docsRouter.get("/realtime", getRealtimeGuide);
+docsRouter.get("/plain", getPlainList);
+
+// src/routes/mqtt.routes.ts
+import { Router as Router25 } from "express";
+
+// src/controllers/mqtt.controller.ts
+init_prisma();
+init_logger();
+import crypto10 from "node:crypto";
+function hashKey3(raw) {
+  return crypto10.createHash("sha256").update(raw).digest("hex");
+}
+var emqxAuth = async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    if (!username || !password) {
+      return res.status(401).json({ result: "ignore" });
+    }
+    const serial = username.toString().trim().toUpperCase();
+    const apiKeyPlain = password.toString().trim();
+    const key = await prisma.apiKey.findUnique({
+      where: { keyHash: hashKey3(apiKeyPlain) },
+      select: { id: true, homeId: true, revokedAt: true, expiresAt: true }
+    });
+    if (!key || !key.homeId) {
+      return res.status(401).json({ result: "deny" });
+    }
+    if (key.revokedAt) {
+      return res.status(401).json({ result: "deny" });
+    }
+    if (key.expiresAt && key.expiresAt < /* @__PURE__ */ new Date()) {
+      return res.status(401).json({ result: "deny" });
+    }
+    let esp = await prisma.espDevice.findFirst({
+      where: { serialCode: serial, homeId: key.homeId },
+      select: { id: true, macAddress: true }
+    });
+    const clientId = req.body.clientid || req.body.client_id;
+    let realMac = `PENDING-${serial}`;
+    if (clientId && typeof clientId === "string" && clientId.startsWith("sn-")) {
+      realMac = clientId.replace("sn-", "").toLowerCase();
+    }
+    if (!esp) {
+      const registry = await prisma.serialRegistry.findUnique({
+        where: { serialCode: serial },
+        include: { product: true }
+      });
+      if (!registry) {
+        return res.status(401).json({ result: "deny" });
+      }
+      const existingMac = await prisma.espDevice.findUnique({ where: { macAddress: realMac } });
+      if (existingMac) {
+        esp = await prisma.espDevice.update({
+          where: { id: existingMac.id },
+          data: { serialCode: serial, homeId: key.homeId, modelCode: registry.product.modelCode },
+          select: { id: true, macAddress: true }
+        });
+      } else {
+        esp = await prisma.espDevice.create({
+          data: {
+            homeId: key.homeId,
+            macAddress: realMac,
+            name: `${registry.product.name} \xB7 ${serial}`,
+            serialCode: serial,
+            modelCode: registry.product.modelCode,
+            offline: false
+          },
+          select: { id: true, macAddress: true }
+        });
+      }
+      logger.info(`[mqtt-auth] Auto-provisioned ESP device ${serial} with MAC ${realMac}`);
+    } else if (esp.macAddress !== realMac && realMac !== `PENDING-${serial}`) {
+      await prisma.espDevice.update({
+        where: { id: esp.id },
+        data: { macAddress: realMac }
+      });
+    }
+    await prisma.apiKey.update({ where: { id: key.id }, data: { lastUsedAt: /* @__PURE__ */ new Date() } }).catch(() => void 0);
+    logger.info(`[mqtt-auth] \u{1F511} ${serial} authenticated (home ${key.homeId}) via EMQX`);
+    return res.status(200).json({
+      result: "allow",
+      is_superuser: false
+    });
+  } catch (err) {
+    logger.warn("[mqtt-auth] auth error", err instanceof Error ? err.message : String(err));
+    return res.status(500).json({ result: "ignore" });
+  }
+};
+var emqxAcl = async (req, res) => {
+  try {
+    const { username, topic, access } = req.body;
+    if (!username || !topic) {
+      return res.status(403).json({ result: "ignore" });
+    }
+    const serial = username.toString().trim().toUpperCase();
+    if (username === process.env.MQTT_USERNAME) {
+      return res.status(200).json({ result: "allow" });
+    }
+    const esp = await prisma.espDevice.findFirst({
+      where: { serialCode: serial },
+      select: { macAddress: true }
+    });
+    if (!esp) {
+      return res.status(403).json({ result: "deny" });
+    }
+    const mac = esp.macAddress.replace(/:/g, "").toLowerCase();
+    const prefix = `sn/${mac}/`;
+    if (topic.startsWith(prefix)) {
+      return res.status(200).json({ result: "allow" });
+    }
+    return res.status(403).json({ result: "deny" });
+  } catch (err) {
+    logger.warn("[mqtt-acl] acl error", err instanceof Error ? err.message : String(err));
+    return res.status(500).json({ result: "ignore" });
+  }
+};
+
+// src/routes/mqtt.routes.ts
+var mqttRouter = Router25();
+mqttRouter.post("/auth", emqxAuth);
+mqttRouter.post("/acl", emqxAcl);
 
 // src/app.ts
 init_logger();
@@ -65759,32 +66012,22 @@ function createApp() {
   app.use("/public", publicRouter);
   app.use("/api/docs", docsRouter);
   app.use("/docs", docsRouter);
-  const checkDbSetup = (req, res, next) => {
-    if (isDbReady()) return next();
-    res.status(503).json({
-      success: false,
-      error: {
-        code: "NOT_INSTALLED",
-        message: "Database not installed yet \u2014 run installation first (GET/POST /api/install)"
-      }
-    });
-  };
-  app.use("/api", checkDbSetup);
+  app.use("/api/mqtt", mqttRouter);
   app.use("/api", apiRouter);
   app.use("/firmware", express2.static(firmwareDir));
   app.use("/uploads", express2.static(uploadsDir));
   const apkCandidateDirs = getMobileAppCandidateDirs();
   for (const dir of apkCandidateDirs) {
-    if (dir && fs12.existsSync(dir)) {
+    if (dir && fs13.existsSync(dir)) {
       app.use("/mobile-app", express2.static(dir));
     }
   }
   app.get("/mobile-app/:filename", (req, res, next) => {
     const filename = path12.basename(req.params.filename);
     for (const dir of apkCandidateDirs) {
-      if (dir && fs12.existsSync(dir)) {
+      if (dir && fs13.existsSync(dir)) {
         const targetPath = path12.join(dir, filename);
-        if (fs12.existsSync(targetPath)) {
+        if (fs13.existsSync(targetPath)) {
           return res.sendFile(targetPath);
         }
       }
@@ -65795,7 +66038,7 @@ function createApp() {
   const apiAssetsDir = path12.join(process.cwd(), "assets");
   const webDistHtml = path12.join(webDist, "index.html");
   const webDistAssets = path12.join(webDist, "assets");
-  if (fs12.existsSync(apiAssetsDir)) {
+  if (fs13.existsSync(apiAssetsDir)) {
     app.use(
       "/assets",
       express2.static(apiAssetsDir, {
@@ -65808,7 +66051,7 @@ function createApp() {
       })
     );
   }
-  if (fs12.existsSync(webDistAssets)) {
+  if (fs13.existsSync(webDistAssets)) {
     app.use(
       "/assets",
       express2.static(webDistAssets, {
@@ -65823,10 +66066,10 @@ function createApp() {
   }
   app.use("/assets", (req, res, next) => {
     if (req.path.endsWith(".js")) {
-      const targetDir = fs12.existsSync(apiAssetsDir) ? apiAssetsDir : fs12.existsSync(webDistAssets) ? webDistAssets : null;
+      const targetDir = fs13.existsSync(apiAssetsDir) ? apiAssetsDir : fs13.existsSync(webDistAssets) ? webDistAssets : null;
       if (targetDir) {
         try {
-          const files = fs12.readdirSync(targetDir);
+          const files = fs13.readdirSync(targetDir);
           const latestJs = files.find((f) => f.startsWith("index-") && f.endsWith(".js"));
           if (latestJs) {
             res.setHeader("Content-Type", "application/javascript");
@@ -65842,16 +66085,16 @@ function createApp() {
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0");
     res.setHeader("Pragma", "no-cache");
     res.setHeader("Expires", "0");
-    if (fs12.existsSync(apiRootHtml)) {
+    if (fs13.existsSync(apiRootHtml)) {
       res.sendFile(apiRootHtml);
-    } else if (fs12.existsSync(webDistHtml)) {
+    } else if (fs13.existsSync(webDistHtml)) {
       res.sendFile(webDistHtml);
     }
   };
-  if (fs12.existsSync(apiRootHtml)) {
+  if (fs13.existsSync(apiRootHtml)) {
     app.use(express2.static(process.cwd()));
   }
-  if (fs12.existsSync(webDistHtml)) {
+  if (fs13.existsSync(webDistHtml)) {
     app.use(express2.static(webDist));
   }
   app.get(["/", "/login", "/signup", "/install", "/activate", "/print-serials", "/print-bill", "/warranty", "/forgot-password", "/reset-password", "/support", "/verify-bill"], sendSpaHtml);
@@ -66021,7 +66264,7 @@ function startKeyExpiryWatcher() {
 init_prisma();
 init_siteSettings_service();
 init_logger();
-import fs13 from "node:fs";
+import fs14 from "node:fs";
 import path13 from "node:path";
 var COLD_STORAGE_TELEMETRY = path13.join(uploadsDir, "cold_storage", "telemetry");
 var COLD_STORAGE_SUPPORT = path13.join(uploadsDir, "cold_storage", "support");
@@ -66038,8 +66281,8 @@ async function runArchival() {
   isRunning = true;
   try {
     const settings = await getSiteSettings();
-    fs13.mkdirSync(COLD_STORAGE_TELEMETRY, { recursive: true });
-    fs13.mkdirSync(COLD_STORAGE_SUPPORT, { recursive: true });
+    fs14.mkdirSync(COLD_STORAGE_TELEMETRY, { recursive: true });
+    fs14.mkdirSync(COLD_STORAGE_SUPPORT, { recursive: true });
     const now = /* @__PURE__ */ new Date();
     const telemetryThreshold = /* @__PURE__ */ new Date();
     telemetryThreshold.setDate(telemetryThreshold.getDate() - (settings.deviceTelemetryRetentionDays || 180));
@@ -66053,7 +66296,7 @@ async function runArchival() {
       if (oldLogs.length === 0) break;
       const filePath = path13.join(COLD_STORAGE_TELEMETRY, `telemetry_${now.toISOString().split("T")[0]}.jsonl`);
       const lines = oldLogs.map((l) => JSON.stringify(l)).join("\n") + "\n";
-      fs13.appendFileSync(filePath, lines);
+      fs14.appendFileSync(filePath, lines);
       const ids = oldLogs.map((l) => l.id);
       await prisma.deviceLog.deleteMany({ where: { id: { in: ids } } });
       archivedTelemetryCount += oldLogs.length;
@@ -66073,7 +66316,7 @@ async function runArchival() {
       if (oldMessages.length === 0) break;
       const filePath = path13.join(COLD_STORAGE_SUPPORT, `chat_${now.toISOString().split("T")[0]}.jsonl`);
       const lines = oldMessages.map((m) => JSON.stringify(m)).join("\n") + "\n";
-      fs13.appendFileSync(filePath, lines);
+      fs14.appendFileSync(filePath, lines);
       const ids = oldMessages.map((m) => m.id);
       await prisma.supportMessage.deleteMany({ where: { id: { in: ids } } });
       archivedChatCount += oldMessages.length;
@@ -66533,32 +66776,13 @@ async function dbHasSchema() {
   try {
     const rows = await prisma.$queryRaw`
       SELECT COUNT(*) AS c FROM information_schema.tables
-      WHERE table_schema = DATABASE() AND table_name = 'users'
+      WHERE table_schema = current_schema() AND table_name IN ('User', 'users')
     `;
     if (Number(rows[0]?.c ?? 0) > 0) return true;
   } catch (err) {
-    logger.warn("Schema probe via Prisma failed \u2014 trying direct mysql probe:", err instanceof Error ? err.message : String(err));
+    logger.warn("Schema probe via Prisma failed:", err instanceof Error ? err.message : String(err));
   }
-  try {
-    const mysql2 = (await import("mysql2/promise")).default;
-    const dbUrl = getEffectiveDbUrl();
-    const u = new URL(dbUrl);
-    const conn = await mysql2.createConnection({
-      host: u.hostname === "localhost" ? "127.0.0.1" : u.hostname,
-      port: Number(u.port || 3306),
-      user: decodeURIComponent(u.username),
-      password: decodeURIComponent(u.password),
-      database: decodeURIComponent(u.pathname.replace(/^\//, "")),
-      connectTimeout: 5e3
-    });
-    const [rows] = await conn.query(
-      "SELECT COUNT(*) AS c FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'users'"
-    );
-    await conn.end().catch(() => void 0);
-    return Number(rows[0]?.c ?? 0) > 0;
-  } catch {
-    return false;
-  }
+  return false;
 }
 process.on("unhandledRejection", (reason) => {
   const line = `[crashguard] unhandledRejection: ${reason instanceof Error ? reason.stack : String(reason)}`;
@@ -66643,14 +66867,8 @@ async function initDatabase() {
     try {
       await prisma.$connect();
     } catch (err) {
-      const pleskUrl = "mysql://switch_v2:switchnest%401234567890@127.0.0.1:3306/switch_v2";
-      try {
-        await resetPrismaClient(pleskUrl);
-        await prisma.$connect();
-      } catch {
-        boot("db probe: NOT reachable \u2014", err instanceof Error ? err.message : String(err));
-        return false;
-      }
+      boot("db probe: NOT reachable \u2014", err instanceof Error ? err.message : String(err));
+      return false;
     }
     if (await dbHasSchema()) {
       logger.info("\u2705 Database connected (schema ready)");
@@ -66702,8 +66920,8 @@ async function initDatabase() {
   boot("db probe: retry loop start (har 15s) \u2014 DB aate hi ready ho jayega");
   setDbReady(false);
   const retryTimer = setInterval(async () => {
-    const ok2 = await probeOnce();
-    if (ok2) {
+    const ok3 = await probeOnce();
+    if (ok3) {
       clearInterval(retryTimer);
       await finishReady();
     }

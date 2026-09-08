@@ -10,6 +10,7 @@ import { apiRouter } from "./routes";
 import { installRouter } from "./routes/install.routes";
 import { docsRouter } from "./routes/docs.routes";
 import { publicRouter } from "./routes/public.routes";
+import { mqttRouter } from "./routes/mqtt.routes";
 import { isDbReady } from "./lib/dbState";
 import { fileLog } from "./lib/logger";
 import { prisma } from "./lib/prisma";
@@ -155,6 +156,9 @@ export function createApp() {
   // API docs hamesha available — setup mode me bhi (DB nahi chahiye).
   app.use("/api/docs", docsRouter);
   app.use("/docs", docsRouter);
+
+  // EMQX Webhook APIs
+  app.use("/api/mqtt", mqttRouter);
 
   // Setup mode removed: Database is handled by Prisma and Neon via .env
   app.use("/api", apiRouter);

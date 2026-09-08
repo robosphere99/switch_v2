@@ -56,8 +56,7 @@ BOOT_IP_RE = re.compile(r"(?:AP IP|IP)\s*:\s*(\d{1,3}(?:\.\d{1,3}){3})")
 # Server mode presets — (label, API URL, web URL). Localhost testing se live
 # site pe switch karte waqt URL bhoolna band — ek click me dono set.
 SERVER_PRESETS = [
-    ("Live site", "https://onlineswitch.bhartitechnical.com", "https://onlineswitch.bhartitechnical.com"),
-    ("Localhost", "http://localhost:4000", "http://localhost:5173"),
+    ("Live site", "https://switch-v2-web.vercel.app", "https://switch-v2-web.vercel.app"),
 ]
 
 INSTALL_CMD = "pip install requests pyserial esptool"
@@ -912,23 +911,34 @@ class FlasherApp:
                 candidates = [f"firmware-{model}.bin"] if model else []
                 candidates.append("firmware.bin")
                 base = self.e_server.get().rstrip("/") + "/firmware/"
-                got = None
+                
+                # Check for local files first!
+                bin_path = None
                 for nm in candidates:
-                    self._log(f"Downloading {nm} from server…", "info")
-                    r = requests.get(base + nm, timeout=60)
-                    if r.status_code == 200:
-                        got = r
+                    if os.path.exists(nm):
+                        self._log(f"Found local {nm}, skipping download.", "ok")
+                        bin_path = nm
                         break
-                    self._log(f"  {nm} -> {r.status_code}, agla try…", "warn")
-                if got is None:
-                    raise RuntimeError(
-                        "firmware download fail — server pe koi .bin nahi mila (" +
-                        ", ".join(candidates) + ")"
-                    )
-                bin_path = "firmware.bin"
-                with open(bin_path, "wb") as fh:
-                    fh.write(got.content)
-                self._log(f"Downloaded {len(got.content) / 1e6:.2f} MB → {bin_path}", "ok")
+                        
+                if not bin_path:
+                    got = None
+                    for nm in candidates:
+                        self._log(f"Downloading {nm} from server…", "info")
+                        r = requests.get(base + nm, timeout=60)
+                        # Vercel SPA fallback returns 200 with HTML for 404s. Ensure we get binary!
+                        if r.status_code == 200 and "text/html" not in r.headers.get("Content-Type", ""):
+                            got = r
+                            break
+                        self._log(f"  {nm} -> {r.status_code} (or HTML), agla try…", "warn")
+                    if got is None:
+                        raise RuntimeError(
+                            "firmware download fail — server pe koi valid .bin nahi mila (" +
+                            ", ".join(candidates) + ")"
+                        )
+                    bin_path = "firmware.bin"
+                    with open(bin_path, "wb") as fh:
+                        fh.write(got.content)
+                    self._log(f"Downloaded {len(got.content) / 1e6:.2f} MB → {bin_path}", "ok")
                 # 460800 fast — par kuch boards/cables ispe mid-flash reset karte hain
                 # ("No more data to read"). Fail pe 115200 (stable) pe ek retry.
                 for attempt, baud in enumerate((460800, 115200)):
@@ -1172,17 +1182,22 @@ class FlasherApp:
                     raise RuntimeError("ESP Server URL required")
 
                 self._open_ser()
-                self._log("Waiting for board…", "info")
-                banner = self._wait_banner(25)
-                if not any(b in banner for b in self.FIRMWARE_BANNERS):
-                    raise RuntimeError(
-                        "Board nahi mila — firmware flashed hai? Cable/baud check karo"
-                        + (f" (serial pe: {banner[-80:]!r})" if banner.strip() else "")
-                    )
-                self._log("Board detected ✓", "ok")
+                self._log("Board serial open, settling...", "info")
+                time.sleep(1.5)
+                self._log("Board assumed ready ✓", "ok")
 
-                # Zero-Trust Unlock for Fresh firmware
-                self._send_cmd("unlock robosphere_admin_99", echo=False)
+                # Wait for board to be fully ready by retrying unlock
+                self._log("Unlocking console (waiting for boot)...", "info")
+                unlocked = False
+                for attempt in range(10):
+                    r = self._send_cmd("unlock robosphere_admin_99", expect=("[OK]", "[ERR]"), timeout=2, echo=False)
+                    if "[OK]" in r:
+                        unlocked = True
+                        break
+                    time.sleep(0.5)
+                
+                if not unlocked:
+                    raise RuntimeError("Board failed to unlock or did not boot in time")
 
                 r = self._send_cmd(f"setwifi {ssid} {wpass}")
                 self._check_ok(r, "setwifi")

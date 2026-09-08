@@ -21,17 +21,20 @@ namespace ApiManager {
 // risk kabhi-kabhi, par plain HTTP se kaafi behtar). Plain HTTP
 // URLs pe purana behaviour hi rehta hai.
 // ==================================================
-static WiFiClient plainClient;
-static WiFiClientSecure secureClient;
+static WiFiClient* plainClient = nullptr;
+static WiFiClientSecure* secureClient = nullptr;
 static bool clientForUrl(const String &url, HTTPClient &http,
                          bool secureOnly = false) {
+  if (!plainClient) plainClient = new WiFiClient();
+  if (!secureClient) secureClient = new WiFiClientSecure();
+
   bool useSecure =
       url.startsWith("https://") || (secureOnly && url.startsWith("https://"));
   if (useSecure) {
-    secureClient.setInsecure();
-    return http.begin(secureClient, url);
+    secureClient->setInsecure();
+    return http.begin(*secureClient, url);
   }
-  return http.begin(url);
+  return http.begin(*plainClient, url);
 }
 
 // Command poller apne dedicated task (core 0) se chalta hai — uske liye ALAG
@@ -39,13 +42,16 @@ static bool clientForUrl(const String &url, HTTPClient &http,
 // (downloadDevices/heartbeat/updateDevice) wale secureClient se ek hi
 // connection pe conflict na ho. Aisi sharing se dono ek saath TLS session
 // corrupt kar sakte the.
-static WiFiClientSecure commandSecureClient;
+static WiFiClientSecure* commandSecureClient = nullptr;
 static bool commandClientForUrl(const String &url, HTTPClient &http) {
+  if (!commandSecureClient) commandSecureClient = new WiFiClientSecure();
+
   if (url.startsWith("https://")) {
-    commandSecureClient.setInsecure();
-    return http.begin(commandSecureClient, url);
+    commandSecureClient->setInsecure();
+    return http.begin(*commandSecureClient, url);
   }
-  return http.begin(url);
+  if (!plainClient) plainClient = new WiFiClient();
+  return http.begin(*plainClient, url);
 }
 
 // ==================================================

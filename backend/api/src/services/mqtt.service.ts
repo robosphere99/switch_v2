@@ -1,223 +1,107 @@
 /**
- * mqtt.service.ts — Embedded MQTT Broker (Aedes) for SwitchNest IoT.
+ * mqtt.service.ts — EMQX Standalone Broker Client for SwitchNest IoT.
  *
- * ESP32 boards connect via MQTT instead of HTTP long-polling.
- * Authentication: username = serial code, password = plain API key.
+ * ESP32 boards connect via MQTT to EMQX. This backend service acts as an MQTT client
+ * connecting to the same EMQX broker to bridge messages to Socket.io.
  *
  * Topic contract (board ↔ server):
  *   sn/{mac}/state   — board PUBLISHES relay states          (JSON: { states: [1,0,1,0], fw?, ip?, ssid?, serial?, model? })
  *   sn/{mac}/cmd     — server PUBLISHES commands TO board    (JSON: { commands: [{ ch, action }] })
- *   sn/{mac}/online  — last-will / birth: "1" = online, "0" = offline (retained)
+ *   sn/{mac}/log     — board PUBLISHES terminal logs         (String)
  *
  * Bridge: MQTT ↔ Socket.IO — relay state changes from MQTT are written to the DB
  *         and forwarded to web/mobile clients via the existing socket infrastructure.
  */
 
-import Aedes from "aedes";
-import { createServer as createNetServer, type Server as NetServer } from "net";
-import crypto from "node:crypto";
+import mqtt from "mqtt";
 import { prisma } from "../lib/prisma";
 import { emitDeviceUpdated, emitToHome, emitToBoardLogs } from "../lib/socket";
 import { logger } from "../lib/logger";
 
 // ---------- config ----------
-const MQTT_PORT = Number(process.env.MQTT_PORT) || 1883;
-
-/** SHA-256 hash — same as middleware/apiKey.ts */
-function hashKey(raw: string): string {
-    return crypto.createHash("sha256").update(raw).digest("hex");
-}
-
+const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || "mqtt://127.0.0.1:1883";
+const MQTT_USERNAME = process.env.MQTT_USERNAME || "switchnest_backend";
+const MQTT_PASSWORD = process.env.MQTT_PASSWORD || "backend_secret";
 
 // ---------- broker instance ----------
-let broker: InstanceType<typeof Aedes> | null = null;
-let tcpServer: NetServer | null = null;
-
-/** Track authenticated clients: clientId → { homeId, espId, mac } */
-interface ConnectedDevice {
-    homeId: number;
-    espId: number;
-    mac: string;
-    serial: string;
-}
-const connectedDevices = new Map<string, ConnectedDevice>();
+let client: mqtt.MqttClient | null = null;
 
 // ---------- public API ----------
 
 /**
- * Start the embedded MQTT broker on a TCP port. Call once at startup
+ * Start the MQTT client to connect to EMQX. Call once at startup
  * alongside initSocket / server.listen.
  */
 export function startMqttBroker(): void {
-    broker = new Aedes();
-    tcpServer = createNetServer(broker.handle);
-
-    // ---- Authentication ----
-    broker.authenticate = async (client, username, password, callback) => {
-        try {
-            if (!username || !password) {
-                return callback(new Error("credentials required") as any, false);
-            }
-
-            const serial = username.toString().trim().toUpperCase();
-            const apiKeyPlain = password.toString().trim();
-
-            // Hash the plain key and look up (same as middleware/apiKey.ts)
-            const key = await prisma.apiKey.findUnique({
-                where: { keyHash: hashKey(apiKeyPlain) },
-                select: { id: true, homeId: true, revokedAt: true, expiresAt: true },
-            });
-            if (!key || !key.homeId) {
-                return callback(new Error("invalid API key") as any, false);
-            }
-            if (key.revokedAt) {
-                return callback(new Error("API key revoked") as any, false);
-            }
-            if (key.expiresAt && key.expiresAt < new Date()) {
-                return callback(new Error("API key expired") as any, false);
-            }
-
-            // Resolve ESP board by serial
-            const esp = await prisma.espDevice.findFirst({
-                where: { serialCode: serial, homeId: key.homeId },
-                select: { id: true, macAddress: true },
-            });
-            if (!esp) {
-                return callback(new Error("device not registered") as any, false);
-            }
-
-            // Stash metadata on the client for use in publish/subscribe handlers
-            // Hardware uses colon-less MAC for topics (e.g. sn/aabbcc.../state)
-            // MUST be lowercase to match C++ toLowerCase()!
-            connectedDevices.set(client.id, {
-                homeId: key.homeId,
-                espId: esp.id,
-                mac: esp.macAddress.replace(/:/g, "").toLowerCase(),
-                serial,
-            });
-
-            // Track usage
-            await prisma.apiKey
-                .update({ where: { id: key.id }, data: { lastUsedAt: new Date() } })
-                .catch(() => undefined);
-
-            logger.info(`[mqtt] 🔑 ${serial} authenticated (home ${key.homeId})`);
-            callback(null, true);
-        } catch (err) {
-            logger.warn("[mqtt] auth error", err instanceof Error ? err.message : String(err));
-            callback((err instanceof Error ? err : new Error(String(err))) as any, false);
-        }
-    };
-
-    // ---- Authorize Publish (device → broker) ----
-    broker.authorizePublish = (client, packet, callback) => {
-        // Devices can only publish to their own topic namespace
-        const meta = client ? connectedDevices.get(client.id) : null;
-        if (!meta) return callback(new Error("unauthorized"));
-        const prefix = `sn/${meta.mac}/`;
-        if (!packet.topic.startsWith(prefix)) {
-            return callback(new Error("topic not allowed"));
-        }
-        callback(null);
-    };
-
-    // ---- Authorize Subscribe (device ← broker) ----
-    broker.authorizeSubscribe = (client, sub, callback) => {
-        const meta = client ? connectedDevices.get(client.id) : null;
-        if (!meta) return callback(new Error("unauthorized"), null);
-        const prefix = `sn/${meta.mac}/`;
-        if (!sub.topic.startsWith(prefix)) {
-            return callback(new Error("topic not allowed"), null);
-        }
-        callback(null, sub);
-    };
-
-    // ---- Handle published messages (state sync from device) ----
-    broker.on("publish", async (packet, client) => {
-        if (!client) return; // broker-internal messages (like $SYS)
-        const meta = connectedDevices.get(client.id);
-        if (!meta) return;
-
-        const topic = packet.topic;
-
-        // ---- Terminal Log Sync: sn/{mac}/log ----
-        if (topic === `sn/${meta.mac}/log`) {
-            try {
-                const payloadStr = packet.payload.toString();
-                // Avoid logging raw ping/help output entirely to keep backend console clean, or log it as debug.
-                // logger.debug(`[mqtt] term_log < ${meta.mac}: ${payloadStr}`);
-                emitToBoardLogs(meta.espId, payloadStr);
-            } catch (err) {
-                logger.warn(`[mqtt] log parse error from ${meta.serial}`, err instanceof Error ? err.message : String(err));
-            }
-            return;
-        }
-
-        // ---- State Sync: sn/{mac}/state ----
-        if (topic === `sn/${meta.mac}/state`) {
-            try {
-                const payload = JSON.parse(packet.payload.toString());
-                await handleDeviceState(meta, payload);
-            } catch (err) {
-                logger.warn(`[mqtt] state parse error from ${meta.serial}`, err instanceof Error ? err.message : String(err));
-            }
-        }
+    logger.info(`🦟 Connecting to EMQX Broker at ${MQTT_BROKER_URL}...`);
+    client = mqtt.connect(MQTT_BROKER_URL, {
+        username: MQTT_USERNAME,
+        password: MQTT_PASSWORD,
+        clientId: `switchnest_backend_${Math.random().toString(16).slice(2, 8)}`,
+        clean: true,
+        reconnectPeriod: 5000,
     });
 
-    // ---- Client connected ----
-    broker.on("client", async (client) => {
-        const meta = connectedDevices.get(client.id);
-        if (!meta) return;
-        logger.info(`[mqtt] ↗ ${meta.serial} (${meta.mac}) connected`);
-
-        // Mark board online
-        await prisma.espDevice.update({
-            where: { id: meta.espId },
-            data: { lastSeen: new Date(), offline: false },
-        }).catch(() => null);
-        await prisma.device.updateMany({
-            where: { espId: meta.espId },
-            data: { lastSeen: new Date(), offline: false },
-        }).catch(() => null);
-
-        // Push any pending commands immediately on connect
-        await pushPendingCommands(meta);
-        // Also push the device names mapping (for local ESP dash)
-        await pushDeviceNames(meta);
-    });
-
-    // ---- Client disconnected ----
-    broker.on("clientDisconnect", async (client) => {
-        const meta = connectedDevices.get(client.id);
-        if (!meta) return;
-        logger.info(`[mqtt] ↘ ${meta.serial} (${meta.mac}) disconnected`);
-        connectedDevices.delete(client.id);
-
-        // Mark board offline
-        await prisma.espDevice.update({
-            where: { id: meta.espId },
-            data: { offline: true },
-        }).catch(() => null);
-        // Emit offline status to web/mobile
-        const devices = await prisma.device.findMany({
-            where: { espId: meta.espId },
-            select: { id: true },
+    client.on("connect", () => {
+        logger.info(`[mqtt-client] Connected to EMQX Broker`);
+        
+        // Subscribe to state and log topics for all devices
+        client?.subscribe("sn/+/state", { qos: 1 }, (err) => {
+            if (err) logger.error(`[mqtt-client] Subscribe error: sn/+/state`, err);
+            else logger.info(`[mqtt-client] Subscribed to sn/+/state`);
         });
-        await prisma.device.updateMany({
-            where: { espId: meta.espId },
-            data: { offline: true },
-        }).catch(() => null);
-        for (const d of devices) {
-            await emitDeviceUpdated(meta.homeId, d.id);
-        }
+        
+        client?.subscribe("sn/+/log", { qos: 0 }, (err) => {
+            if (err) logger.error(`[mqtt-client] Subscribe error: sn/+/log`, err);
+            else logger.info(`[mqtt-client] Subscribed to sn/+/log`);
+        });
+
+        // EMQX internal presence topics (requires $SYS topics enabled in EMQX ACL for this user)
+        // client?.subscribe("$SYS/brokers/+/clients/+/connected");
+        // client?.subscribe("$SYS/brokers/+/clients/+/disconnected");
     });
 
-    // ---- Start TCP listener ----
-    tcpServer.listen(MQTT_PORT, () => {
-        logger.info(`🦟 MQTT Broker (Aedes) listening on tcp://0.0.0.0:${MQTT_PORT}`);
+    client.on("error", (err) => {
+        logger.warn(`[mqtt-client] Connection error`, err.message);
     });
-    tcpServer.on("error", (err) => {
-        logger.warn(`[mqtt] TCP server error: ${err.message}`);
+
+    client.on("message", async (topic, payload) => {
+        try {
+            // Topic format: sn/{mac}/state or sn/{mac}/log
+            const parts = topic.split("/");
+            if (parts.length !== 3 || parts[0] !== "sn") return;
+
+            const mac = parts[1].toLowerCase();
+            const type = parts[2];
+
+            // Resolve ESP by MAC to get metadata needed for DB operations
+            // (Cache this in production to reduce DB load, keeping it simple here)
+            const esp = await prisma.espDevice.findFirst({
+                where: { macAddress: mac }, // Warning: DB might have colons, MAC in topic has no colons
+            });
+
+            // We need a robust way to match MACs. DB often stores them as XX:XX:XX:XX:XX:XX.
+            // If the query above fails, we have to fetch and match or rely on a Redis cache.
+            // For now, let's query the specific home logic safely.
+            const allEsps = await prisma.espDevice.findMany({ select: { id: true, macAddress: true, serialCode: true, homeId: true }});
+            const matchedEsp = allEsps.find(e => e.macAddress.replace(/:/g, "").toLowerCase() === mac);
+
+            if (!matchedEsp) return;
+
+            if (type === "log") {
+                const payloadStr = payload.toString();
+                emitToBoardLogs(matchedEsp.id, payloadStr);
+                return;
+            }
+
+            if (type === "state") {
+                const data = JSON.parse(payload.toString());
+                await handleDeviceState(matchedEsp, data);
+            }
+
+        } catch (err) {
+            logger.warn(`[mqtt-client] Message parse error on topic ${topic}`, err instanceof Error ? err.message : String(err));
+        }
     });
 }
 
@@ -225,10 +109,10 @@ export function startMqttBroker(): void {
 
 /**
  * Process a state update from a device.
- * Payload: { states: [1,0,1,0], fw?: string, ip?: string, ssid?: string }
+ * Payload: { states: [1,0,1,0], fw?: string, ip?: string, ssid?: string, model?: string }
  */
 async function handleDeviceState(
-    meta: ConnectedDevice,
+    espMeta: { id: number; homeId: number; macAddress: string; serialCode: string | null },
     payload: {
         states?: number[];
         fw?: string;
@@ -237,7 +121,7 @@ async function handleDeviceState(
         model?: string;
     },
 ): Promise<void> {
-    const { homeId, espId, serial } = meta;
+    const { homeId, id: espId } = espMeta;
 
     // Update ESP telemetry
     const espUpdate: Record<string, unknown> = {
@@ -292,11 +176,19 @@ async function handleDeviceState(
 
 /**
  * Push pending commands to a connected device via MQTT.
- * Called on device connect + when web/mobile triggers a toggle.
+ * Called when web/mobile triggers a toggle.
  */
-async function pushPendingCommands(meta: ConnectedDevice): Promise<void> {
-    if (!broker) return;
-    const { homeId, espId, mac } = meta;
+export async function pushPendingCommandsByMac(macRaw: string): Promise<void> {
+    if (!client) return;
+
+    const mac = macRaw.replace(/:/g, "").toLowerCase();
+    
+    // Find ESP logic
+    const allEsps = await prisma.espDevice.findMany({ select: { id: true, macAddress: true, homeId: true }});
+    const matchedEsp = allEsps.find(e => e.macAddress.replace(/:/g, "").toLowerCase() === mac);
+    if (!matchedEsp) return;
+
+    const { homeId, id: espId } = matchedEsp;
 
     const devices = await prisma.device.findMany({
         where: { espId, homeId },
@@ -321,130 +213,69 @@ async function pushPendingCommands(meta: ConnectedDevice): Promise<void> {
 
     const topic = `sn/${mac}/cmd`;
     const payload = JSON.stringify({ commands });
-    broker.publish(
-        { cmd: "publish", topic, payload: Buffer.from(payload), qos: 1, retain: false, dup: false },
-        () => {
-            logger.info(`[mqtt] → ${meta.serial} pushed ${commands.length} cmd(s)`);
-        },
-    );
-}
-
-/**
- * Pushes the mapped device names for each channel (0-indexed array) to the ESP32.
- * The ESP will hold this in RAM to display human-friendly names on its local HTTP dashboard.
- */
-async function pushDeviceNames(meta: ConnectedDevice): Promise<void> {
-    if (!broker) return;
-    const { homeId, espId, mac } = meta;
-
-    const devices = await prisma.device.findMany({
-        where: { espId, homeId },
-        select: { channel: true, name: true },
+    client.publish(topic, payload, { qos: 1, retain: false }, (err) => {
+        if (!err) logger.info(`[mqtt-client] → ${mac} pushed ${commands.length} cmd(s)`);
     });
-
-    const chCount = devices.reduce((m, d) => Math.max(m, d.channel ?? 0), 4);
-    const names = new Array(chCount).fill("");
-    for (const d of devices) {
-        if (d.channel != null && d.channel >= 1) {
-            names[d.channel - 1] = d.name;
-        }
-    }
-
-    const topic = `sn/${mac}/cmd`;
-    const payload = JSON.stringify({ names });
-    broker.publish(
-        { cmd: "publish", topic, payload: Buffer.from(payload), qos: 1, retain: false, dup: false },
-        () => { }
-    );
 }
 
 /**
  * Public helper: push commands to a specific device via MQTT.
  * Called from device.service.ts when web/mobile toggles a switch.
- * Falls back silently if device is not connected via MQTT (HTTP poll will pick it up).
  */
 export function mqttPushCommands(mac: string): void {
-    const cleanMac = mac.replace(/:/g, "").toLowerCase();
-    const metaMac = mac.toLowerCase();
-
-    // Find connected client by mac
-    for (const [, meta] of connectedDevices) {
-        if (meta.mac === cleanMac || meta.mac === metaMac) {
-            void pushPendingCommands(meta);
-            return;
-        }
-    }
-    // Device not on MQTT — HTTP long-poll will handle it
+    void pushPendingCommandsByMac(mac);
 }
 
 /**
  * Public helper: push rotate_console_pass command to a specific device via MQTT.
  */
 export function mqttPushRotatePassword(mac: string, newPass: string): void {
-    if (!broker) return;
-    const topic = `sn/${mac}/cmd`;
+    if (!client) return;
+    const cleanMac = mac.replace(/:/g, "").toLowerCase();
+    const topic = `sn/${cleanMac}/cmd`;
     const payload = JSON.stringify({
         commands: [{ id: Math.floor(Math.random() * 100000), action: "rotate_console_pass", newPass }]
     });
-    broker.publish(
-        { cmd: "publish", topic, payload: Buffer.from(payload), qos: 1, retain: false, dup: false },
-        () => {
-            logger.info(`[mqtt] → ${mac} pushed rotate_console_pass`);
-        }
-    );
-}
-
-/**
- * Public helper: push commands to ALL connected devices of a home.
- * Used for bulk operations (e.g., "all off").
- */
-export function mqttPushToHome(homeId: number): void {
-    for (const [, meta] of connectedDevices) {
-        if (meta.homeId === homeId) {
-            void pushPendingCommands(meta);
-        }
-    }
-}
-
-/** How many devices are currently connected via MQTT. */
-export function mqttConnectedCount(): number {
-    return connectedDevices.size;
-}
-
-/** List connected device serials (diagnostics). */
-export function mqttConnectedDevices(): string[] {
-    return Array.from(connectedDevices.values()).map((m) => m.serial);
-}
-
-
-export function publishTermCommand(mac: string, cmd: string) {
-    if (!broker) return;
-    const cleanMac = mac.replace(/:/g, "").toLowerCase();
-    const topic = `sn/${cleanMac}/term_cmd`;
-    broker.publish({
-        topic,
-        payload: Buffer.from(cmd),
-        qos: 1,
-        retain: false,
-        cmd: "publish",
-        dup: false
-    }, (err) => {
-        if (err) logger.error(`[mqtt] Failed to push terminal command to ${mac}`);
+    client.publish(topic, payload, { qos: 1, retain: false }, (err) => {
+        if (!err) logger.info(`[mqtt-client] → ${cleanMac} pushed rotate_console_pass`);
     });
 }
 
 /**
- * Public helper: push LED status configuration to a specific device via MQTT.
+ * Public helper: push commands to ALL devices of a home.
+ * Used for bulk operations (e.g., "all off").
  */
+export async function mqttPushToHome(homeId: number): Promise<void> {
+    const esps = await prisma.espDevice.findMany({ where: { homeId }, select: { macAddress: true }});
+    for (const esp of esps) {
+        void pushPendingCommandsByMac(esp.macAddress);
+    }
+}
+
+/** Legacy signature mock for diagnostic endpoints */
+export function mqttConnectedCount(): number {
+    return client?.connected ? 1 : 0; // We don't host the broker anymore, so we only track ourselves
+}
+
+export function mqttConnectedDevices(): string[] {
+    return []; // Handled by EMQX dashboard now
+}
+
+export function publishTermCommand(mac: string, cmd: string) {
+    if (!client) return;
+    const cleanMac = mac.replace(/:/g, "").toLowerCase();
+    const topic = `sn/${cleanMac}/term_cmd`;
+    client.publish(topic, cmd, { qos: 1, retain: false }, (err) => {
+        if (err) logger.error(`[mqtt-client] Failed to push terminal command to ${mac}`);
+    });
+}
+
 export function mqttPushLedState(mac: string, enabled: boolean): void {
-    if (!broker) return;
+    if (!client) return;
     const cleanMac = mac.replace(/:/g, "").toLowerCase();
     const topic = `sn/${cleanMac}/cmd`;
     const payload = JSON.stringify({ type: "set_led", enabled });
-    broker.publish(
-        { cmd: "publish", topic, payload: Buffer.from(payload), qos: 1, retain: false, dup: false },
-        () => {
-            logger.info(`[mqtt] → ${cleanMac} pushed LED state: ${enabled}`);
-        }
-    );
+    client.publish(topic, payload, { qos: 1, retain: false }, (err) => {
+        if (!err) logger.info(`[mqtt-client] → ${cleanMac} pushed LED state: ${enabled}`);
+    });
 }

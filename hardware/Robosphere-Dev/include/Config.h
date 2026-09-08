@@ -38,6 +38,12 @@ constexpr char DEFAULT_ADMIN_PASSWORD[] = "admin";
 constexpr uint16_t HTTP_PORT = 80;
 
 //==================================================
+// EMQX Cloud MQTT
+//==================================================
+constexpr char EMQX_MQTT_HOST[] = "bf89c1fe.ala.asia-southeast1.emqxsl.com";
+constexpr uint16_t EMQX_MQTT_PORT = 8883;
+
+//==================================================
 // Device Configuration
 //==================================================
 

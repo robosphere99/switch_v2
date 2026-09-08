@@ -8,32 +8,21 @@
 #include <ArduinoJson.h>
 #include <PubSubClient.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 
 extern void processSerialCommand(const String &line, bool fromMqtt = false);
 
 namespace MqttManager {
 
-static WiFiClient espClient;
-static PubSubClient mqttClient(espClient);
+static WiFiClientSecure* espClient = nullptr;
+static PubSubClient* mqttClient = nullptr;
 
 static unsigned long lastReconnectAttempt = 0;
 static const unsigned long RECONNECT_INTERVAL = 5000;
 static unsigned long lastStatePublish = 0;
 static const unsigned long STATE_PUBLISH_INTERVAL = 30000; // Backup state push
 
-String parseHostFromUrl(String url) {
-  url.replace("http://", "");
-  url.replace("https://", "");
-  int slashIndex = url.indexOf('/');
-  if (slashIndex != -1) {
-    url = url.substring(0, slashIndex);
-  }
-  int colonIndex = url.indexOf(':');
-  if (colonIndex != -1) {
-    url = url.substring(0, colonIndex);
-  }
-  return url;
-}
+// parseHostFromUrl removed as it is no longer used for MQTT broker parsing
 
 void callback(char *topic, byte *payload, unsigned int length) {
   Serial.print("[MQTT] Message arrived on topic: ");
@@ -141,7 +130,7 @@ void callback(char *topic, byte *payload, unsigned int length) {
 }
 
 void publishLog(const String& msg) {
-  if (!mqttClient.connected()) return;
+  if (!mqttClient || !mqttClient->connected()) return;
   String mac = WiFi.macAddress();
   mac.replace(":", "");
   mac.toLowerCase();
@@ -149,31 +138,34 @@ void publishLog(const String& msg) {
   
   // Format msg nicely with uptime maybe?
   String logPayload = "[" + String(millis()) + "] " + msg;
-  mqttClient.publish(topic.c_str(), logPayload.c_str());
+  mqttClient->publish(topic.c_str(), logPayload.c_str());
 }
 
-static String
-    mqttHost; // Fix dangling pointer: PubSubClient needs persistent buffer
+// mqttHost removed
 
 void begin() {
   String serverUrl = PreferencesManager::getServerURL();
   if (serverUrl.isEmpty())
     return;
 
-  mqttHost = parseHostFromUrl(serverUrl);
-  if (mqttHost.isEmpty())
-    return;
-
   Serial.print("[MQTT] Configuring broker: ");
-  Serial.print(mqttHost);
-  Serial.println(":1883");
+  Serial.print(EMQX_MQTT_HOST);
+  Serial.println(":" + String(EMQX_MQTT_PORT));
 
-  mqttClient.setServer(mqttHost.c_str(), 1883);
-  mqttClient.setCallback(callback);
+  if (!espClient) {
+    espClient = new WiFiClientSecure();
+  }
+  if (!mqttClient) {
+    mqttClient = new PubSubClient(*espClient);
+  }
+
+  espClient->setInsecure(); // Required for EMQX TLS
+  mqttClient->setServer(EMQX_MQTT_HOST, EMQX_MQTT_PORT);
+  mqttClient->setCallback(callback);
 }
 
 bool publishState(bool forceTelemetry) {
-  if (!mqttClient.connected())
+  if (!mqttClient || !mqttClient->connected())
     return false;
 
   String mac = WiFi.macAddress();
@@ -198,7 +190,7 @@ bool publishState(bool forceTelemetry) {
 
   String topic = "sn/" + mac + "/state";
 
-  bool ok = mqttClient.publish(topic.c_str(), payload.c_str());
+  bool ok = mqttClient->publish(topic.c_str(), payload.c_str());
   if (ok) {
     Serial.printf("[MQTT] Sent payload to %s: %s\n", topic.c_str(),
                   payload.c_str());
@@ -209,15 +201,14 @@ bool publishState(bool forceTelemetry) {
 bool reconnect() {
   if (WiFi.status() != WL_CONNECTED)
     return false;
-  if (mqttClient.connected())
+  if (mqttClient->connected())
     return true;
 
   String serialCode = PreferencesManager::getSerialCode();
   String apiKey = PreferencesManager::getApiKey();
   String serverUrl = PreferencesManager::getServerURL();
-  String host = parseHostFromUrl(serverUrl);
 
-  if (serialCode.isEmpty() || apiKey.isEmpty() || host.isEmpty()) {
+  if (serialCode.isEmpty() || apiKey.isEmpty() || serverUrl.isEmpty()) {
     return false;
   }
 
@@ -233,12 +224,12 @@ bool reconnect() {
   Serial.print(serialCode);
   Serial.println("...");
 
-  if (mqttClient.connect(clientId.c_str(), serialCode.c_str(), apiKey.c_str(),
+  if (mqttClient->connect(clientId.c_str(), serialCode.c_str(), apiKey.c_str(),
                          willTopic.c_str(), 1, true, "0")) {
     Serial.println("[MQTT] Connected!");
 
     // Publish birth message
-    mqttClient.publish(willTopic.c_str(), "1", true);
+    mqttClient->publish(willTopic.c_str(), "1", true);
 
     static bool isFirstConnect = true;
     if (isFirstConnect) {
@@ -254,18 +245,18 @@ bool reconnect() {
 
     // Subscribe to commands
     String cmdTopic = "sn/" + mac + "/cmd";
-    mqttClient.subscribe(cmdTopic.c_str(), 1);
+    mqttClient->subscribe(cmdTopic.c_str(), 1);
 
     // Subscribe to terminal commands
     String termTopic = "sn/" + mac + "/term_cmd";
-    mqttClient.subscribe(termTopic.c_str(), 1);
+    mqttClient->subscribe(termTopic.c_str(), 1);
 
     // Immediately sync state on connect with full attendance telemetry
     publishState(true);
     return true;
   } else {
     Serial.print("[MQTT] Connect failed, rc=");
-    Serial.println(mqttClient.state());
+    Serial.println(mqttClient->state());
     return false;
   }
 }
@@ -275,7 +266,7 @@ void loop() {
   if (serverUrl.isEmpty() || WiFi.status() != WL_CONNECTED)
     return;
 
-  if (!mqttClient.connected()) {
+  if (!mqttClient || !mqttClient->connected()) {
     unsigned long now = millis();
     if (now - lastReconnectAttempt > RECONNECT_INTERVAL) {
       lastReconnectAttempt = now;
@@ -284,7 +275,7 @@ void loop() {
       }
     }
   } else {
-    mqttClient.loop();
+    mqttClient->loop();
 
     // Periodic heartbeat publish (No telemetry to save bandwidth)
     unsigned long now = millis();
@@ -295,6 +286,6 @@ void loop() {
   }
 }
 
-bool isConnected() { return mqttClient.connected(); }
+bool isConnected() { return mqttClient && mqttClient->connected(); }
 
 } // namespace MqttManager

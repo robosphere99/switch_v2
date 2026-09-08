@@ -10,7 +10,7 @@ import * as path from "path";
 function findRepoRoot(start: string): string | null {
   let dir = path.resolve(start);
   for (let i = 0; i < 8; i++) {
-    if (fs.existsSync(path.join(dir, "hardware")) && fs.existsSync(path.join(dir, "site", "apps", "api"))) {
+    if (fs.existsSync(path.join(dir, "hardware")) && (fs.existsSync(path.join(dir, "site", "apps", "api")) || fs.existsSync(path.join(dir, "backend", "api")))) {
       return dir;
     }
     const parent = path.dirname(dir);
