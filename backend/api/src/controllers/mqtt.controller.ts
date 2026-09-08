@@ -106,8 +106,9 @@ export const emqxAuth = async (req: Request, res: Response) => {
             is_superuser: false
         });
     } catch (err) {
-        logger.warn("[mqtt-auth] auth error", err instanceof Error ? err.message : String(err));
-        return res.status(500).json({ result: "ignore" });
+        const msg = err instanceof Error ? (err.stack || err.message) : String(err);
+        logger.warn("[mqtt-auth] auth error", msg);
+        return res.status(500).json({ result: "ignore", error: msg });
     }
 };
 
