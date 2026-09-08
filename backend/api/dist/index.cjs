@@ -14779,24 +14779,18 @@ function createApp() {
       app.use(import_express26.default.static(dir));
     }
   }
-  app.get(
-    [
-      "/",
-      "/login",
-      "/signup",
-      "/install",
-      "/activate",
-      "/print-serials",
-      "/print-bill",
-      "/warranty",
-      "/forgot-password",
-      "/reset-password",
-      "/support",
-      "/verify-bill"
-    ],
-    sendSpaHtml
-  );
-  app.use(["/install", "/dashboard", "/admin", "/shop"], sendSpaHtml);
+  app.use("/api", (_req, res) => {
+    res.status(404).json({
+      success: false,
+      error: { code: "NOT_FOUND", message: "Route not found" }
+    });
+  });
+  app.use((req, res, next) => {
+    if (req.method === "GET" && !req.path.startsWith("/api") && !req.path.startsWith("/uploads") && !req.path.startsWith("/firmware") && !req.path.startsWith("/mobile-app")) {
+      return sendSpaHtml(req, res);
+    }
+    next();
+  });
   app.use((_req, res) => {
     res.status(404).json({
       success: false,

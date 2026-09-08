@@ -284,25 +284,29 @@ export function createApp() {
     }
   }
 
-  app.get(
-    [
-      "/",
-      "/login",
-      "/signup",
-      "/install",
-      "/activate",
-      "/print-serials",
-      "/print-bill",
-      "/warranty",
-      "/forgot-password",
-      "/reset-password",
-      "/support",
-      "/verify-bill",
-    ],
-    sendSpaHtml,
-  );
-  app.use(["/install", "/dashboard", "/admin", "/shop"], sendSpaHtml);
+  // Public API route 404 handler (for unmatched /api/* calls)
+  app.use("/api", (_req, res) => {
+    res.status(404).json({
+      success: false,
+      error: { code: "NOT_FOUND", message: "Route not found" },
+    });
+  });
 
+  // Universal SPA client-side routing fallback for all web navigation (e.g. /boards, /devices, /profile, /settings, etc.)
+  app.use((req, res, next) => {
+    if (
+      req.method === "GET" &&
+      !req.path.startsWith("/api") &&
+      !req.path.startsWith("/uploads") &&
+      !req.path.startsWith("/firmware") &&
+      !req.path.startsWith("/mobile-app")
+    ) {
+      return sendSpaHtml(req, res);
+    }
+    next();
+  });
+
+  // Final 404 fallback for unmatched non-GET or remaining routes
   app.use((_req, res) => {
     res.status(404).json({
       success: false,
