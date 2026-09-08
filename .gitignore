@@ -22,8 +22,10 @@ build/
 backend/api/prisma/*.db
 
 # Uploads
-backend/api/uploads/
-uploads/
+backend/api/uploads/*
+!backend/api/uploads/**/.gitkeep
+uploads/*
+!uploads/**/.gitkeep
 
 # Logs
 *.log
