@@ -33,20 +33,98 @@ process.on("unhandledRejection", (reason) => {
 // setup mode me rehna hai, warna startup queries crash karti hain.
 import { execFileSync } from "node:child_process";
 
-/** Boot-time light migrations â€” RETIRED (MySQL â†’ PostgreSQL migration complete).
- *
- * All schema changes are now managed exclusively through Prisma migrations
- * (`prisma/migrations/`). The previous implementation contained MySQL-specific
- * SQL (JOIN-in-UPDATE, backtick identifiers, DATABASE(), ENGINE=InnoDB) that
- * generated `Code: 42601` syntax errors on every boot against Neon (PostgreSQL).
- *
- * To apply schema changes: `npm run db:migrate` (creates a new Prisma migration).
- * To verify: `npm run db:generate && npx prisma migrate status`.
- *
- * DO NOT re-add raw SQL DDL here. Use Prisma schema + migrations instead.
- */
+async function addColumnIfMissing(table: string, column: string, definition: string) {
+  try {
+    const exists = await prisma.$queryRaw<unknown[]>`
+      SELECT COLUMN_NAME FROM information_schema.columns
+      WHERE table_schema = DATABASE() AND table_name = ${table} AND column_name = ${column}
+    `;
+    if (!exists || (Array.isArray(exists) && exists.length === 0)) {
+      await prisma.$executeRawUnsafe(`ALTER TABLE \`${table}\` ADD COLUMN \`${column}\` ${definition}`);
+      logger.info(`[migration] Added missing column ${table}.${column}`);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 async function runLightMigrations(): Promise<void> {
-  logger.info("[migrations] Prisma-managed schema is up-to-date. No light migrations to run.");
+  try {
+    await addColumnIfMissing("products", "upcoming", "TINYINT(1) NOT NULL DEFAULT 0");
+    await addColumnIfMissing("products", "featured", "TINYINT(1) NOT NULL DEFAULT 0");
+    await addColumnIfMissing("products", "sortOrder", "INT NOT NULL DEFAULT 0");
+    await addColumnIfMissing("products", "tag", "VARCHAR(32) NULL");
+    await addColumnIfMissing("products", "features", "JSON NULL");
+    await addColumnIfMissing("products", "imageUrl", "VARCHAR(255) NULL");
+    await addColumnIfMissing("products", "active", "TINYINT(1) NOT NULL DEFAULT 1");
+    await addColumnIfMissing("products", "relayCount", "INT NOT NULL DEFAULT 4");
+    
+    // Seed default products if products table is empty
+    const productCount = await prisma.product.count().catch(() => 0);
+    if (productCount === 0) {
+      logger.info("[seed] Seeding initial SwitchNest products...");
+      await prisma.product.createMany({
+        data: [
+          {
+            name: "SwitchNest 4-Channel Smart Relay",
+            modelCode: "RS-4CH-RELAY",
+            relayCount: 4,
+            price: 1499.00,
+            description: "4-channel smart WiFi + MQTT relay module for home automation. Fits in standard modular switchboard.",
+            features: ["4 Relays (10A each)", "Local WiFi + Cloud MQTT", "Realtime WebSocket Control", "OTA Firmware Updates"],
+            active: true,
+            upcoming: false,
+            featured: true,
+            sortOrder: 1,
+            tag: "Bestseller"
+          },
+          {
+            name: "SwitchNest 2-Channel Smart Relay",
+            modelCode: "RS-2CH-RELAY",
+            relayCount: 2,
+            price: 999.00,
+            description: "Compact 2-channel smart relay module for lights, fans, and sockets.",
+            features: ["2 Relays (10A)", "Compact Size", "LAN + Cloud Sync"],
+            active: true,
+            upcoming: false,
+            featured: false,
+            sortOrder: 2,
+            tag: "Popular"
+          },
+          {
+            name: "SwitchNest 8-Channel Pro SwitchBoard",
+            modelCode: "RS-8CH-PRO",
+            relayCount: 8,
+            price: 2799.00,
+            description: "High-density 8-channel smart controller for whole room/living hall.",
+            features: ["8 Relays (16A Heavy Load)", "Dual WiFi Antenna", "Family Safety Mode"],
+            active: true,
+            upcoming: false,
+            featured: true,
+            sortOrder: 3,
+            tag: "Pro"
+          },
+          {
+            name: "SwitchNest Smart Triac Dimmer 3S",
+            modelCode: "RS-DIM-3S",
+            relayCount: 3,
+            price: 1899.00,
+            description: "3-step trailing edge silent fan & light speed controller.",
+            features: ["Zero Buzzing / Hum", "Precision Step Control", "Smooth Fade"],
+            active: true,
+            upcoming: true,
+            featured: false,
+            sortOrder: 4,
+            tag: "Coming Soon"
+          }
+        ],
+        skipDuplicates: true
+      });
+      logger.info("[seed] Initial SwitchNest products seeded successfully!");
+    }
+  } catch (err) {
+    logger.warn("[migrations] Error ensuring schema columns:", err instanceof Error ? err.message : String(err));
+  }
 }
 
 
