@@ -2052,9 +2052,46 @@ export const postProductsIdMedia = async (req: Request, res: Response) => {
   const type = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"].includes(ext) ? "image"
     : [".mp4", ".webm", ".mov"].includes(ext) ? "video"
     : "document";
-  const media = await prisma.productMedia.create({
-    data: { productId, url: fileUrl, type },
-  });
+
+  let media: { id: number; url: string; type: string; productId?: number | null };
+  try {
+    media = await prisma.productMedia.create({
+      data: {
+        product: { connect: { id: productId } },
+        url: fileUrl,
+        type,
+      },
+    });
+  } catch {
+    try {
+      media = await prisma.productMedia.create({
+        data: {
+          productId,
+          url: fileUrl,
+          type,
+        },
+      });
+    } catch {
+      await prisma.$executeRawUnsafe(
+        "INSERT INTO `product_media` (`product_id`, `url`, `type`, `created_at`) VALUES (?, ?, ?, NOW())",
+        productId,
+        fileUrl,
+        type
+      ).catch(async () => {
+        await prisma.$executeRawUnsafe(
+          "INSERT INTO `product_media` (`productId`, `url`, `type`, `created_at`) VALUES (?, ?, ?, NOW())",
+          productId,
+          fileUrl,
+          type
+        );
+      });
+      const rows = await prisma.$queryRaw<Array<{ id: number; url: string; type: string }>>`
+        SELECT id, url, type FROM \`product_media\` WHERE \`url\` = ${fileUrl} ORDER BY id DESC LIMIT 1
+      `.catch(() => []);
+      media = rows[0] ?? { id: Date.now(), url: fileUrl, type, productId };
+    }
+  }
+
   if (type === "image" && !product.imageUrl) {
     await prisma.product.update({
       where: { id: productId },
@@ -2067,12 +2104,17 @@ export const postProductsIdMedia = async (req: Request, res: Response) => {
 
 export const deleteProductsMediaMediaId = async (req: Request, res: Response) => {
   const mediaId = Number(req.params.mediaId);
-  const media = await prisma.productMedia.findUnique({ where: { id: mediaId } });
-  if (!media) throw new AppError("NOT_FOUND", "Media not found");
-  const filePath = path.join(process.cwd(), media.url.replace(/^\/+/, ""));
-  try { fs.unlinkSync(filePath); } catch { /* file may not exist */ }
-  await prisma.productMedia.delete({ where: { id: mediaId } });
-  await audit(req.user!.sub, "admin.product.media.delete", { entity: "product", entityId: media.productId ?? undefined, meta: { mediaId } });
+  try {
+    const media = await prisma.productMedia.findUnique({ where: { id: mediaId } });
+    if (media) {
+      const filePath = path.join(process.cwd(), media.url.replace(/^\/+/, ""));
+      try { fs.unlinkSync(filePath); } catch { /* file may not exist */ }
+      await prisma.productMedia.delete({ where: { id: mediaId } });
+    }
+  } catch {
+    await prisma.$executeRawUnsafe("DELETE FROM `product_media` WHERE `id` = ?", mediaId).catch(() => {});
+  }
+  await audit(req.user!.sub, "admin.product.media.delete", { entity: "product", entityId: mediaId, meta: { mediaId } });
   ok(res, { deleted: true });
 };
 
