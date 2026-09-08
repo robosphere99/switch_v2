@@ -1748,7 +1748,50 @@ var attachmentDir = repoRoot ? path3.join(repoRoot, "hardware", "attachments") :
 var webDist = repoRoot ? fs3.existsSync(path3.join(repoRoot, "frontend", "web", "dist")) ? path3.join(repoRoot, "frontend", "web", "dist") : path3.join(repoRoot, "site", "apps", "web", "dist") : fs3.existsSync(path3.resolve(apiRoot, "../../frontend/web/dist")) ? path3.resolve(apiRoot, "../../frontend/web/dist") : path3.resolve(apiRoot, "../web/dist");
 var swaggerUiDir = repoRoot ? fs3.existsSync(path3.join(repoRoot, "backend", "api", "public", "swagger-ui")) ? path3.join(repoRoot, "backend", "api", "public", "swagger-ui") : path3.join(repoRoot, "site", "apps", "api", "public", "swagger-ui") : path3.resolve(apiRoot, "public/swagger-ui");
 var webPublicMobileAppDir = repoRoot ? fs3.existsSync(path3.join(repoRoot, "frontend", "web", "public", "mobile-app")) ? path3.join(repoRoot, "frontend", "web", "public", "mobile-app") : path3.join(repoRoot, "site", "apps", "web", "public", "mobile-app") : path3.resolve(apiRoot, "../../frontend/web/public/mobile-app");
-var uploadsDir = repoRoot ? fs3.existsSync(path3.join(repoRoot, "backend", "api", "uploads")) ? path3.join(repoRoot, "backend", "api", "uploads") : path3.join(repoRoot, "site", "apps", "api", "uploads") : path3.resolve(apiRoot, "uploads");
+function getCandidateUploadDirs() {
+  const dirs = [
+    path3.resolve(apiRoot, "uploads"),
+    path3.resolve(process.cwd(), "uploads"),
+    path3.resolve(process.cwd(), "backend", "api", "uploads"),
+    path3.resolve(process.cwd(), "site", "apps", "api", "uploads"),
+    repoRoot ? path3.join(repoRoot, "backend", "api", "uploads") : "",
+    repoRoot ? path3.join(repoRoot, "site", "apps", "api", "uploads") : ""
+  ].filter((d) => Boolean(d));
+  return Array.from(new Set(dirs));
+}
+function resolveUploadsDir() {
+  const dirs = getCandidateUploadDirs();
+  for (const d of dirs) {
+    if (fs3.existsSync(d)) {
+      for (const sub of ["products", "avatars", "support", "billing"]) {
+        try {
+          fs3.mkdirSync(path3.join(d, sub), { recursive: true });
+        } catch {
+        }
+      }
+      return d;
+    }
+  }
+  const preferred = repoRoot ? fs3.existsSync(path3.join(repoRoot, "backend", "api")) ? path3.join(repoRoot, "backend", "api", "uploads") : path3.join(repoRoot, "site", "apps", "api", "uploads") : dirs[0] || path3.resolve(process.cwd(), "uploads");
+  try {
+    fs3.mkdirSync(preferred, { recursive: true });
+    for (const sub of ["products", "avatars", "support", "billing"]) {
+      fs3.mkdirSync(path3.join(preferred, sub), { recursive: true });
+    }
+  } catch {
+  }
+  return preferred;
+}
+var uploadsDir = resolveUploadsDir();
+for (const d of getCandidateUploadDirs()) {
+  try {
+    fs3.mkdirSync(d, { recursive: true });
+    for (const sub of ["products", "avatars", "support", "billing"]) {
+      fs3.mkdirSync(path3.join(d, sub), { recursive: true });
+    }
+  } catch {
+  }
+}
 function getSpaIndexHtmlPath() {
   const candidates = [
     path3.resolve(apiRoot, "index.html"),
@@ -14619,7 +14662,12 @@ function createApp() {
   app.use("/api/mqtt", mqttRouter);
   app.use("/api", apiRouter);
   app.use("/firmware", import_express26.default.static(firmwareDir));
-  app.use(["/uploads", "/api/uploads"], import_express26.default.static(uploadsDir));
+  const candidateUploadDirs = getCandidateUploadDirs();
+  for (const dir of candidateUploadDirs) {
+    if (dir && import_node_fs7.default.existsSync(dir)) {
+      app.use(["/uploads", "/api/uploads"], import_express26.default.static(dir));
+    }
+  }
   const apkCandidateDirs = getMobileAppCandidateDirs();
   for (const dir of apkCandidateDirs) {
     if (dir && import_node_fs7.default.existsSync(dir)) {

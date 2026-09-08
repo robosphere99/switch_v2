@@ -81,12 +81,57 @@ export const webPublicMobileAppDir = repoRoot
       : path.join(repoRoot, "site", "apps", "web", "public", "mobile-app"))
   : path.resolve(apiRoot, "../../frontend/web/public/mobile-app");
 
-/** Avatars and user uploaded assets */
-export const uploadsDir = repoRoot
-  ? (fs.existsSync(path.join(repoRoot, "backend", "api", "uploads"))
-      ? path.join(repoRoot, "backend", "api", "uploads")
-      : path.join(repoRoot, "site", "apps", "api", "uploads"))
-  : path.resolve(apiRoot, "uploads");
+export function getCandidateUploadDirs(): string[] {
+  const dirs = [
+    path.resolve(apiRoot, "uploads"),
+    path.resolve(process.cwd(), "uploads"),
+    path.resolve(process.cwd(), "backend", "api", "uploads"),
+    path.resolve(process.cwd(), "site", "apps", "api", "uploads"),
+    repoRoot ? path.join(repoRoot, "backend", "api", "uploads") : "",
+    repoRoot ? path.join(repoRoot, "site", "apps", "api", "uploads") : "",
+  ].filter((d): d is string => Boolean(d));
+
+  return Array.from(new Set(dirs));
+}
+
+function resolveUploadsDir(): string {
+  const dirs = getCandidateUploadDirs();
+  for (const d of dirs) {
+    if (fs.existsSync(d)) {
+      for (const sub of ["products", "avatars", "support", "billing"]) {
+        try { fs.mkdirSync(path.join(d, sub), { recursive: true }); } catch {}
+      }
+      return d;
+    }
+  }
+
+  const preferred = repoRoot
+    ? (fs.existsSync(path.join(repoRoot, "backend", "api"))
+        ? path.join(repoRoot, "backend", "api", "uploads")
+        : path.join(repoRoot, "site", "apps", "api", "uploads"))
+    : (dirs[0] || path.resolve(process.cwd(), "uploads"));
+
+  try {
+    fs.mkdirSync(preferred, { recursive: true });
+    for (const sub of ["products", "avatars", "support", "billing"]) {
+      fs.mkdirSync(path.join(preferred, sub), { recursive: true });
+    }
+  } catch {}
+  return preferred;
+}
+
+/** Avatars, products, support attachments and billing user uploaded assets */
+export const uploadsDir = resolveUploadsDir();
+
+// Pre-create all subdirectories across all candidate directories
+for (const d of getCandidateUploadDirs()) {
+  try {
+    fs.mkdirSync(d, { recursive: true });
+    for (const sub of ["products", "avatars", "support", "billing"]) {
+      fs.mkdirSync(path.join(d, sub), { recursive: true });
+    }
+  } catch {}
+}
 
 /** Finds SPA index.html across all possible directory structures */
 export function getSpaIndexHtmlPath(): string | null {

@@ -13,6 +13,7 @@ import {
   uploadsDir,
   apiRoot,
   getMobileAppCandidateDirs,
+  getCandidateUploadDirs,
   getSpaIndexHtmlPath,
   getCandidateAssetDirs,
 } from "./lib/paths";
@@ -191,8 +192,13 @@ export function createApp() {
   // Serve published ESP32 firmware at /firmware/firmware.bin (OTA downloads).
   app.use("/firmware", express.static(firmwareDir));
 
-  // Serve User Uploads at /uploads (Avatars, pictures).
-  app.use(["/uploads", "/api/uploads"], express.static(uploadsDir));
+  // Serve User Uploads at /uploads (Avatars, pictures, support, billing).
+  const candidateUploadDirs = getCandidateUploadDirs();
+  for (const dir of candidateUploadDirs) {
+    if (dir && fs.existsSync(dir)) {
+      app.use(["/uploads", "/api/uploads"], express.static(dir));
+    }
+  }
 
   // Serve compiled Mobile APK releases across all candidate directories.
   const apkCandidateDirs = getMobileAppCandidateDirs();
