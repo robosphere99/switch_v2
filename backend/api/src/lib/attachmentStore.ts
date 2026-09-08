@@ -1,10 +1,10 @@
 import * as fs from "fs";
 import * as path from "path";
-import { attachmentDir } from "./paths";
+import { uploadsDir, attachmentDir } from "./paths";
 
 /**
- * Support chat attachment files — DB me base64 blob ki jagah sirf filename
- * (attachmentPath) rehta hai; asli bytes yahan disk pe (hardware/attachments).
+ * Support chat attachment files — DB me base64 blob ki jagah sirf URL / filename
+ * (attachmentPath) rehta hai; asli bytes yahan disk pe (backend/api/uploads/support or hardware/attachments).
  * Random filename + path-traversal guard. File per message — delete pe cleanup.
  */
 
@@ -22,37 +22,40 @@ function extFor(type: string, name: string): string {
   return "bin";
 }
 
-import { v2 as cloudinary } from "cloudinary";
-
-/** Base64 blob → disk pe save ya Cloudinary pe. Returns URL. */
+/** Base64 blob → disk pe save in uploads/support/. Returns URL /uploads/support/<filename>. */
 export async function saveAttachment(base64: string, type: string, name: string): Promise<string> {
   const buf = Buffer.from(base64, "base64");
   if (buf.length === 0) throw new Error("Empty file");
-  
-  // Use data URI for Cloudinary upload
-  const dataUri = `data:${type || extFor(type, name)};base64,${base64}`;
-  const isImage = dataUri.startsWith("data:image/");
-  
-  const res = await cloudinary.uploader.upload(dataUri, {
-    folder: "switchnest/support",
-    ...(isImage && {
-      format: "webp",
-      transformation: [{ quality: "auto:eco", width: 1280, crop: "limit" }],
-    }),
-  });
-  
-  return res.secure_url;
+
+  const targetDir = path.join(uploadsDir, "support");
+  try {
+    fs.mkdirSync(targetDir, { recursive: true });
+  } catch {}
+
+  const ext = extFor(type, name);
+  const base = path.basename(name, `.${ext}`).replace(/[^a-zA-Z0-9_-]/g, "_") || "attachment";
+  const safeName = `${Date.now()}-${base}.${ext}`;
+  const fullPath = path.join(targetDir, safeName);
+
+  fs.writeFileSync(fullPath, buf);
+  return `/uploads/support/${safeName}`;
 }
 
-/** Disk se file read — basename check (path traversal guard). Not found → null. */
+/** Disk se file read — checks uploads/support and attachmentDir. Not found → null. */
 export function readAttachmentFile(filename: string): Buffer | null {
   const safe = path.basename(filename);
-  if (safe !== filename) return null;
-  try {
-    return fs.readFileSync(path.join(attachmentDir, safe));
-  } catch {
-    return null;
+  if (!safe) return null;
+
+  const candidatePaths = [
+    path.join(uploadsDir, "support", safe),
+    path.join(attachmentDir, safe),
+  ];
+  for (const p of candidatePaths) {
+    try {
+      if (fs.existsSync(p)) return fs.readFileSync(p);
+    } catch {}
   }
+  return null;
 }
 
 /** File delete (message soft-delete pe cleanup). Missing file = silent. */
@@ -60,10 +63,16 @@ export function deleteAttachmentFile(filename: string | null): void {
   if (!filename) return;
   if (filename.startsWith("http://") || filename.startsWith("https://")) return;
   const safe = path.basename(filename);
-  if (safe !== filename) return;
-  try {
-    fs.unlinkSync(path.join(attachmentDir, safe));
-  } catch {
-    /* ignore */
+  if (!safe) return;
+  const candidatePaths = [
+    path.join(uploadsDir, "support", safe),
+    path.join(attachmentDir, safe),
+  ];
+  for (const p of candidatePaths) {
+    try {
+      if (fs.existsSync(p)) fs.unlinkSync(p);
+    } catch {
+      /* ignore */
+    }
   }
 }

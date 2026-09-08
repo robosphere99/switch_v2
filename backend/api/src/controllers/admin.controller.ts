@@ -2047,7 +2047,8 @@ export const postProductsIdMedia = async (req: Request, res: Response) => {
   if (!req.file) throw new AppError("BAD_REQUEST", "No file uploaded");
   const product = await prisma.product.findUnique({ where: { id: productId } });
   if (!product) throw new AppError("NOT_FOUND", "Product not found");
-  const fileUrl = (req.file as { url?: string; path?: string }).url || req.file.path;
+  const filename = path.basename(req.file.filename || req.file.path);
+  const fileUrl = `/uploads/products/${filename}`;
   const ext = path.extname(req.file.originalname).toLowerCase();
   const type = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"].includes(ext) ? "image"
     : [".mp4", ".webm", ".mov"].includes(ext) ? "video"

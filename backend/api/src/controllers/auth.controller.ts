@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { Request, Response } from "express";
 import { prisma } from "../lib/prisma";
 import { ok } from "../lib/response";
@@ -61,7 +62,8 @@ export async function uploadAvatar(req: Request, res: Response) {
     res.status(400).json({ success: false, error: { code: "NO_FILE", message: "No avatar image provided." } });
     return;
   }
-  const avatarUrl = req.file.path; // Cloudinary secure URL
+  const filename = path.basename(req.file.filename || req.file.path);
+  const avatarUrl = `/uploads/avatars/${filename}`;
   const user = await authService.updateProfile(req.user!.sub, { avatarUrl });
   ok(res, user);
 }

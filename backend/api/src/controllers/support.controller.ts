@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import { prisma } from "../lib/prisma";
@@ -223,6 +224,9 @@ export async function userMediaMessage(req: Request, res: Response): Promise<voi
     throw new AppError("VALIDATION_ERROR", "Message or file required", 400);
   }
 
+  const filename = req.file ? path.basename(req.file.filename || req.file.path) : null;
+  const attachmentPath = filename ? `/uploads/support/${filename}` : null;
+
   const created = await supportModel().create({
     data: {
       userId,
@@ -232,7 +236,7 @@ export async function userMediaMessage(req: Request, res: Response): Promise<voi
       attachmentName: req.file?.originalname ?? null,
       attachmentType: req.file?.mimetype ?? null,
       attachmentData: null,
-      attachmentPath: req.file?.path ?? null,
+      attachmentPath,
       readByUser: true,
       readByAdmin: false,
     },
@@ -270,6 +274,9 @@ export async function adminMediaMessage(req: Request, res: Response): Promise<vo
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, username: true, email: true } });
   if (!user) throw new AppError("NOT_FOUND", "User not found", 404);
 
+  const filename = req.file ? path.basename(req.file.filename || req.file.path) : null;
+  const attachmentPath = filename ? `/uploads/support/${filename}` : null;
+
   const created = await supportModel().create({
     data: {
       userId,
@@ -279,7 +286,7 @@ export async function adminMediaMessage(req: Request, res: Response): Promise<vo
       attachmentName: req.file?.originalname ?? null,
       attachmentType: req.file?.mimetype ?? null,
       attachmentData: null,
-      attachmentPath: req.file?.path ?? null,
+      attachmentPath,
       readByUser: false,
       readByAdmin: true,
     },

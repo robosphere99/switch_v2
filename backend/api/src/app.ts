@@ -192,7 +192,7 @@ export function createApp() {
   app.use("/firmware", express.static(firmwareDir));
 
   // Serve User Uploads at /uploads (Avatars, pictures).
-  app.use("/uploads", express.static(uploadsDir));
+  app.use(["/uploads", "/api/uploads"], express.static(uploadsDir));
 
   // Serve compiled Mobile APK releases across all candidate directories.
   const apkCandidateDirs = getMobileAppCandidateDirs();
