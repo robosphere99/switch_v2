@@ -1,4 +1,4 @@
-﻿import { createServer } from "http";
+import { createServer } from "http";
 import { createApp } from "./app";
 import { env } from "./config/env";
 import { prisma, getEffectiveDbUrl, resetPrismaClient } from "./lib/prisma";
@@ -52,14 +52,18 @@ async function runLightMigrations(): Promise<void> {
 
 async function dbHasSchema(): Promise<boolean> {
   try {
-    // PostgreSQL uses current_schema() instead of DATABASE()
-    const rows = await prisma.$queryRaw<{ c: bigint }[]>`
-      SELECT COUNT(*) AS c FROM information_schema.tables
-      WHERE table_schema = current_schema() AND table_name IN ('User', 'users')
-    `;
-    if (Number(rows[0]?.c ?? 0) > 0) return true;
-  } catch (err) {
-    logger.warn("Schema probe via Prisma failed:", err instanceof Error ? err.message : String(err));
+    const userCount = await prisma.user.count();
+    return userCount >= 0;
+  } catch {
+    try {
+      const rows = await prisma.$queryRaw<{ c: bigint }[]>`
+        SELECT COUNT(*) AS c FROM information_schema.tables
+        WHERE table_schema = DATABASE() AND table_name IN ('User', 'users')
+      `;
+      if (Number(rows[0]?.c ?? 0) > 0) return true;
+    } catch (err) {
+      logger.warn("Schema probe via Prisma failed:", err instanceof Error ? err.message : String(err));
+    }
   }
   return false;
 }

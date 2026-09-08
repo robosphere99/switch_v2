@@ -186,8 +186,7 @@ import fs4 from "node:fs";
 function getEffectiveDbUrl() {
   const envUrl = process.env.DATABASE_URL?.trim();
   if (envUrl) return envUrl;
-  console.error("\u26A0\uFE0F  [prisma] DATABASE_URL is not set! Using dummy URL \u2014 DB operations will fail.");
-  return "postgresql://user:pass@localhost:5432/switchnest";
+  return "mysql://switch_v2:switchnest%401234567890@127.0.0.1:3306/switch_v2";
 }
 function withConnLimit(url, limit = 10) {
   const target = url.trim() || getEffectiveDbUrl();
@@ -66332,13 +66331,18 @@ async function runLightMigrations() {
 }
 async function dbHasSchema() {
   try {
-    const rows = await prisma.$queryRaw`
-      SELECT COUNT(*) AS c FROM information_schema.tables
-      WHERE table_schema = current_schema() AND table_name IN ('User', 'users')
-    `;
-    if (Number(rows[0]?.c ?? 0) > 0) return true;
-  } catch (err) {
-    logger.warn("Schema probe via Prisma failed:", err instanceof Error ? err.message : String(err));
+    const userCount = await prisma.user.count();
+    return userCount >= 0;
+  } catch {
+    try {
+      const rows = await prisma.$queryRaw`
+        SELECT COUNT(*) AS c FROM information_schema.tables
+        WHERE table_schema = DATABASE() AND table_name IN ('User', 'users')
+      `;
+      if (Number(rows[0]?.c ?? 0) > 0) return true;
+    } catch (err) {
+      logger.warn("Schema probe via Prisma failed:", err instanceof Error ? err.message : String(err));
+    }
   }
   return false;
 }

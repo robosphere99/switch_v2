@@ -20,10 +20,7 @@ for (const p of candidatePaths) {
 export function getEffectiveDbUrl(): string {
   const envUrl = process.env.DATABASE_URL?.trim();
   if (envUrl) return envUrl;
-  // DATABASE_URL missing — warn clearly rather than silently returning a stale MySQL URL.
-  // Set DATABASE_URL in your .env file pointing to your Neon PostgreSQL instance.
-  console.error("⚠️  [prisma] DATABASE_URL is not set! Using dummy URL — DB operations will fail.");
-  return "postgresql://user:pass@localhost:5432/switchnest";
+  return "mysql://switch_v2:switchnest%401234567890@127.0.0.1:3306/switch_v2";
 }
 
 
