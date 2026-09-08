@@ -1750,12 +1750,10 @@ var swaggerUiDir = repoRoot ? fs3.existsSync(path3.join(repoRoot, "backend", "ap
 var webPublicMobileAppDir = repoRoot ? fs3.existsSync(path3.join(repoRoot, "frontend", "web", "public", "mobile-app")) ? path3.join(repoRoot, "frontend", "web", "public", "mobile-app") : path3.join(repoRoot, "site", "apps", "web", "public", "mobile-app") : path3.resolve(apiRoot, "../../frontend/web/public/mobile-app");
 function getCandidateUploadDirs() {
   const dirs = [
+    repoRoot ? path3.join(repoRoot, "backend", "api", "uploads") : "",
     path3.resolve(apiRoot, "uploads"),
     path3.resolve(process.cwd(), "uploads"),
-    path3.resolve(process.cwd(), "backend", "api", "uploads"),
-    path3.resolve(process.cwd(), "site", "apps", "api", "uploads"),
-    repoRoot ? path3.join(repoRoot, "backend", "api", "uploads") : "",
-    repoRoot ? path3.join(repoRoot, "site", "apps", "api", "uploads") : ""
+    path3.resolve(process.cwd(), "backend", "api", "uploads")
   ].filter((d) => Boolean(d));
   return Array.from(new Set(dirs));
 }
@@ -1772,7 +1770,7 @@ function resolveUploadsDir() {
       return d;
     }
   }
-  const preferred = repoRoot ? fs3.existsSync(path3.join(repoRoot, "backend", "api")) ? path3.join(repoRoot, "backend", "api", "uploads") : path3.join(repoRoot, "site", "apps", "api", "uploads") : dirs[0] || path3.resolve(process.cwd(), "uploads");
+  const preferred = repoRoot && path3.join(repoRoot, "backend", "api", "uploads") || path3.resolve(apiRoot, "uploads") || path3.resolve(process.cwd(), "uploads");
   try {
     fs3.mkdirSync(preferred, { recursive: true });
     for (const sub of ["products", "avatars", "support", "billing"]) {
@@ -1785,9 +1783,14 @@ function resolveUploadsDir() {
 var uploadsDir = resolveUploadsDir();
 for (const d of getCandidateUploadDirs()) {
   try {
-    fs3.mkdirSync(d, { recursive: true });
+    if (!fs3.existsSync(d)) {
+      fs3.mkdirSync(d, { recursive: true });
+    }
     for (const sub of ["products", "avatars", "support", "billing"]) {
-      fs3.mkdirSync(path3.join(d, sub), { recursive: true });
+      const subDir = path3.join(d, sub);
+      if (!fs3.existsSync(subDir)) {
+        fs3.mkdirSync(subDir, { recursive: true });
+      }
     }
   } catch {
   }

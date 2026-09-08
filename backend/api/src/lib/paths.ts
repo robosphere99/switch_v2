@@ -83,12 +83,10 @@ export const webPublicMobileAppDir = repoRoot
 
 export function getCandidateUploadDirs(): string[] {
   const dirs = [
+    repoRoot ? path.join(repoRoot, "backend", "api", "uploads") : "",
     path.resolve(apiRoot, "uploads"),
     path.resolve(process.cwd(), "uploads"),
     path.resolve(process.cwd(), "backend", "api", "uploads"),
-    path.resolve(process.cwd(), "site", "apps", "api", "uploads"),
-    repoRoot ? path.join(repoRoot, "backend", "api", "uploads") : "",
-    repoRoot ? path.join(repoRoot, "site", "apps", "api", "uploads") : "",
   ].filter((d): d is string => Boolean(d));
 
   return Array.from(new Set(dirs));
@@ -105,11 +103,9 @@ function resolveUploadsDir(): string {
     }
   }
 
-  const preferred = repoRoot
-    ? (fs.existsSync(path.join(repoRoot, "backend", "api"))
-        ? path.join(repoRoot, "backend", "api", "uploads")
-        : path.join(repoRoot, "site", "apps", "api", "uploads"))
-    : (dirs[0] || path.resolve(process.cwd(), "uploads"));
+  const preferred = (repoRoot && path.join(repoRoot, "backend", "api", "uploads")) ||
+    path.resolve(apiRoot, "uploads") ||
+    path.resolve(process.cwd(), "uploads");
 
   try {
     fs.mkdirSync(preferred, { recursive: true });
@@ -123,12 +119,17 @@ function resolveUploadsDir(): string {
 /** Avatars, products, support attachments and billing user uploaded assets */
 export const uploadsDir = resolveUploadsDir();
 
-// Pre-create all subdirectories across all candidate directories
+// Pre-create all subdirectories across candidate directories
 for (const d of getCandidateUploadDirs()) {
   try {
-    fs.mkdirSync(d, { recursive: true });
+    if (!fs.existsSync(d)) {
+      fs.mkdirSync(d, { recursive: true });
+    }
     for (const sub of ["products", "avatars", "support", "billing"]) {
-      fs.mkdirSync(path.join(d, sub), { recursive: true });
+      const subDir = path.join(d, sub);
+      if (!fs.existsSync(subDir)) {
+        fs.mkdirSync(subDir, { recursive: true });
+      }
     }
   } catch {}
 }
