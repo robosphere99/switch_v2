@@ -81,55 +81,53 @@ export const webPublicMobileAppDir = repoRoot
       : path.join(repoRoot, "site", "apps", "web", "public", "mobile-app"))
   : path.resolve(apiRoot, "../../frontend/web/public/mobile-app");
 
+import * as os from "os";
+
 export function getCandidateUploadDirs(): string[] {
-  const dirs: string[] = [];
+  const dirs: string[] = [
+    path.resolve(process.cwd(), "uploads"),
+    path.resolve(process.cwd(), "../uploads"),
+    path.resolve(process.cwd(), "../logs/uploads"),
+    path.resolve(process.cwd(), "logs/uploads"),
+    repoRoot ? path.join(repoRoot, "backend", "api", "uploads") : "",
+    repoRoot ? path.join(repoRoot, "uploads") : "",
+    path.resolve(apiRoot, "uploads"),
+    path.join(os.tmpdir(), "switchnest-uploads"),
+  ].filter((d): d is string => Boolean(d));
 
-  if (repoRoot) {
-    dirs.push(path.join(repoRoot, "backend", "api", "uploads"));
-    dirs.push(path.join(repoRoot, "uploads"));
-  }
-
-  dirs.push(path.resolve(apiRoot, "uploads"));
-
-  if (!process.cwd().endsWith("uploads")) {
-    dirs.push(path.resolve(process.cwd(), "uploads"));
-  }
-
-  if (fs.existsSync(path.join(process.cwd(), "backend", "api"))) {
-    dirs.push(path.join(process.cwd(), "backend", "api", "uploads"));
-  }
-
-  return Array.from(new Set(dirs.filter(Boolean)));
+  return Array.from(new Set(dirs));
 }
 
-function resolveUploadsDir(): string {
-  const dirs = getCandidateUploadDirs();
-  for (const d of dirs) {
-    if (fs.existsSync(d)) {
+export function findWritableUploadsDir(): string {
+  const candidates = getCandidateUploadDirs();
+  for (const dir of candidates) {
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+      const testFile = path.join(dir, `.test-write-${Date.now()}.tmp`);
+      fs.writeFileSync(testFile, "1");
+      fs.unlinkSync(testFile);
       for (const sub of ["products", "avatars", "support", "billing"]) {
-        try { fs.mkdirSync(path.join(d, sub), { recursive: true }); } catch {}
+        try { fs.mkdirSync(path.join(dir, sub), { recursive: true }); } catch {}
       }
-      return d;
+      return dir;
+    } catch {
+      continue;
     }
   }
-
-  const preferred = (repoRoot && path.join(repoRoot, "backend", "api", "uploads")) ||
-    path.resolve(apiRoot, "uploads") ||
-    path.resolve(process.cwd(), "uploads");
-
+  const fallback = path.join(os.tmpdir(), "switchnest-uploads");
   try {
-    fs.mkdirSync(preferred, { recursive: true });
+    fs.mkdirSync(fallback, { recursive: true });
     for (const sub of ["products", "avatars", "support", "billing"]) {
-      fs.mkdirSync(path.join(preferred, sub), { recursive: true });
+      try { fs.mkdirSync(path.join(fallback, sub), { recursive: true }); } catch {}
     }
   } catch {}
-  return preferred;
+  return fallback;
 }
 
 /** Avatars, products, support attachments and billing user uploaded assets */
-export const uploadsDir = resolveUploadsDir();
+export const uploadsDir = findWritableUploadsDir();
 
-// Pre-create all subdirectories across candidate directories
+// Pre-create all subdirectories across candidate directories where possible
 for (const d of getCandidateUploadDirs()) {
   try {
     if (!fs.existsSync(d)) {

@@ -324,7 +324,7 @@ var init_siteSettings_service = __esm({
 // src/lib/email.service.ts
 import * as net from "node:net";
 import * as tls from "node:tls";
-import * as os2 from "node:os";
+import * as os3 from "node:os";
 async function getSmtpConfig() {
   const s = await getSiteSettings().catch(() => null);
   let pass = "";
@@ -481,7 +481,7 @@ async function sendEmail(opts) {
       try {
         let r = await reader.next();
         if (!r[0]?.startsWith("220")) return fail2(`Greeting: ${r[0] ?? "no response"}`);
-        const ehloName = os2.hostname() || "switchnest";
+        const ehloName = os3.hostname() || "switchnest";
         send(sock, `EHLO ${ehloName}`);
         r = await reader.next();
         let ehlo = r.join("\r\n");
@@ -1694,6 +1694,7 @@ var errorHandler = (err, _req, res, _next) => {
 // src/lib/paths.ts
 import * as fs3 from "fs";
 import * as path3 from "path";
+import * as os2 from "os";
 function findRepoRoot(start) {
   let dir = path3.resolve(start);
   for (let i = 0; i < 8; i++) {
@@ -1727,44 +1728,51 @@ var webDist = repoRoot ? fs3.existsSync(path3.join(repoRoot, "frontend", "web", 
 var swaggerUiDir = repoRoot ? fs3.existsSync(path3.join(repoRoot, "backend", "api", "public", "swagger-ui")) ? path3.join(repoRoot, "backend", "api", "public", "swagger-ui") : path3.join(repoRoot, "site", "apps", "api", "public", "swagger-ui") : path3.resolve(apiRoot, "public/swagger-ui");
 var webPublicMobileAppDir = repoRoot ? fs3.existsSync(path3.join(repoRoot, "frontend", "web", "public", "mobile-app")) ? path3.join(repoRoot, "frontend", "web", "public", "mobile-app") : path3.join(repoRoot, "site", "apps", "web", "public", "mobile-app") : path3.resolve(apiRoot, "../../frontend/web/public/mobile-app");
 function getCandidateUploadDirs() {
-  const dirs = [];
-  if (repoRoot) {
-    dirs.push(path3.join(repoRoot, "backend", "api", "uploads"));
-    dirs.push(path3.join(repoRoot, "uploads"));
-  }
-  dirs.push(path3.resolve(apiRoot, "uploads"));
-  if (!process.cwd().endsWith("uploads")) {
-    dirs.push(path3.resolve(process.cwd(), "uploads"));
-  }
-  if (fs3.existsSync(path3.join(process.cwd(), "backend", "api"))) {
-    dirs.push(path3.join(process.cwd(), "backend", "api", "uploads"));
-  }
-  return Array.from(new Set(dirs.filter(Boolean)));
+  const dirs = [
+    path3.resolve(process.cwd(), "uploads"),
+    path3.resolve(process.cwd(), "../uploads"),
+    path3.resolve(process.cwd(), "../logs/uploads"),
+    path3.resolve(process.cwd(), "logs/uploads"),
+    repoRoot ? path3.join(repoRoot, "backend", "api", "uploads") : "",
+    repoRoot ? path3.join(repoRoot, "uploads") : "",
+    path3.resolve(apiRoot, "uploads"),
+    path3.join(os2.tmpdir(), "switchnest-uploads")
+  ].filter((d) => Boolean(d));
+  return Array.from(new Set(dirs));
 }
-function resolveUploadsDir() {
-  const dirs = getCandidateUploadDirs();
-  for (const d of dirs) {
-    if (fs3.existsSync(d)) {
+function findWritableUploadsDir() {
+  const candidates = getCandidateUploadDirs();
+  for (const dir of candidates) {
+    try {
+      fs3.mkdirSync(dir, { recursive: true });
+      const testFile = path3.join(dir, `.test-write-${Date.now()}.tmp`);
+      fs3.writeFileSync(testFile, "1");
+      fs3.unlinkSync(testFile);
       for (const sub of ["products", "avatars", "support", "billing"]) {
         try {
-          fs3.mkdirSync(path3.join(d, sub), { recursive: true });
+          fs3.mkdirSync(path3.join(dir, sub), { recursive: true });
         } catch {
         }
       }
-      return d;
+      return dir;
+    } catch {
+      continue;
     }
   }
-  const preferred = repoRoot && path3.join(repoRoot, "backend", "api", "uploads") || path3.resolve(apiRoot, "uploads") || path3.resolve(process.cwd(), "uploads");
+  const fallback = path3.join(os2.tmpdir(), "switchnest-uploads");
   try {
-    fs3.mkdirSync(preferred, { recursive: true });
+    fs3.mkdirSync(fallback, { recursive: true });
     for (const sub of ["products", "avatars", "support", "billing"]) {
-      fs3.mkdirSync(path3.join(preferred, sub), { recursive: true });
+      try {
+        fs3.mkdirSync(path3.join(fallback, sub), { recursive: true });
+      } catch {
+      }
     }
   } catch {
   }
-  return preferred;
+  return fallback;
 }
-var uploadsDir = resolveUploadsDir();
+var uploadsDir = findWritableUploadsDir();
 for (const d of getCandidateUploadDirs()) {
   try {
     if (!fs3.existsSync(d)) {
@@ -2574,7 +2582,7 @@ function createLocalStorage(folderName) {
       file.stream.on("error", (err) => cb(err));
       file.stream.on("end", () => {
         const buffer = Buffer.concat(chunks);
-        const candidateDirs = getCandidateUploadDirs();
+        const candidateDirs = Array.from(/* @__PURE__ */ new Set([uploadsDir, ...getCandidateUploadDirs()]));
         let savedPath = "";
         const errors = [];
         for (const baseDir of candidateDirs) {
@@ -6555,11 +6563,11 @@ function verifyBillToken(token2) {
 
 // src/lib/lanIp.ts
 import dgram from "node:dgram";
-import os3 from "node:os";
+import os4 from "node:os";
 function detectLanIp() {
   const candidates = ["192.168.1.1", "192.168.0.1", "10.0.0.1", "172.16.0.1", "8.8.8.8"];
   const fromInterfaces = () => {
-    for (const ifaces of Object.values(os3.networkInterfaces())) {
+    for (const ifaces of Object.values(os4.networkInterfaces())) {
       for (const iface of ifaces ?? []) {
         if (iface.family === "IPv4" && !iface.internal) return iface.address;
       }
@@ -9459,7 +9467,7 @@ function verifyRazorpayWebhook(rawBody, signature) {
 // src/controllers/shop.controller.ts
 import { exec } from "child_process";
 import { promisify } from "util";
-import os4 from "os";
+import os5 from "os";
 var execAsync = promisify(exec);
 async function getProducts2(_req, res) {
   try {
@@ -9708,7 +9716,7 @@ async function demoPayment(req, res) {
   ok(res, { paid: true, status: updatedOrder.status, paymentRef: ref });
 }
 async function getCurrentWifi(req, res) {
-  const platform = os4.platform();
+  const platform = os5.platform();
   try {
     let ssid = null;
     if (platform === "win32") {

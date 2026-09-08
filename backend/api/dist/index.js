@@ -499,7 +499,7 @@ async function sendEmail(opts) {
       try {
         let r = await reader.next();
         if (!r[0]?.startsWith("220")) return fail2(`Greeting: ${r[0] ?? "no response"}`);
-        const ehloName = os2.hostname() || "switchnest";
+        const ehloName = os3.hostname() || "switchnest";
         send(sock, `EHLO ${ehloName}`);
         r = await reader.next();
         let ehlo = r.join("\r\n");
@@ -650,13 +650,13 @@ async function sendPasswordResetEmail(opts) {
   `.trim();
   return sendEmail({ to: opts.to, subject, text, html });
 }
-var net, tls, os2;
+var net, tls, os3;
 var init_email_service = __esm({
   "src/lib/email.service.ts"() {
     "use strict";
     net = __toESM(require("node:net"));
     tls = __toESM(require("node:tls"));
-    os2 = __toESM(require("node:os"));
+    os3 = __toESM(require("node:os"));
     init_siteSettings_service();
     init_crypto();
     init_env();
@@ -1716,6 +1716,7 @@ var errorHandler = (err, _req, res, _next) => {
 // src/lib/paths.ts
 var fs3 = __toESM(require("fs"));
 var path3 = __toESM(require("path"));
+var os2 = __toESM(require("os"));
 function findRepoRoot(start) {
   let dir = path3.resolve(start);
   for (let i = 0; i < 8; i++) {
@@ -1749,44 +1750,51 @@ var webDist = repoRoot ? fs3.existsSync(path3.join(repoRoot, "frontend", "web", 
 var swaggerUiDir = repoRoot ? fs3.existsSync(path3.join(repoRoot, "backend", "api", "public", "swagger-ui")) ? path3.join(repoRoot, "backend", "api", "public", "swagger-ui") : path3.join(repoRoot, "site", "apps", "api", "public", "swagger-ui") : path3.resolve(apiRoot, "public/swagger-ui");
 var webPublicMobileAppDir = repoRoot ? fs3.existsSync(path3.join(repoRoot, "frontend", "web", "public", "mobile-app")) ? path3.join(repoRoot, "frontend", "web", "public", "mobile-app") : path3.join(repoRoot, "site", "apps", "web", "public", "mobile-app") : path3.resolve(apiRoot, "../../frontend/web/public/mobile-app");
 function getCandidateUploadDirs() {
-  const dirs = [];
-  if (repoRoot) {
-    dirs.push(path3.join(repoRoot, "backend", "api", "uploads"));
-    dirs.push(path3.join(repoRoot, "uploads"));
-  }
-  dirs.push(path3.resolve(apiRoot, "uploads"));
-  if (!process.cwd().endsWith("uploads")) {
-    dirs.push(path3.resolve(process.cwd(), "uploads"));
-  }
-  if (fs3.existsSync(path3.join(process.cwd(), "backend", "api"))) {
-    dirs.push(path3.join(process.cwd(), "backend", "api", "uploads"));
-  }
-  return Array.from(new Set(dirs.filter(Boolean)));
+  const dirs = [
+    path3.resolve(process.cwd(), "uploads"),
+    path3.resolve(process.cwd(), "../uploads"),
+    path3.resolve(process.cwd(), "../logs/uploads"),
+    path3.resolve(process.cwd(), "logs/uploads"),
+    repoRoot ? path3.join(repoRoot, "backend", "api", "uploads") : "",
+    repoRoot ? path3.join(repoRoot, "uploads") : "",
+    path3.resolve(apiRoot, "uploads"),
+    path3.join(os2.tmpdir(), "switchnest-uploads")
+  ].filter((d) => Boolean(d));
+  return Array.from(new Set(dirs));
 }
-function resolveUploadsDir() {
-  const dirs = getCandidateUploadDirs();
-  for (const d of dirs) {
-    if (fs3.existsSync(d)) {
+function findWritableUploadsDir() {
+  const candidates = getCandidateUploadDirs();
+  for (const dir of candidates) {
+    try {
+      fs3.mkdirSync(dir, { recursive: true });
+      const testFile = path3.join(dir, `.test-write-${Date.now()}.tmp`);
+      fs3.writeFileSync(testFile, "1");
+      fs3.unlinkSync(testFile);
       for (const sub of ["products", "avatars", "support", "billing"]) {
         try {
-          fs3.mkdirSync(path3.join(d, sub), { recursive: true });
+          fs3.mkdirSync(path3.join(dir, sub), { recursive: true });
         } catch {
         }
       }
-      return d;
+      return dir;
+    } catch {
+      continue;
     }
   }
-  const preferred = repoRoot && path3.join(repoRoot, "backend", "api", "uploads") || path3.resolve(apiRoot, "uploads") || path3.resolve(process.cwd(), "uploads");
+  const fallback = path3.join(os2.tmpdir(), "switchnest-uploads");
   try {
-    fs3.mkdirSync(preferred, { recursive: true });
+    fs3.mkdirSync(fallback, { recursive: true });
     for (const sub of ["products", "avatars", "support", "billing"]) {
-      fs3.mkdirSync(path3.join(preferred, sub), { recursive: true });
+      try {
+        fs3.mkdirSync(path3.join(fallback, sub), { recursive: true });
+      } catch {
+      }
     }
   } catch {
   }
-  return preferred;
+  return fallback;
 }
-var uploadsDir = resolveUploadsDir();
+var uploadsDir = findWritableUploadsDir();
 for (const d of getCandidateUploadDirs()) {
   try {
     if (!fs3.existsSync(d)) {
@@ -2596,7 +2604,7 @@ function createLocalStorage(folderName) {
       file.stream.on("error", (err) => cb(err));
       file.stream.on("end", () => {
         const buffer = Buffer.concat(chunks);
-        const candidateDirs = getCandidateUploadDirs();
+        const candidateDirs = Array.from(/* @__PURE__ */ new Set([uploadsDir, ...getCandidateUploadDirs()]));
         let savedPath = "";
         const errors = [];
         for (const baseDir of candidateDirs) {

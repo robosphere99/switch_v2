@@ -24,7 +24,7 @@ export function createLocalStorage(folderName: string): StorageEngine {
       file.stream.on("error", (err) => cb(err));
       file.stream.on("end", () => {
         const buffer = Buffer.concat(chunks);
-        const candidateDirs = getCandidateUploadDirs();
+        const candidateDirs = Array.from(new Set([uploadsDir, ...getCandidateUploadDirs()]));
         let savedPath = "";
         const errors: string[] = [];
 
