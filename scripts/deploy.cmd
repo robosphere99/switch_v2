@@ -8,9 +8,6 @@ REM ============================================================
 
 cd /d "%~dp0..\backend\api"
 
-REM 1) web.config PassThrough patch
-call node scripts\patch-webconfig.mjs 2>nul
-
 REM Logs dir ensure
 if not exist "%~dp0..\logs" mkdir "%~dp0..\logs"
 
