@@ -74,17 +74,13 @@ export function startMqttBroker(): void {
             const mac = parts[1].toLowerCase();
             const type = parts[2];
 
-            // Resolve ESP by MAC to get metadata needed for DB operations
-            // (Cache this in production to reduce DB load, keeping it simple here)
-            const esp = await prisma.espDevice.findFirst({
-                where: { macAddress: mac }, // Warning: DB might have colons, MAC in topic has no colons
+            // Direct lookup by normalized MAC (no colons) — avoids full table scan.
+            // ESP devices are stored with macAddress = "aabbccddeeff" format (no colons).
+            // If DB has colon format, the MQTT auth handler normalizes on connect.
+            const matchedEsp = await prisma.espDevice.findFirst({
+                where: { macAddress: mac },
+                select: { id: true, macAddress: true, serialCode: true, homeId: true },
             });
-
-            // We need a robust way to match MACs. DB often stores them as XX:XX:XX:XX:XX:XX.
-            // If the query above fails, we have to fetch and match or rely on a Redis cache.
-            // For now, let's query the specific home logic safely.
-            const allEsps = await prisma.espDevice.findMany({ select: { id: true, macAddress: true, serialCode: true, homeId: true }});
-            const matchedEsp = allEsps.find(e => e.macAddress.replace(/:/g, "").toLowerCase() === mac);
 
             if (!matchedEsp) return;
 
@@ -104,6 +100,7 @@ export function startMqttBroker(): void {
         }
     });
 }
+
 
 // ---------- internal handlers ----------
 
@@ -183,10 +180,13 @@ export async function pushPendingCommandsByMac(macRaw: string): Promise<void> {
 
     const mac = macRaw.replace(/:/g, "").toLowerCase();
     
-    // Find ESP logic
-    const allEsps = await prisma.espDevice.findMany({ select: { id: true, macAddress: true, homeId: true }});
-    const matchedEsp = allEsps.find(e => e.macAddress.replace(/:/g, "").toLowerCase() === mac);
+    // Direct lookup by normalized MAC
+    const matchedEsp = await prisma.espDevice.findFirst({
+        where: { macAddress: mac },
+        select: { id: true, macAddress: true, homeId: true },
+    });
     if (!matchedEsp) return;
+
 
     const { homeId, id: espId } = matchedEsp;
 

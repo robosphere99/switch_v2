@@ -53,12 +53,8 @@ import fs from "node:fs";
 import { z } from "zod";
 function buildDatabaseUrl() {
   if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim()) return process.env.DATABASE_URL;
-  const host = process.env.DB_HOST ?? "127.0.0.1";
-  const port = process.env.DB_PORT ?? "3306";
-  const user = process.env.DB_USER ?? "root";
-  const pass = process.env.DB_PASS ?? "";
-  const name = process.env.DB_NAME ?? "switchnest";
-  return `mysql://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}:${port}/${name}?connection_limit=10`;
+  console.error("\u26A0\uFE0F  [env] DATABASE_URL is not set! Set it in .env pointing to Neon PostgreSQL.");
+  return "postgresql://user:pass@localhost:5432/switchnest";
 }
 var envPaths, envSchema, parsed, env, corsOrigins;
 var init_env = __esm({
@@ -190,12 +186,8 @@ import fs4 from "node:fs";
 function getEffectiveDbUrl() {
   const envUrl = process.env.DATABASE_URL?.trim();
   if (envUrl) return envUrl;
-  const host = process.env.DB_HOST ?? "127.0.0.1";
-  const port = process.env.DB_PORT ?? "3306";
-  const user = process.env.DB_USER ?? "root";
-  const pass = process.env.DB_PASS ?? "";
-  const name = process.env.DB_NAME ?? "switchnest";
-  return `mysql://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}:${port}/${name}`;
+  console.error("\u26A0\uFE0F  [prisma] DATABASE_URL is not set! Using dummy URL \u2014 DB operations will fail.");
+  return "postgresql://user:pass@localhost:5432/switchnest";
 }
 function withConnLimit(url, limit = 10) {
   const target = url.trim() || getEffectiveDbUrl();
@@ -853,12 +845,10 @@ function startMqttBroker() {
       if (parts.length !== 3 || parts[0] !== "sn") return;
       const mac = parts[1].toLowerCase();
       const type = parts[2];
-      const esp = await prisma.espDevice.findFirst({
-        where: { macAddress: mac }
-        // Warning: DB might have colons, MAC in topic has no colons
+      const matchedEsp = await prisma.espDevice.findFirst({
+        where: { macAddress: mac },
+        select: { id: true, macAddress: true, serialCode: true, homeId: true }
       });
-      const allEsps = await prisma.espDevice.findMany({ select: { id: true, macAddress: true, serialCode: true, homeId: true } });
-      const matchedEsp = allEsps.find((e) => e.macAddress.replace(/:/g, "").toLowerCase() === mac);
       if (!matchedEsp) return;
       if (type === "log") {
         const payloadStr = payload.toString();
@@ -918,8 +908,10 @@ async function handleDeviceState(espMeta, payload) {
 async function pushPendingCommandsByMac(macRaw) {
   if (!client) return;
   const mac = macRaw.replace(/:/g, "").toLowerCase();
-  const allEsps = await prisma.espDevice.findMany({ select: { id: true, macAddress: true, homeId: true } });
-  const matchedEsp = allEsps.find((e) => e.macAddress.replace(/:/g, "").toLowerCase() === mac);
+  const matchedEsp = await prisma.espDevice.findFirst({
+    where: { macAddress: mac },
+    select: { id: true, macAddress: true, homeId: true }
+  });
   if (!matchedEsp) return;
   const { homeId, id: espId } = matchedEsp;
   const devices = await prisma.device.findMany({
@@ -53364,24 +53356,11 @@ async function updateProfile(userId, input) {
   if (input.gender !== void 0) data.gender = input.gender;
   if (input.phone !== void 0) data.phone = input.phone;
   if (input.address !== void 0) data.address = input.address;
+  if (input.pushDeviceToggles !== void 0) data.pushDeviceToggles = input.pushDeviceToggles;
+  if (input.pushSystemAlerts !== void 0) data.pushSystemAlerts = input.pushSystemAlerts;
   let updated = user;
   if (Object.keys(data).length > 0) {
     updated = await prisma.user.update({ where: { id: userId }, data });
-  }
-  if (input.pushDeviceToggles !== void 0 || input.pushSystemAlerts !== void 0) {
-    const dt = input.pushDeviceToggles !== void 0 ? input.pushDeviceToggles ? 1 : 0 : null;
-    const sa = input.pushSystemAlerts !== void 0 ? input.pushSystemAlerts ? 1 : 0 : null;
-    try {
-      if (dt !== null && sa !== null) {
-        await prisma.$executeRawUnsafe(`UPDATE \`User\` SET push_device_toggles = ${dt}, push_system_alerts = ${sa} WHERE id = ${userId}`);
-      } else if (dt !== null) {
-        await prisma.$executeRawUnsafe(`UPDATE \`User\` SET push_device_toggles = ${dt} WHERE id = ${userId}`);
-      } else if (sa !== null) {
-        await prisma.$executeRawUnsafe(`UPDATE \`User\` SET push_system_alerts = ${sa} WHERE id = ${userId}`);
-      }
-    } catch (e) {
-      console.error("Failed to hot-patch push preferences:", e);
-    }
   }
   if (input.newPassword) {
     await prisma.refreshToken.deleteMany({ where: { userId } });
@@ -53415,36 +53394,9 @@ async function checkAvailability(username, email) {
   return result;
 }
 async function login(usernameEmail, password, deviceInfo, ipAddress, revokeOtherSessions3) {
-  let user = null;
-  try {
-    user = await prisma.user.findFirst({
-      where: { OR: [{ username: usernameEmail }, { email: usernameEmail }] }
-    });
-  } catch (_pErr) {
-    try {
-      const mysql2 = (await import("mysql2/promise")).default;
-      const dbUrl = getEffectiveDbUrl();
-      const u = new URL(dbUrl);
-      const conn = await mysql2.createConnection({
-        host: u.hostname === "localhost" ? "127.0.0.1" : u.hostname,
-        port: Number(u.port || 3306),
-        user: decodeURIComponent(u.username),
-        password: decodeURIComponent(u.password),
-        database: decodeURIComponent(u.pathname.replace(/^\//, "")),
-        connectTimeout: 5e3
-      });
-      const [rows] = await conn.query(
-        "SELECT id, username, email, password, role, status, token_version AS tokenVersion, created_at AS createdAt FROM users WHERE username = ? OR email = ? LIMIT 1",
-        [usernameEmail, usernameEmail]
-      );
-      await conn.end().catch(() => void 0);
-      if (Array.isArray(rows) && rows.length > 0) {
-        user = rows[0];
-      }
-    } catch (_mErr) {
-      logger.error("[login] Direct mysql user lookup error", _mErr);
-    }
-  }
+  const user = await prisma.user.findFirst({
+    where: { OR: [{ username: usernameEmail }, { email: usernameEmail }] }
+  });
   if (!user || !await bcrypt.compare(password, user.password)) {
     throw new AppError("INVALID_CREDENTIALS", "Invalid username/email or password", 401);
   }
@@ -53469,14 +53421,8 @@ async function login(usernameEmail, password, deviceInfo, ipAddress, revokeOther
       where: { id: user.id },
       data: { lastLoginAt: /* @__PURE__ */ new Date() }
     });
-  } catch {
-    try {
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { lastLoginAt: /* @__PURE__ */ new Date() }
-      });
-    } catch {
-    }
+  } catch (err) {
+    logger.warn("[login] Could not update lastLoginAt", err);
   }
   return issueTokens(user, enrichDevice, ipAddress, revokeOtherSessions3);
 }
@@ -53503,21 +53449,14 @@ async function issueTokens(user, deviceInfo, ipAddress, revokeOtherSessions3) {
       data: {
         userId: user.id,
         tokenHash,
-        expiresAt: exp
+        expiresAt: exp,
+        deviceInfo,
+        ipAddress
       }
     });
     sessionId = session.id;
-  } catch (_rErr) {
-    try {
-      await prisma.$executeRawUnsafe(
-        "INSERT INTO refresh_tokens (userId, token_hash, expires_at, created_at) VALUES (?, ?, ?, NOW(3))",
-        user.id,
-        tokenHash,
-        exp
-      );
-    } catch (_mErr) {
-      logger.error("[login] refreshToken fallback error", _mErr);
-    }
+  } catch (err) {
+    logger.error("[issueTokens] Failed to create refresh token session", err);
   }
   try {
     emitToUser(user.id, "auth:sessions_changed", {});
@@ -54055,7 +53994,8 @@ var authRouter = Router();
 var loginLimiter = rateLimit({
   name: "auth:login",
   windowMs: 15 * 6e4,
-  max: 1e3,
+  max: 20,
+  // 20 attempts per 15 min — blocks credential stuffing, allows legitimate use
   message: "Bahut zyada login attempts \u2014 15 min baad dobara try karo"
 });
 var signupLimiter = rateLimit({
@@ -66344,433 +66284,7 @@ process.on("unhandledRejection", (reason) => {
   fileLog(line);
 });
 async function runLightMigrations() {
-  const migration = async (label, fn) => {
-    try {
-      await fn();
-    } catch (err) {
-      logger.warn(`Migration skip/fail (${label})`, err instanceof Error ? err.message : String(err));
-    }
-  };
-  try {
-    await prisma.$executeRawUnsafe(
-      `UPDATE esp_devices e
-       JOIN (
-         SELECT serial_code, MAX(id) AS keep_id
-         FROM esp_devices
-         WHERE serial_code IS NOT NULL
-         GROUP BY serial_code
-         HAVING COUNT(*) > 1
-       ) d ON e.serial_code = d.serial_code AND e.id <> d.keep_id
-       SET e.serial_code = NULL`
-    );
-    const idx = await prisma.$queryRaw`
-      SELECT COUNT(*) AS c FROM information_schema.statistics
-      WHERE table_schema = DATABASE() AND table_name = 'esp_devices' AND index_name = 'esp_devices_serial_code_key'
-    `;
-    if (Number(idx[0]?.c ?? 0) === 0) {
-      await prisma.$executeRawUnsafe(
-        "ALTER TABLE `esp_devices` ADD UNIQUE INDEX `esp_devices_serial_code_key`(`serial_code`)"
-      );
-      logger.info("\u2705 Migration: esp_devices.serial_code unique index added");
-    }
-    const col = await prisma.$queryRaw`
-      SELECT COUNT(*) AS c FROM information_schema.columns
-      WHERE table_schema = DATABASE() AND table_name = 'notifications' AND column_name = 'category'
-    `;
-    if (Number(col[0]?.c ?? 0) === 0) {
-      await prisma.$executeRawUnsafe(
-        "ALTER TABLE `notifications` ADD COLUMN `category` VARCHAR(20) NOT NULL DEFAULT 'system'"
-      );
-      logger.info("\u2705 Migration: notifications.category column added");
-    }
-    const fixed = await prisma.$executeRawUnsafe(`
-      UPDATE notifications
-      SET category = 'schedule'
-      WHERE category = 'system' AND (title LIKE '\u23F0 Schedule fired:%' OR title LIKE '%Schedule fired:%')
-    `);
-    logger.info(`\u2705 Backfill: ${fixed} schedule notification(s) category \u2192 schedule`);
-    const sm = await prisma.$queryRaw`
-      SELECT COUNT(*) AS c FROM information_schema.tables
-      WHERE table_schema = DATABASE() AND table_name = 'support_messages'
-    `;
-    if (Number(sm[0]?.c ?? 0) === 0) {
-      await prisma.$executeRawUnsafe(`
-        CREATE TABLE support_messages (
-          id INT NOT NULL AUTO_INCREMENT,
-          userId INT NOT NULL,
-          senderRole VARCHAR(10) NOT NULL DEFAULT 'admin',
-          senderName VARCHAR(100) NOT NULL,
-          message TEXT NOT NULL,
-          read_by_user BOOLEAN NOT NULL DEFAULT FALSE,
-          read_by_admin BOOLEAN NOT NULL DEFAULT TRUE,
-          created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-          PRIMARY KEY (id),
-          INDEX support_messages_userId_createdAt_idx (userId, created_at),
-          INDEX support_messages_readByAdmin_idx (read_by_admin),
-          CONSTRAINT support_messages_userId_fkey FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-      `);
-      logger.info("\u2705 Migration: support_messages table created");
-    }
-    const tp = await prisma.$queryRaw`
-      SELECT COUNT(*) AS c FROM information_schema.columns
-      WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'theme_pref'
-    `;
-    if (Number(tp[0]?.c ?? 0) === 0) {
-      await prisma.$executeRawUnsafe(
-        "ALTER TABLE `users` ADD COLUMN `theme_pref` VARCHAR(16) NULL"
-      );
-      logger.info("\u2705 Migration: users.theme_pref column added");
-    }
-    const att = await prisma.$queryRaw`
-      SELECT COUNT(*) AS c FROM information_schema.columns
-      WHERE table_schema = DATABASE() AND table_name = 'support_messages' AND column_name = 'attachment_name'
-    `;
-    if (Number(att[0]?.c ?? 0) === 0) {
-      await prisma.$executeRawUnsafe(
-        "ALTER TABLE `support_messages` ADD COLUMN `attachment_name` VARCHAR(255) NULL, ADD COLUMN `attachment_type` VARCHAR(100) NULL, ADD COLUMN `attachment_data` MEDIUMTEXT NULL"
-      );
-      logger.info("\u2705 Migration: support_messages.attachment_* columns added");
-    }
-    await migration("support_messages.deleted_at", async () => {
-      const dl = await prisma.$queryRaw`
-        SELECT COUNT(*) AS c FROM information_schema.columns
-        WHERE table_schema = DATABASE() AND table_name = 'support_messages' AND column_name = 'deleted_at'
-      `;
-      if (Number(dl[0]?.c ?? 0) === 0) {
-        await prisma.$executeRawUnsafe(
-          "ALTER TABLE `support_messages` ADD COLUMN `deleted_at` DATETIME(3) NULL"
-        );
-        logger.info("\u2705 Migration: support_messages.deleted_at added");
-      }
-    });
-    await migration("support_messages.attachment_path", async () => {
-      const ap = await prisma.$queryRaw`
-        SELECT COUNT(*) AS c FROM information_schema.columns
-        WHERE table_schema = DATABASE() AND table_name = 'support_messages' AND column_name = 'attachment_path'
-      `;
-      if (Number(ap[0]?.c ?? 0) === 0) {
-        await prisma.$executeRawUnsafe(
-          "ALTER TABLE `support_messages` ADD COLUMN `attachment_path` VARCHAR(255) NULL"
-        );
-        logger.info("\u2705 Migration: support_messages.attachment_path added");
-      }
-    });
-    await migration("support_chat_settings table", async () => {
-      const cs = await prisma.$queryRaw`
-        SELECT COUNT(*) AS c FROM information_schema.tables
-        WHERE table_schema = DATABASE() AND table_name = 'support_chat_settings'
-      `;
-      if (Number(cs[0]?.c ?? 0) === 0) {
-        await prisma.$executeRawUnsafe(`
-          CREATE TABLE support_chat_settings (
-            id INT NOT NULL AUTO_INCREMENT,
-            userId INT NOT NULL,
-            peer_user_id INT NOT NULL,
-            muted_at DATETIME(3) NULL,
-            pinned_at DATETIME(3) NULL,
-            created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-            updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-            PRIMARY KEY (id),
-            UNIQUE INDEX support_chat_settings_userId_peerUserId_key (userId, peer_user_id),
-            INDEX support_chat_settings_userId_idx (userId),
-            CONSTRAINT support_chat_settings_userId_fkey FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
-          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-        `);
-        logger.info("\u2705 Migration: support_chat_settings table created");
-      }
-    });
-    await migration("app_meta.value TEXT", async () => {
-      const am = await prisma.$queryRaw`
-        SELECT COUNT(*) AS c FROM information_schema.columns
-        WHERE table_schema = DATABASE() AND table_name = 'app_meta' AND column_name = 'value'
-      `;
-      if (Number(am[0]?.c ?? 0) > 0) {
-        const typ = await prisma.$queryRaw`
-          SELECT DATA_TYPE AS data_type FROM information_schema.columns
-          WHERE table_schema = DATABASE() AND table_name = 'app_meta' AND column_name = 'value'
-        `;
-        if (typ[0]?.data_type === "varchar") {
-          await prisma.$executeRawUnsafe(
-            "ALTER TABLE `app_meta` MODIFY COLUMN `value` TEXT NOT NULL"
-          );
-          logger.info("\u2705 Migration: app_meta.value -> TEXT");
-        }
-      }
-    });
-    await migration("home_members restricted", async () => {
-      const rm = await prisma.$queryRaw`
-        SELECT COUNT(*) AS c FROM information_schema.columns
-        WHERE table_schema = DATABASE() AND table_name = 'home_members' AND column_name = 'restricted'
-      `;
-      if (Number(rm[0]?.c ?? 0) === 0) {
-        await prisma.$executeRawUnsafe(
-          "ALTER TABLE `home_members` ADD COLUMN `restricted` BOOLEAN NOT NULL DEFAULT FALSE, ADD COLUMN `daily_limit_minutes` INT NULL"
-        );
-        logger.info("\u2705 Migration: home_members.restricted + daily_limit_minutes added");
-      }
-    });
-    await migration("device_access table", async () => {
-      const da = await prisma.$queryRaw`
-        SELECT COUNT(*) AS c FROM information_schema.tables
-        WHERE table_schema = DATABASE() AND table_name = 'device_access'
-      `;
-      if (Number(da[0]?.c ?? 0) === 0) {
-        await prisma.$executeRawUnsafe(`
-          CREATE TABLE device_access (
-            id INT NOT NULL AUTO_INCREMENT,
-            homeId INT NOT NULL,
-            deviceId INT NOT NULL,
-            userId INT NOT NULL,
-            created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-            PRIMARY KEY (id),
-            UNIQUE INDEX device_access_deviceId_userId_key (deviceId, userId),
-            INDEX device_access_homeId_idx (homeId),
-            INDEX device_access_userId_idx (userId),
-            CONSTRAINT device_access_homeId_fkey FOREIGN KEY (homeId) REFERENCES homes(id) ON DELETE CASCADE ON UPDATE CASCADE,
-            CONSTRAINT device_access_deviceId_fkey FOREIGN KEY (deviceId) REFERENCES devices(id) ON DELETE CASCADE ON UPDATE CASCADE,
-            CONSTRAINT device_access_userId_fkey FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
-          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-        `);
-        logger.info("\u2705 Migration: device_access table created");
-      }
-    });
-    await migration("device_usage table", async () => {
-      const du = await prisma.$queryRaw`
-        SELECT COUNT(*) AS c FROM information_schema.tables
-        WHERE table_schema = DATABASE() AND table_name = 'device_usage'
-      `;
-      if (Number(du[0]?.c ?? 0) === 0) {
-        await prisma.$executeRawUnsafe(`
-          CREATE TABLE device_usage (
-            id INT NOT NULL AUTO_INCREMENT,
-            homeId INT NOT NULL,
-            deviceId INT NOT NULL,
-            userId INT NOT NULL,
-            date DATE NOT NULL,
-            on_minutes INT NOT NULL,
-            updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-            PRIMARY KEY (id),
-            UNIQUE INDEX device_usage_deviceId_userId_date_key (deviceId, userId, date),
-            INDEX device_usage_homeId_idx (homeId),
-            CONSTRAINT device_usage_homeId_fkey FOREIGN KEY (homeId) REFERENCES homes(id) ON DELETE CASCADE ON UPDATE CASCADE,
-            CONSTRAINT device_usage_deviceId_fkey FOREIGN KEY (deviceId) REFERENCES devices(id) ON DELETE CASCADE ON UPDATE CASCADE,
-            CONSTRAINT device_usage_userId_fkey FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
-          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-        `);
-        logger.info("\u2705 Migration: device_usage table created");
-      }
-    });
-    await migration("password_reset_tokens table", async () => {
-      const prt = await prisma.$queryRaw`
-        SELECT COUNT(*) AS c FROM information_schema.tables
-        WHERE table_schema = DATABASE() AND table_name = 'password_reset_tokens'
-      `;
-      if (Number(prt[0]?.c ?? 0) === 0) {
-        await prisma.$executeRawUnsafe(`
-          CREATE TABLE password_reset_tokens (
-            id INT NOT NULL AUTO_INCREMENT,
-            userId INT NOT NULL,
-            token_hash VARCHAR(64) NOT NULL,
-            expires_at DATETIME(3) NOT NULL,
-            used_at DATETIME(3) NULL,
-            created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-            PRIMARY KEY (id),
-            UNIQUE INDEX password_reset_tokens_token_hash_key (token_hash),
-            INDEX password_reset_tokens_userId_idx (userId),
-            CONSTRAINT password_reset_tokens_userId_fkey FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
-          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-        `);
-        logger.info("\u2705 Migration: password_reset_tokens table created");
-      }
-    });
-    await migration("api_keys.revoked_at", async () => {
-      const ra = await prisma.$queryRaw`
-        SELECT COUNT(*) AS c FROM information_schema.columns
-        WHERE table_schema = DATABASE() AND table_name = 'api_keys' AND column_name = 'revoked_at'
-      `;
-      if (Number(ra[0]?.c ?? 0) === 0) {
-        await prisma.$executeRawUnsafe(
-          "ALTER TABLE `api_keys` ADD COLUMN `revoked_at` DATETIME(3) NULL"
-        );
-        logger.info("\u2705 Migration: api_keys.revoked_at added");
-      }
-    });
-    await migration("esp_devices.led_enabled", async () => {
-      const le = await prisma.$queryRaw`
-        SELECT COUNT(*) AS c FROM information_schema.columns
-        WHERE table_schema = DATABASE() AND table_name = 'esp_devices' AND column_name = 'led_enabled'
-      `;
-      if (Number(le[0]?.c ?? 0) === 0) {
-        await prisma.$executeRawUnsafe(
-          "ALTER TABLE `esp_devices` ADD COLUMN `led_enabled` BOOLEAN NOT NULL DEFAULT TRUE"
-        );
-        logger.info("\u2705 Migration: esp_devices.led_enabled added");
-      }
-    });
-    await migration("devices.channel", async () => {
-      const ch = await prisma.$queryRaw`
-        SELECT COUNT(*) AS c FROM information_schema.columns
-        WHERE table_schema = DATABASE() AND table_name = 'devices' AND column_name = 'channel'
-      `;
-      if (Number(ch[0]?.c ?? 0) === 0) {
-        await prisma.$executeRawUnsafe(
-          "ALTER TABLE `devices` ADD COLUMN `channel` INT NULL"
-        );
-        logger.info("\u2705 Migration: devices.channel column added");
-      }
-    });
-    const addCol = async (table, col2, defSql) => {
-      await migration(`${table}.${col2}`, async () => {
-        const res = await prisma.$queryRaw`
-          SELECT COUNT(*) AS c FROM information_schema.columns
-          WHERE table_schema = DATABASE() AND table_name = ${table} AND column_name = ${col2}
-        `;
-        if (Number(res[0]?.c ?? 0) === 0) {
-          await prisma.$executeRawUnsafe(`ALTER TABLE \`${table}\` ADD COLUMN \`${col2}\` ${defSql}`);
-          logger.info(`\u2705 Migration: ${table}.${col2} added`);
-        }
-      });
-    };
-    await addCol("devices", "channel", "INT NULL");
-    await addCol("users", "avatar_url", "VARCHAR(500) NULL");
-    await addCol("users", "expo_push_token", "VARCHAR(100) NULL");
-    await addCol("users", "dob", "DATE NULL");
-    await addCol("users", "gender", "VARCHAR(20) NULL");
-    await addCol("users", "phone", "VARCHAR(20) NULL");
-    await addCol("users", "address", "TEXT NULL");
-    await addCol("users", "push_device_toggles", "BOOLEAN NOT NULL DEFAULT TRUE");
-    await addCol("users", "push_system_alerts", "BOOLEAN NOT NULL DEFAULT TRUE");
-    await addCol("users", "token_version", "INT NOT NULL DEFAULT 0");
-    await addCol("products", "stock_count", "INT NOT NULL DEFAULT 0");
-    await addCol("products", "rating", "DECIMAL(3,2) NOT NULL DEFAULT 0.0");
-    await addCol("products", "total_reviews", "INT NOT NULL DEFAULT 0");
-    await addCol("orders", "razorpay_order_id", "VARCHAR(64) NULL");
-    await addCol("orders", "payment_ref", "VARCHAR(64) NULL");
-    await addCol("orders", "paid_at", "DATETIME(3) NULL");
-    await addCol("serial_registry", "warranty_status", "VARCHAR(20) NOT NULL DEFAULT 'active'");
-    await addCol("serial_registry", "warranty_expires_at", "DATETIME(3) NULL");
-    await addCol("serial_registry", "console_password", "VARCHAR(64) NULL");
-    await addCol("serial_registry", "tested_at", "DATETIME(3) NULL");
-    await addCol("notifications", "category", "VARCHAR(20) NOT NULL DEFAULT 'system'");
-    await addCol("notifications", "cta_url", "VARCHAR(255) NULL");
-    await addCol("notifications", "cta_label", "VARCHAR(50) NULL");
-    await addCol("home_members", "restricted", "BOOLEAN NOT NULL DEFAULT FALSE");
-    await addCol("home_members", "daily_limit_minutes", "INT NULL");
-    await addCol("esp_devices", "serial_code", "VARCHAR(32) NULL");
-    await addCol("esp_devices", "model_code", "VARCHAR(16) NULL");
-    await addCol("esp_devices", "offline", "BOOLEAN NOT NULL DEFAULT TRUE");
-    await addCol("esp_devices", "updated_at", "DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)");
-    await addCol("esp_devices", "console_password", "VARCHAR(64) NULL");
-    await migration("alter orders.status to VARCHAR(32)", async () => {
-      await prisma.$executeRawUnsafe("ALTER TABLE `orders` MODIFY COLUMN `status` VARCHAR(32) NOT NULL DEFAULT 'pending'");
-    });
-    await migration("fix pending orders with paymentRef", async () => {
-      const updatedCount = await prisma.$executeRawUnsafe(`
-        UPDATE orders
-        SET status = 'processing', paymentStatus = 'paid'
-        WHERE payment_ref IS NOT NULL AND status = 'pending'
-      `);
-      if (Number(updatedCount) > 0) {
-        logger.info(`\u2705 Migration: updated ${updatedCount} stuck pending orders to processing/paid`);
-      }
-    });
-    await migration("auto-seed default products", async () => {
-      const pc = await prisma.product.count();
-      if (pc === 0) {
-        const DEFAULT_PRODUCTS2 = [
-          { name: "2CH WiFi Relay Module", modelCode: "2CH", relayCount: 2, price: "599", description: "Two-channel WiFi relay board for lights and small appliances. 10A per channel, ESP32 based, works with the SwitchNest app and voice assistant.", features: JSON.stringify({ channels: 2, wifi: true, ota: true, voice: true }), stockCount: 50 },
-          { name: "4CH WiFi Relay Module", modelCode: "4CH", relayCount: 4, price: "799", description: "Four-channel WiFi relay board \u2014 the classic choice for room-wide control. 10A per channel with status LED and manual override switches.", features: JSON.stringify({ channels: 4, wifi: true, ota: true, voice: true }), stockCount: 50 },
-          { name: "5CH WiFi Relay Module", modelCode: "5CH", relayCount: 5, price: "899", description: "Five-channel relay board \u2014 perfect for combining 4 devices plus one spare. ESP32 with OTA updates and two-way sync.", features: JSON.stringify({ channels: 5, wifi: true, ota: true, voice: true }), stockCount: 50 },
-          { name: "6CH WiFi Relay Module", modelCode: "6CH", relayCount: 6, price: "999", description: "Six-channel WiFi relay board for medium-size homes. Control lights, fans and appliances from one compact board.", features: JSON.stringify({ channels: 6, wifi: true, ota: true, voice: true }), stockCount: 50 },
-          { name: "8CH WiFi Relay Module", modelCode: "8CH", relayCount: 8, price: "1199", description: "Eight-channel WiFi relay board \u2014 full-home control. Ideal for new construction wiring with all loads in one panel.", features: JSON.stringify({ channels: 8, wifi: true, ota: true, voice: true }), stockCount: 50 },
-          { name: "4CH IR WiFi Relay Module", modelCode: "4CH-IR", relayCount: 4, price: "999", description: "Four-channel relay board with built-in IR receiver \u2014 control with the app and any IR remote. Works with ACs, TVs and IR appliances.", features: JSON.stringify({ channels: 4, ir: true, wifi: true, ota: true, voice: true }), stockCount: 50 },
-          { name: "Fan Speed Dimmer (WiFi)", modelCode: "FAN-DIM", relayCount: 1, price: "899", description: "WiFi fan regulator with stepped speed control. Replace your old 5-step regulator and control the fan from the app or voice.", features: JSON.stringify({ fanDimmer: true, steps: 5, wifi: true, ota: true, voice: true }), stockCount: 50 },
-          { name: "3-State Touch Dimmer", modelCode: "DIM-3S", relayCount: 1, price: "749", description: "Touch dimmer with 3 brightness steps (off \u2192 50% \u2192 100%). WiFi + touch control, works with existing bulb holders.", features: JSON.stringify({ dimmer: true, steps: 3, touch: true, wifi: true, ota: true }), stockCount: 50 },
-          { name: "4-State Touch Dimmer", modelCode: "DIM-4S", relayCount: 1, price: "799", description: "Touch dimmer with 4 brightness steps (off \u2192 33% \u2192 66% \u2192 100%). WiFi + touch control, app dimming via steps.", features: JSON.stringify({ dimmer: true, steps: 4, touch: true, wifi: true, ota: true }), stockCount: 50 }
-        ];
-        for (const p of DEFAULT_PRODUCTS2) {
-          await prisma.product.create({ data: p });
-        }
-        logger.info("\u2705 Auto-seeded default product catalog (9 products)");
-      }
-    });
-    await migration("refresh_tokens table", async () => {
-      const rt = await prisma.$queryRaw`
-        SELECT COUNT(*) AS c FROM information_schema.tables
-        WHERE table_schema = DATABASE() AND table_name = 'refresh_tokens'
-      `;
-      if (Number(rt[0]?.c ?? 0) === 0) {
-        await prisma.$executeRawUnsafe(`
-          CREATE TABLE refresh_tokens (
-            id INT NOT NULL AUTO_INCREMENT,
-            userId INT NOT NULL,
-            token_hash VARCHAR(64) NOT NULL,
-            device_info VARCHAR(255) NULL,
-            ip_address VARCHAR(45) NULL,
-            last_active DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-            expires_at DATETIME(3) NOT NULL,
-            created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-            revoked_at DATETIME(3) NULL,
-            PRIMARY KEY (id),
-            UNIQUE INDEX refresh_tokens_token_hash_key (token_hash),
-            INDEX refresh_tokens_userId_idx (userId),
-            CONSTRAINT refresh_tokens_userId_fkey FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
-          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-        `);
-        logger.info("\u2705 Migration: refresh_tokens table created");
-      }
-    });
-    await addCol("product_media", "review_id", "INT NULL");
-    await migration("product_media table", async () => {
-      const pm = await prisma.$queryRaw`
-        SELECT COUNT(*) AS c FROM information_schema.tables
-        WHERE table_schema = DATABASE() AND table_name = 'product_media'
-      `;
-      if (Number(pm[0]?.c ?? 0) === 0) {
-        await prisma.$executeRawUnsafe(`
-          CREATE TABLE product_media (
-            id INT NOT NULL AUTO_INCREMENT,
-            product_id INT NOT NULL,
-            review_id INT NULL,
-            type VARCHAR(20) NOT NULL DEFAULT 'image',
-            url VARCHAR(500) NOT NULL,
-            created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-            PRIMARY KEY (id),
-            INDEX product_media_product_id_idx (product_id),
-            CONSTRAINT product_media_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE ON UPDATE CASCADE
-          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-        `);
-        logger.info("\u2705 Migration: product_media table created");
-      }
-    });
-    await migration("product_reviews table", async () => {
-      const pr = await prisma.$queryRaw`
-        SELECT COUNT(*) AS c FROM information_schema.tables
-        WHERE table_schema = DATABASE() AND table_name = 'product_reviews'
-      `;
-      if (Number(pr[0]?.c ?? 0) === 0) {
-        await prisma.$executeRawUnsafe(`
-          CREATE TABLE product_reviews (
-            id INT NOT NULL AUTO_INCREMENT,
-            product_id INT NOT NULL,
-            user_id INT NOT NULL,
-            rating INT NOT NULL,
-            comment TEXT NULL,
-            created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-            PRIMARY KEY (id),
-            INDEX product_reviews_product_id_idx (product_id),
-            INDEX product_reviews_user_id_idx (user_id),
-            CONSTRAINT product_reviews_product_id_fkey FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE ON UPDATE CASCADE,
-            CONSTRAINT product_reviews_user_id_fkey FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
-          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-        `);
-        logger.info("\u2705 Migration: product_reviews table created");
-      }
-    });
-  } catch (err) {
-    logger.warn("Light migration (esp serial unique) skip/fail", err instanceof Error ? err.message : String(err));
-  }
+  logger.info("[migrations] Prisma-managed schema is up-to-date. No light migrations to run.");
 }
 async function dbHasSchema() {
   try {
@@ -66833,7 +66347,7 @@ async function main() {
   const onListening = () => {
     const addr = server.address();
     boot("LISTENING on", typeof addr === "object" && addr ? `${addr.address}:${addr.port}` : String(addr));
-    logger.info(`\u{1F680} API listening on ${JSON.stringify(listenTarget)}`);
+    logger.info(`\xF0\u0178\u0161\u20AC API listening on ${JSON.stringify(listenTarget)}`);
     logger.info(`   Health check: /api/health`);
     logger.info(`   Realtime (Socket.IO): ws://${env.API_HOST}:${env.API_PORT}`);
   };
@@ -66856,7 +66370,7 @@ async function main() {
     process.stderr.write(line + "\n");
     fileLog(line);
   });
-  boot("main() setup complete \u2014 background DB init starting");
+  boot("main() setup complete \xE2\u20AC\u201D background DB init starting");
   void initDatabase();
 }
 async function selfHealPrismaClient() {
@@ -66867,16 +66381,16 @@ async function initDatabase() {
     try {
       await prisma.$connect();
     } catch (err) {
-      boot("db probe: NOT reachable \u2014", err instanceof Error ? err.message : String(err));
+      boot("db probe: NOT reachable \xE2\u20AC\u201D", err instanceof Error ? err.message : String(err));
       return false;
     }
     if (await dbHasSchema()) {
-      logger.info("\u2705 Database connected (schema ready)");
+      logger.info("\xE2\u0153\u2026 Database connected (schema ready)");
       await runLightMigrations();
       await selfHealPrismaClient();
       return true;
     }
-    logger.warn("\u26A0\uFE0F Database reachable par installed nahi \u2014 setup mode. /api/install se installation karo.");
+    logger.warn("\xE2\u0161\xA0\xEF\xB8\x8F Database reachable par installed nahi \xE2\u20AC\u201D setup mode. /api/install se installation karo.");
     return false;
   };
   const finishReady = async () => {
@@ -66917,7 +66431,7 @@ async function initDatabase() {
     await finishReady();
     return;
   }
-  boot("db probe: retry loop start (har 15s) \u2014 DB aate hi ready ho jayega");
+  boot("db probe: retry loop start (har 15s) \xE2\u20AC\u201D DB aate hi ready ho jayega");
   setDbReady(false);
   const retryTimer = setInterval(async () => {
     const ok3 = await probeOnce();

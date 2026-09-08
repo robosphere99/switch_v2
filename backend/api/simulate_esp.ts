@@ -63,16 +63,31 @@ async function main() {
   }
 
   // 5. Connect to EMQX using the API Key
+  // CAUTION: Do NOT blindly overwrite existing hardware API keys!
+  let rawApiKey = process.env.SIMULATED_API_KEY;
   let key = await prisma.apiKey.findFirst({ where: { homeId } });
-  const rawApiKey = crypto.randomBytes(32).toString("hex");
-  const keyHash = crypto.createHash("sha256").update(rawApiKey).digest("hex");
-  
-  if (!key) {
-      key = await prisma.apiKey.create({
-          data: { homeId, userId: order!.userId, keyPrefix: "test", keyHash }
-      });
-  } else {
-      await prisma.apiKey.update({ where: { id: key.id }, data: { keyHash } });
+
+  if (!rawApiKey) {
+      if (!key) {
+          rawApiKey = crypto.randomBytes(32).toString("hex");
+          const keyHash = crypto.createHash("sha256").update(rawApiKey).digest("hex");
+          key = await prisma.apiKey.create({
+              data: { homeId, userId: order!.userId, keyPrefix: "sim", keyHash }
+          });
+          console.log(`Created new simulated API key: ${rawApiKey}`);
+      } else {
+          console.warn("⚠️ An existing API key was found for this home.");
+          console.warn("⚠️ Set SIMULATED_API_KEY in environment to use a specific key, or generate a dedicated test key in dashboard.");
+          // To avoid breaking physical hardware with rc=5, we generate a simulator-specific key if needed:
+          rawApiKey = process.env.SIMULATED_API_KEY || "test_sim_key";
+          const simHash = crypto.createHash("sha256").update(rawApiKey).digest("hex");
+          const existingSimKey = await prisma.apiKey.findUnique({ where: { keyHash: simHash } });
+          if (!existingSimKey) {
+              await prisma.apiKey.create({
+                  data: { homeId, userId: order!.userId, keyPrefix: "sim", keyHash: simHash }
+              });
+          }
+      }
   }
 
   console.log(`Connecting to EMQX for ${targetSerial}...`);

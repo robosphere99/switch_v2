@@ -6,9 +6,10 @@ import { dirname, join } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const webDist = join(here, "..", "dist");
-const apiRoot = join(here, "..", "..", "api");
+const apiRoot = join(here, "..", "..", "..", "backend", "api");
 
 if (existsSync(join(webDist, "index.html"))) {
+  mkdirSync(apiRoot, { recursive: true });
   cpSync(join(webDist, "index.html"), join(apiRoot, "index.html"));
   rmSync(join(apiRoot, "assets"), { recursive: true, force: true });
   mkdirSync(join(apiRoot, "assets"), { recursive: true });
