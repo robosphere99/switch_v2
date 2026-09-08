@@ -1740,20 +1740,15 @@ function getCandidateUploadDirs() {
   ].filter((d) => Boolean(d));
   return Array.from(new Set(dirs));
 }
-function findWritableUploadsDir() {
+function findWritableUploadsDir(subFolder = "products") {
   const candidates = getCandidateUploadDirs();
   for (const dir of candidates) {
     try {
-      fs3.mkdirSync(dir, { recursive: true });
-      const testFile = path3.join(dir, `.test-write-${Date.now()}.tmp`);
+      const targetDir = path3.join(dir, subFolder);
+      fs3.mkdirSync(targetDir, { recursive: true });
+      const testFile = path3.join(targetDir, `.test-${Date.now()}.tmp`);
       fs3.writeFileSync(testFile, "1");
       fs3.unlinkSync(testFile);
-      for (const sub of ["products", "avatars", "support", "billing"]) {
-        try {
-          fs3.mkdirSync(path3.join(dir, sub), { recursive: true });
-        } catch {
-        }
-      }
       return dir;
     } catch {
       continue;
@@ -1761,13 +1756,8 @@ function findWritableUploadsDir() {
   }
   const fallback = path3.join(os2.tmpdir(), "switchnest-uploads");
   try {
-    fs3.mkdirSync(fallback, { recursive: true });
-    for (const sub of ["products", "avatars", "support", "billing"]) {
-      try {
-        fs3.mkdirSync(path3.join(fallback, sub), { recursive: true });
-      } catch {
-      }
-    }
+    const targetDir = path3.join(fallback, subFolder);
+    fs3.mkdirSync(targetDir, { recursive: true });
   } catch {
   }
   return fallback;
@@ -2571,6 +2561,7 @@ import multer from "multer";
 // src/lib/cloudinary.ts
 import path7 from "node:path";
 import fs6 from "node:fs";
+import * as os4 from "os";
 function createLocalStorage(folderName) {
   return {
     _handleFile(_req, file, cb) {
@@ -2582,43 +2573,26 @@ function createLocalStorage(folderName) {
       file.stream.on("error", (err) => cb(err));
       file.stream.on("end", () => {
         const buffer = Buffer.concat(chunks);
-        const candidateDirs = Array.from(/* @__PURE__ */ new Set([uploadsDir, ...getCandidateUploadDirs()]));
         let savedPath = "";
-        const errors = [];
-        for (const baseDir of candidateDirs) {
+        try {
+          const writableBase = findWritableUploadsDir(folderName);
+          const targetFolder = path7.join(writableBase, folderName);
           try {
-            const targetFolder = path7.join(baseDir, folderName);
-            if (!fs6.existsSync(targetFolder)) {
-              try {
-                fs6.mkdirSync(targetFolder, { recursive: true });
-              } catch (mErr) {
-                errors.push(`mkdir(${targetFolder}): ${mErr?.message}`);
-              }
-            }
-            const filePath = path7.join(targetFolder, safeName);
-            fs6.writeFileSync(filePath, buffer);
-            savedPath = filePath;
-            break;
-          } catch (err) {
-            errors.push(`write(${path7.join(baseDir, folderName, safeName)}): ${err?.message}`);
+            fs6.mkdirSync(targetFolder, { recursive: true });
+          } catch {
           }
-        }
-        if (!savedPath) {
+          const filePath = path7.join(targetFolder, safeName);
+          fs6.writeFileSync(filePath, buffer);
+          savedPath = filePath;
+        } catch {
           try {
-            const fallbackFolder = path7.join(process.cwd(), "uploads", folderName);
-            if (!fs6.existsSync(fallbackFolder)) {
-              try {
-                fs6.mkdirSync(fallbackFolder, { recursive: true });
-              } catch (mErr) {
-                errors.push(`mkdirFallback(${fallbackFolder}): ${mErr?.message}`);
-              }
-            }
-            const filePath = path7.join(fallbackFolder, safeName);
-            fs6.writeFileSync(filePath, buffer);
-            savedPath = filePath;
-          } catch (fallbackErr) {
-            errors.push(`writeFallback(${path7.join(process.cwd(), "uploads", folderName, safeName)}): ${fallbackErr?.message}`);
-            return cb(new Error(`Storage write failed: ${errors.join(" | ")}`));
+            const fallbackFolder = path7.join(os4.tmpdir(), "switchnest-uploads", folderName);
+            fs6.mkdirSync(fallbackFolder, { recursive: true });
+            const emergencyPath = path7.join(fallbackFolder, safeName);
+            fs6.writeFileSync(emergencyPath, buffer);
+            savedPath = emergencyPath;
+          } catch (err) {
+            return cb(err);
           }
         }
         const publicUrl = `/uploads/${folderName}/${safeName}`;
@@ -6563,11 +6537,11 @@ function verifyBillToken(token2) {
 
 // src/lib/lanIp.ts
 import dgram from "node:dgram";
-import os4 from "node:os";
+import os5 from "node:os";
 function detectLanIp() {
   const candidates = ["192.168.1.1", "192.168.0.1", "10.0.0.1", "172.16.0.1", "8.8.8.8"];
   const fromInterfaces = () => {
-    for (const ifaces of Object.values(os4.networkInterfaces())) {
+    for (const ifaces of Object.values(os5.networkInterfaces())) {
       for (const iface of ifaces ?? []) {
         if (iface.family === "IPv4" && !iface.internal) return iface.address;
       }
@@ -9467,7 +9441,7 @@ function verifyRazorpayWebhook(rawBody, signature) {
 // src/controllers/shop.controller.ts
 import { exec } from "child_process";
 import { promisify } from "util";
-import os5 from "os";
+import os6 from "os";
 var execAsync = promisify(exec);
 async function getProducts2(_req, res) {
   try {
@@ -9716,7 +9690,7 @@ async function demoPayment(req, res) {
   ok(res, { paid: true, status: updatedOrder.status, paymentRef: ref });
 }
 async function getCurrentWifi(req, res) {
-  const platform = os5.platform();
+  const platform = os6.platform();
   try {
     let ssid = null;
     if (platform === "win32") {

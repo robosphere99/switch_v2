@@ -98,17 +98,15 @@ export function getCandidateUploadDirs(): string[] {
   return Array.from(new Set(dirs));
 }
 
-export function findWritableUploadsDir(): string {
+export function findWritableUploadsDir(subFolder = "products"): string {
   const candidates = getCandidateUploadDirs();
   for (const dir of candidates) {
     try {
-      fs.mkdirSync(dir, { recursive: true });
-      const testFile = path.join(dir, `.test-write-${Date.now()}.tmp`);
+      const targetDir = path.join(dir, subFolder);
+      fs.mkdirSync(targetDir, { recursive: true });
+      const testFile = path.join(targetDir, `.test-${Date.now()}.tmp`);
       fs.writeFileSync(testFile, "1");
       fs.unlinkSync(testFile);
-      for (const sub of ["products", "avatars", "support", "billing"]) {
-        try { fs.mkdirSync(path.join(dir, sub), { recursive: true }); } catch {}
-      }
       return dir;
     } catch {
       continue;
@@ -116,10 +114,8 @@ export function findWritableUploadsDir(): string {
   }
   const fallback = path.join(os.tmpdir(), "switchnest-uploads");
   try {
-    fs.mkdirSync(fallback, { recursive: true });
-    for (const sub of ["products", "avatars", "support", "billing"]) {
-      try { fs.mkdirSync(path.join(fallback, sub), { recursive: true }); } catch {}
-    }
+    const targetDir = path.join(fallback, subFolder);
+    fs.mkdirSync(targetDir, { recursive: true });
   } catch {}
   return fallback;
 }

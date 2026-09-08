@@ -1,7 +1,8 @@
 import type { StorageEngine } from "multer";
 import path from "node:path";
 import fs from "node:fs";
-import { getCandidateUploadDirs, uploadsDir } from "./paths";
+import * as os from "os";
+import { findWritableUploadsDir, getCandidateUploadDirs, uploadsDir } from "./paths";
 
 /**
  * 100% Local Server Disk Storage Engine
@@ -24,44 +25,24 @@ export function createLocalStorage(folderName: string): StorageEngine {
       file.stream.on("error", (err) => cb(err));
       file.stream.on("end", () => {
         const buffer = Buffer.concat(chunks);
-        const candidateDirs = Array.from(new Set([uploadsDir, ...getCandidateUploadDirs()]));
         let savedPath = "";
-        const errors: string[] = [];
 
-        for (const baseDir of candidateDirs) {
+        try {
+          const writableBase = findWritableUploadsDir(folderName);
+          const targetFolder = path.join(writableBase, folderName);
+          try { fs.mkdirSync(targetFolder, { recursive: true }); } catch {}
+          const filePath = path.join(targetFolder, safeName);
+          fs.writeFileSync(filePath, buffer);
+          savedPath = filePath;
+        } catch {
           try {
-            const targetFolder = path.join(baseDir, folderName);
-            if (!fs.existsSync(targetFolder)) {
-              try {
-                fs.mkdirSync(targetFolder, { recursive: true });
-              } catch (mErr: any) {
-                errors.push(`mkdir(${targetFolder}): ${mErr?.message}`);
-              }
-            }
-            const filePath = path.join(targetFolder, safeName);
-            fs.writeFileSync(filePath, buffer);
-            savedPath = filePath;
-            break;
+            const fallbackFolder = path.join(os.tmpdir(), "switchnest-uploads", folderName);
+            fs.mkdirSync(fallbackFolder, { recursive: true });
+            const emergencyPath = path.join(fallbackFolder, safeName);
+            fs.writeFileSync(emergencyPath, buffer);
+            savedPath = emergencyPath;
           } catch (err: any) {
-            errors.push(`write(${path.join(baseDir, folderName, safeName)}): ${err?.message}`);
-          }
-        }
-
-        if (!savedPath) {
-          // Final fallback to process.cwd()/uploads/<folderName>
-          try {
-            const fallbackFolder = path.join(process.cwd(), "uploads", folderName);
-            if (!fs.existsSync(fallbackFolder)) {
-              try { fs.mkdirSync(fallbackFolder, { recursive: true }); } catch (mErr: any) {
-                errors.push(`mkdirFallback(${fallbackFolder}): ${mErr?.message}`);
-              }
-            }
-            const filePath = path.join(fallbackFolder, safeName);
-            fs.writeFileSync(filePath, buffer);
-            savedPath = filePath;
-          } catch (fallbackErr: any) {
-            errors.push(`writeFallback(${path.join(process.cwd(), "uploads", folderName, safeName)}): ${fallbackErr?.message}`);
-            return cb(new Error(`Storage write failed: ${errors.join(" | ")}`));
+            return cb(err);
           }
         }
 

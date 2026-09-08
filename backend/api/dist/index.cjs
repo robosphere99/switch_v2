@@ -1762,20 +1762,15 @@ function getCandidateUploadDirs() {
   ].filter((d) => Boolean(d));
   return Array.from(new Set(dirs));
 }
-function findWritableUploadsDir() {
+function findWritableUploadsDir(subFolder = "products") {
   const candidates = getCandidateUploadDirs();
   for (const dir of candidates) {
     try {
-      fs3.mkdirSync(dir, { recursive: true });
-      const testFile = path3.join(dir, `.test-write-${Date.now()}.tmp`);
+      const targetDir = path3.join(dir, subFolder);
+      fs3.mkdirSync(targetDir, { recursive: true });
+      const testFile = path3.join(targetDir, `.test-${Date.now()}.tmp`);
       fs3.writeFileSync(testFile, "1");
       fs3.unlinkSync(testFile);
-      for (const sub of ["products", "avatars", "support", "billing"]) {
-        try {
-          fs3.mkdirSync(path3.join(dir, sub), { recursive: true });
-        } catch {
-        }
-      }
       return dir;
     } catch {
       continue;
@@ -1783,13 +1778,8 @@ function findWritableUploadsDir() {
   }
   const fallback = path3.join(os2.tmpdir(), "switchnest-uploads");
   try {
-    fs3.mkdirSync(fallback, { recursive: true });
-    for (const sub of ["products", "avatars", "support", "billing"]) {
-      try {
-        fs3.mkdirSync(path3.join(fallback, sub), { recursive: true });
-      } catch {
-      }
-    }
+    const targetDir = path3.join(fallback, subFolder);
+    fs3.mkdirSync(targetDir, { recursive: true });
   } catch {
   }
   return fallback;
@@ -2593,6 +2583,7 @@ var import_multer = __toESM(require("multer"));
 // src/lib/cloudinary.ts
 var import_node_path4 = __toESM(require("node:path"));
 var import_node_fs3 = __toESM(require("node:fs"));
+var os4 = __toESM(require("os"));
 function createLocalStorage(folderName) {
   return {
     _handleFile(_req, file, cb) {
@@ -2604,43 +2595,26 @@ function createLocalStorage(folderName) {
       file.stream.on("error", (err) => cb(err));
       file.stream.on("end", () => {
         const buffer = Buffer.concat(chunks);
-        const candidateDirs = Array.from(/* @__PURE__ */ new Set([uploadsDir, ...getCandidateUploadDirs()]));
         let savedPath = "";
-        const errors = [];
-        for (const baseDir of candidateDirs) {
+        try {
+          const writableBase = findWritableUploadsDir(folderName);
+          const targetFolder = import_node_path4.default.join(writableBase, folderName);
           try {
-            const targetFolder = import_node_path4.default.join(baseDir, folderName);
-            if (!import_node_fs3.default.existsSync(targetFolder)) {
-              try {
-                import_node_fs3.default.mkdirSync(targetFolder, { recursive: true });
-              } catch (mErr) {
-                errors.push(`mkdir(${targetFolder}): ${mErr?.message}`);
-              }
-            }
-            const filePath = import_node_path4.default.join(targetFolder, safeName);
-            import_node_fs3.default.writeFileSync(filePath, buffer);
-            savedPath = filePath;
-            break;
-          } catch (err) {
-            errors.push(`write(${import_node_path4.default.join(baseDir, folderName, safeName)}): ${err?.message}`);
+            import_node_fs3.default.mkdirSync(targetFolder, { recursive: true });
+          } catch {
           }
-        }
-        if (!savedPath) {
+          const filePath = import_node_path4.default.join(targetFolder, safeName);
+          import_node_fs3.default.writeFileSync(filePath, buffer);
+          savedPath = filePath;
+        } catch {
           try {
-            const fallbackFolder = import_node_path4.default.join(process.cwd(), "uploads", folderName);
-            if (!import_node_fs3.default.existsSync(fallbackFolder)) {
-              try {
-                import_node_fs3.default.mkdirSync(fallbackFolder, { recursive: true });
-              } catch (mErr) {
-                errors.push(`mkdirFallback(${fallbackFolder}): ${mErr?.message}`);
-              }
-            }
-            const filePath = import_node_path4.default.join(fallbackFolder, safeName);
-            import_node_fs3.default.writeFileSync(filePath, buffer);
-            savedPath = filePath;
-          } catch (fallbackErr) {
-            errors.push(`writeFallback(${import_node_path4.default.join(process.cwd(), "uploads", folderName, safeName)}): ${fallbackErr?.message}`);
-            return cb(new Error(`Storage write failed: ${errors.join(" | ")}`));
+            const fallbackFolder = import_node_path4.default.join(os4.tmpdir(), "switchnest-uploads", folderName);
+            import_node_fs3.default.mkdirSync(fallbackFolder, { recursive: true });
+            const emergencyPath = import_node_path4.default.join(fallbackFolder, safeName);
+            import_node_fs3.default.writeFileSync(emergencyPath, buffer);
+            savedPath = emergencyPath;
+          } catch (err) {
+            return cb(err);
           }
         }
         const publicUrl = `/uploads/${folderName}/${safeName}`;
