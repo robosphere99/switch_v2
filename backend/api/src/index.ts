@@ -134,6 +134,172 @@ async function runLightMigrations(): Promise<void> {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `).catch(() => {});
 
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS \`support_calls\` (
+        \`id\` INT AUTO_INCREMENT PRIMARY KEY,
+        \`caller_id\` INT NOT NULL,
+        \`receiver_id\` INT NOT NULL,
+        \`type\` VARCHAR(10) NOT NULL,
+        \`status\` VARCHAR(20) NOT NULL,
+        \`room_id\` VARCHAR(255) UNIQUE NOT NULL,
+        \`started_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        \`answered_at\` DATETIME(3) NULL,
+        \`ended_at\` DATETIME(3) NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `).catch(() => {});
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS \`support_chat_settings\` (
+        \`id\` INT AUTO_INCREMENT PRIMARY KEY,
+        \`userId\` INT NOT NULL,
+        \`peer_user_id\` INT NOT NULL,
+        \`muted_at\` DATETIME(3) NULL,
+        \`pinned_at\` DATETIME(3) NULL,
+        \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        \`updated_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+        UNIQUE KEY \`support_chat_settings_userId_peer_user_id_key\` (\`userId\`, \`peer_user_id\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `).catch(() => {});
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS \`warranty_claims\` (
+        \`id\` INT AUTO_INCREMENT PRIMARY KEY,
+        \`serialCode\` VARCHAR(32) NOT NULL,
+        \`deviceId\` INT NULL,
+        \`userId\` INT NOT NULL,
+        \`reason\` VARCHAR(255) NOT NULL,
+        \`description\` TEXT NULL,
+        \`status\` ENUM('submitted','approved','rejected','resolved') NOT NULL DEFAULT 'submitted',
+        \`admin_notes\` TEXT NULL,
+        \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        \`updated_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `).catch(() => {});
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS \`contact_messages\` (
+        \`id\` INT AUTO_INCREMENT PRIMARY KEY,
+        \`userId\` INT NULL,
+        \`name\` VARCHAR(100) NOT NULL,
+        \`email\` VARCHAR(120) NULL,
+        \`phone\` VARCHAR(20) NULL,
+        \`subject\` VARCHAR(150) NOT NULL,
+        \`message\` TEXT NOT NULL,
+        \`status\` VARCHAR(20) NOT NULL DEFAULT 'new',
+        \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `).catch(() => {});
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS \`device_access\` (
+        \`id\` INT AUTO_INCREMENT PRIMARY KEY,
+        \`homeId\` INT NOT NULL,
+        \`deviceId\` INT NOT NULL,
+        \`userId\` INT NOT NULL,
+        \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        UNIQUE KEY \`device_access_deviceId_userId_key\` (\`deviceId\`, \`userId\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `).catch(() => {});
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS \`device_usage\` (
+        \`id\` INT AUTO_INCREMENT PRIMARY KEY,
+        \`homeId\` INT NOT NULL,
+        \`deviceId\` INT NOT NULL,
+        \`userId\` INT NOT NULL,
+        \`date\` DATE NOT NULL,
+        \`on_minutes\` INT NOT NULL,
+        \`updated_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+        UNIQUE KEY \`device_usage_deviceId_userId_date_key\` (\`deviceId\`, \`userId\`, \`date\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `).catch(() => {});
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS \`push_subscriptions\` (
+        \`id\` INT AUTO_INCREMENT PRIMARY KEY,
+        \`user_id\` INT NOT NULL,
+        \`token\` VARCHAR(255) UNIQUE NOT NULL,
+        \`device_model\` VARCHAR(100) NULL,
+        \`push_device_toggles\` TINYINT(1) NOT NULL DEFAULT 1,
+        \`push_system_alerts\` TINYINT(1) NOT NULL DEFAULT 1,
+        \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        \`updated_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `).catch(() => {});
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS \`assistant_chats\` (
+        \`id\` INT AUTO_INCREMENT PRIMARY KEY,
+        \`userId\` INT NOT NULL,
+        \`homeId\` INT NOT NULL,
+        \`title\` VARCHAR(100) NOT NULL,
+        \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `).catch(() => {});
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS \`assistant_messages\` (
+        \`id\` INT AUTO_INCREMENT PRIMARY KEY,
+        \`chatId\` INT NOT NULL,
+        \`role\` VARCHAR(20) NOT NULL,
+        \`content\` TEXT NOT NULL,
+        \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `).catch(() => {});
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS \`oauth_clients\` (
+        \`id\` VARCHAR(36) PRIMARY KEY,
+        \`client_id\` VARCHAR(100) UNIQUE NOT NULL,
+        \`client_secret\` VARCHAR(255) NOT NULL,
+        \`name\` VARCHAR(100) NOT NULL,
+        \`redirect_uris\` TEXT NOT NULL,
+        \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `).catch(() => {});
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS \`oauth_auth_codes\` (
+        \`id\` VARCHAR(36) PRIMARY KEY,
+        \`code\` VARCHAR(100) UNIQUE NOT NULL,
+        \`client_id\` VARCHAR(100) NOT NULL,
+        \`user_id\` INT NOT NULL,
+        \`home_id\` INT NOT NULL,
+        \`redirect_uri\` TEXT NOT NULL,
+        \`expires_at\` DATETIME(3) NOT NULL,
+        \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `).catch(() => {});
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS \`oauth_tokens\` (
+        \`id\` VARCHAR(36) PRIMARY KEY,
+        \`access_token\` VARCHAR(255) UNIQUE NOT NULL,
+        \`refresh_token\` VARCHAR(255) UNIQUE NULL,
+        \`client_id\` VARCHAR(100) NOT NULL,
+        \`user_id\` INT NOT NULL,
+        \`home_id\` INT NOT NULL,
+        \`expires_at\` DATETIME(3) NOT NULL,
+        \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        \`last_used_at\` DATETIME(3) NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `).catch(() => {});
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS \`integration_connections\` (
+        \`id\` INT AUTO_INCREMENT PRIMARY KEY,
+        \`user_id\` INT NOT NULL,
+        \`home_id\` INT NOT NULL,
+        \`provider\` VARCHAR(50) NOT NULL,
+        \`provider_subject\` VARCHAR(255) NULL,
+        \`status\` VARCHAR(20) NOT NULL DEFAULT 'active',
+        \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        \`updated_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+        \`last_used_at\` DATETIME(3) NULL,
+        UNIQUE KEY \`integration_connections_user_id_provider_key\` (\`user_id\`, \`provider\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `).catch(() => {});
+
     // 2. Ensure columns in products
     await addColumnIfMissing("products", "upcoming", "TINYINT(1) NOT NULL DEFAULT 0");
     await addColumnIfMissing("products", "featured", "TINYINT(1) NOT NULL DEFAULT 0");
