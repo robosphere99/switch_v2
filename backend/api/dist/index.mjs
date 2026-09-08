@@ -53,8 +53,7 @@ import fs from "node:fs";
 import { z } from "zod";
 function buildDatabaseUrl() {
   if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim()) return process.env.DATABASE_URL;
-  console.error("\u26A0\uFE0F  [env] DATABASE_URL is not set! Set it in .env pointing to Neon PostgreSQL.");
-  return "postgresql://user:pass@localhost:5432/switchnest";
+  return "mysql://switch_v2:switchnest%401234567890@127.0.0.1:3306/switch_v2";
 }
 var envPaths, envSchema, parsed, env, corsOrigins;
 var init_env = __esm({

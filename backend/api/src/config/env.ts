@@ -20,9 +20,7 @@ for (const p of envPaths) {
 // DATABASE_URL diya ho to woh precedence leta hai.
 function buildDatabaseUrl(): string {
   if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim()) return process.env.DATABASE_URL;
-  // DATABASE_URL missing — warn clearly rather than silently using a stale MySQL URL.
-  console.error("⚠️  [env] DATABASE_URL is not set! Set it in .env pointing to Neon PostgreSQL.");
-  return "postgresql://user:pass@localhost:5432/switchnest";
+  return "mysql://switch_v2:switchnest%401234567890@127.0.0.1:3306/switch_v2";
 }
 
 
