@@ -19,7 +19,7 @@ for (const p of candidatePaths) {
 
 export function getEffectiveDbUrl(): string {
   const envUrl = process.env.DATABASE_URL?.trim();
-  if (envUrl) return envUrl;
+  if (envUrl && envUrl.startsWith("mysql://")) return envUrl;
   return "mysql://switch_v2:switchnest%401234567890@127.0.0.1:3306/switch_v2";
 }
 

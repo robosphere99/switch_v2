@@ -19,7 +19,7 @@ for (const p of envPaths) {
 // user sirf DB_HOST/DB_USER/DB_PASS/DB_NAME type karta hai). Explicit
 // DATABASE_URL diya ho to woh precedence leta hai.
 function buildDatabaseUrl(): string {
-  if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim()) return process.env.DATABASE_URL;
+  if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim().startsWith("mysql://")) return process.env.DATABASE_URL;
   return "mysql://switch_v2:switchnest%401234567890@127.0.0.1:3306/switch_v2";
 }
 

@@ -52,7 +52,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { z } from "zod";
 function buildDatabaseUrl() {
-  if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim()) return process.env.DATABASE_URL;
+  if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim().startsWith("mysql://")) return process.env.DATABASE_URL;
   return "mysql://switch_v2:switchnest%401234567890@127.0.0.1:3306/switch_v2";
 }
 var envPaths, envSchema, parsed, env, corsOrigins;
@@ -184,7 +184,7 @@ import path4 from "node:path";
 import fs4 from "node:fs";
 function getEffectiveDbUrl() {
   const envUrl = process.env.DATABASE_URL?.trim();
-  if (envUrl) return envUrl;
+  if (envUrl && envUrl.startsWith("mysql://")) return envUrl;
   return "mysql://switch_v2:switchnest%401234567890@127.0.0.1:3306/switch_v2";
 }
 function withConnLimit(url, limit = 10) {
