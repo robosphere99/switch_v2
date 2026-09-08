@@ -713,8 +713,8 @@ model SupportCall {
 model Coupon {
   id             Int       @id @default(autoincrement())
   code           String    @unique @db.VarChar(32)
-  discountType   String    @default("percentage") @db.VarChar(16) // "percentage" or "fixed"
-  discountValue  Decimal   @db.Decimal(10, 2)
+  discountType   String    @default("percentage") @db.VarChar(16) @map("discount_type")
+  discountValue  Decimal   @db.Decimal(10, 2) @map("discount_value")
   minOrderAmount Decimal?  @db.Decimal(10, 2) @map("min_order_amount")
   maxDiscount    Decimal?  @db.Decimal(10, 2) @map("max_discount")
   usageLimit     Int?      @map("usage_limit")
@@ -836,8 +836,8 @@ model PushSubscription {
 }
 model ProductReview {
   id         Int      @id @default(autoincrement())
-  productId  Int
-  userId     Int
+  productId  Int      @map("product_id")
+  userId     Int      @map("user_id")
   rating     Decimal  @db.Decimal(3, 2)
   comment    String?  @db.Text
   createdAt  DateTime @default(now()) @map("created_at")
@@ -854,8 +854,8 @@ model ProductReview {
 
 model ProductMedia {
   id         Int      @id @default(autoincrement())
-  productId  Int?
-  reviewId   Int?
+  productId  Int?     @map("product_id")
+  reviewId   Int?     @map("review_id")
   url        String   @db.VarChar(500)
   type       String   @default("image") @db.VarChar(20) // image, video
   createdAt  DateTime @default(now()) @map("created_at")

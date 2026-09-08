@@ -66463,17 +66463,25 @@ async function runLightMigrations() {
     await addColumnIfMissing("users", "address", "TEXT NULL");
     await addColumnIfMissing("home_members", "restricted", "TINYINT(1) NOT NULL DEFAULT 0");
     await addColumnIfMissing("home_members", "daily_limit_minutes", "INT NULL");
+    await addColumnIfMissing("product_media", "product_id", "INT NULL");
     await addColumnIfMissing("product_media", "productId", "INT NULL");
+    await addColumnIfMissing("product_media", "review_id", "INT NULL");
     await addColumnIfMissing("product_media", "reviewId", "INT NULL");
     await addColumnIfMissing("product_media", "url", "VARCHAR(500) NOT NULL");
     await addColumnIfMissing("product_media", "type", "VARCHAR(20) NOT NULL DEFAULT 'image'");
     await addColumnIfMissing("product_media", "created_at", "DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)");
+    await addColumnIfMissing("product_reviews", "product_id", "INT NOT NULL");
     await addColumnIfMissing("product_reviews", "productId", "INT NOT NULL");
+    await addColumnIfMissing("product_reviews", "user_id", "INT NOT NULL");
     await addColumnIfMissing("product_reviews", "userId", "INT NOT NULL");
     await addColumnIfMissing("product_reviews", "rating", "DECIMAL(3,2) NOT NULL DEFAULT 5.00");
     await addColumnIfMissing("product_reviews", "comment", "TEXT NULL");
     await addColumnIfMissing("product_reviews", "created_at", "DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)");
     await addColumnIfMissing("product_reviews", "updated_at", "DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)");
+    await addColumnIfMissing("coupons", "discount_type", "VARCHAR(16) NOT NULL DEFAULT 'percentage'");
+    await addColumnIfMissing("coupons", "discountType", "VARCHAR(16) NOT NULL DEFAULT 'percentage'");
+    await addColumnIfMissing("coupons", "discount_value", "DECIMAL(10, 2) NOT NULL DEFAULT 0.00");
+    await addColumnIfMissing("coupons", "discountValue", "DECIMAL(10, 2) NOT NULL DEFAULT 0.00");
     const productCount = await prisma.product.count().catch(() => 0);
     if (productCount === 0) {
       logger.info("[seed] Seeding initial SwitchNest products...");
