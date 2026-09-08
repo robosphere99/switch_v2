@@ -371,6 +371,21 @@ async function runLightMigrations(): Promise<void> {
     await addColumnIfMissing("home_members", "restricted", "TINYINT(1) NOT NULL DEFAULT 0");
     await addColumnIfMissing("home_members", "daily_limit_minutes", "INT NULL");
 
+    // 9. Ensure columns in product_media
+    await addColumnIfMissing("product_media", "productId", "INT NULL");
+    await addColumnIfMissing("product_media", "reviewId", "INT NULL");
+    await addColumnIfMissing("product_media", "url", "VARCHAR(500) NOT NULL");
+    await addColumnIfMissing("product_media", "type", "VARCHAR(20) NOT NULL DEFAULT 'image'");
+    await addColumnIfMissing("product_media", "created_at", "DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)");
+
+    // 10. Ensure columns in product_reviews
+    await addColumnIfMissing("product_reviews", "productId", "INT NOT NULL");
+    await addColumnIfMissing("product_reviews", "userId", "INT NOT NULL");
+    await addColumnIfMissing("product_reviews", "rating", "DECIMAL(3,2) NOT NULL DEFAULT 5.00");
+    await addColumnIfMissing("product_reviews", "comment", "TEXT NULL");
+    await addColumnIfMissing("product_reviews", "created_at", "DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)");
+    await addColumnIfMissing("product_reviews", "updated_at", "DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)");
+
     // Seed default products if products table is empty
     const productCount = await prisma.product.count().catch(() => 0);
     if (productCount === 0) {
