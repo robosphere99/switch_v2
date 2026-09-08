@@ -17,6 +17,7 @@ import {
   updateAdminProduct,
   updateOrderStatus,
   updateOrderPaymentStatus,
+  deleteAdminOrder,
   updateWarrantyStatus,
   uploadProductMedia,
   deleteProductMedia,
@@ -495,6 +496,16 @@ function OrdersSection() {
     queryClient.invalidateQueries({ queryKey: ["admin-orders"] });
   }
 
+  async function handleDeleteOrder(o: Order) {
+    if (!window.confirm(`Order #${o.orderNumber} ko permanent delete karna hai? Ye action undo nahi hoga.`)) return;
+    try {
+      await deleteAdminOrder(o.id);
+      queryClient.invalidateQueries({ queryKey: ["admin-orders"] });
+    } catch {
+      alert("Order delete nahi ho paya.");
+    }
+  }
+
   // Filter & Search Logic
   const filteredOrders = useMemo(() => {
     if (!orders) return [];
@@ -724,6 +735,9 @@ function OrdersSection() {
               {o.paymentStatus !== "paid" && o.status !== "cancelled" && (
                 <button onClick={() => markPaidSettled(o)} className="rounded bg-emerald-700/80 px-3 py-1.5 font-semibold text-emerald-100 border border-emerald-500 hover:bg-emerald-600">₹ Mark Paid</button>
               )}
+              <button onClick={() => handleDeleteOrder(o)} className="rounded bg-red-900/30 border border-red-800/50 px-3 py-1.5 font-semibold text-red-400 hover:bg-red-800 hover:text-white" title="Order delete karo">
+                🗑️ Delete
+              </button>
             </div>
           </div>
         ))}

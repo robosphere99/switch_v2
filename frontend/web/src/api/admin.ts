@@ -378,6 +378,24 @@ export async function renameEsp(id: number, name: string): Promise<ApiResponse<{
   return data;
 }
 
+export async function deleteAdminEsp(id: number): Promise<ApiResponse<{ deleted: boolean; id: number; serialCode: string }>> {
+  const { data } = await api.delete<ApiResponse<{ deleted: boolean; id: number; serialCode: string }>>(`/admin/esp/${id}`);
+  return data;
+}
+
+export async function cleanTestData(): Promise<ApiResponse<{
+  success: boolean;
+  message: string;
+  deletedOrders: number;
+  deletedEsps: number;
+  deletedItems: number;
+  deletedSerials: number;
+  deletedDevices: number;
+}>> {
+  const { data } = await api.post("/admin/cleanup-test-data");
+  return data;
+}
+
 /** Server app.log + crashguard lines — 503 crash ka asli reason yahan dikhta hai. */
 export interface AdminLogsResponse {
   path: string | null;

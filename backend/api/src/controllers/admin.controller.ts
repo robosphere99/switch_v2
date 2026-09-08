@@ -1635,6 +1635,27 @@ export const patchEspId = async (req: Request, res: Response) => {
   ok(res, esp);
 };
 
+export const deleteEspId = async (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  const esp = await prisma.espDevice.findUnique({
+    where: { id },
+    include: { devices: true },
+  });
+  if (!esp) throw new AppError("NOT_FOUND", "ESP board not found");
+
+  // Delete/unlink devices attached to this ESP
+  await prisma.device.deleteMany({ where: { espId: id } }).catch(() => {});
+  // Delete the ESP device
+  await prisma.espDevice.delete({ where: { id } });
+
+  await audit(req.user!.sub, "admin.esp.delete", {
+    entity: "esp",
+    entityId: id,
+    meta: { serialCode: esp.serialCode, macAddress: esp.macAddress },
+  });
+  ok(res, { deleted: true, id, serialCode: esp.serialCode });
+};
+
 export const getEspIdHistory = async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   const logs = await prisma.auditLog.findMany({
@@ -2179,6 +2200,90 @@ export const patchOrdersIdPaymentStatus = async (req: Request, res: Response) =>
     meta: { orderNumber: order.orderNumber },
   });
   ok(res, order);
+};
+
+export const deleteOrdersId = async (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  const order = await prisma.order.findUnique({
+    where: { id },
+    include: { items: true, serials: true },
+  });
+  if (!order) throw new AppError("NOT_FOUND", "Order not found");
+
+  // Delete child items
+  await prisma.orderItem.deleteMany({ where: { orderId: id } }).catch(() => {});
+  // Unlink serials from this order
+  await prisma.serialRegistry.updateMany({
+    where: { orderId: id },
+    data: { orderId: null },
+  }).catch(() => {});
+  // Delete the order
+  await prisma.order.delete({ where: { id } });
+
+  await audit(req.user!.sub, "admin.order.delete", {
+    entity: "order",
+    entityId: id,
+    meta: { orderNumber: order.orderNumber },
+  });
+  ok(res, { deleted: true, id, orderNumber: order.orderNumber });
+};
+
+export const cleanTestData = async (req: Request, res: Response) => {
+  // Preserve ONLY the 2 live customer boards and orders
+  const preservedSerials = ["RS-4CH-3GW2ES", "RS-4CH-FFYJR3"];
+  const preservedOrderIds = [2, 8];
+
+  // 1. Delete order items for test orders
+  const deletedItems = await prisma.orderItem.deleteMany({
+    where: { orderId: { notIn: preservedOrderIds } },
+  });
+
+  // 2. Delete test serials
+  const deletedSerials = await prisma.serialRegistry.deleteMany({
+    where: { serialCode: { notIn: preservedSerials } },
+  });
+
+  // 3. Delete test orders
+  const deletedOrders = await prisma.order.deleteMany({
+    where: { id: { notIn: preservedOrderIds } },
+  });
+
+  // 4. Delete test ESP boards
+  const deletedEsps = await prisma.espDevice.deleteMany({
+    where: { serialCode: { notIn: preservedSerials } },
+  });
+
+  // 5. Delete unlinked devices or dummy devices not in Home 4 or 15
+  const preservedHomeIds = [4, 15];
+  const deletedDevices = await prisma.device.deleteMany({
+    where: {
+      OR: [
+        { homeId: { notIn: preservedHomeIds } },
+        { espId: null, homeId: { notIn: preservedHomeIds } },
+      ],
+    },
+  });
+
+  await audit(req.user!.sub, "admin.cleanup.test_data", {
+    entity: "system",
+    meta: {
+      deletedOrdersCount: deletedOrders.count,
+      deletedEspsCount: deletedEsps.count,
+      deletedItemsCount: deletedItems.count,
+      deletedSerialsCount: deletedSerials.count,
+      deletedDevicesCount: deletedDevices.count,
+    },
+  });
+
+  ok(res, {
+    success: true,
+    message: "Test data cleaned successfully. Preserved customer boards RS-4CH-3GW2ES and RS-4CH-FFYJR3 and orders #2 & #8.",
+    deletedOrders: deletedOrders.count,
+    deletedEsps: deletedEsps.count,
+    deletedItems: deletedItems.count,
+    deletedSerials: deletedSerials.count,
+    deletedDevices: deletedDevices.count,
+  });
 };
 
 export const getSerials = async (req: Request, res: Response) => {

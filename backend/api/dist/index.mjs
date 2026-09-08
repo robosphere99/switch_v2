@@ -8021,6 +8021,23 @@ var patchEspId = async (req, res) => {
   }
   ok(res, esp);
 };
+var deleteEspId = async (req, res) => {
+  const id = Number(req.params.id);
+  const esp = await prisma.espDevice.findUnique({
+    where: { id },
+    include: { devices: true }
+  });
+  if (!esp) throw new AppError("NOT_FOUND", "ESP board not found");
+  await prisma.device.deleteMany({ where: { espId: id } }).catch(() => {
+  });
+  await prisma.espDevice.delete({ where: { id } });
+  await audit(req.user.sub, "admin.esp.delete", {
+    entity: "esp",
+    entityId: id,
+    meta: { serialCode: esp.serialCode, macAddress: esp.macAddress }
+  });
+  ok(res, { deleted: true, id, serialCode: esp.serialCode });
+};
 var getEspIdHistory = async (req, res) => {
   const id = Number(req.params.id);
   const logs2 = await prisma.auditLog.findMany({
@@ -8522,6 +8539,72 @@ var patchOrdersIdPaymentStatus = async (req, res) => {
     meta: { orderNumber: order.orderNumber }
   });
   ok(res, order);
+};
+var deleteOrdersId = async (req, res) => {
+  const id = Number(req.params.id);
+  const order = await prisma.order.findUnique({
+    where: { id },
+    include: { items: true, serials: true }
+  });
+  if (!order) throw new AppError("NOT_FOUND", "Order not found");
+  await prisma.orderItem.deleteMany({ where: { orderId: id } }).catch(() => {
+  });
+  await prisma.serialRegistry.updateMany({
+    where: { orderId: id },
+    data: { orderId: null }
+  }).catch(() => {
+  });
+  await prisma.order.delete({ where: { id } });
+  await audit(req.user.sub, "admin.order.delete", {
+    entity: "order",
+    entityId: id,
+    meta: { orderNumber: order.orderNumber }
+  });
+  ok(res, { deleted: true, id, orderNumber: order.orderNumber });
+};
+var cleanTestData = async (req, res) => {
+  const preservedSerials = ["RS-4CH-3GW2ES", "RS-4CH-FFYJR3"];
+  const preservedOrderIds = [2, 8];
+  const deletedItems = await prisma.orderItem.deleteMany({
+    where: { orderId: { notIn: preservedOrderIds } }
+  });
+  const deletedSerials = await prisma.serialRegistry.deleteMany({
+    where: { serialCode: { notIn: preservedSerials } }
+  });
+  const deletedOrders = await prisma.order.deleteMany({
+    where: { id: { notIn: preservedOrderIds } }
+  });
+  const deletedEsps = await prisma.espDevice.deleteMany({
+    where: { serialCode: { notIn: preservedSerials } }
+  });
+  const preservedHomeIds = [4, 15];
+  const deletedDevices = await prisma.device.deleteMany({
+    where: {
+      OR: [
+        { homeId: { notIn: preservedHomeIds } },
+        { espId: null, homeId: { notIn: preservedHomeIds } }
+      ]
+    }
+  });
+  await audit(req.user.sub, "admin.cleanup.test_data", {
+    entity: "system",
+    meta: {
+      deletedOrdersCount: deletedOrders.count,
+      deletedEspsCount: deletedEsps.count,
+      deletedItemsCount: deletedItems.count,
+      deletedSerialsCount: deletedSerials.count,
+      deletedDevicesCount: deletedDevices.count
+    }
+  });
+  ok(res, {
+    success: true,
+    message: "Test data cleaned successfully. Preserved customer boards RS-4CH-3GW2ES and RS-4CH-FFYJR3 and orders #2 & #8.",
+    deletedOrders: deletedOrders.count,
+    deletedEsps: deletedEsps.count,
+    deletedItems: deletedItems.count,
+    deletedSerials: deletedSerials.count,
+    deletedDevices: deletedDevices.count
+  });
 };
 var getSerials = async (req, res) => {
   const status = req.query.status ? String(req.query.status) : void 0;
@@ -9342,6 +9425,7 @@ adminRouter.get("/esp", getEsp);
 adminRouter.post("/esp/:id/key", postEspIdKey);
 adminRouter.get("/esp/issues", getEspIssues);
 adminRouter.patch("/esp/:id", patchEspId);
+adminRouter.delete("/esp/:id", deleteEspId);
 adminRouter.get("/esp/:id/history", getEspIdHistory);
 adminRouter.get("/firmware", getFirmware);
 adminRouter.post("/firmware", upload2.single("firmware"), postFirmware);
@@ -9364,6 +9448,8 @@ adminRouter.get("/orders", getOrders);
 adminRouter.get("/orders/:id", getOrdersId);
 adminRouter.patch("/orders/:id/status", patchOrdersIdStatus);
 adminRouter.patch("/orders/:id/payment-status", patchOrdersIdPaymentStatus);
+adminRouter.delete("/orders/:id", deleteOrdersId);
+adminRouter.post("/cleanup-test-data", cleanTestData);
 adminRouter.get("/serials", getSerials);
 adminRouter.get("/serials/:code", getSerialsCode);
 adminRouter.post("/serials/generate", postSerialsGenerate);

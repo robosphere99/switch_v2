@@ -234,6 +234,8 @@ adminRouter.get("/esp/issues", adminController.getEspIssues);
 
 adminRouter.patch("/esp/:id", adminController.patchEspId);
 
+adminRouter.delete("/esp/:id", adminController.deleteEspId);
+
 /** Board ki rename history (user + admin dono ke renames) — tracking/security. */
 adminRouter.get("/esp/:id/history", adminController.getEspIdHistory);
 
@@ -298,6 +300,10 @@ adminRouter.get("/orders/:id", adminController.getOrdersId);
 adminRouter.patch("/orders/:id/status", adminController.patchOrdersIdStatus);
 
 adminRouter.patch("/orders/:id/payment-status", adminController.patchOrdersIdPaymentStatus);
+
+adminRouter.delete("/orders/:id", adminController.deleteOrdersId);
+
+adminRouter.post("/cleanup-test-data", adminController.cleanTestData);
 
 // ---------- Shop: Serial Registry ----------
 

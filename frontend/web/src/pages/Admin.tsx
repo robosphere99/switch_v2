@@ -25,6 +25,7 @@ import {
   pushOtaAll,
   probeEsp,
   renameEsp,
+  deleteAdminEsp,
   issueEspKey,
   type AdminHomeDetail,
   type EspBoard,
@@ -326,6 +327,10 @@ export function Admin() {
   });
   const renameM = useMutation({
     mutationFn: ({ id, name }: { id: number; name: string }) => renameEsp(id, name),
+    onSuccess: invalidate,
+  });
+  const delEspM = useMutation({
+    mutationFn: deleteAdminEsp,
     onSuccess: invalidate,
   });
   const issueKeyM = useMutation({
@@ -1558,6 +1563,18 @@ export function Admin() {
                                 className="rounded border border-brand/40 px-2.5 py-1 text-xs font-semibold text-brand hover:bg-brand/10 disabled:opacity-50"
                               >
                                 📤 Push
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (confirm(`ESP board "${espRow.name ?? espRow.serialCode ?? espRow.macAddress}" ko permanent delete karna hai?`)) {
+                                    delEspM.mutate(espRow.id);
+                                  }
+                                }}
+                                disabled={delEspM.isPending}
+                                title="Delete ESP board"
+                                className="rounded border border-red-500/40 px-2 py-1 text-xs text-red-500 hover:bg-red-500/10 disabled:opacity-50"
+                              >
+                                🗑️
                               </button>
                             </div>
                           </td>

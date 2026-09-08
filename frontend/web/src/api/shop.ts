@@ -228,6 +228,10 @@ export async function updateOrderPaymentStatus(id: number, paymentStatus: string
   return data.data;
 }
 
+export async function deleteAdminOrder(id: number): Promise<void> {
+  await api.delete(`/admin/orders/${id}`);
+}
+
 export async function getSerials(filters?: { status?: string; productId?: number }): Promise<SerialRow[]> {
   const params = new URLSearchParams();
   if (filters?.status) params.set("status", filters.status);
