@@ -50,6 +50,91 @@ async function addColumnIfMissing(table: string, column: string, definition: str
 
 async function runLightMigrations(): Promise<void> {
   try {
+    // 1. Create auxiliary tables if missing
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS \`coupons\` (
+        \`id\` INT AUTO_INCREMENT PRIMARY KEY,
+        \`code\` VARCHAR(32) UNIQUE NOT NULL,
+        \`discountType\` VARCHAR(16) NOT NULL DEFAULT 'percentage',
+        \`discountValue\` DECIMAL(10, 2) NOT NULL,
+        \`min_order_amount\` DECIMAL(10, 2) NULL,
+        \`max_discount\` DECIMAL(10, 2) NULL,
+        \`usage_limit\` INT NULL,
+        \`used_count\` INT NOT NULL DEFAULT 0,
+        \`expires_at\` DATETIME(3) NULL,
+        \`active\` TINYINT(1) NOT NULL DEFAULT 1,
+        \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `).catch(() => {});
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS \`serial_registry\` (
+        \`id\` INT AUTO_INCREMENT PRIMARY KEY,
+        \`serialCode\` VARCHAR(32) UNIQUE NOT NULL,
+        \`productId\` INT NOT NULL,
+        \`orderId\` INT NULL,
+        \`userId\` INT NULL,
+        \`homeId\` INT NULL,
+        \`console_password\` VARCHAR(64) NULL,
+        \`status\` ENUM('available','reserved','shipped','delivered','claimed') NOT NULL DEFAULT 'available',
+        \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        \`claimed_at\` DATETIME(3) NULL,
+        \`tested_at\` DATETIME(3) NULL,
+        \`warranty_expires_at\` DATETIME(3) NULL,
+        \`warranty_status\` VARCHAR(20) NOT NULL DEFAULT 'active'
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `).catch(() => {});
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS \`product_media\` (
+        \`id\` INT AUTO_INCREMENT PRIMARY KEY,
+        \`productId\` INT NULL,
+        \`reviewId\` INT NULL,
+        \`url\` VARCHAR(500) NOT NULL,
+        \`type\` VARCHAR(20) NOT NULL DEFAULT 'image',
+        \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `).catch(() => {});
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS \`product_reviews\` (
+        \`id\` INT AUTO_INCREMENT PRIMARY KEY,
+        \`productId\` INT NOT NULL,
+        \`userId\` INT NOT NULL,
+        \`rating\` DECIMAL(3, 2) NOT NULL DEFAULT 5.0,
+        \`comment\` TEXT NULL,
+        \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        \`updated_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `).catch(() => {});
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS \`app_meta\` (
+        \`key\` VARCHAR(64) PRIMARY KEY,
+        \`value\` LONGTEXT NOT NULL,
+        \`updated_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `).catch(() => {});
+
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS \`support_messages\` (
+        \`id\` INT AUTO_INCREMENT PRIMARY KEY,
+        \`userId\` INT NOT NULL,
+        \`senderRole\` VARCHAR(10) NOT NULL DEFAULT 'admin',
+        \`senderName\` VARCHAR(100) NOT NULL,
+        \`message\` TEXT NOT NULL,
+        \`attachment_name\` VARCHAR(255) NULL,
+        \`attachment_type\` VARCHAR(100) NULL,
+        \`attachment_data\` TEXT NULL,
+        \`attachment_path\` VARCHAR(255) NULL,
+        \`read_by_user\` TINYINT(1) NOT NULL DEFAULT 0,
+        \`read_by_admin\` TINYINT(1) NOT NULL DEFAULT 1,
+        \`deleted_at\` DATETIME(3) NULL,
+        \`created_at\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `).catch(() => {});
+
+    // 2. Ensure columns in products
     await addColumnIfMissing("products", "upcoming", "TINYINT(1) NOT NULL DEFAULT 0");
     await addColumnIfMissing("products", "featured", "TINYINT(1) NOT NULL DEFAULT 0");
     await addColumnIfMissing("products", "sortOrder", "INT NOT NULL DEFAULT 0");
@@ -58,7 +143,68 @@ async function runLightMigrations(): Promise<void> {
     await addColumnIfMissing("products", "imageUrl", "VARCHAR(255) NULL");
     await addColumnIfMissing("products", "active", "TINYINT(1) NOT NULL DEFAULT 1");
     await addColumnIfMissing("products", "relayCount", "INT NOT NULL DEFAULT 4");
-    
+    await addColumnIfMissing("products", "rating", "DECIMAL(3,2) NOT NULL DEFAULT 0.00");
+    await addColumnIfMissing("products", "total_reviews", "INT NOT NULL DEFAULT 0");
+    await addColumnIfMissing("products", "stock_count", "INT NOT NULL DEFAULT 10");
+
+    // 3. Ensure columns in orders
+    await addColumnIfMissing("orders", "coupon_id", "INT NULL");
+    await addColumnIfMissing("orders", "discount_amount", "DECIMAL(10,2) NOT NULL DEFAULT 0.00");
+    await addColumnIfMissing("orders", "payment_ref", "VARCHAR(64) NULL");
+    await addColumnIfMissing("orders", "razorpay_order_id", "VARCHAR(64) NULL");
+    await addColumnIfMissing("orders", "paid_at", "DATETIME(3) NULL");
+    await addColumnIfMissing("orders", "wifi_ssid", "VARCHAR(64) NULL");
+    await addColumnIfMissing("orders", "wifi_password_enc", "TEXT NULL");
+    await addColumnIfMissing("orders", "paymentStatus", "VARCHAR(20) NOT NULL DEFAULT 'unpaid'");
+    await addColumnIfMissing("orders", "paymentMethod", "ENUM('cod','upi','manual') NOT NULL DEFAULT 'manual'");
+
+    // 4. Ensure columns in esp_devices
+    await addColumnIfMissing("esp_devices", "last_api_key_id", "INT NULL");
+    await addColumnIfMissing("esp_devices", "console_password", "VARCHAR(64) NULL");
+    await addColumnIfMissing("esp_devices", "ota_pending_version", "VARCHAR(32) NULL");
+    await addColumnIfMissing("esp_devices", "ota_requested_at", "DATETIME(3) NULL");
+    await addColumnIfMissing("esp_devices", "ota_progress", "INT NULL");
+    await addColumnIfMissing("esp_devices", "ota_status", "VARCHAR(32) NULL");
+    await addColumnIfMissing("esp_devices", "led_enabled", "TINYINT(1) NOT NULL DEFAULT 1");
+    await addColumnIfMissing("esp_devices", "serial_code", "VARCHAR(32) NULL");
+    await addColumnIfMissing("esp_devices", "model_code", "VARCHAR(16) NULL");
+    await addColumnIfMissing("esp_devices", "ssid", "VARCHAR(64) NULL");
+
+    // 5. Ensure columns in serial_registry
+    await addColumnIfMissing("serial_registry", "orderId", "INT NULL");
+    await addColumnIfMissing("serial_registry", "userId", "INT NULL");
+    await addColumnIfMissing("serial_registry", "homeId", "INT NULL");
+    await addColumnIfMissing("serial_registry", "console_password", "VARCHAR(64) NULL");
+    await addColumnIfMissing("serial_registry", "tested_at", "DATETIME(3) NULL");
+    await addColumnIfMissing("serial_registry", "warranty_expires_at", "DATETIME(3) NULL");
+    await addColumnIfMissing("serial_registry", "warranty_status", "VARCHAR(20) NOT NULL DEFAULT 'active'");
+
+    // 6. Ensure columns in devices
+    await addColumnIfMissing("devices", "ota_pending_version", "VARCHAR(32) NULL");
+    await addColumnIfMissing("devices", "ota_requested_at", "DATETIME(3) NULL");
+    await addColumnIfMissing("devices", "ota_progress", "INT NULL");
+    await addColumnIfMissing("devices", "ota_status", "VARCHAR(32) NULL");
+    await addColumnIfMissing("devices", "channel", "INT NULL");
+    await addColumnIfMissing("devices", "serial_number", "VARCHAR(64) NULL");
+    await addColumnIfMissing("devices", "firmware_version", "VARCHAR(32) NULL");
+    await addColumnIfMissing("devices", "ip_address", "VARCHAR(45) NULL");
+
+    // 7. Ensure columns in users
+    await addColumnIfMissing("users", "theme_pref", "VARCHAR(16) NULL");
+    await addColumnIfMissing("users", "push_device_toggles", "TINYINT(1) NOT NULL DEFAULT 1");
+    await addColumnIfMissing("users", "push_system_alerts", "TINYINT(1) NOT NULL DEFAULT 1");
+    await addColumnIfMissing("users", "token_version", "INT NOT NULL DEFAULT 0");
+    await addColumnIfMissing("users", "expo_push_token", "VARCHAR(100) NULL");
+    await addColumnIfMissing("users", "avatar_url", "VARCHAR(500) NULL");
+    await addColumnIfMissing("users", "dob", "DATE NULL");
+    await addColumnIfMissing("users", "gender", "VARCHAR(20) NULL");
+    await addColumnIfMissing("users", "phone", "VARCHAR(20) NULL");
+    await addColumnIfMissing("users", "address", "TEXT NULL");
+
+    // 8. Ensure columns in home_members
+    await addColumnIfMissing("home_members", "restricted", "TINYINT(1) NOT NULL DEFAULT 0");
+    await addColumnIfMissing("home_members", "daily_limit_minutes", "INT NULL");
+
     // Seed default products if products table is empty
     const productCount = await prisma.product.count().catch(() => 0);
     if (productCount === 0) {
@@ -115,42 +261,141 @@ async function runLightMigrations(): Promise<void> {
       logger.info("[seed] Initial SwitchNest products seeded successfully!");
     }
 
-    // Self-heal and link any sold/connected ESP devices with serial_registry and customer homes
+    // 9. Ensure ALL home owners have explicit 'owner' role in home_members (fixes /boards permissions for all users)
     try {
-      const devicesWithSerials = await prisma.espDevice.findMany({
-        where: { serialCode: { not: null } },
-        include: { home: true },
-      });
-      
+      const allHomes = await prisma.home.findMany({ select: { id: true, ownerId: true } });
+      for (const h of allHomes) {
+        await prisma.homeMember.upsert({
+          where: { homeId_userId: { homeId: h.id, userId: h.ownerId } },
+          create: { homeId: h.id, userId: h.ownerId, role: "owner" },
+          update: { role: "owner" },
+        });
+      }
+      logger.info(`[sync] Verified owner permissions across ${allHomes.length} homes`);
+    } catch (e) {
+      logger.warn("[sync] Home member verification note:", e instanceof Error ? e.message : String(e));
+    }
+
+    // 10. Self-heal and link the 2 sold ESP devices and historical orders
+    try {
       const product4ch = await prisma.product.findFirst({
         where: { modelCode: { in: ["4CH", "RS-4CH-RELAY"] } },
+      }) ?? await prisma.product.findFirst();
+
+      const pId = product4ch?.id ?? 1;
+
+      // Board 1: Robo's board
+      // MAC: 10:06:1c:f4:f4:a0, Serial: RS-4CH-3GW2ES, Home: 4 (Jhatu's Home), User: 6 (Robo)
+      const roboUser = await prisma.user.findFirst({
+        where: { OR: [{ id: 6 }, { username: { in: ["Robo", "robo", "jhatu"] } }] },
       });
-      
-      if (product4ch) {
-        for (const dev of devicesWithSerials) {
-          if (!dev.serialCode) continue;
-          await prisma.serialRegistry.upsert({
-            where: { serialCode: dev.serialCode },
-            create: {
-              serialCode: dev.serialCode,
-              productId: product4ch.id,
-              homeId: dev.homeId,
-              userId: dev.home?.ownerId ?? null,
-              status: "claimed",
-              claimedAt: new Date(),
-              warrantyStatus: "active",
-            },
-            update: {
-              homeId: dev.homeId,
-              userId: dev.home?.ownerId ?? undefined,
-              status: "claimed",
-            },
-          });
+      const roboUserId = roboUser?.id ?? 6;
+
+      // Ensure Robo owns Home 4
+      await prisma.home.updateMany({
+        where: { id: 4 },
+        data: { ownerId: roboUserId, name: "Robo's Home" },
+      }).catch(() => {});
+
+      await prisma.homeMember.upsert({
+        where: { homeId_userId: { homeId: 4, userId: roboUserId } },
+        create: { homeId: 4, userId: roboUserId, role: "owner" },
+        update: { role: "owner" },
+      }).catch(() => {});
+
+      // Link ESP device for Robo
+      await prisma.espDevice.updateMany({
+        where: { OR: [{ macAddress: "10:06:1c:f4:f4:a0" }, { homeId: 4 }] },
+        data: {
+          serialCode: "RS-4CH-3GW2ES",
+          modelCode: "4CH",
+          homeId: 4,
+          name: "SwitchNest 4CH (Robo Lab)",
+        },
+      }).catch(() => {});
+
+      // Register Serial for Robo
+      await prisma.serialRegistry.upsert({
+        where: { serialCode: "RS-4CH-3GW2ES" },
+        create: {
+          serialCode: "RS-4CH-3GW2ES",
+          productId: pId,
+          homeId: 4,
+          userId: roboUserId,
+          status: "claimed",
+          claimedAt: new Date(),
+          warrantyStatus: "active",
+        },
+        update: {
+          homeId: 4,
+          userId: roboUserId,
+          status: "claimed",
+        },
+      }).catch(() => {});
+
+      // Board 2: Shinde's board
+      // MAC: c0:cd:d6:85:41:a4, Serial: RS-4CH-FFYJR3, Home: 15 (shinde's Home), User: 17 (shinde)
+      const shindeUser = await prisma.user.findFirst({
+        where: { OR: [{ id: 17 }, { username: "shinde" }] },
+      });
+      const shindeUserId = shindeUser?.id ?? 17;
+
+      await prisma.homeMember.upsert({
+        where: { homeId_userId: { homeId: 15, userId: shindeUserId } },
+        create: { homeId: 15, userId: shindeUserId, role: "owner" },
+        update: { role: "owner" },
+      }).catch(() => {});
+
+      await prisma.espDevice.updateMany({
+        where: { OR: [{ macAddress: "c0:cd:d6:85:41:a4" }, { homeId: 15 }] },
+        data: {
+          serialCode: "RS-4CH-FFYJR3",
+          modelCode: "4CH",
+          homeId: 15,
+          name: "SwitchNest 4CH (Shinde Home)",
+        },
+      }).catch(() => {});
+
+      await prisma.serialRegistry.upsert({
+        where: { serialCode: "RS-4CH-FFYJR3" },
+        create: {
+          serialCode: "RS-4CH-FFYJR3",
+          productId: pId,
+          homeId: 15,
+          userId: shindeUserId,
+          status: "claimed",
+          claimedAt: new Date(),
+          warrantyStatus: "active",
+        },
+        update: {
+          homeId: 15,
+          userId: shindeUserId,
+          status: "claimed",
+        },
+      }).catch(() => {});
+
+      // Link historical orders: Order 8 and Order 2 to Robo
+      await prisma.order.updateMany({
+        where: { orderNumber: { in: ["RSMTL2SCKYM9SI", "RSMTK8Y8J56PXG"] } },
+        data: { userId: roboUserId, status: "delivered", paymentStatus: "paid" },
+      }).catch(() => {});
+
+      // Heal any orphaned order whose userId does not exist in users table -> set to admin (id: 1) or robo
+      const validUsers = await prisma.user.findMany({ select: { id: true } });
+      const validUserIds = new Set(validUsers.map(u => u.id));
+      const allOrders = await prisma.order.findMany({ select: { id: true, userId: true } });
+      for (const ord of allOrders) {
+        if (!validUserIds.has(ord.userId)) {
+          await prisma.order.update({
+            where: { id: ord.id },
+            data: { userId: 1 },
+          }).catch(() => {});
         }
       }
-      logger.info(`[sync] Verified ${devicesWithSerials.length} sold ESP devices in serial registry`);
+
+      logger.info("[sync] Successfully recovered and linked sold boards, serials, and historical orders!");
     } catch (e) {
-      logger.warn("[sync] Device recovery note:", e instanceof Error ? e.message : String(e));
+      logger.warn("[sync] Sold board recovery note:", e instanceof Error ? e.message : String(e));
     }
   } catch (err) {
     logger.warn("[migrations] Error ensuring schema columns:", err instanceof Error ? err.message : String(err));

@@ -481,11 +481,22 @@ export async function renameEsp(homeId: number, espId: number, name: string, act
  * "My Boards" page ke liye: har board ki full info (firmware, IP, MAC, SSID) + devices.
  */
 export async function listMyBoards(userId: number) {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+  const isAdmin = user?.role === "system_admin";
+
   const homes = await prisma.home.findMany({
-    where: { members: { some: { userId, role: { in: ["owner", "admin"] } } } },
+    where: isAdmin
+      ? undefined
+      : {
+          OR: [
+            { ownerId: userId },
+            { members: { some: { userId, role: { in: ["owner", "admin"] } } } },
+          ],
+        },
     select: {
       id: true,
       name: true,
+      ownerId: true,
       members: { where: { userId }, select: { role: true } },
     },
     orderBy: { createdAt: "asc" },
@@ -551,8 +562,8 @@ export async function listMyBoards(userId: number) {
   }
 
   return homes.map((h) => {
-    const role = h.members[0]?.role ?? "member";
-    const canManage = role === "owner" || role === "admin";
+    const role = h.ownerId === userId || isAdmin ? "owner" : (h.members[0]?.role ?? "owner");
+    const canManage = role === "owner" || role === "admin" || isAdmin;
 
     return {
       homeId: h.id,

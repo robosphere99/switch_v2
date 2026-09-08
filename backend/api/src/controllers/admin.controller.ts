@@ -2078,6 +2078,7 @@ export const getOrders = async (req: Request, res: Response) => {
       items: true,
       serials: { select: { serialCode: true, testedAt: true } },
       user: { select: { id: true, username: true, email: true } },
+      coupon: { select: { code: true } },
     },
     orderBy: { createdAt: "desc" },
     take: 200,
@@ -2093,6 +2094,7 @@ export const getOrdersId = async (req: Request, res: Response) => {
       items: true,
       serials: { select: { serialCode: true, testedAt: true } },
       user: { select: { id: true, username: true, email: true } },
+      coupon: { select: { code: true } },
     },
   });
   if (!order) throw new AppError("NOT_FOUND", "Order not found");
