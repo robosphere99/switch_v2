@@ -2544,12 +2544,12 @@ var require_path = __commonJS({
 var require_well_known_symbol_define = __commonJS({
   "../../node_modules/core-js/internals/well-known-symbol-define.js"(exports2, module2) {
     "use strict";
-    var path14 = require_path();
+    var path15 = require_path();
     var hasOwn = require_has_own_property();
     var wrappedWellKnownSymbolModule = require_well_known_symbol_wrapped();
     var defineProperty = require_object_define_property().f;
     module2.exports = function(NAME) {
-      var Symbol2 = path14.Symbol || (path14.Symbol = {});
+      var Symbol2 = path15.Symbol || (path15.Symbol = {});
       if (!hasOwn(Symbol2, NAME)) defineProperty(Symbol2, NAME, {
         value: wrappedWellKnownSymbolModule.f(NAME)
       });
@@ -3884,9 +3884,9 @@ var require_wrap_error_constructor_with_cause = __commonJS({
     module2.exports = function(FULL_NAME, wrapper, FORCED, IS_AGGREGATE_ERROR) {
       var STACK_TRACE_LIMIT = "stackTraceLimit";
       var OPTIONS_POSITION = IS_AGGREGATE_ERROR ? 2 : 1;
-      var path14 = FULL_NAME.split(".");
-      var ERROR_NAME = path14[path14.length - 1];
-      var OriginalError = getBuiltIn.apply(null, path14);
+      var path15 = FULL_NAME.split(".");
+      var ERROR_NAME = path15[path15.length - 1];
+      var OriginalError = getBuiltIn.apply(null, path15);
       if (!OriginalError) return;
       var OriginalErrorPrototype = OriginalError.prototype;
       if (!IS_PURE && hasOwn(OriginalErrorPrototype, "cause")) delete OriginalErrorPrototype.cause;
@@ -10339,7 +10339,7 @@ var require_es_number_constructor = __commonJS({
     var IS_PURE = require_is_pure();
     var DESCRIPTORS = require_descriptors();
     var globalThis2 = require_global_this();
-    var path14 = require_path();
+    var path15 = require_path();
     var uncurryThis = require_function_uncurry_this();
     var isForced = require_is_forced();
     var hasOwn = require_has_own_property();
@@ -10355,7 +10355,7 @@ var require_es_number_constructor = __commonJS({
     var trim = require_string_trim().trim;
     var NUMBER = "Number";
     var NativeNumber = globalThis2[NUMBER];
-    var PureNumberNamespace = path14[NUMBER];
+    var PureNumberNamespace = path15[NUMBER];
     var NumberPrototype = NativeNumber.prototype;
     var TypeError2 = globalThis2.TypeError;
     var stringSlice = uncurryThis("".slice);
@@ -10427,8 +10427,8 @@ var require_es_number_constructor = __commonJS({
         }
       }
     };
-    if (IS_PURE && PureNumberNamespace) copyConstructorProperties(path14[NUMBER], PureNumberNamespace);
-    if (FORCED || IS_PURE) copyConstructorProperties(path14[NUMBER], NativeNumber);
+    if (IS_PURE && PureNumberNamespace) copyConstructorProperties(path15[NUMBER], PureNumberNamespace);
+    if (FORCED || IS_PURE) copyConstructorProperties(path15[NUMBER], NativeNumber);
   }
 });
 
@@ -11947,7 +11947,7 @@ var require_es_promise_constructor = __commonJS({
     var IS_PURE = require_is_pure();
     var IS_NODE = require_environment_is_node();
     var globalThis2 = require_global_this();
-    var path14 = require_path();
+    var path15 = require_path();
     var call = require_function_call();
     var defineBuiltIn = require_define_built_in();
     var setPrototypeOf = require_object_set_prototype_of();
@@ -12197,7 +12197,7 @@ var require_es_promise_constructor = __commonJS({
     $({ global: true, constructor: true, wrap: true, forced: FORCED_PROMISE_CONSTRUCTOR }, {
       Promise: PromiseConstructor
     });
-    PromiseWrapper = path14.Promise;
+    PromiseWrapper = path15.Promise;
     setToStringTag(PromiseConstructor, PROMISE, false, true);
     setSpecies(PROMISE);
   }
@@ -25681,10 +25681,10 @@ var require_web_url_constructor = __commonJS({
       },
       // https://url.spec.whatwg.org/#shorten-a-urls-path
       shortenPath: function() {
-        var path14 = this.path;
-        var pathSize = path14.length;
-        if (pathSize && (this.scheme !== "file" || pathSize !== 1 || !isWindowsDriveLetter(path14[0], true))) {
-          path14.length--;
+        var path15 = this.path;
+        var pathSize = path15.length;
+        if (pathSize && (this.scheme !== "file" || pathSize !== 1 || !isWindowsDriveLetter(path15[0], true))) {
+          path15.length--;
         }
       },
       // https://url.spec.whatwg.org/#concept-url-serializer
@@ -25695,7 +25695,7 @@ var require_web_url_constructor = __commonJS({
         var password = url.password;
         var host = url.host;
         var port = url.port;
-        var path14 = url.path;
+        var path15 = url.path;
         var query = url.query;
         var fragment = url.fragment;
         var output = scheme + ":";
@@ -25707,8 +25707,8 @@ var require_web_url_constructor = __commonJS({
           output += serializeHost(host);
           if (port !== null) output += ":" + port;
         } else if (scheme === "file") output += "//";
-        if (host === null && !url.cannotBeABaseURL && path14.length > 1 && path14[0] === "") output += "/.";
-        output += url.cannotBeABaseURL ? path14[0] : path14.length ? "/" + join6(path14, "/") : "";
+        if (host === null && !url.cannotBeABaseURL && path15.length > 1 && path15[0] === "") output += "/.";
+        output += url.cannotBeABaseURL ? path15[0] : path15.length ? "/" + join6(path15, "/") : "";
         if (query !== null) output += "?" + query;
         if (fragment !== null) output += "#" + fragment;
         return output;
@@ -25794,8 +25794,8 @@ var require_web_url_constructor = __commonJS({
       },
       // https://url.spec.whatwg.org/#dom-url-pathname
       getPathname: function() {
-        var path14 = this.path;
-        return this.cannotBeABaseURL ? path14[0] : path14.length ? "/" + join6(path14, "/") : "";
+        var path15 = this.path;
+        return this.cannotBeABaseURL ? path15[0] : path15.length ? "/" + join6(path15, "/") : "";
       },
       setPathname: function(pathname) {
         if (this.cannotBeABaseURL) return;
@@ -27986,11 +27986,11 @@ var require_lodash = __commonJS({
             return isFunction(object[key]);
           });
         }
-        function baseGet(object, path14) {
-          path14 = castPath(path14, object);
-          var index = 0, length = path14.length;
+        function baseGet(object, path15) {
+          path15 = castPath(path15, object);
+          var index = 0, length = path15.length;
           while (object != null && index < length) {
-            object = object[toKey(path14[index++])];
+            object = object[toKey(path15[index++])];
           }
           return index && index == length ? object : undefined2;
         }
@@ -28054,10 +28054,10 @@ var require_lodash = __commonJS({
           });
           return accumulator;
         }
-        function baseInvoke(object, path14, args) {
-          path14 = castPath(path14, object);
-          object = parent(object, path14);
-          var func = object == null ? object : object[toKey(last(path14))];
+        function baseInvoke(object, path15, args) {
+          path15 = castPath(path15, object);
+          object = parent(object, path15);
+          var func = object == null ? object : object[toKey(last(path15))];
           return func == null ? undefined2 : apply(func, object, args);
         }
         function baseIsArguments(value) {
@@ -28213,13 +28213,13 @@ var require_lodash = __commonJS({
             return object === source || baseIsMatch(object, source, matchData);
           };
         }
-        function baseMatchesProperty(path14, srcValue) {
-          if (isKey(path14) && isStrictComparable(srcValue)) {
-            return matchesStrictComparable(toKey(path14), srcValue);
+        function baseMatchesProperty(path15, srcValue) {
+          if (isKey(path15) && isStrictComparable(srcValue)) {
+            return matchesStrictComparable(toKey(path15), srcValue);
           }
           return function(object) {
-            var objValue = get(object, path14);
-            return objValue === undefined2 && objValue === srcValue ? hasIn(object, path14) : baseIsEqual(srcValue, objValue, COMPARE_PARTIAL_FLAG | COMPARE_UNORDERED_FLAG);
+            var objValue = get(object, path15);
+            return objValue === undefined2 && objValue === srcValue ? hasIn(object, path15) : baseIsEqual(srcValue, objValue, COMPARE_PARTIAL_FLAG | COMPARE_UNORDERED_FLAG);
           };
         }
         function baseMerge(object, source, srcIndex, customizer, stack) {
@@ -28316,23 +28316,23 @@ var require_lodash = __commonJS({
           });
         }
         function basePick(object, paths) {
-          return basePickBy(object, paths, function(value, path14) {
-            return hasIn(object, path14);
+          return basePickBy(object, paths, function(value, path15) {
+            return hasIn(object, path15);
           });
         }
         function basePickBy(object, paths, predicate) {
           var index = -1, length = paths.length, result2 = {};
           while (++index < length) {
-            var path14 = paths[index], value = baseGet(object, path14);
-            if (predicate(value, path14)) {
-              baseSet(result2, castPath(path14, object), value);
+            var path15 = paths[index], value = baseGet(object, path15);
+            if (predicate(value, path15)) {
+              baseSet(result2, castPath(path15, object), value);
             }
           }
           return result2;
         }
-        function basePropertyDeep(path14) {
+        function basePropertyDeep(path15) {
           return function(object) {
-            return baseGet(object, path14);
+            return baseGet(object, path15);
           };
         }
         function basePullAll(array, values2, iteratee2, comparator) {
@@ -28406,14 +28406,14 @@ var require_lodash = __commonJS({
           var array = values(collection);
           return shuffleSelf(array, baseClamp(n, 0, array.length));
         }
-        function baseSet(object, path14, value, customizer) {
+        function baseSet(object, path15, value, customizer) {
           if (!isObject(object)) {
             return object;
           }
-          path14 = castPath(path14, object);
-          var index = -1, length = path14.length, lastIndex = length - 1, nested = object;
+          path15 = castPath(path15, object);
+          var index = -1, length = path15.length, lastIndex = length - 1, nested = object;
           while (nested != null && ++index < length) {
-            var key = toKey(path14[index]), newValue = value;
+            var key = toKey(path15[index]), newValue = value;
             if (key === "__proto__" || key === "constructor" || key === "prototype") {
               return object;
             }
@@ -28421,7 +28421,7 @@ var require_lodash = __commonJS({
               var objValue = nested[key];
               newValue = customizer ? customizer(objValue, key, nested) : undefined2;
               if (newValue === undefined2) {
-                newValue = isObject(objValue) ? objValue : isIndex(path14[index + 1]) ? [] : {};
+                newValue = isObject(objValue) ? objValue : isIndex(path15[index + 1]) ? [] : {};
               }
             }
             assignValue(nested, key, newValue);
@@ -28587,14 +28587,14 @@ var require_lodash = __commonJS({
             }
           return result2;
         }
-        function baseUnset(object, path14) {
-          path14 = castPath(path14, object);
-          var index = -1, length = path14.length;
+        function baseUnset(object, path15) {
+          path15 = castPath(path15, object);
+          var index = -1, length = path15.length;
           if (!length) {
             return true;
           }
           while (++index < length) {
-            var key = toKey(path14[index]);
+            var key = toKey(path15[index]);
             if (key === "__proto__" && !hasOwnProperty.call(object, "__proto__")) {
               return false;
             }
@@ -28602,11 +28602,11 @@ var require_lodash = __commonJS({
               return false;
             }
           }
-          var obj = parent(object, path14);
-          return obj == null || delete obj[toKey(last(path14))];
+          var obj = parent(object, path15);
+          return obj == null || delete obj[toKey(last(path15))];
         }
-        function baseUpdate(object, path14, updater, customizer) {
-          return baseSet(object, path14, updater(baseGet(object, path14)), customizer);
+        function baseUpdate(object, path15, updater, customizer) {
+          return baseSet(object, path15, updater(baseGet(object, path15)), customizer);
         }
         function baseWhile(array, predicate, isDrop, fromRight) {
           var length = array.length, index = fromRight ? length : -1;
@@ -29489,11 +29489,11 @@ var require_lodash = __commonJS({
           var match = source.match(reWrapDetails);
           return match ? match[1].split(reSplitDetails) : [];
         }
-        function hasPath(object, path14, hasFunc) {
-          path14 = castPath(path14, object);
-          var index = -1, length = path14.length, result2 = false;
+        function hasPath(object, path15, hasFunc) {
+          path15 = castPath(path15, object);
+          var index = -1, length = path15.length, result2 = false;
           while (++index < length) {
-            var key = toKey(path14[index]);
+            var key = toKey(path15[index]);
             if (!(result2 = object != null && hasFunc(object, key))) {
               break;
             }
@@ -29695,8 +29695,8 @@ var require_lodash = __commonJS({
             return apply(func, this, otherArgs);
           };
         }
-        function parent(object, path14) {
-          return path14.length < 2 ? object : baseGet(object, baseSlice(path14, 0, -1));
+        function parent(object, path15) {
+          return path15.length < 2 ? object : baseGet(object, baseSlice(path15, 0, -1));
         }
         function reorder(array, indexes) {
           var arrLength = array.length, length = nativeMin(indexes.length, arrLength), oldArray = copyArray(array);
@@ -30331,10 +30331,10 @@ var require_lodash = __commonJS({
           }
           return isString(collection) ? fromIndex <= length && collection.indexOf(value, fromIndex) > -1 : !!length && baseIndexOf(collection, value, fromIndex) > -1;
         }
-        var invokeMap = baseRest(function(collection, path14, args) {
-          var index = -1, isFunc = typeof path14 == "function", result2 = isArrayLike(collection) ? Array2(collection.length) : [];
+        var invokeMap = baseRest(function(collection, path15, args) {
+          var index = -1, isFunc = typeof path15 == "function", result2 = isArrayLike(collection) ? Array2(collection.length) : [];
           baseEach(collection, function(value) {
-            result2[++index] = isFunc ? apply(path14, value, args) : baseInvoke(value, path14, args);
+            result2[++index] = isFunc ? apply(path15, value, args) : baseInvoke(value, path15, args);
           });
           return result2;
         });
@@ -30986,15 +30986,15 @@ var require_lodash = __commonJS({
         function functionsIn(object) {
           return object == null ? [] : baseFunctions(object, keysIn(object));
         }
-        function get(object, path14, defaultValue) {
-          var result2 = object == null ? undefined2 : baseGet(object, path14);
+        function get(object, path15, defaultValue) {
+          var result2 = object == null ? undefined2 : baseGet(object, path15);
           return result2 === undefined2 ? defaultValue : result2;
         }
-        function has(object, path14) {
-          return object != null && hasPath(object, path14, baseHas);
+        function has(object, path15) {
+          return object != null && hasPath(object, path15, baseHas);
         }
-        function hasIn(object, path14) {
-          return object != null && hasPath(object, path14, baseHasIn);
+        function hasIn(object, path15) {
+          return object != null && hasPath(object, path15, baseHasIn);
         }
         var invert = createInverter(function(result2, value, key) {
           if (value != null && typeof value.toString != "function") {
@@ -31047,10 +31047,10 @@ var require_lodash = __commonJS({
             return result2;
           }
           var isDeep = false;
-          paths = arrayMap(paths, function(path14) {
-            path14 = castPath(path14, object);
-            isDeep || (isDeep = path14.length > 1);
-            return path14;
+          paths = arrayMap(paths, function(path15) {
+            path15 = castPath(path15, object);
+            isDeep || (isDeep = path15.length > 1);
+            return path15;
           });
           copyObject(object, getAllKeysIn(object), result2);
           if (isDeep) {
@@ -31076,19 +31076,19 @@ var require_lodash = __commonJS({
             return [prop];
           });
           predicate = getIteratee(predicate);
-          return basePickBy(object, props, function(value, path14) {
-            return predicate(value, path14[0]);
+          return basePickBy(object, props, function(value, path15) {
+            return predicate(value, path15[0]);
           });
         }
-        function result(object, path14, defaultValue) {
-          path14 = castPath(path14, object);
-          var index = -1, length = path14.length;
+        function result(object, path15, defaultValue) {
+          path15 = castPath(path15, object);
+          var index = -1, length = path15.length;
           if (!length) {
             length = 1;
             object = undefined2;
           }
           while (++index < length) {
-            var value = object == null ? undefined2 : object[toKey(path14[index])];
+            var value = object == null ? undefined2 : object[toKey(path15[index])];
             if (value === undefined2) {
               index = length;
               value = defaultValue;
@@ -31097,12 +31097,12 @@ var require_lodash = __commonJS({
           }
           return object;
         }
-        function set(object, path14, value) {
-          return object == null ? object : baseSet(object, path14, value);
+        function set(object, path15, value) {
+          return object == null ? object : baseSet(object, path15, value);
         }
-        function setWith(object, path14, value, customizer) {
+        function setWith(object, path15, value, customizer) {
           customizer = typeof customizer == "function" ? customizer : undefined2;
-          return object == null ? object : baseSet(object, path14, value, customizer);
+          return object == null ? object : baseSet(object, path15, value, customizer);
         }
         var toPairs = createToPairs(keys);
         var toPairsIn = createToPairs(keysIn);
@@ -31124,15 +31124,15 @@ var require_lodash = __commonJS({
           });
           return accumulator;
         }
-        function unset(object, path14) {
-          return object == null ? true : baseUnset(object, path14);
+        function unset(object, path15) {
+          return object == null ? true : baseUnset(object, path15);
         }
-        function update2(object, path14, updater) {
-          return object == null ? object : baseUpdate(object, path14, castFunction(updater));
+        function update2(object, path15, updater) {
+          return object == null ? object : baseUpdate(object, path15, castFunction(updater));
         }
-        function updateWith(object, path14, updater, customizer) {
+        function updateWith(object, path15, updater, customizer) {
           customizer = typeof customizer == "function" ? customizer : undefined2;
-          return object == null ? object : baseUpdate(object, path14, castFunction(updater), customizer);
+          return object == null ? object : baseUpdate(object, path15, castFunction(updater), customizer);
         }
         function values(object) {
           return object == null ? [] : baseValues(object, keys(object));
@@ -31518,17 +31518,17 @@ var require_lodash = __commonJS({
         function matches2(source) {
           return baseMatches(baseClone(source, CLONE_DEEP_FLAG));
         }
-        function matchesProperty(path14, srcValue) {
-          return baseMatchesProperty(path14, baseClone(srcValue, CLONE_DEEP_FLAG));
+        function matchesProperty(path15, srcValue) {
+          return baseMatchesProperty(path15, baseClone(srcValue, CLONE_DEEP_FLAG));
         }
-        var method = baseRest(function(path14, args) {
+        var method = baseRest(function(path15, args) {
           return function(object) {
-            return baseInvoke(object, path14, args);
+            return baseInvoke(object, path15, args);
           };
         });
         var methodOf = baseRest(function(object, args) {
-          return function(path14) {
-            return baseInvoke(object, path14, args);
+          return function(path15) {
+            return baseInvoke(object, path15, args);
           };
         });
         function mixin(object, source, options) {
@@ -31575,12 +31575,12 @@ var require_lodash = __commonJS({
         var over = createOver(arrayMap);
         var overEvery = createOver(arrayEvery);
         var overSome = createOver(arraySome);
-        function property(path14) {
-          return isKey(path14) ? baseProperty(toKey(path14)) : basePropertyDeep(path14);
+        function property(path15) {
+          return isKey(path15) ? baseProperty(toKey(path15)) : basePropertyDeep(path15);
         }
         function propertyOf(object) {
-          return function(path14) {
-            return object == null ? undefined2 : baseGet(object, path14);
+          return function(path15) {
+            return object == null ? undefined2 : baseGet(object, path15);
           };
         }
         var range = createRange();
@@ -32033,12 +32033,12 @@ var require_lodash = __commonJS({
         LazyWrapper.prototype.findLast = function(predicate) {
           return this.reverse().find(predicate);
         };
-        LazyWrapper.prototype.invokeMap = baseRest(function(path14, args) {
-          if (typeof path14 == "function") {
+        LazyWrapper.prototype.invokeMap = baseRest(function(path15, args) {
+          if (typeof path15 == "function") {
             return new LazyWrapper(this);
           }
           return this.map(function(value) {
-            return baseInvoke(value, path14, args);
+            return baseInvoke(value, path15, args);
           });
         });
         LazyWrapper.prototype.reject = function(predicate) {
@@ -34586,11 +34586,11 @@ var require_baseGet = __commonJS({
   "../../node_modules/lodash/_baseGet.js"(exports2, module2) {
     var castPath = require_castPath();
     var toKey = require_toKey();
-    function baseGet(object, path14) {
-      path14 = castPath(path14, object);
-      var index = 0, length = path14.length;
+    function baseGet(object, path15) {
+      path15 = castPath(path15, object);
+      var index = 0, length = path15.length;
       while (object != null && index < length) {
-        object = object[toKey(path14[index++])];
+        object = object[toKey(path15[index++])];
       }
       return index && index == length ? object : void 0;
     }
@@ -34602,8 +34602,8 @@ var require_baseGet = __commonJS({
 var require_get = __commonJS({
   "../../node_modules/lodash/get.js"(exports2, module2) {
     var baseGet = require_baseGet();
-    function get(object, path14, defaultValue) {
-      var result = object == null ? void 0 : baseGet(object, path14);
+    function get(object, path15, defaultValue) {
+      var result = object == null ? void 0 : baseGet(object, path15);
       return result === void 0 ? defaultValue : result;
     }
     module2.exports = get;
@@ -34629,11 +34629,11 @@ var require_hasPath = __commonJS({
     var isIndex = require_isIndex();
     var isLength = require_isLength();
     var toKey = require_toKey();
-    function hasPath(object, path14, hasFunc) {
-      path14 = castPath(path14, object);
-      var index = -1, length = path14.length, result = false;
+    function hasPath(object, path15, hasFunc) {
+      path15 = castPath(path15, object);
+      var index = -1, length = path15.length, result = false;
       while (++index < length) {
-        var key = toKey(path14[index]);
+        var key = toKey(path15[index]);
         if (!(result = object != null && hasFunc(object, key))) {
           break;
         }
@@ -34654,8 +34654,8 @@ var require_hasIn = __commonJS({
   "../../node_modules/lodash/hasIn.js"(exports2, module2) {
     var baseHasIn = require_baseHasIn();
     var hasPath = require_hasPath();
-    function hasIn(object, path14) {
-      return object != null && hasPath(object, path14, baseHasIn);
+    function hasIn(object, path15) {
+      return object != null && hasPath(object, path15, baseHasIn);
     }
     module2.exports = hasIn;
   }
@@ -34673,13 +34673,13 @@ var require_baseMatchesProperty = __commonJS({
     var toKey = require_toKey();
     var COMPARE_PARTIAL_FLAG = 1;
     var COMPARE_UNORDERED_FLAG = 2;
-    function baseMatchesProperty(path14, srcValue) {
-      if (isKey(path14) && isStrictComparable(srcValue)) {
-        return matchesStrictComparable(toKey(path14), srcValue);
+    function baseMatchesProperty(path15, srcValue) {
+      if (isKey(path15) && isStrictComparable(srcValue)) {
+        return matchesStrictComparable(toKey(path15), srcValue);
       }
       return function(object) {
-        var objValue = get(object, path14);
-        return objValue === void 0 && objValue === srcValue ? hasIn(object, path14) : baseIsEqual(srcValue, objValue, COMPARE_PARTIAL_FLAG | COMPARE_UNORDERED_FLAG);
+        var objValue = get(object, path15);
+        return objValue === void 0 && objValue === srcValue ? hasIn(object, path15) : baseIsEqual(srcValue, objValue, COMPARE_PARTIAL_FLAG | COMPARE_UNORDERED_FLAG);
       };
     }
     module2.exports = baseMatchesProperty;
@@ -34702,9 +34702,9 @@ var require_baseProperty = __commonJS({
 var require_basePropertyDeep = __commonJS({
   "../../node_modules/lodash/_basePropertyDeep.js"(exports2, module2) {
     var baseGet = require_baseGet();
-    function basePropertyDeep(path14) {
+    function basePropertyDeep(path15) {
       return function(object) {
-        return baseGet(object, path14);
+        return baseGet(object, path15);
       };
     }
     module2.exports = basePropertyDeep;
@@ -34718,8 +34718,8 @@ var require_property = __commonJS({
     var basePropertyDeep = require_basePropertyDeep();
     var isKey = require_isKey();
     var toKey = require_toKey();
-    function property(path14) {
-      return isKey(path14) ? baseProperty(toKey(path14)) : basePropertyDeep(path14);
+    function property(path15) {
+      return isKey(path15) ? baseProperty(toKey(path15)) : basePropertyDeep(path15);
     }
     module2.exports = property;
   }
@@ -36010,13 +36010,13 @@ var require_isRemoteUrl = __commonJS({
 var require_getSDKVersions = __commonJS({
   "../../node_modules/cloudinary/lib-es5/utils/encoding/sdkAnalytics/getSDKVersions.js"(exports2, module2) {
     "use strict";
-    var fs15 = require("fs");
-    var path14 = require("path");
+    var fs16 = require("fs");
+    var path15 = require("path");
     var sdkCode = "M";
     function getSDKVersions() {
       var useSDKVersion = arguments.length > 0 && arguments[0] !== void 0 ? arguments[0] : "default";
       var useNodeVersion = arguments.length > 1 && arguments[1] !== void 0 ? arguments[1] : "default";
-      var pkgJSONFile = fs15.readFileSync(path14.join(__dirname, "../../../../package.json"), "utf-8");
+      var pkgJSONFile = fs16.readFileSync(path15.join(__dirname, "../../../../package.json"), "utf-8");
       var sdkSemver = useSDKVersion === "default" ? JSON.parse(pkgJSONFile).version : useSDKVersion;
       var techVersion = useNodeVersion === "default" ? process.versions.node : useNodeVersion;
       return {
@@ -40623,13 +40623,13 @@ var require_cloudinary_core = __commonJS({
                 var cdnPart = "";
                 var subdomain = "res";
                 var host = ".cloudinary.com";
-                var path14 = "/" + options.cloud_name;
+                var path15 = "/" + options.cloud_name;
                 if (options.protocol) {
                   protocol = options.protocol + "//";
                 }
                 if (options.private_cdn) {
                   cdnPart = options.cloud_name + "-";
-                  path14 = "";
+                  path15 = "";
                 }
                 if (options.cdn_subdomain) {
                   subdomain = "res-" + cdnSubdomainNumber(publicId);
@@ -40650,7 +40650,7 @@ var require_cloudinary_core = __commonJS({
                   subdomain = options.cdn_subdomain ? "a" + (src_crc32(publicId) % 5 + 1) + "." : "";
                   host = options.cname;
                 }
-                return [protocol, cdnPart, subdomain, host, path14].join("");
+                return [protocol, cdnPart, subdomain, host, path15].join("");
               }
               function handleResourceType(_ref) {
                 var _ref$resource_type = _ref.resource_type, resource_type = _ref$resource_type === void 0 ? "image" : _ref$resource_type, _ref$type = _ref.type, type = _ref$type === void 0 ? "upload" : _ref$type, url_suffix = _ref.url_suffix, use_root_path = _ref.use_root_path, shorten = _ref.shorten;
@@ -43939,14 +43939,14 @@ var require_utils = __commonJS({
       return prefix;
     }
     function base_api_url() {
-      var path14 = arguments.length > 0 && arguments[0] !== void 0 ? arguments[0] : [];
+      var path15 = arguments.length > 0 && arguments[0] !== void 0 ? arguments[0] : [];
       var options = arguments.length > 1 && arguments[1] !== void 0 ? arguments[1] : {};
       var cloudinary3 = ensureOption(options, "upload_prefix", UPLOAD_PREFIX);
       var cloud_name = ensureOption(options, "cloud_name");
       var encode_path = function encode_path2(unencoded_path) {
         return encodeURIComponent(unencoded_path).replace("'", "%27");
       };
-      var encoded_path = Array.isArray(path14) ? path14.map(encode_path) : encode_path(path14);
+      var encoded_path = Array.isArray(path15) ? path15.map(encode_path) : encode_path(path15);
       return [cloudinary3, "v1_1", cloud_name].concat(encoded_path).join("/");
     }
     function api_url() {
@@ -45970,7 +45970,7 @@ var require_uploader = __commonJS({
       subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } });
       if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass;
     }
-    var fs15 = require("fs");
+    var fs16 = require("fs");
     var _require = require("path");
     var extname = _require.extname;
     var basename2 = _require.basename;
@@ -46022,20 +46022,20 @@ var require_uploader = __commonJS({
         return isRemoteUrl(file) ? [params, { file }] : [params, {}, file];
       });
     };
-    exports2.upload_large = function upload_large(path14, callback) {
+    exports2.upload_large = function upload_large(path15, callback) {
       var options = arguments.length > 2 && arguments[2] !== void 0 ? arguments[2] : {};
-      if (path14 != null && isRemoteUrl(path14)) {
-        return exports2.upload(path14, callback, options);
+      if (path15 != null && isRemoteUrl(path15)) {
+        return exports2.upload(path15, callback, options);
       }
-      if (path14 != null && !options.filename) {
-        options.filename = path14.split(/(\\|\/)/g).pop().replace(/\.[^/.]+$/, "");
+      if (path15 != null && !options.filename) {
+        options.filename = path15.split(/(\\|\/)/g).pop().replace(/\.[^/.]+$/, "");
       }
-      return exports2.upload_chunked(path14, callback, extend({
+      return exports2.upload_chunked(path15, callback, extend({
         resource_type: "raw"
       }, options));
     };
-    exports2.upload_chunked = function upload_chunked(path14, callback, options) {
-      var file_reader = fs15.createReadStream(path14);
+    exports2.upload_chunked = function upload_chunked(path15, callback, options) {
+      var file_reader = fs16.createReadStream(path15);
       var out_stream = exports2.upload_chunked_stream(callback, options);
       return file_reader.pipe(out_stream);
     };
@@ -46483,7 +46483,7 @@ var require_uploader = __commonJS({
       }
       if (file != null) {
         post_request.write(file_header);
-        fs15.createReadStream(file).on("error", function(error) {
+        fs16.createReadStream(file).on("error", function(error) {
           callback({
             error
           });
@@ -47070,23 +47070,23 @@ var require_api = __commonJS({
       params = pickOnlyExistingValues(options, "next_cursor", "max_results");
       return call_api("get", uri, params, callback, options);
     };
-    exports2.sub_folders = function sub_folders(path14, callback) {
+    exports2.sub_folders = function sub_folders(path15, callback) {
       var options = arguments.length > 2 && arguments[2] !== void 0 ? arguments[2] : {};
       var uri = void 0, params = void 0;
-      uri = ["folders", path14];
+      uri = ["folders", path15];
       params = pickOnlyExistingValues(options, "next_cursor", "max_results");
       return call_api("get", uri, params, callback, options);
     };
-    exports2.create_folder = function create_folder(path14, callback) {
+    exports2.create_folder = function create_folder(path15, callback) {
       var options = arguments.length > 2 && arguments[2] !== void 0 ? arguments[2] : {};
       var uri = void 0;
-      uri = ["folders", path14];
+      uri = ["folders", path15];
       return call_api("post", uri, {}, callback, options);
     };
-    exports2.delete_folder = function delete_folder(path14, callback) {
+    exports2.delete_folder = function delete_folder(path15, callback) {
       var options = arguments.length > 2 && arguments[2] !== void 0 ? arguments[2] : {};
       var uri = void 0;
-      uri = ["folders", path14];
+      uri = ["folders", path15];
       return call_api("delete", uri, {}, callback, options);
     };
     exports2.upload_mappings = function upload_mappings(callback) {
@@ -48733,11 +48733,11 @@ var require_isRemoteUrl2 = __commonJS({
 // ../../node_modules/cloudinary/lib/utils/encoding/sdkAnalytics/getSDKVersions.js
 var require_getSDKVersions2 = __commonJS({
   "../../node_modules/cloudinary/lib/utils/encoding/sdkAnalytics/getSDKVersions.js"(exports2, module2) {
-    var fs15 = require("fs");
-    var path14 = require("path");
+    var fs16 = require("fs");
+    var path15 = require("path");
     var sdkCode = "M";
     function getSDKVersions(useSDKVersion = "default", useNodeVersion = "default") {
-      let pkgJSONFile = fs15.readFileSync(path14.join(__dirname, "../../../../package.json"), "utf-8");
+      let pkgJSONFile = fs16.readFileSync(path15.join(__dirname, "../../../../package.json"), "utf-8");
       let sdkSemver = useSDKVersion === "default" ? JSON.parse(pkgJSONFile).version : useSDKVersion;
       let techVersion = useNodeVersion === "default" ? process.versions.node : useNodeVersion;
       return {
@@ -49724,11 +49724,11 @@ var require_utils2 = __commonJS({
       }
       return prefix;
     }
-    function base_api_url(path14 = [], options = {}) {
+    function base_api_url(path15 = [], options = {}) {
       let cloudinary3 = ensureOption(options, "upload_prefix", UPLOAD_PREFIX);
       let cloud_name = ensureOption(options, "cloud_name");
       let encode_path = (unencoded_path) => encodeURIComponent(unencoded_path).replace("'", "%27");
-      let encoded_path = Array.isArray(path14) ? path14.map(encode_path) : encode_path(path14);
+      let encoded_path = Array.isArray(path15) ? path15.map(encode_path) : encode_path(path15);
       return [cloudinary3, "v1_1", cloud_name].concat(encoded_path).join("/");
     }
     function api_url(action = "upload", options = {}) {
@@ -50343,7 +50343,7 @@ var require_upload_stream2 = __commonJS({
 // ../../node_modules/cloudinary/lib/uploader.js
 var require_uploader3 = __commonJS({
   "../../node_modules/cloudinary/lib/uploader.js"(exports2) {
-    var fs15 = require("fs");
+    var fs16 = require("fs");
     var { extname, basename: basename2 } = require("path");
     var Q = require_q();
     var Writable = require("stream").Writable;
@@ -50390,19 +50390,19 @@ var require_uploader3 = __commonJS({
         return isRemoteUrl(file) ? [params, { file }] : [params, {}, file];
       });
     };
-    exports2.upload_large = function upload_large(path14, callback, options = {}) {
-      if (path14 != null && isRemoteUrl(path14)) {
-        return exports2.upload(path14, callback, options);
+    exports2.upload_large = function upload_large(path15, callback, options = {}) {
+      if (path15 != null && isRemoteUrl(path15)) {
+        return exports2.upload(path15, callback, options);
       }
-      if (path14 != null && !options.filename) {
-        options.filename = path14.split(/(\\|\/)/g).pop().replace(/\.[^/.]+$/, "");
+      if (path15 != null && !options.filename) {
+        options.filename = path15.split(/(\\|\/)/g).pop().replace(/\.[^/.]+$/, "");
       }
-      return exports2.upload_chunked(path14, callback, extend({
+      return exports2.upload_chunked(path15, callback, extend({
         resource_type: "raw"
       }, options));
     };
-    exports2.upload_chunked = function upload_chunked(path14, callback, options) {
-      let file_reader = fs15.createReadStream(path14);
+    exports2.upload_chunked = function upload_chunked(path15, callback, options) {
+      let file_reader = fs16.createReadStream(path15);
       let out_stream = exports2.upload_chunked_stream(callback, options);
       return file_reader.pipe(out_stream);
     };
@@ -50811,7 +50811,7 @@ var require_uploader3 = __commonJS({
       }
       if (file != null) {
         post_request.write(file_header);
-        fs15.createReadStream(file).on("error", function(error) {
+        fs16.createReadStream(file).on("error", function(error) {
           callback({
             error
           });
@@ -51350,20 +51350,20 @@ var require_api3 = __commonJS({
       params = pickOnlyExistingValues(options, "next_cursor", "max_results");
       return call_api("get", uri, params, callback, options);
     };
-    exports2.sub_folders = function sub_folders(path14, callback, options = {}) {
+    exports2.sub_folders = function sub_folders(path15, callback, options = {}) {
       let uri, params;
-      uri = ["folders", path14];
+      uri = ["folders", path15];
       params = pickOnlyExistingValues(options, "next_cursor", "max_results");
       return call_api("get", uri, params, callback, options);
     };
-    exports2.create_folder = function create_folder(path14, callback, options = {}) {
+    exports2.create_folder = function create_folder(path15, callback, options = {}) {
       let uri;
-      uri = ["folders", path14];
+      uri = ["folders", path15];
       return call_api("post", uri, {}, callback, options);
     };
-    exports2.delete_folder = function delete_folder(path14, callback, options = {}) {
+    exports2.delete_folder = function delete_folder(path15, callback, options = {}) {
       let uri;
-      uri = ["folders", path14];
+      uri = ["folders", path15];
       return call_api("delete", uri, {}, callback, options);
     };
     exports2.upload_mappings = function upload_mappings(callback, options = {}) {
@@ -52339,223 +52339,6 @@ var require_cloudinary3 = __commonJS({
   }
 });
 
-// ../../node_modules/multer-storage-cloudinary/lib/index.js
-var require_lib = __commonJS({
-  "../../node_modules/multer-storage-cloudinary/lib/index.js"(exports2) {
-    "use strict";
-    var __awaiter = exports2 && exports2.__awaiter || function(thisArg, _arguments, P, generator) {
-      function adopt(value) {
-        return value instanceof P ? value : new P(function(resolve4) {
-          resolve4(value);
-        });
-      }
-      return new (P || (P = Promise))(function(resolve4, reject) {
-        function fulfilled(value) {
-          try {
-            step(generator.next(value));
-          } catch (e) {
-            reject(e);
-          }
-        }
-        function rejected(value) {
-          try {
-            step(generator["throw"](value));
-          } catch (e) {
-            reject(e);
-          }
-        }
-        function step(result) {
-          result.done ? resolve4(result.value) : adopt(result.value).then(fulfilled, rejected);
-        }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-      });
-    };
-    var __generator = exports2 && exports2.__generator || function(thisArg, body) {
-      var _ = { label: 0, sent: function() {
-        if (t[0] & 1) throw t[1];
-        return t[1];
-      }, trys: [], ops: [] }, f, y, t, g;
-      return g = { next: verb(0), "throw": verb(1), "return": verb(2) }, typeof Symbol === "function" && (g[Symbol.iterator] = function() {
-        return this;
-      }), g;
-      function verb(n) {
-        return function(v) {
-          return step([n, v]);
-        };
-      }
-      function step(op) {
-        if (f) throw new TypeError("Generator is already executing.");
-        while (_) try {
-          if (f = 1, y && (t = op[0] & 2 ? y["return"] : op[0] ? y["throw"] || ((t = y["return"]) && t.call(y), 0) : y.next) && !(t = t.call(y, op[1])).done) return t;
-          if (y = 0, t) op = [op[0] & 2, t.value];
-          switch (op[0]) {
-            case 0:
-            case 1:
-              t = op;
-              break;
-            case 4:
-              _.label++;
-              return { value: op[1], done: false };
-            case 5:
-              _.label++;
-              y = op[1];
-              op = [0];
-              continue;
-            case 7:
-              op = _.ops.pop();
-              _.trys.pop();
-              continue;
-            default:
-              if (!(t = _.trys, t = t.length > 0 && t[t.length - 1]) && (op[0] === 6 || op[0] === 2)) {
-                _ = 0;
-                continue;
-              }
-              if (op[0] === 3 && (!t || op[1] > t[0] && op[1] < t[3])) {
-                _.label = op[1];
-                break;
-              }
-              if (op[0] === 6 && _.label < t[1]) {
-                _.label = t[1];
-                t = op;
-                break;
-              }
-              if (t && _.label < t[2]) {
-                _.label = t[2];
-                _.ops.push(op);
-                break;
-              }
-              if (t[2]) _.ops.pop();
-              _.trys.pop();
-              continue;
-          }
-          op = body.call(thisArg, _);
-        } catch (e) {
-          op = [6, e];
-          y = 0;
-        } finally {
-          f = t = 0;
-        }
-        if (op[0] & 5) throw op[1];
-        return { value: op[0] ? op[1] : void 0, done: true };
-      }
-    };
-    var __rest = exports2 && exports2.__rest || function(s, e) {
-      var t = {};
-      for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p) && e.indexOf(p) < 0)
-        t[p] = s[p];
-      if (s != null && typeof Object.getOwnPropertySymbols === "function")
-        for (var i = 0, p = Object.getOwnPropertySymbols(s); i < p.length; i++) {
-          if (e.indexOf(p[i]) < 0 && Object.prototype.propertyIsEnumerable.call(s, p[i]))
-            t[p[i]] = s[p[i]];
-        }
-      return t;
-    };
-    Object.defineProperty(exports2, "__esModule", { value: true });
-    exports2.createCloudinaryStorage = exports2.CloudinaryStorage = void 0;
-    var CloudinaryStorage2 = (
-      /** @class */
-      (function() {
-        function CloudinaryStorage3(opts) {
-          var _a;
-          if (opts == null || opts.cloudinary == null) {
-            throw new Error("`cloudinary` option required");
-          }
-          this.cloudinary = opts.cloudinary;
-          this.params = (_a = opts.params) !== null && _a !== void 0 ? _a : {};
-        }
-        CloudinaryStorage3.prototype._handleFile = function(req, file, callback) {
-          return __awaiter(this, void 0, void 0, function() {
-            var uploadOptions, _a, public_id, otherParams, _b, _c, _d, _i, untypedKey, key, getterOrValue, value, _e, resp, err_1;
-            return __generator(this, function(_f) {
-              switch (_f.label) {
-                case 0:
-                  _f.trys.push([0, 11, , 12]);
-                  uploadOptions = void 0;
-                  if (!(typeof this.params === "function")) return [3, 2];
-                  return [4, this.params(req, file)];
-                case 1:
-                  uploadOptions = _f.sent();
-                  return [3, 9];
-                case 2:
-                  _a = this.params, public_id = _a.public_id, otherParams = __rest(_a, ["public_id"]);
-                  _b = {};
-                  return [4, public_id === null || public_id === void 0 ? void 0 : public_id(req, file)];
-                case 3:
-                  uploadOptions = (_b.public_id = _f.sent(), _b);
-                  _c = [];
-                  for (_d in otherParams)
-                    _c.push(_d);
-                  _i = 0;
-                  _f.label = 4;
-                case 4:
-                  if (!(_i < _c.length)) return [3, 9];
-                  untypedKey = _c[_i];
-                  key = untypedKey;
-                  getterOrValue = otherParams[key];
-                  if (!(typeof getterOrValue === "function")) return [3, 6];
-                  return [4, getterOrValue(req, file)];
-                case 5:
-                  _e = _f.sent();
-                  return [3, 7];
-                case 6:
-                  _e = getterOrValue;
-                  _f.label = 7;
-                case 7:
-                  value = _e;
-                  uploadOptions[key] = value;
-                  _f.label = 8;
-                case 8:
-                  _i++;
-                  return [3, 4];
-                case 9:
-                  return [4, this.upload(uploadOptions, file)];
-                case 10:
-                  resp = _f.sent();
-                  callback(void 0, {
-                    path: resp.secure_url,
-                    size: resp.bytes,
-                    filename: resp.public_id
-                  });
-                  return [3, 12];
-                case 11:
-                  err_1 = _f.sent();
-                  callback(err_1);
-                  return [3, 12];
-                case 12:
-                  return [
-                    2
-                    /*return*/
-                  ];
-              }
-            });
-          });
-        };
-        CloudinaryStorage3.prototype._removeFile = function(req, file, callback) {
-          this.cloudinary.uploader.destroy(file.filename, { invalidate: true }, callback);
-        };
-        CloudinaryStorage3.prototype.upload = function(opts, file) {
-          var _this = this;
-          return new Promise(function(resolve4, reject) {
-            var stream = _this.cloudinary.uploader.upload_stream(opts, function(err, response) {
-              if (err != null)
-                return reject(err);
-              return resolve4(response);
-            });
-            file.stream.pipe(stream);
-          });
-        };
-        return CloudinaryStorage3;
-      })()
-    );
-    exports2.CloudinaryStorage = CloudinaryStorage2;
-    function createCloudinaryStorage(opts) {
-      return new CloudinaryStorage2(opts);
-    }
-    exports2.createCloudinaryStorage = createCloudinaryStorage;
-    exports2.default = createCloudinaryStorage;
-  }
-});
-
 // src/services/audit.service.ts
 var audit_service_exports = {};
 __export(audit_service_exports, {
@@ -53080,8 +52863,8 @@ var import_http = require("http");
 var import_express26 = __toESM(require("express"));
 var import_cors = __toESM(require("cors"));
 var import_helmet = __toESM(require("helmet"));
-var import_node_path5 = __toESM(require("node:path"));
-var import_node_fs6 = __toESM(require("node:fs"));
+var import_node_path6 = __toESM(require("node:path"));
+var import_node_fs7 = __toESM(require("node:fs"));
 init_env();
 
 // src/middleware/errorHandler.ts
@@ -53947,64 +53730,81 @@ var import_multer = __toESM(require("multer"));
 
 // src/lib/cloudinary.ts
 var import_cloudinary = __toESM(require_cloudinary3());
-var import_multer_storage_cloudinary = __toESM(require_lib());
-import_cloudinary.v2.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET
-});
-var cloudinaryAvatarStorage = new import_multer_storage_cloudinary.CloudinaryStorage({
-  cloudinary: import_cloudinary.v2,
-  params: async (req, file) => {
-    return {
-      folder: "switchnest/avatars",
-      public_id: `${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9]/g, "_")}`,
-      format: "webp",
-      transformation: [{ quality: "auto:eco", width: 800, crop: "limit" }]
-    };
-  }
-});
-var cloudinaryProductStorage = new import_multer_storage_cloudinary.CloudinaryStorage({
-  cloudinary: import_cloudinary.v2,
-  params: async (req, file) => {
-    return {
-      folder: "switchnest/products",
-      public_id: `${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9]/g, "_")}`,
-      format: "webp",
-      transformation: [{ quality: "auto:eco", width: 1280, crop: "limit" }]
-    };
-  }
-});
-var cloudinarySupportStorage = new import_multer_storage_cloudinary.CloudinaryStorage({
-  cloudinary: import_cloudinary.v2,
-  params: async (req, file) => {
-    const isImage = file.mimetype.startsWith("image/");
-    return {
-      folder: "switchnest/support",
-      public_id: `${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9]/g, "_")}`,
-      resource_type: "auto",
-      ...isImage && {
-        format: "webp",
-        transformation: [{ quality: "auto:eco", width: 1280, crop: "limit" }]
-      }
-    };
-  }
-});
-var cloudinaryBillingStorage = new import_multer_storage_cloudinary.CloudinaryStorage({
-  cloudinary: import_cloudinary.v2,
-  params: async (req, file) => {
-    const isImage = file.mimetype.startsWith("image/");
-    return {
-      folder: "switchnest/billing",
-      public_id: `${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9]/g, "_")}`,
-      resource_type: "auto",
-      ...isImage && {
-        format: "webp",
-        transformation: [{ quality: "auto:eco", width: 1280, crop: "limit" }]
-      }
-    };
-  }
-});
+var import_node_path3 = __toESM(require("node:path"));
+var import_node_fs3 = __toESM(require("node:fs"));
+function getCloudinaryConfig() {
+  return {
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME || "dpztk9gmx",
+    api_key: process.env.CLOUDINARY_API_KEY || "392994953367882",
+    api_secret: process.env.CLOUDINARY_API_SECRET || "__9ZhaW-GuJUH2b0dOsG8TTPIzs"
+  };
+}
+import_cloudinary.v2.config(getCloudinaryConfig());
+function createSmartStorage(folderName) {
+  return {
+    _handleFile(_req, file, cb) {
+      import_cloudinary.v2.config(getCloudinaryConfig());
+      const chunks = [];
+      file.stream.on("data", (c) => chunks.push(c));
+      file.stream.on("end", async () => {
+        const buffer = Buffer.concat(chunks);
+        const isImage = file.mimetype.startsWith("image/");
+        const safeName = `${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+        try {
+          const result = await new Promise((resolve4, reject) => {
+            const uploadStream = import_cloudinary.v2.uploader.upload_stream(
+              {
+                folder: `switchnest/${folderName}`,
+                public_id: safeName.replace(/\.[^.]+$/, ""),
+                resource_type: "auto",
+                ...isImage ? { transformation: [{ quality: "auto:eco", width: 1280, crop: "limit" }] } : {}
+              },
+              (err, res) => {
+                if (err) reject(err);
+                else resolve4(res ?? {});
+              }
+            );
+            uploadStream.end(buffer);
+          });
+          if (result && (result.secure_url || result.url)) {
+            const finalUrl = result.secure_url || result.url;
+            return cb(null, {
+              path: finalUrl,
+              filename: safeName,
+              size: buffer.length,
+              url: finalUrl
+            });
+          }
+        } catch (cloudErr) {
+          console.warn(`[storage] Cloudinary upload note for ${folderName}, falling back to local disk:`, cloudErr);
+        }
+        try {
+          const targetFolder = import_node_path3.default.join(uploadsDir, folderName);
+          import_node_fs3.default.mkdirSync(targetFolder, { recursive: true });
+          const targetPath = import_node_path3.default.join(targetFolder, safeName);
+          import_node_fs3.default.writeFileSync(targetPath, buffer);
+          const publicUrl = `/uploads/${folderName}/${safeName}`;
+          return cb(null, {
+            path: publicUrl,
+            filename: safeName,
+            size: buffer.length,
+            url: publicUrl
+          });
+        } catch (diskErr) {
+          return cb(diskErr instanceof Error ? diskErr : new Error(String(diskErr)));
+        }
+      });
+      file.stream.on("error", (err) => cb(err));
+    },
+    _removeFile(_req, _file, cb) {
+      cb(null);
+    }
+  };
+}
+var cloudinaryAvatarStorage = createSmartStorage("avatars");
+var cloudinaryProductStorage = createSmartStorage("products");
+var cloudinarySupportStorage = createSmartStorage("support");
+var cloudinaryBillingStorage = createSmartStorage("billing");
 
 // src/routes/auth.routes.ts
 var upload = (0, import_multer.default)({ storage: cloudinaryAvatarStorage });
@@ -57167,18 +56967,18 @@ assistantRouter.get("/chats/:chatId/messages", requireAuth, validateParams(chatP
 var import_express11 = require("express");
 var import_zod13 = require("zod");
 var import_multer2 = __toESM(require("multer"));
-var import_node_fs4 = __toESM(require("node:fs"));
+var import_node_fs5 = __toESM(require("node:fs"));
 
 // src/controllers/admin.controller.ts
 var import_bcryptjs2 = __toESM(require("bcryptjs"));
-var import_node_path3 = __toESM(require("node:path"));
-var import_node_fs3 = __toESM(require("node:fs"));
+var import_node_path4 = __toESM(require("node:path"));
+var import_node_fs4 = __toESM(require("node:fs"));
 var import_node_child_process = require("node:child_process");
 init_prisma();
 
 // src/lib/healthMonitor.ts
-var fs6 = __toESM(require("fs"));
-var path6 = __toESM(require("path"));
+var fs7 = __toESM(require("fs"));
+var path7 = __toESM(require("path"));
 init_logger();
 
 // src/lib/dbState.ts
@@ -57204,13 +57004,13 @@ var checking = false;
 var activeIncident = null;
 function hcFile() {
   if (!logFilePath) return null;
-  return path6.join(path6.dirname(logFilePath), "health-check.jsonl");
+  return path7.join(path7.dirname(logFilePath), "health-check.jsonl");
 }
 function append(ev) {
   const f = hcFile();
   if (!f) return;
   try {
-    fs6.appendFileSync(f, JSON.stringify(ev) + "\n");
+    fs7.appendFileSync(f, JSON.stringify(ev) + "\n");
   } catch {
   }
 }
@@ -57223,9 +57023,9 @@ function setLastSeenHost(host) {
 }
 function adoptOpenIncident() {
   const f = hcFile();
-  if (!f || !fs6.existsSync(f)) return;
+  if (!f || !fs7.existsSync(f)) return;
   try {
-    const lines = fs6.readFileSync(f, "utf8").split("\n").filter(Boolean).slice(-200);
+    const lines = fs7.readFileSync(f, "utf8").split("\n").filter(Boolean).slice(-200);
     let open = null;
     for (const l of lines) {
       try {
@@ -57342,9 +57142,9 @@ function startHealthMonitor() {
 function getHealthMonitorState() {
   const incidents2 = [];
   const f = hcFile();
-  if (f && fs6.existsSync(f)) {
+  if (f && fs7.existsSync(f)) {
     try {
-      const lines = fs6.readFileSync(f, "utf8").split("\n").filter(Boolean).slice(-500);
+      const lines = fs7.readFileSync(f, "utf8").split("\n").filter(Boolean).slice(-500);
       for (const l of lines) {
         try {
           const e = JSON.parse(l);
@@ -57384,8 +57184,8 @@ function getHealthMonitorState() {
 }
 
 // src/lib/leakMonitor.ts
-var fs7 = __toESM(require("fs"));
-var path7 = __toESM(require("path"));
+var fs8 = __toESM(require("fs"));
+var path8 = __toESM(require("path"));
 init_logger();
 var CHECK_INTERVAL_MS2 = 6e4;
 var LEAK_WINDOW_MS = 4 * 36e5;
@@ -57399,21 +57199,21 @@ var activeLeak = null;
 var incidents = [];
 function incidentFile() {
   if (!logFilePath) return null;
-  return path7.join(path7.dirname(logFilePath), "leak-incidents.jsonl");
+  return path8.join(path8.dirname(logFilePath), "leak-incidents.jsonl");
 }
 function append2(ev) {
   const f = incidentFile();
   if (!f) return;
   try {
-    fs7.appendFileSync(f, JSON.stringify(ev) + "\n");
+    fs8.appendFileSync(f, JSON.stringify(ev) + "\n");
   } catch {
   }
 }
 function loadIncidents() {
   const f = incidentFile();
-  if (!f || !fs7.existsSync(f)) return;
+  if (!f || !fs8.existsSync(f)) return;
   try {
-    const lines = fs7.readFileSync(f, "utf8").split("\n").filter(Boolean).slice(-500);
+    const lines = fs8.readFileSync(f, "utf8").split("\n").filter(Boolean).slice(-500);
     const evs = [];
     for (const l of lines) {
       try {
@@ -57446,16 +57246,16 @@ function loadIncidents() {
   }
 }
 function readHeartbeatPoints() {
-  if (!logFilePath || !fs7.existsSync(logFilePath)) return [];
+  if (!logFilePath || !fs8.existsSync(logFilePath)) return [];
   try {
-    const st = fs7.statSync(logFilePath);
+    const st = fs8.statSync(logFilePath);
     if (st.size <= 0) return [];
     const start = Math.max(0, st.size - TAIL_MAX);
     const len = st.size - start;
-    const fd = fs7.openSync(logFilePath, "r");
+    const fd = fs8.openSync(logFilePath, "r");
     const buf = Buffer.alloc(len);
-    fs7.readSync(fd, buf, 0, len, start);
-    fs7.closeSync(fd);
+    fs8.readSync(fd, buf, 0, len, start);
+    fs8.closeSync(fd);
     const text = buf.toString("utf8");
     const re = /\[hb\] alive ts=([\d:.TZ-]+) uptime=(\d+)s pid=(\d+) rss=(\d+)MB(?: heap=(\d+)MB)?/g;
     const points = [];
@@ -57515,9 +57315,9 @@ function push(ev) {
 }
 function lastFileEvent() {
   const f = incidentFile();
-  if (!f || !fs7.existsSync(f)) return null;
+  if (!f || !fs8.existsSync(f)) return null;
   try {
-    const lines = fs7.readFileSync(f, "utf8").split("\n").filter(Boolean);
+    const lines = fs8.readFileSync(f, "utf8").split("\n").filter(Boolean);
     if (!lines.length) return null;
     return JSON.parse(lines[lines.length - 1]);
   } catch {
@@ -58899,10 +58699,10 @@ var postCheckUrl = async (req, res) => {
 };
 var getDeployInfo = async (_req, res) => {
   let marker = null;
-  const markerPath = import_node_path3.default.resolve(process.cwd(), "../logs/deploy.json");
+  const markerPath = import_node_path4.default.resolve(process.cwd(), "../logs/deploy.json");
   try {
-    if (import_node_fs3.default.existsSync(markerPath)) {
-      marker = JSON.parse(import_node_fs3.default.readFileSync(markerPath, "utf8"));
+    if (import_node_fs4.default.existsSync(markerPath)) {
+      marker = JSON.parse(import_node_fs4.default.readFileSync(markerPath, "utf8"));
     }
   } catch {
   }
@@ -58915,9 +58715,9 @@ var getDeployInfo = async (_req, res) => {
   }
   let build = null;
   try {
-    const bp = import_node_path3.default.resolve(process.cwd(), "dist/build-commit.json");
-    if (import_node_fs3.default.existsSync(bp)) {
-      const bj = JSON.parse(import_node_fs3.default.readFileSync(bp, "utf8"));
+    const bp = import_node_path4.default.resolve(process.cwd(), "dist/build-commit.json");
+    if (import_node_fs4.default.existsSync(bp)) {
+      const bj = JSON.parse(import_node_fs4.default.readFileSync(bp, "utf8"));
       if (bj?.commit) build = { commit: bj.commit, builtAt: bj.builtAt || "" };
     }
   } catch {
@@ -58998,19 +58798,19 @@ var getDiagnostics = async (_req, res) => {
     appPool: null,
     wpEvents: null
   };
-  if (logFilePath && import_node_fs3.default.existsSync(logFilePath)) {
+  if (logFilePath && import_node_fs4.default.existsSync(logFilePath)) {
     try {
-      const st = import_node_fs3.default.statSync(logFilePath);
+      const st = import_node_fs4.default.statSync(logFilePath);
       result.logBytes = st.size;
       let raw = "";
       if (st.size > TAIL_MAX2) {
-        const fd = import_node_fs3.default.openSync(logFilePath, "r");
+        const fd = import_node_fs4.default.openSync(logFilePath, "r");
         const buf = Buffer.alloc(TAIL_MAX2);
-        import_node_fs3.default.readSync(fd, buf, 0, TAIL_MAX2, st.size - TAIL_MAX2);
-        import_node_fs3.default.closeSync(fd);
+        import_node_fs4.default.readSync(fd, buf, 0, TAIL_MAX2, st.size - TAIL_MAX2);
+        import_node_fs4.default.closeSync(fd);
         raw = buf.toString("utf8");
       } else {
-        raw = import_node_fs3.default.readFileSync(logFilePath, "utf8");
+        raw = import_node_fs4.default.readFileSync(logFilePath, "utf8");
       }
       const lines = raw.split(/\r?\n/).filter(Boolean);
       const pushCap = (arr, l, cap) => {
@@ -59087,13 +58887,13 @@ var getDiagnostics = async (_req, res) => {
   result.healthCheck = getHealthMonitorState();
   result.leak = getLeakMonitorState();
   for (const cand of [
-    import_node_path3.default.resolve(process.cwd(), "web.config"),
-    import_node_path3.default.resolve(process.cwd(), "../web.config"),
-    import_node_path3.default.resolve(process.cwd(), "../../web.config")
+    import_node_path4.default.resolve(process.cwd(), "web.config"),
+    import_node_path4.default.resolve(process.cwd(), "../web.config"),
+    import_node_path4.default.resolve(process.cwd(), "../../web.config")
   ]) {
-    if (!import_node_fs3.default.existsSync(cand)) continue;
+    if (!import_node_fs4.default.existsSync(cand)) continue;
     try {
-      const content = import_node_fs3.default.readFileSync(cand, "utf8");
+      const content = import_node_fs4.default.readFileSync(cand, "utf8");
       const grab = (re) => {
         const m = re.exec(content);
         return m ? m[0].slice(0, 500) : null;
@@ -59162,8 +58962,8 @@ var getDiagnostics = async (_req, res) => {
 var getLogs = async (_req, res) => {
   const n = Math.min(Number(_req.query.lines ?? 300) || 300, 1e3);
   const result = { path: logFilePath ?? null, totalLines: 0, lines: [], crashes: [], iisnodeLogs: [] };
-  if (logFilePath && import_node_fs3.default.existsSync(logFilePath)) {
-    const raw = import_node_fs3.default.readFileSync(logFilePath, "utf8");
+  if (logFilePath && import_node_fs4.default.existsSync(logFilePath)) {
+    const raw = import_node_fs4.default.readFileSync(logFilePath, "utf8");
     const lines = raw.split(/\r?\n/).filter(Boolean).slice(-n);
     result.lines = lines;
     result.totalLines = lines.length;
@@ -59179,13 +58979,13 @@ var getLogs = async (_req, res) => {
     result.crashes = [...crashMap.values()];
   }
   const dirs = /* @__PURE__ */ new Set();
-  if (logFilePath) dirs.add(import_node_path3.default.dirname(logFilePath));
-  dirs.add(import_node_path3.default.resolve(process.cwd(), "../logs"));
-  dirs.add(import_node_path3.default.resolve(process.cwd(), "../../logs"));
+  if (logFilePath) dirs.add(import_node_path4.default.dirname(logFilePath));
+  dirs.add(import_node_path4.default.resolve(process.cwd(), "../logs"));
+  dirs.add(import_node_path4.default.resolve(process.cwd(), "../../logs"));
   for (const dir of dirs) {
     let entries = [];
     try {
-      entries = import_node_fs3.default.readdirSync(dir, { withFileTypes: true });
+      entries = import_node_fs4.default.readdirSync(dir, { withFileTypes: true });
     } catch {
       continue;
     }
@@ -59193,10 +58993,10 @@ var getLogs = async (_req, res) => {
       if (!e.isFile()) continue;
       const name = e.name;
       if (!/^stdout_/i.test(name) && !/^stderr_/i.test(name) && !/\.log$/i.test(name)) continue;
-      const full = import_node_path3.default.join(dir, name);
+      const full = import_node_path4.default.join(dir, name);
       try {
-        const size = import_node_fs3.default.statSync(full).size;
-        const buf = import_node_fs3.default.readFileSync(full, "utf8");
+        const size = import_node_fs4.default.statSync(full).size;
+        const buf = import_node_fs4.default.readFileSync(full, "utf8");
         const ls = buf.split(/\r?\n/).filter(Boolean).slice(-200);
         result.iisnodeLogs.push({ name, path: full, size, lines: ls });
       } catch {
@@ -59441,11 +59241,11 @@ var postFirmware = async (req, res) => {
   const filename = modelCode ? `firmware-${modelCode.toLowerCase()}.bin` : "firmware.bin";
   const url = `/firmware/${filename}`;
   if (modelCode && filename !== "firmware.bin") {
-    const uploaded = import_node_path3.default.join(firmwareDir, "firmware.bin");
-    const target = import_node_path3.default.join(firmwareDir, filename);
-    if (import_node_fs3.default.existsSync(uploaded) && uploaded !== target) {
-      if (import_node_fs3.default.existsSync(target)) import_node_fs3.default.unlinkSync(target);
-      import_node_fs3.default.renameSync(uploaded, target);
+    const uploaded = import_node_path4.default.join(firmwareDir, "firmware.bin");
+    const target = import_node_path4.default.join(firmwareDir, filename);
+    if (import_node_fs4.default.existsSync(uploaded) && uploaded !== target) {
+      if (import_node_fs4.default.existsSync(target)) import_node_fs4.default.unlinkSync(target);
+      import_node_fs4.default.renameSync(uploaded, target);
     }
   }
   await prisma.$transaction([
@@ -59781,12 +59581,19 @@ var postProductsIdMedia = async (req, res) => {
   if (!req.file) throw new AppError("BAD_REQUEST", "No file uploaded");
   const product = await prisma.product.findUnique({ where: { id: productId } });
   if (!product) throw new AppError("NOT_FOUND", "Product not found");
-  const fileUrl = req.file.path;
-  const ext = import_node_path3.default.extname(req.file.originalname).toLowerCase();
+  const fileUrl = req.file.url || req.file.path;
+  const ext = import_node_path4.default.extname(req.file.originalname).toLowerCase();
   const type = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"].includes(ext) ? "image" : [".mp4", ".webm", ".mov"].includes(ext) ? "video" : "document";
   const media = await prisma.productMedia.create({
     data: { productId, url: fileUrl, type }
   });
+  if (type === "image" && !product.imageUrl) {
+    await prisma.product.update({
+      where: { id: productId },
+      data: { imageUrl: fileUrl }
+    }).catch(() => {
+    });
+  }
   await audit(req.user.sub, "admin.product.media.add", { entity: "product", entityId: productId, meta: { mediaId: media.id } });
   ok(res, media, 201);
 };
@@ -59794,9 +59601,9 @@ var deleteProductsMediaMediaId = async (req, res) => {
   const mediaId = Number(req.params.mediaId);
   const media = await prisma.productMedia.findUnique({ where: { id: mediaId } });
   if (!media) throw new AppError("NOT_FOUND", "Media not found");
-  const filePath = import_node_path3.default.join(process.cwd(), media.url.replace(/^\/+/, ""));
+  const filePath = import_node_path4.default.join(process.cwd(), media.url.replace(/^\/+/, ""));
   try {
-    import_node_fs3.default.unlinkSync(filePath);
+    import_node_fs4.default.unlinkSync(filePath);
   } catch {
   }
   await prisma.productMedia.delete({ where: { id: mediaId } });
@@ -60291,13 +60098,13 @@ var getApkStatus = async (_req, res) => {
   try {
     const settings = await getSiteSettings();
     const candidatePaths2 = [
-      import_node_path3.default.join(webPublicMobileAppDir, "SwitchNest_Latest.apk"),
-      import_node_path3.default.join(mobileAppDir, "SwitchNest_Latest.apk")
+      import_node_path4.default.join(webPublicMobileAppDir, "SwitchNest_Latest.apk"),
+      import_node_path4.default.join(mobileAppDir, "SwitchNest_Latest.apk")
     ];
     let fileInfo = { exists: false, sizeMb: "0", modifiedAt: null };
     for (const targetPath of candidatePaths2) {
-      if (import_node_fs3.default.existsSync(targetPath)) {
-        const stats = import_node_fs3.default.statSync(targetPath);
+      if (import_node_fs4.default.existsSync(targetPath)) {
+        const stats = import_node_fs4.default.statSync(targetPath);
         fileInfo = {
           exists: true,
           sizeMb: (stats.size / (1024 * 1024)).toFixed(1),
@@ -60326,20 +60133,20 @@ var postApkUpload = async (req, res) => {
     const { version, releaseNotes, updateMessage, isMandatory, minVersion } = req.body;
     const cleanVersion = (version || "1.0.11").trim();
     const uploadedPath = req.file.path;
-    const latestApkPath = import_node_path3.default.join(webPublicMobileAppDir, "SwitchNest_Latest.apk");
-    const versionedApkPath = import_node_path3.default.join(webPublicMobileAppDir, `SwitchNest_v${cleanVersion}.apk`);
-    import_node_fs3.default.copyFileSync(uploadedPath, latestApkPath);
-    import_node_fs3.default.copyFileSync(uploadedPath, versionedApkPath);
-    if (import_node_fs3.default.existsSync(mobileAppDir)) {
+    const latestApkPath = import_node_path4.default.join(webPublicMobileAppDir, "SwitchNest_Latest.apk");
+    const versionedApkPath = import_node_path4.default.join(webPublicMobileAppDir, `SwitchNest_v${cleanVersion}.apk`);
+    import_node_fs4.default.copyFileSync(uploadedPath, latestApkPath);
+    import_node_fs4.default.copyFileSync(uploadedPath, versionedApkPath);
+    if (import_node_fs4.default.existsSync(mobileAppDir)) {
       try {
-        import_node_fs3.default.copyFileSync(uploadedPath, import_node_path3.default.join(mobileAppDir, "SwitchNest_Latest.apk"));
-        import_node_fs3.default.copyFileSync(uploadedPath, import_node_path3.default.join(mobileAppDir, `SwitchNest_v${cleanVersion}.apk`));
+        import_node_fs4.default.copyFileSync(uploadedPath, import_node_path4.default.join(mobileAppDir, "SwitchNest_Latest.apk"));
+        import_node_fs4.default.copyFileSync(uploadedPath, import_node_path4.default.join(mobileAppDir, `SwitchNest_v${cleanVersion}.apk`));
       } catch (e) {
         console.warn("[apk-upload] mobileAppDir copy warning:", e);
       }
     }
     try {
-      import_node_fs3.default.unlinkSync(uploadedPath);
+      import_node_fs4.default.unlinkSync(uploadedPath);
     } catch {
     }
     const updatedSettings = await updateSiteSettings({
@@ -60349,7 +60156,7 @@ var postApkUpload = async (req, res) => {
       mobileAppUpdateMessage: updateMessage || `New SwitchNest v${cleanVersion} is ready!`,
       mobileAppIsMandatory: isMandatory === "true" || isMandatory === true
     });
-    const stats = import_node_fs3.default.statSync(latestApkPath);
+    const stats = import_node_fs4.default.statSync(latestApkPath);
     await audit(req.user.sub, "admin.apk_upload", {
       entity: "mobile_app",
       meta: { version: cleanVersion, sizeMb: (stats.size / (1024 * 1024)).toFixed(1) }
@@ -60663,7 +60470,7 @@ adminRouter.get("/deploy-info", getDeployInfo);
 adminRouter.get("/diagnostics", getDiagnostics);
 adminRouter.get("/logs", getLogs);
 try {
-  import_node_fs4.default.mkdirSync(firmwareDir, { recursive: true });
+  import_node_fs5.default.mkdirSync(firmwareDir, { recursive: true });
 } catch (err) {
   console.warn(`[firmware] cannot create ${firmwareDir}:`, err instanceof Error ? err.message : err);
 }
@@ -60721,7 +60528,7 @@ var resetSchema = import_zod13.z.object({
 adminRouter.post("/reset", validateBody(resetSchema), postReset);
 var apkDir = webPublicMobileAppDir;
 try {
-  import_node_fs4.default.mkdirSync(apkDir, { recursive: true });
+  import_node_fs5.default.mkdirSync(apkDir, { recursive: true });
 } catch (e) {
 }
 var apkUpload = (0, import_multer2.default)({
@@ -61855,8 +61662,8 @@ init_notification_service();
 init_socket();
 
 // src/lib/attachmentStore.ts
-var fs11 = __toESM(require("fs"));
-var path10 = __toESM(require("path"));
+var fs12 = __toESM(require("fs"));
+var path11 = __toESM(require("path"));
 var import_cloudinary5 = __toESM(require_cloudinary3());
 function extFor(type, name) {
   const fromName = name.split(".").pop()?.toLowerCase();
@@ -61885,10 +61692,10 @@ async function saveAttachment(base64, type, name) {
   return res.secure_url;
 }
 function readAttachmentFile(filename) {
-  const safe = path10.basename(filename);
+  const safe = path11.basename(filename);
   if (safe !== filename) return null;
   try {
-    return fs11.readFileSync(path10.join(attachmentDir, safe));
+    return fs12.readFileSync(path11.join(attachmentDir, safe));
   } catch {
     return null;
   }
@@ -61896,10 +61703,10 @@ function readAttachmentFile(filename) {
 function deleteAttachmentFile(filename) {
   if (!filename) return;
   if (filename.startsWith("http://") || filename.startsWith("https://")) return;
-  const safe = path10.basename(filename);
+  const safe = path11.basename(filename);
   if (safe !== filename) return;
   try {
-    fs11.unlinkSync(path10.join(attachmentDir, safe));
+    fs12.unlinkSync(path11.join(attachmentDir, safe));
   } catch {
   }
 }
@@ -63421,8 +63228,8 @@ var import_express23 = require("express");
 
 // src/controllers/install.controller.ts
 var import_promise = __toESM(require("mysql2/promise"));
-var import_node_fs5 = __toESM(require("node:fs"));
-var import_node_path4 = __toESM(require("node:path"));
+var import_node_fs6 = __toESM(require("node:fs"));
+var import_node_path5 = __toESM(require("node:path"));
 var import_bcryptjs3 = __toESM(require("bcryptjs"));
 init_env();
 init_prisma();
@@ -63697,7 +63504,7 @@ async function checkOfflineDevicesInner() {
 }
 
 // src/controllers/install.controller.ts
-var SCHEMA_SQL = import_node_path4.default.resolve(process.cwd(), "prisma/schema.sql");
+var SCHEMA_SQL = import_node_path5.default.resolve(process.cwd(), "prisma/schema.sql");
 var DEFAULT_PRODUCTS = [
   { name: "2CH WiFi Relay Module", modelCode: "2CH", relayCount: 2, price: "599", description: "Two-channel WiFi relay board for lights and small appliances. 10A per channel, ESP32 based, works with the SwitchNest app and voice assistant.", features: { channels: 2, wifi: true, ota: true, voice: true } },
   { name: "4CH WiFi Relay Module", modelCode: "4CH", relayCount: 4, price: "799", description: "Four-channel WiFi relay board \u2014 the classic choice for room-wide control. 10A per channel with status LED and manual override switches.", features: { channels: 4, wifi: true, ota: true, voice: true } },
@@ -63825,18 +63632,18 @@ async function createDatabase(parts) {
 }
 function getSchemaSql() {
   const candidates = [
-    import_node_path4.default.resolve(process.cwd(), "prisma/schema.sql"),
-    import_node_path4.default.resolve(process.cwd(), "dist/schema.sql"),
-    import_node_path4.default.resolve(process.cwd(), "apps/api/prisma/schema.sql"),
-    import_node_path4.default.resolve(process.cwd(), "site/apps/api/prisma/schema.sql"),
-    import_node_path4.default.resolve(__dirname, "../prisma/schema.sql"),
-    import_node_path4.default.resolve(__dirname, "schema.sql"),
-    import_node_path4.default.resolve(__dirname, "prisma/schema.sql")
+    import_node_path5.default.resolve(process.cwd(), "prisma/schema.sql"),
+    import_node_path5.default.resolve(process.cwd(), "dist/schema.sql"),
+    import_node_path5.default.resolve(process.cwd(), "apps/api/prisma/schema.sql"),
+    import_node_path5.default.resolve(process.cwd(), "site/apps/api/prisma/schema.sql"),
+    import_node_path5.default.resolve(__dirname, "../prisma/schema.sql"),
+    import_node_path5.default.resolve(__dirname, "schema.sql"),
+    import_node_path5.default.resolve(__dirname, "prisma/schema.sql")
   ];
   for (const p of candidates) {
-    if (import_node_fs5.default.existsSync(p)) {
+    if (import_node_fs6.default.existsSync(p)) {
       try {
-        const sql = import_node_fs5.default.readFileSync(p, "utf-8");
+        const sql = import_node_fs6.default.readFileSync(p, "utf-8");
         if (sql && sql.trim().length > 50) return sql;
       } catch {
       }
@@ -64352,18 +64159,18 @@ var DESCRIPTIONS = {
   "GET /api/health": "Health check \u2014 DB schema diag + build version (ops).",
   "GET /api/version": "API version (ops)."
 };
-function securityFor(path14, method) {
-  if (method === "GET" && (path14 === "/api/health" || path14 === "/api/version")) return void 0;
-  if (path14.startsWith("/api/device")) return [{ deviceApiKey: [] }];
-  if (path14.startsWith("/api/install") || path14.startsWith("/api/public")) return void 0;
-  if (path14.startsWith("/api/docs")) return void 0;
-  if (path14.startsWith("/api/auth")) {
-    if (method === "GET" || path14.includes("/me") || path14 === "/api/auth/theme") {
+function securityFor(path15, method) {
+  if (method === "GET" && (path15 === "/api/health" || path15 === "/api/version")) return void 0;
+  if (path15.startsWith("/api/device")) return [{ deviceApiKey: [] }];
+  if (path15.startsWith("/api/install") || path15.startsWith("/api/public")) return void 0;
+  if (path15.startsWith("/api/docs")) return void 0;
+  if (path15.startsWith("/api/auth")) {
+    if (method === "GET" || path15.includes("/me") || path15 === "/api/auth/theme") {
       return [{ bearerAuth: [] }];
     }
     return void 0;
   }
-  if (path14.startsWith("/api/shop/products")) return void 0;
+  if (path15.startsWith("/api/shop/products")) return void 0;
   return [{ bearerAuth: [] }];
 }
 var BODIES = {
@@ -64804,8 +64611,8 @@ var SCHEMAS = {
     }
   }
 };
-function tagFor(path14) {
-  const seg = path14.replace(/^\/api\//, "").split("/")[0] ?? "system";
+function tagFor(path15) {
+  const seg = path15.replace(/^\/api\//, "").split("/")[0] ?? "system";
   const map = {
     auth: "Auth",
     device: "Device API (ESP32)",
@@ -64826,11 +64633,11 @@ function tagFor(path14) {
   };
   return map[seg] ?? "Homes";
 }
-function paramsFor(path14) {
+function paramsFor(path15) {
   const out = [];
   const re = /:([A-Za-z0-9_]+)/g;
   let m;
-  while ((m = re.exec(path14)) !== null) {
+  while ((m = re.exec(path15)) !== null) {
     out.push({
       name: m[1],
       in: "path",
@@ -65693,11 +65500,11 @@ var getPlainList = (_req, res) => {
   const spec = getOpenApiSpec();
   const paths = spec.paths;
   const byTag = /* @__PURE__ */ new Map();
-  for (const [path14, ops] of Object.entries(paths)) {
+  for (const [path15, ops] of Object.entries(paths)) {
     for (const [method, op] of Object.entries(ops)) {
       const tag = op.tags?.[0] ?? "Other";
       if (!byTag.has(tag)) byTag.set(tag, []);
-      byTag.get(tag).push({ method: method.toUpperCase(), path: path14, summary: op.summary ?? "" });
+      byTag.get(tag).push({ method: method.toUpperCase(), path: path15, summary: op.summary ?? "" });
     }
   }
   const methodColor2 = {
@@ -65998,16 +65805,16 @@ function createApp() {
   app.use("/uploads", import_express26.default.static(uploadsDir));
   const apkCandidateDirs = getMobileAppCandidateDirs();
   for (const dir of apkCandidateDirs) {
-    if (dir && import_node_fs6.default.existsSync(dir)) {
+    if (dir && import_node_fs7.default.existsSync(dir)) {
       app.use("/mobile-app", import_express26.default.static(dir));
     }
   }
   app.get("/mobile-app/:filename", (req, res, next) => {
-    const filename = import_node_path5.default.basename(req.params.filename);
+    const filename = import_node_path6.default.basename(req.params.filename);
     for (const dir of apkCandidateDirs) {
-      if (dir && import_node_fs6.default.existsSync(dir)) {
-        const targetPath = import_node_path5.default.join(dir, filename);
-        if (import_node_fs6.default.existsSync(targetPath)) {
+      if (dir && import_node_fs7.default.existsSync(dir)) {
+        const targetPath = import_node_path6.default.join(dir, filename);
+        if (import_node_fs7.default.existsSync(targetPath)) {
           return res.sendFile(targetPath);
         }
       }
@@ -66032,11 +65839,11 @@ function createApp() {
     if (req.path.endsWith(".js")) {
       for (const dir of assetDirs) {
         try {
-          const files = import_node_fs6.default.readdirSync(dir);
+          const files = import_node_fs7.default.readdirSync(dir);
           const latestJs = files.find((f) => f.startsWith("index-") && f.endsWith(".js"));
           if (latestJs) {
             res.setHeader("Content-Type", "application/javascript");
-            return res.sendFile(import_node_path5.default.join(dir, latestJs));
+            return res.sendFile(import_node_path6.default.join(dir, latestJs));
           }
         } catch {
         }
@@ -66065,7 +65872,7 @@ function createApp() {
 </html>`);
   };
   for (const dir of [apiRoot, process.cwd(), webDist]) {
-    if (dir && import_node_fs6.default.existsSync(dir)) {
+    if (dir && import_node_fs7.default.existsSync(dir)) {
       app.use(import_express26.default.static(dir));
     }
   }
@@ -66251,11 +66058,11 @@ function startKeyExpiryWatcher() {
 // src/services/archival.service.ts
 init_prisma();
 init_siteSettings_service();
-var import_node_fs7 = __toESM(require("node:fs"));
-var import_node_path6 = __toESM(require("node:path"));
+var import_node_fs8 = __toESM(require("node:fs"));
+var import_node_path7 = __toESM(require("node:path"));
 init_logger();
-var COLD_STORAGE_TELEMETRY = import_node_path6.default.join(uploadsDir, "cold_storage", "telemetry");
-var COLD_STORAGE_SUPPORT = import_node_path6.default.join(uploadsDir, "cold_storage", "support");
+var COLD_STORAGE_TELEMETRY = import_node_path7.default.join(uploadsDir, "cold_storage", "telemetry");
+var COLD_STORAGE_SUPPORT = import_node_path7.default.join(uploadsDir, "cold_storage", "support");
 var archivalTimer = null;
 var isRunning = false;
 function startArchivalService() {
@@ -66269,8 +66076,8 @@ async function runArchival() {
   isRunning = true;
   try {
     const settings = await getSiteSettings();
-    import_node_fs7.default.mkdirSync(COLD_STORAGE_TELEMETRY, { recursive: true });
-    import_node_fs7.default.mkdirSync(COLD_STORAGE_SUPPORT, { recursive: true });
+    import_node_fs8.default.mkdirSync(COLD_STORAGE_TELEMETRY, { recursive: true });
+    import_node_fs8.default.mkdirSync(COLD_STORAGE_SUPPORT, { recursive: true });
     const now = /* @__PURE__ */ new Date();
     const telemetryThreshold = /* @__PURE__ */ new Date();
     telemetryThreshold.setDate(telemetryThreshold.getDate() - (settings.deviceTelemetryRetentionDays || 180));
@@ -66282,9 +66089,9 @@ async function runArchival() {
         orderBy: { createdAt: "asc" }
       });
       if (oldLogs.length === 0) break;
-      const filePath = import_node_path6.default.join(COLD_STORAGE_TELEMETRY, `telemetry_${now.toISOString().split("T")[0]}.jsonl`);
+      const filePath = import_node_path7.default.join(COLD_STORAGE_TELEMETRY, `telemetry_${now.toISOString().split("T")[0]}.jsonl`);
       const lines = oldLogs.map((l) => JSON.stringify(l)).join("\n") + "\n";
-      import_node_fs7.default.appendFileSync(filePath, lines);
+      import_node_fs8.default.appendFileSync(filePath, lines);
       const ids = oldLogs.map((l) => l.id);
       await prisma.deviceLog.deleteMany({ where: { id: { in: ids } } });
       archivedTelemetryCount += oldLogs.length;
@@ -66302,9 +66109,9 @@ async function runArchival() {
         orderBy: { createdAt: "asc" }
       });
       if (oldMessages.length === 0) break;
-      const filePath = import_node_path6.default.join(COLD_STORAGE_SUPPORT, `chat_${now.toISOString().split("T")[0]}.jsonl`);
+      const filePath = import_node_path7.default.join(COLD_STORAGE_SUPPORT, `chat_${now.toISOString().split("T")[0]}.jsonl`);
       const lines = oldMessages.map((m) => JSON.stringify(m)).join("\n") + "\n";
-      import_node_fs7.default.appendFileSync(filePath, lines);
+      import_node_fs8.default.appendFileSync(filePath, lines);
       const ids = oldMessages.map((m) => m.id);
       await prisma.supportMessage.deleteMany({ where: { id: { in: ids } } });
       archivedChatCount += oldMessages.length;
