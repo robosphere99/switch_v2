@@ -2571,33 +2571,67 @@ function validateParams(schema) {
 }
 
 // src/routes/auth.routes.ts
-var import_multer2 = __toESM(require("multer"));
+var import_multer = __toESM(require("multer"));
 
 // src/lib/cloudinary.ts
-var import_multer = __toESM(require("multer"));
 var import_node_path4 = __toESM(require("node:path"));
 var import_node_fs3 = __toESM(require("node:fs"));
 function createLocalStorage(folderName) {
-  const targetDir = import_node_path4.default.join(uploadsDir, folderName);
-  try {
-    import_node_fs3.default.mkdirSync(targetDir, { recursive: true });
-  } catch {
-  }
-  return import_multer.default.diskStorage({
-    destination: (_req, _file, cb) => {
-      try {
-        import_node_fs3.default.mkdirSync(targetDir, { recursive: true });
-      } catch {
-      }
-      cb(null, targetDir);
-    },
-    filename: (_req, file, cb) => {
+  return {
+    _handleFile(_req, file, cb) {
       const ext = import_node_path4.default.extname(file.originalname).toLowerCase();
       const base = import_node_path4.default.basename(file.originalname, ext).replace(/[^a-zA-Z0-9_-]/g, "_");
       const safeName = `${Date.now()}-${base}${ext}`;
-      cb(null, safeName);
+      const chunks = [];
+      file.stream.on("data", (chunk) => chunks.push(chunk));
+      file.stream.on("error", (err) => cb(err));
+      file.stream.on("end", () => {
+        const buffer = Buffer.concat(chunks);
+        const candidateDirs = getCandidateUploadDirs();
+        let savedPath = "";
+        let writeError = null;
+        for (const baseDir of candidateDirs) {
+          try {
+            const targetFolder = import_node_path4.default.join(baseDir, folderName);
+            import_node_fs3.default.mkdirSync(targetFolder, { recursive: true });
+            const filePath = import_node_path4.default.join(targetFolder, safeName);
+            import_node_fs3.default.writeFileSync(filePath, buffer);
+            savedPath = filePath;
+            break;
+          } catch (err) {
+            writeError = err;
+          }
+        }
+        if (!savedPath) {
+          try {
+            const fallbackFolder = import_node_path4.default.join(process.cwd(), "uploads", folderName);
+            import_node_fs3.default.mkdirSync(fallbackFolder, { recursive: true });
+            const filePath = import_node_path4.default.join(fallbackFolder, safeName);
+            import_node_fs3.default.writeFileSync(filePath, buffer);
+            savedPath = filePath;
+          } catch (fallbackErr) {
+            return cb(writeError || fallbackErr);
+          }
+        }
+        const publicUrl = `/uploads/${folderName}/${safeName}`;
+        cb(null, {
+          path: publicUrl,
+          filename: safeName,
+          size: buffer.length,
+          destination: import_node_path4.default.dirname(savedPath)
+        });
+      });
+    },
+    _removeFile(_req, file, cb) {
+      try {
+        if (file.path && import_node_fs3.default.existsSync(file.path)) {
+          import_node_fs3.default.unlinkSync(file.path);
+        }
+      } catch {
+      }
+      cb(null);
     }
-  });
+  };
 }
 var cloudinaryAvatarStorage = createLocalStorage("avatars");
 var cloudinaryProductStorage = createLocalStorage("products");
@@ -2605,7 +2639,7 @@ var cloudinarySupportStorage = createLocalStorage("support");
 var cloudinaryBillingStorage = createLocalStorage("billing");
 
 // src/routes/auth.routes.ts
-var upload = (0, import_multer2.default)({ storage: cloudinaryAvatarStorage });
+var upload = (0, import_multer.default)({ storage: cloudinaryAvatarStorage });
 var authRouter = (0, import_express.Router)();
 var loginLimiter = rateLimit({
   name: "auth:login",
@@ -5764,7 +5798,7 @@ assistantRouter.get("/chats/:chatId/messages", requireAuth, validateParams(chatP
 // src/routes/admin.routes.ts
 var import_express11 = require("express");
 var import_zod13 = require("zod");
-var import_multer3 = __toESM(require("multer"));
+var import_multer2 = __toESM(require("multer"));
 var import_node_fs5 = __toESM(require("node:fs"));
 
 // src/controllers/admin.controller.ts
@@ -9314,8 +9348,8 @@ try {
 } catch (err) {
   console.warn(`[firmware] cannot create ${firmwareDir}:`, err instanceof Error ? err.message : err);
 }
-var upload2 = (0, import_multer3.default)({
-  storage: import_multer3.default.diskStorage({
+var upload2 = (0, import_multer2.default)({
+  storage: import_multer2.default.diskStorage({
     destination: (_req, _file, cb) => cb(null, firmwareDir),
     filename: (_req, _file, cb) => cb(null, "firmware.bin")
   }),
@@ -9341,7 +9375,7 @@ adminRouter.get("/products", getProducts);
 adminRouter.post("/products", postProducts);
 adminRouter.patch("/products/:id", patchProductsId);
 adminRouter.delete("/products/:id", deleteProductsId);
-var productMediaUpload = (0, import_multer3.default)({ storage: cloudinaryProductStorage });
+var productMediaUpload = (0, import_multer2.default)({ storage: cloudinaryProductStorage });
 adminRouter.post("/products/:id/media", productMediaUpload.single("file"), postProductsIdMedia);
 adminRouter.delete("/products/media/:mediaId", deleteProductsMediaMediaId);
 adminRouter.get("/orders", getOrders);
@@ -9371,8 +9405,8 @@ try {
   import_node_fs5.default.mkdirSync(apkDir, { recursive: true });
 } catch (e) {
 }
-var apkUpload = (0, import_multer3.default)({
-  storage: import_multer3.default.diskStorage({
+var apkUpload = (0, import_multer2.default)({
+  storage: import_multer2.default.diskStorage({
     destination: (_req, _file, cb) => cb(null, apkDir),
     filename: (_req, file, cb) => {
       cb(null, `upload_${Date.now()}_${file.originalname}`);
@@ -9390,7 +9424,7 @@ adminRouter.delete("/coupons/:id", deleteCouponsId);
 
 // src/routes/shop.routes.ts
 var import_express12 = require("express");
-var import_multer4 = __toESM(require("multer"));
+var import_multer3 = __toESM(require("multer"));
 
 // src/controllers/shop.controller.ts
 var import_node_path6 = __toESM(require("node:path"));
@@ -9715,7 +9749,7 @@ async function validateCoupon(req, res) {
 
 // src/routes/shop.routes.ts
 var shopRouter = (0, import_express12.Router)();
-var upload3 = (0, import_multer4.default)({ storage: cloudinaryBillingStorage, limits: { fileSize: 50 * 1024 * 1024 } });
+var upload3 = (0, import_multer3.default)({ storage: cloudinaryBillingStorage, limits: { fileSize: 50 * 1024 * 1024 } });
 shopRouter.get("/products", getProducts2);
 shopRouter.get("/products/:id/reviews", getProductReviews);
 shopRouter.get("/coupons/validate", requireAuth, validateCoupon);
@@ -10496,7 +10530,7 @@ publicRouter.post("/support", supportFormLimiter, requireAuth, postSupportMessag
 // src/routes/support.routes.ts
 var import_express16 = require("express");
 var import_zod14 = require("zod");
-var import_multer5 = __toESM(require("multer"));
+var import_multer4 = __toESM(require("multer"));
 
 // src/controllers/support.controller.ts
 var import_node_path7 = __toESM(require("node:path"));
@@ -11368,7 +11402,7 @@ async function getCallHistory(req, res) {
 
 // src/routes/support.routes.ts
 var supportRouter = (0, import_express16.Router)();
-var upload4 = (0, import_multer5.default)({
+var upload4 = (0, import_multer4.default)({
   storage: cloudinarySupportStorage,
   limits: { fileSize: 50 * 1024 * 1024 }
   // 50MB

@@ -2549,33 +2549,67 @@ function validateParams(schema) {
 }
 
 // src/routes/auth.routes.ts
-import multer2 from "multer";
+import multer from "multer";
 
 // src/lib/cloudinary.ts
-import multer from "multer";
 import path7 from "node:path";
 import fs6 from "node:fs";
 function createLocalStorage(folderName) {
-  const targetDir = path7.join(uploadsDir, folderName);
-  try {
-    fs6.mkdirSync(targetDir, { recursive: true });
-  } catch {
-  }
-  return multer.diskStorage({
-    destination: (_req, _file, cb) => {
-      try {
-        fs6.mkdirSync(targetDir, { recursive: true });
-      } catch {
-      }
-      cb(null, targetDir);
-    },
-    filename: (_req, file, cb) => {
+  return {
+    _handleFile(_req, file, cb) {
       const ext = path7.extname(file.originalname).toLowerCase();
       const base = path7.basename(file.originalname, ext).replace(/[^a-zA-Z0-9_-]/g, "_");
       const safeName = `${Date.now()}-${base}${ext}`;
-      cb(null, safeName);
+      const chunks = [];
+      file.stream.on("data", (chunk) => chunks.push(chunk));
+      file.stream.on("error", (err) => cb(err));
+      file.stream.on("end", () => {
+        const buffer = Buffer.concat(chunks);
+        const candidateDirs = getCandidateUploadDirs();
+        let savedPath = "";
+        let writeError = null;
+        for (const baseDir of candidateDirs) {
+          try {
+            const targetFolder = path7.join(baseDir, folderName);
+            fs6.mkdirSync(targetFolder, { recursive: true });
+            const filePath = path7.join(targetFolder, safeName);
+            fs6.writeFileSync(filePath, buffer);
+            savedPath = filePath;
+            break;
+          } catch (err) {
+            writeError = err;
+          }
+        }
+        if (!savedPath) {
+          try {
+            const fallbackFolder = path7.join(process.cwd(), "uploads", folderName);
+            fs6.mkdirSync(fallbackFolder, { recursive: true });
+            const filePath = path7.join(fallbackFolder, safeName);
+            fs6.writeFileSync(filePath, buffer);
+            savedPath = filePath;
+          } catch (fallbackErr) {
+            return cb(writeError || fallbackErr);
+          }
+        }
+        const publicUrl = `/uploads/${folderName}/${safeName}`;
+        cb(null, {
+          path: publicUrl,
+          filename: safeName,
+          size: buffer.length,
+          destination: path7.dirname(savedPath)
+        });
+      });
+    },
+    _removeFile(_req, file, cb) {
+      try {
+        if (file.path && fs6.existsSync(file.path)) {
+          fs6.unlinkSync(file.path);
+        }
+      } catch {
+      }
+      cb(null);
     }
-  });
+  };
 }
 var cloudinaryAvatarStorage = createLocalStorage("avatars");
 var cloudinaryProductStorage = createLocalStorage("products");
@@ -2583,7 +2617,7 @@ var cloudinarySupportStorage = createLocalStorage("support");
 var cloudinaryBillingStorage = createLocalStorage("billing");
 
 // src/routes/auth.routes.ts
-var upload = multer2({ storage: cloudinaryAvatarStorage });
+var upload = multer({ storage: cloudinaryAvatarStorage });
 var authRouter = Router();
 var loginLimiter = rateLimit({
   name: "auth:login",
@@ -5742,7 +5776,7 @@ assistantRouter.get("/chats/:chatId/messages", requireAuth, validateParams(chatP
 // src/routes/admin.routes.ts
 import { Router as Router11 } from "express";
 import { z as z12 } from "zod";
-import multer3 from "multer";
+import multer2 from "multer";
 import fs10 from "node:fs";
 
 // src/controllers/admin.controller.ts
@@ -9292,8 +9326,8 @@ try {
 } catch (err) {
   console.warn(`[firmware] cannot create ${firmwareDir}:`, err instanceof Error ? err.message : err);
 }
-var upload2 = multer3({
-  storage: multer3.diskStorage({
+var upload2 = multer2({
+  storage: multer2.diskStorage({
     destination: (_req, _file, cb) => cb(null, firmwareDir),
     filename: (_req, _file, cb) => cb(null, "firmware.bin")
   }),
@@ -9319,7 +9353,7 @@ adminRouter.get("/products", getProducts);
 adminRouter.post("/products", postProducts);
 adminRouter.patch("/products/:id", patchProductsId);
 adminRouter.delete("/products/:id", deleteProductsId);
-var productMediaUpload = multer3({ storage: cloudinaryProductStorage });
+var productMediaUpload = multer2({ storage: cloudinaryProductStorage });
 adminRouter.post("/products/:id/media", productMediaUpload.single("file"), postProductsIdMedia);
 adminRouter.delete("/products/media/:mediaId", deleteProductsMediaMediaId);
 adminRouter.get("/orders", getOrders);
@@ -9349,8 +9383,8 @@ try {
   fs10.mkdirSync(apkDir, { recursive: true });
 } catch (e) {
 }
-var apkUpload = multer3({
-  storage: multer3.diskStorage({
+var apkUpload = multer2({
+  storage: multer2.diskStorage({
     destination: (_req, _file, cb) => cb(null, apkDir),
     filename: (_req, file, cb) => {
       cb(null, `upload_${Date.now()}_${file.originalname}`);
@@ -9368,7 +9402,7 @@ adminRouter.delete("/coupons/:id", deleteCouponsId);
 
 // src/routes/shop.routes.ts
 import { Router as Router12 } from "express";
-import multer4 from "multer";
+import multer3 from "multer";
 
 // src/controllers/shop.controller.ts
 init_prisma();
@@ -9693,7 +9727,7 @@ async function validateCoupon(req, res) {
 
 // src/routes/shop.routes.ts
 var shopRouter = Router12();
-var upload3 = multer4({ storage: cloudinaryBillingStorage, limits: { fileSize: 50 * 1024 * 1024 } });
+var upload3 = multer3({ storage: cloudinaryBillingStorage, limits: { fileSize: 50 * 1024 * 1024 } });
 shopRouter.get("/products", getProducts2);
 shopRouter.get("/products/:id/reviews", getProductReviews);
 shopRouter.get("/coupons/validate", requireAuth, validateCoupon);
@@ -10474,7 +10508,7 @@ publicRouter.post("/support", supportFormLimiter, requireAuth, postSupportMessag
 // src/routes/support.routes.ts
 import { Router as Router16 } from "express";
 import { z as z13 } from "zod";
-import multer5 from "multer";
+import multer4 from "multer";
 
 // src/controllers/support.controller.ts
 init_prisma();
@@ -11346,7 +11380,7 @@ async function getCallHistory(req, res) {
 
 // src/routes/support.routes.ts
 var supportRouter = Router16();
-var upload4 = multer5({
+var upload4 = multer4({
   storage: cloudinarySupportStorage,
   limits: { fileSize: 50 * 1024 * 1024 }
   // 50MB
