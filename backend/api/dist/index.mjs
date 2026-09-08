@@ -66362,9 +66362,7 @@ async function runLightMigrations() {
             features: ["4 Relays (10A each)", "Local WiFi + Cloud MQTT", "Realtime WebSocket Control", "OTA Firmware Updates"],
             active: true,
             upcoming: false,
-            featured: true,
-            sortOrder: 1,
-            tag: "Bestseller"
+            stockCount: 10
           },
           {
             name: "SwitchNest 2-Channel Smart Relay",
@@ -66375,9 +66373,7 @@ async function runLightMigrations() {
             features: ["2 Relays (10A)", "Compact Size", "LAN + Cloud Sync"],
             active: true,
             upcoming: false,
-            featured: false,
-            sortOrder: 2,
-            tag: "Popular"
+            stockCount: 10
           },
           {
             name: "SwitchNest 8-Channel Pro SwitchBoard",
@@ -66388,9 +66384,7 @@ async function runLightMigrations() {
             features: ["8 Relays (16A Heavy Load)", "Dual WiFi Antenna", "Family Safety Mode"],
             active: true,
             upcoming: false,
-            featured: true,
-            sortOrder: 3,
-            tag: "Pro"
+            stockCount: 5
           },
           {
             name: "SwitchNest Smart Triac Dimmer 3S",
@@ -66401,14 +66395,46 @@ async function runLightMigrations() {
             features: ["Zero Buzzing / Hum", "Precision Step Control", "Smooth Fade"],
             active: true,
             upcoming: true,
-            featured: false,
-            sortOrder: 4,
-            tag: "Coming Soon"
+            stockCount: 0
           }
         ],
         skipDuplicates: true
       });
       logger.info("[seed] Initial SwitchNest products seeded successfully!");
+    }
+    try {
+      const devicesWithSerials = await prisma.espDevice.findMany({
+        where: { serialCode: { not: null } },
+        include: { home: true }
+      });
+      const product4ch = await prisma.product.findFirst({
+        where: { modelCode: { in: ["4CH", "RS-4CH-RELAY"] } }
+      });
+      if (product4ch) {
+        for (const dev of devicesWithSerials) {
+          if (!dev.serialCode) continue;
+          await prisma.serialRegistry.upsert({
+            where: { serialCode: dev.serialCode },
+            create: {
+              serialCode: dev.serialCode,
+              productId: product4ch.id,
+              homeId: dev.homeId,
+              userId: dev.home?.ownerId ?? null,
+              status: "claimed",
+              claimedAt: /* @__PURE__ */ new Date(),
+              warrantyStatus: "active"
+            },
+            update: {
+              homeId: dev.homeId,
+              userId: dev.home?.ownerId ?? void 0,
+              status: "claimed"
+            }
+          });
+        }
+      }
+      logger.info(`[sync] Verified ${devicesWithSerials.length} sold ESP devices in serial registry`);
+    } catch (e) {
+      logger.warn("[sync] Device recovery note:", e instanceof Error ? e.message : String(e));
     }
   } catch (err) {
     logger.warn("[migrations] Error ensuring schema columns:", err instanceof Error ? err.message : String(err));
