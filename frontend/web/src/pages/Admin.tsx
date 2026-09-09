@@ -24,7 +24,7 @@ import {
   pushOta,
   pushOtaAll,
   probeEsp,
-  renameEsp,
+  updateEspBoard,
   deleteAdminEsp,
   issueEspKey,
   type AdminHomeDetail,
@@ -325,10 +325,6 @@ export function Admin() {
     mutationFn: pushOtaAll,
     onSuccess: invalidate,
   });
-  const renameM = useMutation({
-    mutationFn: ({ id, name }: { id: number; name: string }) => renameEsp(id, name),
-    onSuccess: invalidate,
-  });
   const delEspM = useMutation({
     mutationFn: deleteAdminEsp,
     onSuccess: invalidate,
@@ -354,6 +350,7 @@ export function Admin() {
 
   // Live OTA progress — ESP report karta hai (Update.onProgress -> server), socket se UI me.
   const [liveOta, setLiveOta] = useState<Record<number, { progress: number; status: string }>>({});
+  const [editEsp, setEditEsp] = useState<any | null>(null);
 
   useEffect(() => {
     const socket = getSocket();
@@ -1376,16 +1373,8 @@ export function Admin() {
                             <div className="flex items-center gap-2 font-medium">
                               {espRow.name ?? "ESP"}
                               <button
-                                title="Board ka naam badlo"
-                                onClick={() => {
-                                  const cur = espRow.name ?? "ESP";
-                                  const next = window.prompt("ESP board ka naam:", cur);
-                                  if (next && next.trim() && next.trim() !== cur) {
-                                    renameM.mutate({ id: espRow.id, name: next.trim() }, {
-                                      onSuccess: (r) => r.success && setOtaMsg(`Board renamed → ${r.data.name}`),
-                                    });
-                                  }
-                                }}
+                                title="Edit ESP board (Name, Serial, Home, Model)"
+                                onClick={() => setEditEsp(espRow)}
                                 className="rounded border border-gray-300 px-1.5 py-0.5 text-[10px] text-gray-500 hover:border-brand/40 hover:text-brand"
                               >
                                 ✏️
@@ -1661,6 +1650,13 @@ export function Admin() {
             )}
           </div>
 
+          {editEsp && (
+            <EditEspModal
+              esp={editEsp}
+              onClose={() => setEditEsp(null)}
+              onUpdated={invalidate}
+            />
+          )}
         </div>
       )}
 
@@ -2536,4 +2532,145 @@ function findSubtitle(section: string, item: unknown): string {
     default:
       return "";
   }
+}
+
+function EditEspModal({
+  esp,
+  onClose,
+  onUpdated,
+}: {
+  esp: any;
+  onClose: () => void;
+  onUpdated: () => void;
+}) {
+  const { data: homesRes } = useQuery({ queryKey: ["admin-homes"], queryFn: () => listAllHomes() });
+  const [name, setName] = useState(esp.name ?? "");
+  const [serialCode, setSerialCode] = useState(esp.serialCode ?? "");
+  const [homeId, setHomeId] = useState<number>(esp.homeId ?? esp.home?.id ?? 0);
+  const [modelCode, setModelCode] = useState(esp.modelCode ?? "");
+  const [isSaving, setIsSaving] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const homes = homesRes?.success ? homesRes.data : [];
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setIsSaving(true);
+    setErrorMsg(null);
+    try {
+      await updateEspBoard(esp.id, {
+        name: name.trim(),
+        serialCode: serialCode.trim() ? serialCode.trim().toUpperCase() : null,
+        homeId: homeId ? Number(homeId) : undefined,
+        modelCode: modelCode.trim() ? modelCode.trim().toUpperCase() : undefined,
+      });
+      onUpdated();
+      onClose();
+    } catch (err: any) {
+      setErrorMsg(err?.response?.data?.error?.message || err?.message || "Failed to update board");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
+      <div
+        className="w-full max-w-md rounded-2xl border border-brand/30 bg-night-800 p-6 shadow-2xl overflow-y-auto max-h-[90vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-4 flex items-center justify-between border-b border-night-700 pb-3">
+          <div>
+            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+              🛰️ Edit ESP Board
+            </h3>
+            <p className="font-mono text-xs text-gray-400">{esp.macAddress} {esp.ipAddress ? `· ${esp.ipAddress}` : ""}</p>
+          </div>
+          <button onClick={onClose} className="rounded bg-night-700 px-2.5 py-1 text-xs font-semibold hover:bg-night-600">✕ Close</button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4 text-sm">
+          {errorMsg && (
+            <div className="rounded-lg border border-red-500/30 bg-red-900/30 p-3 text-xs text-red-400">
+              ❌ {errorMsg}
+            </div>
+          )}
+
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-gray-400">Board Name</label>
+            <input
+              type="text"
+              required
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. RS-4CH-FFYJR3 · Robo_lab"
+              className="w-full rounded-lg border border-night-600 bg-night-900 px-3 py-2 text-sm text-white focus:border-brand focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-gray-400">Assigned Serial Code (leave blank to unbind)</label>
+            <input
+              type="text"
+              value={serialCode}
+              onChange={(e) => setSerialCode(e.target.value.toUpperCase())}
+              placeholder="e.g. RS-4CH-FFYJR3"
+              className="w-full rounded-lg border border-night-600 bg-night-900 px-3 py-2 font-mono text-sm text-brand uppercase focus:border-brand focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-gray-400">Assigned Home (move board)</label>
+            <select
+              value={homeId}
+              onChange={(e) => setHomeId(Number(e.target.value))}
+              className="w-full rounded-lg border border-night-600 bg-night-900 px-3 py-2 text-sm text-white focus:border-brand focus:outline-none"
+            >
+              {homes.map((h) => (
+                <option key={h.id} value={h.id}>{h.name} {h.owner ? `(${h.owner.username})` : ""}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-gray-400">Board Model</label>
+            <select
+              value={modelCode}
+              onChange={(e) => setModelCode(e.target.value)}
+              className="w-full rounded-lg border border-night-600 bg-night-900 px-3 py-2 text-sm text-white focus:border-brand focus:outline-none"
+            >
+              <option value="">Auto / Default</option>
+              <option value="1CH">1CH</option>
+              <option value="2CH">2CH</option>
+              <option value="4CH">4CH</option>
+              <option value="5CH">5CH</option>
+              <option value="6CH">6CH</option>
+              <option value="8CH">8CH</option>
+              <option value="4CH-IR">4CH-IR</option>
+              <option value="FAN-DIM">FAN-DIM</option>
+              <option value="DIM-3S">DIM-3S</option>
+              <option value="DIM-4S">DIM-4S</option>
+            </select>
+          </div>
+
+          <div className="mt-6 flex items-center justify-end gap-3 border-t border-night-700 pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg border border-night-600 px-4 py-2 text-xs font-semibold text-gray-300 hover:bg-night-700"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="rounded-lg bg-brand px-5 py-2 text-xs font-semibold text-white hover:bg-brand/90 disabled:opacity-50"
+            >
+              {isSaving ? "Saving…" : "💾 Save Changes"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
 }

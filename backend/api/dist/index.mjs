@@ -7989,35 +7989,85 @@ var getEspIssues = async (req, res) => {
 };
 var patchEspId = async (req, res) => {
   const id = Number(req.params.id);
-  const name = String(req.body?.name ?? "").trim().slice(0, 60);
-  if (!name) throw new AppError("BAD_REQUEST", "Name required");
-  const dup = await prisma.espDevice.findFirst({ where: { name, id: { not: id } }, select: { id: true } });
-  if (dup) {
-    throw new AppError("DUPLICATE_NAME", `Naam "${name}" already kisi aur board pe hai \u2014 har board ka unique naam chahiye`, 409);
-  }
   const before = await prisma.espDevice.findUnique({ where: { id } });
   if (!before) throw new AppError("NOT_FOUND", "Board nahi mila", 404);
-  const esp = await prisma.espDevice.update({ where: { id }, data: { name } });
-  await audit(req.user.sub, "admin.esp.rename", {
-    entity: "esp",
-    entityId: id,
-    meta: { from: before.name ?? null, to: name }
-  });
-  const home = await prisma.home.findUnique({
-    where: { id: esp.homeId },
-    include: { members: { where: { role: { in: ["owner", "admin"] } }, select: { userId: true } } }
-  });
-  if (home) {
-    const oldName = before.name ?? before.serialCode ?? `ESP-${before.macAddress.slice(-6).toUpperCase()}`;
-    for (const m of home.members) {
-      await createNotification(m.userId, {
-        category: "support",
-        type: "info",
-        title: `\u{1F6F0}\uFE0F Support ne board renamed kiya: ${oldName} \u2192 ${name}`,
-        body: `Support team ne board ka naam "${oldName}" se "${name}" kar diya.`
+  const { name, serialCode, homeId, modelCode } = req.body ?? {};
+  const dataToUpdate = {};
+  if (name !== void 0) {
+    const cleanName = String(name).trim().slice(0, 60);
+    if (!cleanName) throw new AppError("BAD_REQUEST", "Name required");
+    const dup = await prisma.espDevice.findFirst({ where: { name: cleanName, id: { not: id } }, select: { id: true } });
+    if (dup) {
+      throw new AppError("DUPLICATE_NAME", `Naam "${cleanName}" already kisi aur board pe hai \u2014 har board ka unique naam chahiye`, 409);
+    }
+    dataToUpdate.name = cleanName;
+  }
+  if (serialCode !== void 0) {
+    if (serialCode === null || serialCode === "") {
+      dataToUpdate.serialCode = null;
+    } else {
+      const cleanSerial = String(serialCode).trim().toUpperCase();
+      const otherEsp = await prisma.espDevice.findFirst({
+        where: { serialCode: cleanSerial, id: { not: id } }
+      });
+      if (otherEsp) {
+        throw new AppError("CONFLICT", `Serial code "${cleanSerial}" already attached to board "${otherEsp.name ?? otherEsp.macAddress}"`, 409);
+      }
+      dataToUpdate.serialCode = cleanSerial;
+      if (before.homeId) {
+        await prisma.serialRegistry.updateMany({
+          where: { serialCode: cleanSerial },
+          data: { homeId: before.homeId }
+        }).catch(() => {
+        });
+      }
+    }
+  }
+  if (homeId !== void 0 && homeId !== null) {
+    const targetHomeId = Number(homeId);
+    const home = await prisma.home.findUnique({ where: { id: targetHomeId } });
+    if (!home) throw new AppError("NOT_FOUND", "Target Home not found");
+    dataToUpdate.homeId = targetHomeId;
+    if (before.serialCode) {
+      await prisma.serialRegistry.updateMany({
+        where: { serialCode: before.serialCode },
+        data: { homeId: targetHomeId }
+      }).catch(() => {
       });
     }
-    emitToHome(esp.homeId, "esp:updated", { id, name });
+  }
+  if (modelCode !== void 0) {
+    dataToUpdate.modelCode = modelCode ? String(modelCode).trim().toUpperCase() : null;
+  }
+  const esp = await prisma.espDevice.update({
+    where: { id },
+    data: dataToUpdate
+  });
+  await audit(req.user.sub, "admin.esp.update", {
+    entity: "esp",
+    entityId: id,
+    meta: { before: { name: before.name, serialCode: before.serialCode, homeId: before.homeId }, changes: dataToUpdate }
+  });
+  if (dataToUpdate.name && dataToUpdate.name !== before.name) {
+    const home = await prisma.home.findUnique({
+      where: { id: esp.homeId },
+      include: { members: { where: { role: { in: ["owner", "admin"] } }, select: { userId: true } } }
+    });
+    if (home) {
+      const oldName = before.name ?? before.serialCode ?? `ESP-${before.macAddress.slice(-6).toUpperCase()}`;
+      for (const m of home.members) {
+        await createNotification(m.userId, {
+          category: "support",
+          type: "info",
+          title: `\u{1F6F0}\uFE0F Support ne board renamed kiya: ${oldName} \u2192 ${dataToUpdate.name}`,
+          body: `Support team ne board ka naam "${oldName}" se "${dataToUpdate.name}" kar diya.`
+        });
+      }
+    }
+  }
+  emitToHome(esp.homeId, "esp:updated", esp);
+  if (before.homeId !== esp.homeId) {
+    emitToHome(before.homeId, "esp:updated", { id, deleted: true });
   }
   ok(res, esp);
 };
@@ -8682,18 +8732,182 @@ var postSerialsGenerate = async (req, res) => {
   });
   ok(res, { generated: codes.length, codes }, 201);
 };
-var deleteSerialsCode = async (req, res) => {
+var patchSerialsCode = async (req, res) => {
+  const code = String(req.params.code ?? "").trim().toUpperCase();
+  const serial = await prisma.serialRegistry.findUnique({
+    where: { serialCode: code },
+    include: { product: true, home: true, user: true, order: true }
+  });
+  if (!serial) throw new AppError("NOT_FOUND", "Serial not found");
+  const {
+    serialCode: newSerialCode,
+    productId,
+    status,
+    userId,
+    homeId,
+    orderId,
+    warrantyStatus,
+    warrantyExpiresAt,
+    claimedAt,
+    espMac,
+    unbindEsp
+  } = req.body ?? {};
+  let finalSerialCode = code;
+  if (newSerialCode !== void 0) {
+    const trimmed = String(newSerialCode).trim().toUpperCase();
+    if (!trimmed) throw new AppError("BAD_REQUEST", "Serial code cannot be empty");
+    if (trimmed !== code) {
+      const dup = await prisma.serialRegistry.findUnique({ where: { serialCode: trimmed } });
+      if (dup) throw new AppError("CONFLICT", `Serial code "${trimmed}" already exists`, 409);
+      finalSerialCode = trimmed;
+    }
+  }
+  if (productId !== void 0 && productId !== null) {
+    const prod = await prisma.product.findUnique({ where: { id: Number(productId) } });
+    if (!prod) throw new AppError("NOT_FOUND", "Product not found");
+  }
+  if (userId !== void 0 && userId !== null && userId !== 0) {
+    const usr = await prisma.user.findUnique({ where: { id: Number(userId) } });
+    if (!usr) throw new AppError("NOT_FOUND", "User not found");
+  }
+  if (homeId !== void 0 && homeId !== null && homeId !== 0) {
+    const hm = await prisma.home.findUnique({ where: { id: Number(homeId) } });
+    if (!hm) throw new AppError("NOT_FOUND", "Home not found");
+  }
+  if (orderId !== void 0 && orderId !== null && orderId !== 0) {
+    const ord = await prisma.order.findUnique({ where: { id: Number(orderId) } });
+    if (!ord) throw new AppError("NOT_FOUND", "Order not found");
+  }
+  const updateData = {};
+  if (newSerialCode !== void 0) updateData.serialCode = finalSerialCode;
+  if (productId !== void 0 && productId !== null) updateData.productId = Number(productId);
+  if (status !== void 0) updateData.status = String(status).toLowerCase();
+  if (userId !== void 0) updateData.userId = userId && Number(userId) > 0 ? Number(userId) : null;
+  if (homeId !== void 0) updateData.homeId = homeId && Number(homeId) > 0 ? Number(homeId) : null;
+  if (orderId !== void 0) updateData.orderId = orderId && Number(orderId) > 0 ? Number(orderId) : null;
+  if (warrantyStatus !== void 0) updateData.warrantyStatus = warrantyStatus;
+  if (warrantyExpiresAt !== void 0) {
+    updateData.warrantyExpiresAt = warrantyExpiresAt ? new Date(warrantyExpiresAt) : null;
+  }
+  if (claimedAt !== void 0) {
+    updateData.claimedAt = claimedAt ? new Date(claimedAt) : null;
+  }
+  const updated = await prisma.serialRegistry.update({
+    where: { id: serial.id },
+    data: updateData,
+    include: {
+      product: { select: { id: true, name: true, modelCode: true } },
+      user: { select: { id: true, username: true, email: true } },
+      order: { select: { id: true, orderNumber: true, status: true } },
+      home: { select: { id: true, name: true } }
+    }
+  });
+  if (finalSerialCode !== code) {
+    await prisma.espDevice.updateMany({
+      where: { serialCode: code },
+      data: { serialCode: finalSerialCode }
+    }).catch(() => {
+    });
+  }
+  if (unbindEsp === true) {
+    await prisma.espDevice.updateMany({
+      where: { serialCode: finalSerialCode },
+      data: { serialCode: null }
+    }).catch(() => {
+    });
+  } else if (espMac) {
+    const cleanMac = String(espMac).replace(/[^0-9A-Fa-f:]/g, "").toLowerCase();
+    await prisma.espDevice.updateMany({
+      where: { serialCode: finalSerialCode, macAddress: { not: cleanMac } },
+      data: { serialCode: null }
+    }).catch(() => {
+    });
+    await prisma.espDevice.updateMany({
+      where: { macAddress: cleanMac },
+      data: {
+        serialCode: finalSerialCode,
+        ...updateData.homeId ? { homeId: updateData.homeId } : {}
+      }
+    }).catch(() => {
+    });
+  }
+  await audit(req.user.sub, "admin.serial.update", {
+    entity: "serial",
+    entityId: serial.id,
+    meta: { from: code, to: finalSerialCode, changes: updateData }
+  });
+  ok(res, updated);
+};
+var postSerialsCodeReset = async (req, res) => {
   const code = String(req.params.code ?? "").trim().toUpperCase();
   const serial = await prisma.serialRegistry.findUnique({ where: { serialCode: code } });
   if (!serial) throw new AppError("NOT_FOUND", "Serial not found");
-  if (serial.status !== "available") {
-    throw new AppError("BAD_REQUEST", "Sirf available serials delete ho sakte hain");
+  const updated = await prisma.serialRegistry.update({
+    where: { id: serial.id },
+    data: {
+      status: "available",
+      userId: null,
+      homeId: null,
+      orderId: null,
+      claimedAt: null,
+      warrantyStatus: "inactive",
+      warrantyExpiresAt: null
+    },
+    include: {
+      product: { select: { id: true, name: true, modelCode: true } },
+      user: { select: { id: true, username: true, email: true } },
+      order: { select: { id: true, orderNumber: true, status: true } },
+      home: { select: { id: true, name: true } }
+    }
+  });
+  const attachedEsps = await prisma.espDevice.findMany({
+    where: { serialCode: code }
+  });
+  for (const esp of attachedEsps) {
+    const macTail = esp.macAddress.replace(/:/g, "").slice(-6).toUpperCase();
+    const fallbackName = esp.ssid ? `${esp.ssid} \xB7 ESP-${macTail}` : `ESP-${macTail}`;
+    await prisma.espDevice.update({
+      where: { id: esp.id },
+      data: {
+        serialCode: null,
+        name: esp.name?.includes(code) ? fallbackName : esp.name
+      }
+    }).catch(() => {
+    });
   }
+  await prisma.espDevice.deleteMany({
+    where: { macAddress: `PENDING-${code}` }
+  }).catch(() => {
+  });
+  await audit(req.user.sub, "admin.serial.reset", {
+    entity: "serial",
+    entityId: serial.id,
+    meta: { serialCode: code }
+  });
+  ok(res, { success: true, message: `Serial ${code} reset to available.`, serial: updated });
+};
+var deleteSerialsCode = async (req, res) => {
+  const code = String(req.params.code ?? "").trim().toUpperCase();
+  const force = req.query?.force === "true" || req.body?.force === true;
+  const serial = await prisma.serialRegistry.findUnique({ where: { serialCode: code } });
+  if (!serial) throw new AppError("NOT_FOUND", "Serial not found");
+  if (serial.status !== "available" && !force) {
+    throw new AppError("BAD_REQUEST", "Sirf available serials delete ho sakte hain (ya force delete use karein)");
+  }
+  await prisma.espDevice.updateMany({
+    where: { serialCode: code },
+    data: { serialCode: null }
+  }).catch(() => {
+  });
+  await prisma.espDevice.deleteMany({
+    where: { macAddress: `PENDING-${code}` }
+  }).catch(() => {
+  });
   await prisma.serialRegistry.delete({ where: { id: serial.id } });
   await audit(req.user.sub, "admin.serial.delete", {
     entity: "serial",
     entityId: serial.id,
-    meta: { serialCode: code }
+    meta: { serialCode: code, force }
   });
   ok(res, { deleted: true });
 };
@@ -9453,6 +9667,8 @@ adminRouter.post("/cleanup-test-data", cleanTestData);
 adminRouter.get("/serials", getSerials);
 adminRouter.get("/serials/:code", getSerialsCode);
 adminRouter.post("/serials/generate", postSerialsGenerate);
+adminRouter.patch("/serials/:code", patchSerialsCode);
+adminRouter.post("/serials/:code/reset", postSerialsCodeReset);
 adminRouter.delete("/serials/:code", deleteSerialsCode);
 adminRouter.delete("/serials", deleteSerials);
 adminRouter.post("/orders/:id/serials/generate", postOrdersIdSerialsGenerate);
@@ -14557,7 +14773,7 @@ var emqxAuth = async (req, res) => {
           { macAddress: realMac }
         ]
       },
-      select: { id: true, macAddress: true, homeId: true }
+      select: { id: true, macAddress: true, homeId: true, serialCode: true }
     });
     if (esp) {
       const updateData = {
@@ -14590,7 +14806,7 @@ var emqxAuth = async (req, res) => {
           modelCode,
           offline: false
         },
-        select: { id: true, macAddress: true, homeId: true }
+        select: { id: true, macAddress: true, homeId: true, serialCode: true }
       });
       logger.info(`[mqtt-auth] Auto-provisioned ESP device ${serial} with MAC ${realMac}`);
     }

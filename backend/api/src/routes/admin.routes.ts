@@ -314,7 +314,13 @@ adminRouter.get("/serials/:code", adminController.getSerialsCode);
 
 adminRouter.post("/serials/generate", adminController.postSerialsGenerate);
 
-/** Delete serial — sirf available (unclaimed) serials delete kar sakte ho. */
+/** Update serial — status, product, user, home, order, warranty, bind ESP (admin only). */
+adminRouter.patch("/serials/:code", adminController.patchSerialsCode);
+
+/** Reset serial — reset to available, clear user/home/order, unbind ESP (admin only). */
+adminRouter.post("/serials/:code/reset", adminController.postSerialsCodeReset);
+
+/** Delete serial — available delete ya ?force=true se claimed bhi delete. */
 adminRouter.delete("/serials/:code", adminController.deleteSerialsCode);
 
 /** Bulk delete serials — sirf available (unclaimed) serials delete ho sakte hain. */

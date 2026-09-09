@@ -50,7 +50,7 @@ export const emqxAuth = async (req: Request, res: Response) => {
                     { macAddress: realMac },
                 ],
             },
-            select: { id: true, macAddress: true, homeId: true },
+            select: { id: true, macAddress: true, homeId: true, serialCode: true },
         });
 
         if (esp) {
@@ -88,7 +88,7 @@ export const emqxAuth = async (req: Request, res: Response) => {
                     modelCode,
                     offline: false,
                 },
-                select: { id: true, macAddress: true, homeId: true },
+                select: { id: true, macAddress: true, homeId: true, serialCode: true },
             });
             logger.info(`[mqtt-auth] Auto-provisioned ESP device ${serial} with MAC ${realMac}`);
         }

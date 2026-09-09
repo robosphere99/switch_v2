@@ -251,8 +251,32 @@ export async function getSerialDetail(serialCode: string): Promise<SerialDetail>
   return data.data;
 }
 
-export async function deleteSerial(serialCode: string): Promise<void> {
-  await api.delete(`/admin/serials/${encodeURIComponent(serialCode)}`);
+export interface UpdateSerialInput {
+  serialCode?: string;
+  productId?: number;
+  status?: string;
+  userId?: number | null;
+  homeId?: number | null;
+  orderId?: number | null;
+  warrantyStatus?: string;
+  warrantyExpiresAt?: string | null;
+  claimedAt?: string | null;
+  espMac?: string | null;
+  unbindEsp?: boolean;
+}
+
+export async function updateSerial(serialCode: string, payload: UpdateSerialInput): Promise<SerialDetail> {
+  const { data } = await api.patch(`/admin/serials/${encodeURIComponent(serialCode)}`, payload);
+  return data.data;
+}
+
+export async function resetSerial(serialCode: string): Promise<{ success: boolean; message: string; serial: SerialDetail }> {
+  const { data } = await api.post(`/admin/serials/${encodeURIComponent(serialCode)}/reset`);
+  return data.data;
+}
+
+export async function deleteSerial(serialCode: string, force = false): Promise<void> {
+  await api.delete(`/admin/serials/${encodeURIComponent(serialCode)}${force ? "?force=true" : ""}`);
 }
 
 export async function deleteSerials(codes: string[]): Promise<{ deleted: number; skipped: number }> {

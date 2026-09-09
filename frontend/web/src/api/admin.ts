@@ -372,10 +372,22 @@ export async function pushOtaAll(): Promise<ApiResponse<{ count: number; version
   return data;
 }
 
+export interface UpdateEspBoardInput {
+  name?: string;
+  serialCode?: string | null;
+  homeId?: number;
+  modelCode?: string;
+}
+
+/** Admin ESP board ka details badle (PATCH /admin/esp/:id). */
+export async function updateEspBoard(id: number, payload: UpdateEspBoardInput): Promise<ApiResponse<any>> {
+  const { data } = await api.patch<ApiResponse<any>>(`/admin/esp/${id}`, payload);
+  return data;
+}
+
 /** Admin ESP board ka friendly naam badle (PATCH /admin/esp/:id). */
 export async function renameEsp(id: number, name: string): Promise<ApiResponse<{ id: number; name: string }>> {
-  const { data } = await api.patch<ApiResponse<{ id: number; name: string }>>(`/admin/esp/${id}`, { name });
-  return data;
+  return updateEspBoard(id, { name });
 }
 
 export async function deleteAdminEsp(id: number): Promise<ApiResponse<{ deleted: boolean; id: number; serialCode: string }>> {

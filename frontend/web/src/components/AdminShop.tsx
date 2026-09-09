@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useRef, useEffect, useMemo } from "react";
 import { CopyText } from "./CopyText";
 import { deleteContact, getAdminContact, updateContactStatus } from "../api/public";
-import { listCoupons, createCoupon, updateCoupon, deleteCoupon } from "../api/admin";
+import { listCoupons, createCoupon, updateCoupon, deleteCoupon, listUsers, listAllHomes } from "../api/admin";
 import {
   createAdminProduct,
   deleteAdminProduct,
@@ -14,6 +14,8 @@ import {
   getAdminWarranty,
   getSerialDetail,
   getSerials,
+  updateSerial,
+  resetSerial,
   updateAdminProduct,
   updateOrderStatus,
   updateOrderPaymentStatus,
@@ -800,7 +802,6 @@ function OrdersSection() {
 }
 
 // ---------------- Serials ----------------
-
 function SerialsSection() {
   const queryClient = useQueryClient();
   const { data: products } = useQuery({ queryKey: ["admin-products"], queryFn: getAdminProducts });
@@ -813,6 +814,7 @@ function SerialsSection() {
   const [count, setCount] = useState(10);
   const [genMsg, setGenMsg] = useState<string | null>(null);
   const [serialDetail, setSerialDetail] = useState<string | null>(null);
+  const [editSerial, setEditSerial] = useState<string | null>(null);
   // Filters
   const [search, setSearch] = useState("");
   const [filterProduct, setFilterProduct] = useState<number | "">("");
@@ -836,13 +838,28 @@ function SerialsSection() {
     }
   }
 
-  async function handleDelete(code: string) {
-    if (!window.confirm(`Serial "${code}" delete karna hai? Ye action undo nahi hoga.`)) return;
+  async function handleDelete(code: string, isClaimed = false) {
+    const msg = isClaimed
+      ? `⚠️ Warning: Serial "${code}" currently CLAIMED / RESERVED hai!\n\nForce delete karne se user/home/ESP board se yeh unbind ho jayega aur permanently delete ho jayega.\n\nKya aap pakka delete karna chahte hain?`
+      : `Serial "${code}" delete karna hai? Ye action undo nahi hoga.`;
+    if (!window.confirm(msg)) return;
     try {
-      await deleteSerial(code);
+      await deleteSerial(code, isClaimed);
+      setGenMsg(`✅ Serial "${code}" delete ho gaya.`);
       queryClient.invalidateQueries({ queryKey: ["admin-serials"] });
-    } catch {
-      setGenMsg("❌ Delete fail — sirf available serials delete ho sakte hain");
+    } catch (err: any) {
+      setGenMsg(`❌ Delete fail: ${err?.response?.data?.error?.message || err?.message || "Sirf available serials delete ho sakte hain"}`);
+    }
+  }
+
+  async function handleReset(code: string) {
+    if (!window.confirm(`Serial "${code}" ko RESET karna hai?\n\n- Status "available" ban jayega\n- Assigned User & Home remove ho jayenge\n- ESP board se unbind ho jayega\n\nKya aap sure hain?`)) return;
+    try {
+      const res = await resetSerial(code);
+      setGenMsg(`✅ ${res.message}`);
+      queryClient.invalidateQueries({ queryKey: ["admin-serials"] });
+    } catch (err: any) {
+      setGenMsg(`❌ Reset fail: ${err?.response?.data?.error?.message || err?.message || "Reset failed"}`);
     }
   }
 
@@ -918,41 +935,30 @@ function SerialsSection() {
     }
   }
 
-  const counts = allSerials.reduce<Record<string, number>>((acc, s) => {
-    acc[s.status] = (acc[s.status] ?? 0) + 1;
-    return acc;
-  }, {});
+  const counts: Record<string, number> = {};
+  for (const s of allSerials) {
+    counts[s.status] = (counts[s.status] ?? 0) + 1;
+  }
 
   const startItemNum = filteredSerials.length === 0 ? 0 : (safePage - 1) * effectivePageSize + 1;
   const endItemNum = pageSize <= 0 ? filteredSerials.length : Math.min(safePage * effectivePageSize, filteredSerials.length);
 
   return (
     <div>
-      <h2 className="mb-4 text-xl font-bold">Serial Registry ({filteredSerials.length} of {allSerials.length})</h2>
-      <p className="mb-3 text-xs text-gray-500">Right-click serial = copy · Click serial = details (kisne claim kiya, order, warranty)</p>
+      <h2 className="mb-4 text-xl font-bold">Serial Registry</h2>
+      <p className="mb-4 text-xs text-gray-500">
+        Manufactured devices ke unique serial keys — print stickers, generate naye batch, ya customer serials edit/reassign karo.
+      </p>
 
-      <div className="mb-4 flex flex-wrap gap-2 text-xs">
-        {Object.entries(counts).map(([k, v]) => (
-          <button
-            key={k}
-            onClick={() => { setFilterStatus(filterStatus === k ? "" : k); setPage(1); }}
-            className={`rounded-full px-3 py-1 font-semibold transition cursor-pointer ${
-              filterStatus === k ? "ring-2 ring-white" : ""
-            } ${SERIAL_BADGE[k] ?? ""}`}
-          >
-            {k}: {v}
-          </button>
-        ))}
-      </div>
-
-      <div className="mb-4 flex items-center gap-2">
+      {/* Print stickers banner */}
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-brand/20 bg-night-800 p-4">
         <button
+          type="button"
           onClick={() => window.open("/admin/print", "_blank")}
           className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand/90"
         >
           🖨️ Print Stickers
         </button>
-        <span className="text-xs text-gray-500">Sticker/QR sheet — box pe chipkane ke liye (naya tab me khulta hai)</span>
       </div>
 
       <form onSubmit={handleGenerate} className="mb-6 flex flex-wrap items-end gap-3 rounded-xl border border-brand/20 bg-night-800 p-5">
@@ -1076,12 +1082,12 @@ function SerialsSection() {
               <th className="px-3 py-2">Status</th>
               <th className="px-3 py-2">Order</th>
               <th className="px-3 py-2">User</th>
-              <th className="px-3 py-2"></th>
+              <th className="px-3 py-2 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
             {pageSerials.map((s: SerialRow) => (
-              <tr key={s.id} className="border-t border-night-700">
+              <tr key={s.id} className="border-t border-night-700 hover:bg-night-800/40 transition">
                 <td className="px-3 py-2">
                   {s.status === "available" && (
                     <input
@@ -1101,16 +1107,32 @@ function SerialsSection() {
                 <td className="px-3 py-2 text-xs text-gray-500">
                   {s.user ? `${s.user.username}${s.user.email ? ` (${s.user.email})` : ""}` : s.userId ? `User #${s.userId}` : "—"}
                 </td>
-                <td className="px-3 py-2">
-                  {s.status === "available" && (
+                <td className="px-3 py-2 text-right">
+                  <div className="flex items-center justify-end gap-1.5">
                     <button
-                      onClick={() => handleDelete(s.serialCode)}
-                      className="rounded bg-red-900/40 px-2 py-1 text-[11px] font-semibold text-red-500 hover:bg-red-900/60"
-                      title="Delete serial"
+                      onClick={() => setEditSerial(s.serialCode)}
+                      className="rounded bg-brand/20 border border-brand/30 px-2 py-1 text-[11px] font-semibold text-brand hover:bg-brand/30 transition"
+                      title="Edit Serial"
+                    >
+                      ✏️ Edit
+                    </button>
+                    {s.status !== "available" && (
+                      <button
+                        onClick={() => handleReset(s.serialCode)}
+                        className="rounded bg-amber-500/20 border border-amber-500/30 px-2 py-1 text-[11px] font-semibold text-amber-400 hover:bg-amber-500/30 transition"
+                        title="Reset to available (unlink home/user/ESP)"
+                      >
+                        🔄 Reset
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleDelete(s.serialCode, s.status !== "available")}
+                      className="rounded bg-red-900/40 border border-red-500/30 px-2 py-1 text-[11px] font-semibold text-red-400 hover:bg-red-900/60 transition"
+                      title={s.status !== "available" ? "Force Delete Serial" : "Delete Serial"}
                     >
                       🗑️
                     </button>
-                  )}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -1180,15 +1202,309 @@ function SerialsSection() {
       )}
 
       {serialDetail && (
-        <SerialDetailsModal code={serialDetail} onClose={() => setSerialDetail(null)} />
+        <SerialDetailsModal
+          code={serialDetail}
+          onClose={() => setSerialDetail(null)}
+          onEdit={() => {
+            const c = serialDetail;
+            setSerialDetail(null);
+            setEditSerial(c);
+          }}
+          onReset={async () => {
+            const c = serialDetail;
+            setSerialDetail(null);
+            await handleReset(c);
+          }}
+        />
       )}
+
+      {editSerial && (
+        <EditSerialModal
+          code={editSerial}
+          onClose={() => setEditSerial(null)}
+          onUpdated={() => queryClient.invalidateQueries({ queryKey: ["admin-serials"] })}
+        />
+      )}
+    </div>
+  );
+}
+
+// ---------------- Edit Serial Modal ----------------
+
+function EditSerialModal({
+  code,
+  onClose,
+  onUpdated,
+}: {
+  code: string;
+  onClose: () => void;
+  onUpdated: () => void;
+}) {
+  const { data: serial, isLoading } = useQuery({
+    queryKey: ["admin-serial-detail", code],
+    queryFn: () => getSerialDetail(code),
+    enabled: Boolean(code),
+  });
+
+  const { data: products } = useQuery({ queryKey: ["admin-products"], queryFn: getAdminProducts });
+  const { data: usersRes } = useQuery({ queryKey: ["admin-users-list"], queryFn: () => listUsers() });
+  const { data: homesRes } = useQuery({ queryKey: ["admin-homes-list"], queryFn: () => listAllHomes() });
+
+  const [serialCode, setSerialCode] = useState("");
+  const [productId, setProductId] = useState<number>(0);
+  const [status, setStatus] = useState<string>("available");
+  const [userId, setUserId] = useState<number>(0);
+  const [homeId, setHomeId] = useState<number>(0);
+  const [orderId, setOrderId] = useState<string>("");
+  const [warrantyStatus, setWarrantyStatus] = useState<string>("inactive");
+  const [warrantyExpiresAt, setWarrantyExpiresAt] = useState<string>("");
+  const [unbindEsp, setUnbindEsp] = useState<boolean>(false);
+  const [espMac, setEspMac] = useState<string>("");
+
+  const [isSaving, setIsSaving] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (serial) {
+      setSerialCode(serial.serialCode);
+      setProductId(serial.productId);
+      setStatus(serial.status);
+      setUserId(serial.userId ?? 0);
+      setHomeId(serial.homeId ?? 0);
+      setOrderId(serial.orderId ? String(serial.orderId) : "");
+      setWarrantyStatus(serial.warrantyStatus || "inactive");
+      setWarrantyExpiresAt(serial.warrantyExpiresAt ? new Date(serial.warrantyExpiresAt).toISOString().split("T")[0] : "");
+    }
+  }, [serial]);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setIsSaving(true);
+    setErrorMsg(null);
+    try {
+      await updateSerial(code, {
+        serialCode: serialCode.trim().toUpperCase(),
+        productId: Number(productId),
+        status,
+        userId: userId ? Number(userId) : null,
+        homeId: homeId ? Number(homeId) : null,
+        orderId: orderId ? Number(orderId) : null,
+        warrantyStatus,
+        warrantyExpiresAt: warrantyExpiresAt ? new Date(warrantyExpiresAt).toISOString() : null,
+        unbindEsp,
+        espMac: espMac.trim() || undefined,
+      });
+      onUpdated();
+      onClose();
+    } catch (err: any) {
+      setErrorMsg(err?.response?.data?.error?.message || err?.message || "Failed to update serial");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  const users = usersRes?.success ? usersRes.data : [];
+  const homes = homesRes?.success ? homesRes.data : [];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
+      <div
+        className="w-full max-w-lg rounded-2xl border border-brand/30 bg-night-800 p-6 shadow-2xl overflow-y-auto max-h-[90vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-4 flex items-center justify-between border-b border-night-700 pb-3">
+          <div>
+            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+              ✏️ Edit Serial <span className="font-mono text-sm text-brand">{code}</span>
+            </h3>
+            <p className="text-xs text-gray-400">Admin override — change ownership, status, product, or link ESP</p>
+          </div>
+          <button onClick={onClose} className="rounded bg-night-700 px-2.5 py-1 text-xs font-semibold hover:bg-night-600">✕ Close</button>
+        </div>
+
+        {isLoading ? (
+          <p className="py-8 text-center text-sm text-gray-500">Loading serial data…</p>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-4 text-sm">
+            {errorMsg && (
+              <div className="rounded-lg border border-red-500/30 bg-red-900/30 p-3 text-xs text-red-400">
+                ❌ {errorMsg}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-gray-400">Serial Code</label>
+                <input
+                  type="text"
+                  required
+                  value={serialCode}
+                  onChange={(e) => setSerialCode(e.target.value.toUpperCase())}
+                  className="w-full rounded-lg border border-night-600 bg-night-900 px-3 py-2 font-mono text-sm text-brand uppercase focus:border-brand focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-gray-400">Product Model</label>
+                <select
+                  value={productId}
+                  onChange={(e) => setProductId(Number(e.target.value))}
+                  className="w-full rounded-lg border border-night-600 bg-night-900 px-3 py-2 text-sm text-white focus:border-brand focus:outline-none"
+                >
+                  {products?.map((p) => (
+                    <option key={p.id} value={p.id}>{p.modelCode} — {p.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-gray-400">Status</label>
+                <select
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value)}
+                  className="w-full rounded-lg border border-night-600 bg-night-900 px-3 py-2 text-sm text-white focus:border-brand focus:outline-none"
+                >
+                  <option value="available">available (unclaimed)</option>
+                  <option value="reserved">reserved (order assigned)</option>
+                  <option value="shipped">shipped</option>
+                  <option value="delivered">delivered</option>
+                  <option value="claimed">claimed (active in home)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-gray-400">Order ID (optional)</label>
+                <input
+                  type="number"
+                  placeholder="Order ID or blank"
+                  value={orderId}
+                  onChange={(e) => setOrderId(e.target.value)}
+                  className="w-full rounded-lg border border-night-600 bg-night-900 px-3 py-2 text-sm text-white focus:border-brand focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-gray-400">Assigned User</label>
+                <select
+                  value={userId}
+                  onChange={(e) => setUserId(Number(e.target.value))}
+                  className="w-full rounded-lg border border-night-600 bg-night-900 px-3 py-2 text-sm text-white focus:border-brand focus:outline-none"
+                >
+                  <option value={0}>— Unassigned (None) —</option>
+                  {users.map((u) => (
+                    <option key={u.id} value={u.id}>{u.username} ({u.email || `#${u.id}`})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-gray-400">Assigned Home</label>
+                <select
+                  value={homeId}
+                  onChange={(e) => setHomeId(Number(e.target.value))}
+                  className="w-full rounded-lg border border-night-600 bg-night-900 px-3 py-2 text-sm text-white focus:border-brand focus:outline-none"
+                >
+                  <option value={0}>— Unassigned (None) —</option>
+                  {homes.map((h) => (
+                    <option key={h.id} value={h.id}>{h.name} {h.owner ? `(${h.owner.username})` : ""}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-brand/20 bg-night-900/60 p-3 space-y-2">
+              <label className="block text-xs font-bold uppercase tracking-wider text-brand">🛰️ ESP Board Binding</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="unbindEspCheckbox"
+                  checked={unbindEsp}
+                  onChange={(e) => setUnbindEsp(e.target.checked)}
+                  className="h-4 w-4 rounded accent-brand"
+                />
+                <label htmlFor="unbindEspCheckbox" className="text-xs text-gray-300 cursor-pointer">
+                  Unbind / detach this serial from any linked ESP boards
+                </label>
+              </div>
+              <div>
+                <label className="mb-1 block text-[11px] text-gray-400">Bind to specific ESP MAC (optional):</label>
+                <input
+                  type="text"
+                  placeholder="e.g. d0:ef:76:33:56:a0"
+                  value={espMac}
+                  disabled={unbindEsp}
+                  onChange={(e) => setEspMac(e.target.value)}
+                  className="w-full rounded border border-night-600 bg-night-950 px-3 py-1.5 font-mono text-xs text-white focus:border-brand focus:outline-none disabled:opacity-40"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-gray-400">Warranty Status</label>
+                <select
+                  value={warrantyStatus}
+                  onChange={(e) => setWarrantyStatus(e.target.value)}
+                  className="w-full rounded-lg border border-night-600 bg-night-900 px-3 py-2 text-sm text-white focus:border-brand focus:outline-none"
+                >
+                  <option value="inactive">inactive</option>
+                  <option value="active">active</option>
+                  <option value="expired">expired</option>
+                  <option value="void">void</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-gray-400">Warranty Expiry Date</label>
+                <input
+                  type="date"
+                  value={warrantyExpiresAt}
+                  onChange={(e) => setWarrantyExpiresAt(e.target.value)}
+                  className="w-full rounded-lg border border-night-600 bg-night-900 px-3 py-2 text-sm text-white focus:border-brand focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 flex items-center justify-end gap-3 border-t border-night-700 pt-4">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-lg border border-night-600 px-4 py-2 text-xs font-semibold text-gray-300 hover:bg-night-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSaving}
+                className="rounded-lg bg-brand px-5 py-2 text-xs font-semibold text-white hover:bg-brand/90 disabled:opacity-50"
+              >
+                {isSaving ? "Saving…" : "💾 Save Changes"}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
     </div>
   );
 }
 
 // ---------------- Serial details modal ----------------
 
-function SerialDetailsModal({ code, onClose }: { code: string; onClose: () => void }) {
+function SerialDetailsModal({
+  code,
+  onClose,
+  onEdit,
+  onReset,
+}: {
+  code: string;
+  onClose: () => void;
+  onEdit?: () => void;
+  onReset?: () => void;
+}) {
   const { data, isLoading } = useQuery({
     queryKey: ["admin-serial-detail", code],
     queryFn: () => getSerialDetail(code),
@@ -1233,6 +1549,28 @@ function SerialDetailsModal({ code, onClose }: { code: string; onClose: () => vo
                   : "—"
               }
             />
+            {(onEdit || onReset) && (
+              <div className="mt-5 flex items-center justify-end gap-2 border-t border-night-700 pt-3">
+                {onReset && (
+                  <button
+                    type="button"
+                    onClick={onReset}
+                    className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-400 hover:bg-amber-500/20"
+                  >
+                    🔄 Reset Serial
+                  </button>
+                )}
+                {onEdit && (
+                  <button
+                    type="button"
+                    onClick={onEdit}
+                    className="rounded-lg bg-brand px-4 py-1.5 text-xs font-semibold text-white hover:bg-brand/90"
+                  >
+                    ✏️ Edit Serial
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         ) : (
           <p className="text-sm text-red-400">Serial detail load nahi hua</p>
