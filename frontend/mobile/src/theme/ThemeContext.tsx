@@ -19,7 +19,7 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [mode, setModeState] = useState<ThemeMode>('auto');
-    const [activeThemeId, setActiveThemeId] = useState<string>('glassOcean');
+    const [activeThemeId, setActiveThemeId] = useState<string>('defaultDark');
     const [activeUserId, setActiveUserId] = useState<string | null>(null);
     const [isLoaded, setIsLoaded] = useState(false);
 
@@ -40,7 +40,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 } else if (currentMode === 'light') {
                     setActiveThemeId('defaultLight');
                 } else if (currentMode === 'dark') {
-                    setActiveThemeId('glassOcean');
+                    setActiveThemeId('defaultDark');
                 }
             } catch (e) {
                 console.log('Failed to load settings', e);
@@ -57,9 +57,9 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     useEffect(() => {
         if (!isLoaded) return;
         if (mode === 'auto') {
-            const autoTheme = systemColorScheme === 'dark' ? 'glassOcean' : 'defaultLight';
+            const autoTheme = systemColorScheme === 'dark' ? 'defaultDark' : 'defaultLight';
             if (activeThemeId !== autoTheme) {
-                // Only override standard defaults so they track OS, ignore if they explicitly tapped a custom premium theme previously
+                // Only override standard defaults so they track OS, ignore if user explicitly chose a premium theme
                 if (activeThemeId === 'glassOcean' || activeThemeId === 'defaultLight' || activeThemeId === 'defaultDark') {
                     setActiveThemeId(autoTheme);
                 }

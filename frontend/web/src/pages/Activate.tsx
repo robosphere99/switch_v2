@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { claimDevice, getClaimHomes } from "../api/shop";
+import { Input } from "../components/ui/Input";
+import { Select } from "../components/ui/Select";
+import { Button } from "../components/ui/Button";
+import { Alert } from "../components/ui/Alert";
+import { Key, CheckCircle2, ArrowRight, Home as HomeIcon } from "lucide-react";
 
 export function Activate() {
   const [params] = useSearchParams();
@@ -17,7 +22,7 @@ export function Activate() {
         setHomes(hs);
         if (hs.length === 1) setHomeId(hs[0].id);
       })
-      .catch(() => setError("Homes load nahi hue — login check karo."));
+      .catch(() => setError("Failed to load family homes. Please verify your login session."));
   }, []);
 
   async function handleClaim(e: React.FormEvent) {
@@ -30,7 +35,7 @@ export function Activate() {
       setResult(res);
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message;
-      setError(msg ?? "Claim fail ho gaya — serial code check karo.");
+      setError(msg ?? "Activation failed. Please check the serial code.");
     } finally {
       setBusy(false);
     }
@@ -38,19 +43,27 @@ export function Activate() {
 
   if (result) {
     return (
-      <div className="page-enter mx-auto max-w-xl px-4 py-16 text-center">
-        <div className="mb-4 text-6xl">🎉</div>
-        <h1 className="mb-2 text-3xl font-bold">Device Activated!</h1>
-        <p className="mb-4 text-gray-500">
-          <span className="font-semibold text-night-950">{result.device.name}</span> aapke home me add ho gaya.
+      <div className="page-enter mx-auto max-w-lg px-4 py-16 text-center">
+        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400">
+          <CheckCircle2 className="h-8 w-8" />
+        </div>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl mb-2">
+          Device Activated!
+        </h1>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
+          <span className="font-semibold text-slate-900 dark:text-white">{result.device.name}</span> has been securely bound to your home.
         </p>
-        <code className="rounded bg-night-700 px-3 py-1 text-sm text-brand">{result.serialCode}</code>
-        <div className="mt-8 flex justify-center gap-3">
-          <Link to="/dashboard" className="rounded-lg bg-brand px-6 py-3 font-semibold text-white">
-            Dashboard kholo
+        <code className="inline-block rounded-xl bg-slate-100 dark:bg-slate-800 px-3 py-1 font-mono text-sm font-semibold text-brand mb-8">
+          {result.serialCode}
+        </code>
+        <div className="flex flex-wrap justify-center gap-3">
+          <Link to="/dashboard">
+            <Button variant="primary" rightIcon={<ArrowRight className="h-4 w-4" />}>
+              Open Dashboard
+            </Button>
           </Link>
-          <Link to="/orders" className="rounded-lg border-2 border-brand px-6 py-3 font-semibold text-brand hover:bg-brand hover:text-white">
-            Orders
+          <Link to="/orders">
+            <Button variant="outline">View Orders</Button>
           </Link>
         </div>
       </div>
@@ -58,56 +71,78 @@ export function Activate() {
   }
 
   return (
-    <div className="page-enter mx-auto max-w-xl px-4 py-12">
-      <h1 className="mb-2 text-3xl font-bold">
-        <span className="text-brand">🔑 Activate Device</span>
-      </h1>
-      <p className="mb-8 text-sm text-gray-500">
-        Box pe laga sticker se serial code daalo — device aapke home me add ho jayega aur aapke account se permanently linked.
-      </p>
+    <div className="page-enter mx-auto max-w-lg px-4 py-12 sm:px-6">
+      <div className="mb-8">
+        <div className="flex items-center gap-2 text-brand font-bold text-xs uppercase tracking-wider mb-1">
+          <Key className="h-4 w-4" />
+          <span>Hardware Registration</span>
+        </div>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
+          Activate Your Device
+        </h1>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          Enter the cryptographic serial code from the sticker on your hardware box.
+        </p>
+      </div>
 
-      <form onSubmit={handleClaim} className="space-y-5 rounded-xl border border-brand/20 bg-night-800 p-6">
-        <div>
-          <label className="mb-1 block text-sm text-gray-500">Serial code (box pe sticker)</label>
-          <input
-            value={serialCode}
-            onChange={(e) => setSerialCode(e.target.value.toUpperCase())}
-            placeholder="RS-4CH-XXXXXX"
+      {error && (
+        <div className="mb-6">
+          <Alert variant="danger" onClose={() => setError(null)}>
+            {error}
+          </Alert>
+        </div>
+      )}
+
+      <form
+        onSubmit={handleClaim}
+        className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4"
+      >
+        <Input
+          label="Serial Code *"
+          value={serialCode}
+          onChange={(e) => setSerialCode(e.target.value.toUpperCase())}
+          placeholder="e.g. SN-4CH-XXXXXX"
+          required
+          className="font-mono text-base tracking-wider uppercase"
+        />
+
+        {homes.length === 0 ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-300">
+            No family home found. Please{" "}
+            <Link to="/homes" className="font-semibold underline">
+              create a home
+            </Link>{" "}
+            first before activating hardware.
+          </div>
+        ) : (
+          <Select
+            label="Select Home *"
+            value={homeId}
+            onChange={(e) => setHomeId(Number(e.target.value))}
             required
-            className="w-full rounded-lg border border-night-600 bg-night-900 px-3 py-3 font-mono text-lg tracking-widest"
-          />
-        </div>
+          >
+            <option value="" disabled>
+              — Select Destination Home —
+            </option>
+            {homes.map((h) => (
+              <option key={h.id} value={h.id}>
+                {h.name}
+              </option>
+            ))}
+          </Select>
+        )}
 
-        <div>
-          <label className="mb-1 block text-sm text-gray-500">Home (device kahan add hoga)</label>
-          {homes.length === 0 ? (
-            <p className="text-sm text-gray-500">
-              Koi home nahi mila — <Link to="/homes" className="text-brand underline">home banao</Link> pehle.
-            </p>
-          ) : (
-            <select
-              value={homeId}
-              onChange={(e) => setHomeId(Number(e.target.value))}
-              required
-              className="w-full rounded-lg border border-night-600 bg-night-900 px-3 py-3 text-sm"
-            >
-              <option value="" disabled>Home choose karo</option>
-              {homes.map((h) => (
-                <option key={h.id} value={h.id}>{h.name}</option>
-              ))}
-            </select>
-          )}
-        </div>
-
-        {error && <div className="rounded bg-red-900/40 p-3 text-sm text-red-600">{error}</div>}
-
-        <button
+        <Button
           type="submit"
-          disabled={busy || !homeId}
-          className="w-full rounded-lg bg-brand px-4 py-3 font-semibold text-white transition hover:-translate-y-0.5 disabled:opacity-50"
+          variant="primary"
+          size="lg"
+          disabled={busy || !homeId || !serialCode.trim()}
+          loading={busy}
+          className="w-full"
+          leftIcon={<HomeIcon className="h-4 w-4" />}
         >
-          {busy ? "Activating…" : "Activate Device"}
-        </button>
+          Activate & Link to Home
+        </Button>
       </form>
     </div>
   );

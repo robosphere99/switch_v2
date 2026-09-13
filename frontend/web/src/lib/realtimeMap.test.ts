@@ -11,7 +11,7 @@ import {
 
 describe("realtimeMap — socket events → react-query invalidations", () => {
   it("device:updated → devices + home dono invalidate (state change kahin bhi dikhe)", () => {
-    expect(invalidationsForEvent("device:updated")).toEqual([["devices"], ["home"]]);
+    expect(invalidationsForEvent("device:updated")).toEqual([["devices"], ["home"], ["my-boards"]]);
   });
 
   it("command:updated → devices (command confirm hone pe device state refresh)", () => {
@@ -58,9 +58,10 @@ describe("applyInvalidations — QueryClient integration", () => {
 
   it("event ke saare keys invalidate karta hai", () => {
     applyInvalidations(qc, "device:updated");
-    expect(qc.invalidateQueries).toHaveBeenCalledTimes(2);
+    expect(qc.invalidateQueries).toHaveBeenCalledTimes(3);
     expect(qc.invalidateQueries).toHaveBeenCalledWith({ queryKey: ["devices"] });
     expect(qc.invalidateQueries).toHaveBeenCalledWith({ queryKey: ["home"] });
+    expect(qc.invalidateQueries).toHaveBeenCalledWith({ queryKey: ["my-boards"] });
   });
 
   it("unknown event → koi invalidation nahi", () => {

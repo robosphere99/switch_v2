@@ -1,8 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import type { ApiResponse, Home, HomeMember } from "@robosphere/shared";
+import { useState, useEffect } from "react";
+import type { ApiResponse, Home } from "@robosphere/shared";
 import { listHomes, listMembers } from "../api/homes";
-import { listDevices } from "../api/devices";
 import {
   inviteMember,
   listInvitations,
@@ -11,18 +10,18 @@ import {
   removeMember,
   acceptInvite,
   updateMemberSafety,
-  setMemberDeviceAccess,
 } from "../api/members";
 import { useAuthStore } from "../stores/auth";
 import { getSocket } from "../lib/socket";
-import { useEffect } from "react";
-
-const ROLE_COLORS: Record<string, string> = {
-  owner: "bg-amber-500/20 text-amber-600 border-amber-500/40",
-  admin: "bg-blue-500/20 text-blue-400 border-blue-500/40",
-  member: "bg-emerald-500/20 text-emerald-400 border-emerald-500/40",
-  viewer: "bg-gray-500/20 text-gray-500 border-gray-500/40",
-};
+import { DeviceAccessPicker } from "../components/members/DeviceAccessPicker";
+import { Button } from "../components/ui/Button";
+import { Input } from "../components/ui/Input";
+import { Select } from "../components/ui/Select";
+import { Badge } from "../components/ui/Badge";
+import { Alert } from "../components/ui/Alert";
+import { EmptyState } from "../components/ui/EmptyState";
+import { Skeleton } from "../components/ui/Skeleton";
+import { Users, Mail, UserPlus, Shield, Copy, Check, Share2, Trash2, Key } from "lucide-react";
 
 export function Members() {
   const user = useAuthStore((s) => s.user);
@@ -30,6 +29,7 @@ export function Members() {
   const [activeHomeId, setActiveHomeId] = useState<number | null>(null);
   const [role, setRole] = useState<"admin" | "member" | "viewer">("member");
   const [createdInvite, setCreatedInvite] = useState<{ code: string; userFound: boolean } | null>(null);
+  const [copiedCode, setCopiedCode] = useState(false);
   const [error, setError] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [joinResult, setJoinResult] = useState<ApiResponse<Home> | null>(null);
@@ -62,15 +62,12 @@ export function Members() {
   useEffect(() => {
     if (!homeId) return;
     const socket = getSocket();
-
     const handler = (data: any) => {
       if (data?.homeId === homeId) {
         invalidate();
       }
     };
-
     socket.on("home-updated", handler);
-
     return () => {
       socket.off("home-updated", handler);
     };
@@ -86,6 +83,7 @@ export function Members() {
         setError(res.error.message);
       }
     },
+    onError: () => setError("Failed to generate invite code"),
   });
 
   const revoke = useMutation({
@@ -123,116 +121,164 @@ export function Members() {
   });
 
   return (
-    <div className="page-enter mx-auto max-w-4xl px-4 py-8">
-      <h1 className="mb-2 text-3xl font-bold">👨‍👩‍👧‍👦 Family</h1>
-      <p className="mb-6 text-sm text-gray-500">
-        Members of your home, their roles, and pending invites.
-      </p>
-
-      {/* Home switcher */}
-      <div className="mb-8 flex flex-wrap gap-3">
-        {homes.data?.success &&
-          homes.data.data.map((h) => (
-            <button
-              key={h.id}
-              onClick={() => setActiveHomeId(h.id)}
-              className={`rounded-lg border px-4 py-2 text-sm font-semibold ${h.id === homeId
-                ? "border-brand bg-brand/20 text-brand"
-                : "border-gray-200 bg-night-800 text-gray-600"
-                }`}
-            >
-              🏠 {h.name}
-            </button>
-          ))}
+    <div className="page-enter mx-auto max-w-4xl px-4 py-8 sm:px-6">
+      {/* Header */}
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
+          Family & Members
+        </h1>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          Control who can access devices, manage permissions, and assign child restriction modes.
+        </p>
       </div>
 
       {error && (
-        <p className="mb-4 rounded bg-red-500/10 px-4 py-2 text-sm text-red-400">{error}</p>
+        <div className="mb-6">
+          <Alert variant="danger" onClose={() => setError("")}>
+            {error}
+          </Alert>
+        </div>
       )}
 
-      {/* Invite form */}
-      {canInvite && (
-        <div className="mb-8 rounded-xl border border-brand/20 bg-night-800 p-5">
-          <h2 className="mb-1 font-semibold">✉️ Invite a family member</h2>
-          <p className="mb-4 text-sm text-gray-500">Pick a role and generate an invite code. Share it however you like.</p>
-          <div className="flex flex-wrap gap-3">
-            <select
-              value={role}
-              onChange={(e) => setRole(e.target.value as typeof role)}
-              className="rounded-lg border border-brand/20 bg-night-900 px-3 py-2.5 text-sm outline-none focus:border-brand"
-            >
-              <option value="admin">🛡️ Admin — Full control</option>
-              <option value="member">👤 Member — Use devices</option>
-              <option value="viewer">👁️ Viewer — View only</option>
-            </select>
+      {/* Home Selector Pills */}
+      {homes.data?.success && homes.data.data.length > 1 && (
+        <div className="mb-8 flex flex-wrap gap-2">
+          {homes.data.data.map((h) => (
             <button
+              key={h.id}
+              type="button"
+              onClick={() => setActiveHomeId(h.id)}
+              className={`rounded-xl px-4 py-2 text-xs font-semibold transition ${
+                h.id === homeId
+                  ? "bg-brand text-white shadow-sm shadow-brand/25"
+                  : "border border-slate-200 bg-white text-slate-700 hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
+              }`}
+            >
+              {h.name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Invite Member Card */}
+      {canInvite && homeId && (
+        <div className="mb-8 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="flex items-start gap-3.5 mb-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand/10 dark:bg-brand/15 text-brand">
+              <UserPlus className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                Invite Member to Home
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Choose a permission tier and create a secure one-time invite code.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="w-full sm:w-64">
+              <Select
+                value={role}
+                onChange={(e) => setRole(e.target.value as typeof role)}
+              >
+                <option value="admin">Admin (Full home control)</option>
+                <option value="member">Member (Can toggle devices)</option>
+                <option value="viewer">Viewer (Read-only access)</option>
+              </Select>
+            </div>
+            <Button
               onClick={() => invite.mutate()}
               disabled={invite.isPending}
-              className="rounded-lg bg-brand px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+              loading={invite.isPending}
+              variant="primary"
             >
-              {invite.isPending ? 'Generating…' : 'Create Invite Code'}
-            </button>
+              Generate Invite
+            </Button>
           </div>
-          {/* Invite result — two-path UX */}
-          {createdInvite?.userFound === true && (
-            <div className="mt-4 rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm flex items-center gap-3">
-              <span className="text-2xl">✅</span>
-              <div>
-                <p className="font-semibold text-emerald-400">Invite Sent!</p>
-                <p className="mt-0.5 text-gray-500">They're already on SwitchNest — an invite has been sent to their account.</p>
+
+          {/* Invite Result */}
+          {createdInvite && (
+            <div className="mt-5 rounded-xl border border-brand/20 bg-brand/5 p-4 dark:bg-brand/10">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <p className="font-semibold text-sm text-slate-900 dark:text-white">
+                    {createdInvite.userFound ? "Invitation Dispatched" : "Shareable Invitation Code"}
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    {createdInvite.userFound
+                      ? "User found on SwitchNest. An in-app invitation has been sent directly to their inbox."
+                      : "Share this 8-character code with your family member to join after registration."}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="font-mono text-lg font-bold tracking-widest text-brand bg-white dark:bg-slate-800 border border-brand/30 px-3 py-1.5 rounded-xl">
+                    {createdInvite.code}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      navigator.clipboard.writeText(createdInvite.code);
+                      setCopiedCode(true);
+                      setTimeout(() => setCopiedCode(false), 2000);
+                    }}
+                    leftIcon={copiedCode ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+                  >
+                    {copiedCode ? "Copied" : "Copy"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    onClick={() => {
+                      const loginUrl = `${window.location.origin}/login`;
+                      const text = `🏠 Join my SwitchNest Smart Home!\n\nCode: ${createdInvite.code}\nApp: ${loginUrl}`;
+                      if (navigator.share) {
+                        navigator.share({ title: "Join my SwitchNest Home", text });
+                      } else {
+                        navigator.clipboard.writeText(text);
+                      }
+                    }}
+                    leftIcon={<Share2 className="h-3.5 w-3.5" />}
+                  >
+                    Share
+                  </Button>
+                </div>
               </div>
-            </div>
-          )}
-          {createdInvite && createdInvite.userFound === false && (
-            <div className="mt-4 rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
-              <p className="font-semibold text-amber-400">📬 Not on SwitchNest yet</p>
-              <p className="mt-1 text-gray-500">Invite code created! Copy it or share via WhatsApp / Telegram.</p>
-              <div className="mt-3 flex items-center gap-2">
-                <p className="select-all flex-1 rounded bg-night-900 px-3 py-2 font-mono text-xl font-bold tracking-widest text-amber-300">{createdInvite.code}</p>
-                <button
-                  onClick={() => navigator.clipboard.writeText(createdInvite.code)}
-                  className="rounded-lg border border-gray-300 bg-night-900 px-3 py-2 text-xs text-gray-400 hover:text-white"
-                >Copy</button>
-                <button
-                  onClick={() => {
-                    const link = `https://switchnest.app/join?code=${createdInvite.code}`;
-                    const text = `🏠 You're invited to join my SwitchNest Smart Home!\n\nInvite code:\n🔑 ${createdInvite.code}\n\nOr tap: ${link}\n\nSteps:\n1. Download SwitchNest\n2. Register/Login\n3. Go to Family → Enter code\n\nSee you inside! 🚀`;
-                    if (navigator.share) navigator.share({ title: 'Join my SwitchNest Home', text, url: link });
-                    else navigator.clipboard.writeText(text);
-                  }}
-                  className="rounded-lg bg-brand px-3 py-2 text-xs font-semibold text-white hover:brightness-110"
-                >Share</button>
-              </div>
-              <p className="mt-2 text-xs text-gray-500">They open SwitchNest → Family → Join Home and enter the code after signing up.</p>
             </div>
           )}
         </div>
       )}
 
-      {/* Pending invitations */}
+      {/* Pending Invitations */}
       {canInvite && invitations.data?.success && invitations.data.data.length > 0 && (
-        <div className="mb-8 rounded-xl border border-gray-200 bg-night-800 p-5">
-          <h2 className="mb-4 font-semibold">⏳ Pending invitations</h2>
-          <div className="space-y-2">
+        <div className="mb-8 rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <h2 className="text-sm font-semibold text-slate-900 dark:text-white mb-3">
+            Pending Invitations
+          </h2>
+          <div className="space-y-2.5">
             {invitations.data.data.map((inv) => (
               <div
                 key={inv.id}
-                className="flex items-center justify-between rounded-lg border border-gray-200 bg-night-900 px-4 py-2.5 text-sm"
+                className="flex items-center justify-between rounded-xl border border-slate-200/70 bg-slate-50/50 px-4 py-2.5 text-xs dark:border-slate-800 dark:bg-slate-800/40"
               >
-                <div>
-                  <span className="text-gray-700">{inv.email}</span>
-                  <span className="ml-2 rounded-full border border-gray-300 px-2 py-0.5 text-[10px] font-bold uppercase text-gray-500">
+                <div className="flex items-center gap-2.5">
+                  <Mail className="h-4 w-4 text-slate-400" />
+                  <span className="font-medium text-slate-800 dark:text-slate-200">{inv.email ?? "Open Code"}</span>
+                  <Badge variant="neutral" size="sm">
                     {inv.role}
-                  </span>
-                  <span className="ml-2 font-mono text-xs text-brand">{inv.inviteCode}</span>
+                  </Badge>
+                  <span className="font-mono text-brand font-semibold">{inv.inviteCode}</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="text-[11px] text-gray-500">
-                    expires {new Date(inv.expiresAt).toLocaleDateString()}
+                  <span className="text-slate-400 text-[11px]">
+                    Expires {new Date(inv.expiresAt).toLocaleDateString("en-IN")}
                   </span>
                   <button
+                    type="button"
                     onClick={() => revoke.mutate(inv.id)}
-                    className="text-xs text-red-400 hover:text-red-600"
+                    className="text-rose-500 hover:text-rose-600 font-semibold"
                   >
                     Revoke
                   </button>
@@ -243,248 +289,183 @@ export function Members() {
         </div>
       )}
 
-      {/* Members list */}
-      <div className="space-y-3">
+      {/* Member List */}
+      <div className="space-y-4">
+        {members.isLoading && (
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+                <Skeleton className="h-5 w-1/4 mb-2" />
+                <Skeleton className="h-4 w-1/3" />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!members.isLoading && members.data?.success && members.data.data.length === 0 && (
+          <EmptyState
+            icon={<Users className="h-8 w-8 text-slate-400" />}
+            title="No Members Found"
+            description="There are no members listed for this home yet."
+          />
+        )}
+
         {members.data?.success &&
-          members.data.data.map((m) => (
-            <div
-              key={m.id}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-night-800 px-5 py-4"
-            >
-              <div>
-                <p className="font-semibold">
-                  {m.user?.username}
-                  {m.user?.id === user?.id && (
-                    <span className="ml-2 text-xs text-gray-500">(you)</span>
-                  )}
-                </p>
-                <p className="text-xs text-gray-500">{m.user?.email}</p>
-              </div>
-              <div className="flex items-center gap-3">
-                <span
-                  className={`rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-wide ${ROLE_COLORS[m.role] ?? ROLE_COLORS.viewer
-                    }`}
-                >
-                  {m.role}
-                </span>
-                {canInvite && m.role !== "owner" && (
-                  <>
-                    <select
-                      value={m.role}
-                      onChange={(e) =>
-                        changeRole.mutate({
-                          userId: m.userId,
-                          role: e.target.value as "admin" | "member" | "viewer",
-                        })
-                      }
-                      className="rounded border border-gray-300 bg-night-900 px-2 py-1 text-xs outline-none"
-                    >
-                      <option value="admin">admin</option>
-                      <option value="member">member</option>
-                      <option value="viewer">viewer</option>
-                    </select>
-                    <button
-                      onClick={() => {
-                        if (confirm(`Remove ${m.user?.username} from this home?`)) {
-                          remove.mutate(m.userId);
-                        }
-                      }}
-                      className="text-xs text-red-400 hover:text-red-600"
-                    >
-                      Remove
-                    </button>
-                  </>
-                )}
-              </div>
+          members.data.data.map((m) => {
+            const isSelf = m.user?.id === user?.id;
+            const roleVariant =
+              m.role === "owner" ? "primary" : m.role === "admin" ? "info" : m.role === "member" ? "success" : "neutral";
 
-              {/* Child mode — device-level access + daily limit (owner/admin) */}
-              {canInvite && m.role !== "owner" && (
-                <div className="w-full border-t border-gray-200 pt-3">
-                  <label className="flex cursor-pointer items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={!!m.restricted}
-                      onChange={(e) =>
-                        safety.mutate({ userId: m.userId, restricted: e.target.checked })
-                      }
-                      className="h-4 w-4 accent-brand"
-                    />
-                    <span className="font-medium">👶 Child mode</span>
-                    <span className="text-xs text-gray-500">
-                      — sirf granted devices ka control
-                    </span>
-                  </label>
+            return (
+              <div
+                key={m.id}
+                className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3.5">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800 font-bold text-slate-700 dark:text-slate-200">
+                      {m.user?.username ? m.user.username.slice(0, 2).toUpperCase() : "U"}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-slate-900 dark:text-white text-base">
+                          {m.user?.username ?? `User #${m.userId}`}
+                        </span>
+                        {isSelf && (
+                          <span className="text-xs text-slate-400 font-medium">(You)</span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">{m.user?.email}</p>
+                    </div>
+                  </div>
 
-                  {m.restricted && (
-                    <div className="mt-3 space-y-3 pl-6">
-                      <div className="flex items-center gap-2 text-sm">
-                        <span className="text-xs text-gray-500">⚡ Rate limit:</span>
-                        <input
-                          type="number"
-                          min={1}
-                          max={1440}
-                          defaultValue={m.dailyLimitMinutes ?? 5}
-                          onBlur={(e) => {
-                            const v = Number(e.target.value);
-                            if (Number.isFinite(v) && v > 0 && v !== m.dailyLimitMinutes) {
-                              safety.mutate({ userId: m.userId, dailyLimitMinutes: v });
+                  <div className="flex items-center gap-3 self-end sm:self-center">
+                    <Badge variant={roleVariant}>
+                      {m.role}
+                    </Badge>
+
+                    {canInvite && m.role !== "owner" && !isSelf && (
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={m.role}
+                          aria-label="Member Role"
+                          onChange={(e) =>
+                            changeRole.mutate({
+                              userId: m.userId,
+                              role: e.target.value as "admin" | "member" | "viewer",
+                            })
+                          }
+                          className="rounded-xl border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 outline-none focus:border-brand dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                        >
+                          <option value="admin">Admin</option>
+                          <option value="member">Member</option>
+                          <option value="viewer">Viewer</option>
+                        </select>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm(`Remove ${m.user?.username} from this home?`)) {
+                              remove.mutate(m.userId);
                             }
                           }}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                          }}
-                          className="w-20 rounded-lg border border-gray-300 bg-night-900 px-2 py-1 text-sm outline-none focus:border-brand"
-                        />
-                        <span className="text-xs text-gray-500">toggles/min — spam karne pe device lock ho jayega</span>
+                          className="rounded-lg p-1.5 text-slate-400 hover:text-rose-500 transition-colors"
+                          title="Remove member"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
                       </div>
-                      <DeviceAccessPicker homeId={homeId!} member={m} />
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
-              )}
-            </div>
-          ))}
+
+                {/* Child mode controls */}
+                {canInvite && m.role !== "owner" && (
+                  <div className="mt-4 border-t border-slate-100 pt-3 dark:border-slate-800">
+                    <label className="flex cursor-pointer items-center gap-2.5 text-xs font-medium text-slate-700 dark:text-slate-300">
+                      <input
+                        type="checkbox"
+                        checked={!!m.restricted}
+                        onChange={(e) =>
+                          safety.mutate({ userId: m.userId, restricted: e.target.checked })
+                        }
+                        className="h-4 w-4 rounded text-brand focus:ring-brand accent-brand"
+                      />
+                      <span>Enable Child Mode (Restricted device list & rate limit)</span>
+                    </label>
+
+                    {m.restricted && (
+                      <div className="mt-3 pl-6 space-y-3">
+                        <div className="flex items-center gap-3 text-xs text-slate-500">
+                          <Shield className="h-3.5 w-3.5 text-brand" />
+                          <span>Toggle limit:</span>
+                          <input
+                            type="number"
+                            min={1}
+                            max={1440}
+                            defaultValue={m.dailyLimitMinutes ?? 5}
+                            onBlur={(e) => {
+                              const v = Number(e.target.value);
+                              if (Number.isFinite(v) && v > 0 && v !== m.dailyLimitMinutes) {
+                                safety.mutate({ userId: m.userId, dailyLimitMinutes: v });
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                            }}
+                            className="w-16 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-800 outline-none focus:border-brand dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                          />
+                          <span>actions per minute</span>
+                        </div>
+                        <DeviceAccessPicker homeId={homeId!} member={m} />
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
       </div>
 
-      {/* Join home with invite code */}
-      <div className="mt-10 rounded-xl border border-dashed border-brand/40 bg-brand/5 p-5">
-        <p className="font-semibold text-brand">🔑 Join a family home</p>
-        <p className="mt-1 text-xs text-gray-500">
-          Family member ne aapko invite kiya hai? Code enter karke uske home se jud jao.
+      {/* Join Home with code */}
+      <div className="mt-10 rounded-2xl border border-dashed border-brand/40 bg-brand/5 p-6 dark:bg-brand/10">
+        <div className="flex items-center gap-2 text-brand font-bold text-sm">
+          <Key className="h-4 w-4" />
+          <span>Join a Family Home</span>
+        </div>
+        <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+          Received an invitation code from a family member? Enter the 8-character code below.
         </p>
-        <div className="mt-3 flex gap-2">
-          <input
+        <div className="mt-4 flex gap-3">
+          <Input
             value={joinCode}
             onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
             placeholder="e.g. 5YTHFA4M"
-            className="flex-1 rounded-lg border border-brand/20 bg-night-900 px-3 py-2.5 font-mono text-sm uppercase tracking-widest outline-none focus:border-brand"
+            className="font-mono tracking-widest uppercase flex-1"
           />
-          <button
+          <Button
             onClick={() => join.mutate()}
             disabled={joinCode.length < 6 || join.isPending}
-            className="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+            loading={join.isPending}
+            variant="primary"
           >
-            Join
-          </button>
+            Join Home
+          </Button>
         </div>
         {joinResult && (
-          <p className="mt-3 text-sm">
+          <p className="mt-3 text-xs">
             {joinResult.success ? (
-              <span className="text-emerald-400">
-                ✅ Joined "{joinResult.data.name}"! Refresh to see it in your homes.
+              <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                Joined "{joinResult.data.name}" successfully!
               </span>
             ) : (
-              <span className="text-red-400">✗ {joinResult.error.message}</span>
+              <span className="text-rose-600 dark:text-rose-400 font-medium">
+                {joinResult.error.message}
+              </span>
             )}
           </p>
         )}
       </div>
-    </div>
-  );
-}
-
-/** Child ko kaunse devices ka control dena hai — checkbox list + save. */
-function DeviceAccessPicker({ homeId, member }: { homeId: number; member: HomeMember }) {
-  const queryClient = useQueryClient();
-  const devices = useQuery({
-    queryKey: ["devices", homeId],
-    queryFn: () => listDevices(homeId),
-  });
-  const [selected, setSelected] = useState<Set<number>>(
-    () => new Set((member.deviceAccess ?? []).map((d) => d.deviceId)),
-  );
-  const [saved, setSaved] = useState(true);
-  const [expanded, setExpanded] = useState(false);
-
-  const toggle = (id: number) => {
-    setSaved(false);
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const selectAll = () => {
-    if (!devices.data?.success) return;
-    setSelected(new Set(devices.data.data.map(d => d.id)));
-    setSaved(false);
-  };
-
-  const deselectAll = () => {
-    setSelected(new Set());
-    setSaved(false);
-  };
-
-  const save = useMutation({
-    mutationFn: () => setMemberDeviceAccess(homeId, member.userId, [...selected]),
-    onSuccess: () => {
-      setSaved(true);
-      queryClient.invalidateQueries({ queryKey: ["members", homeId] });
-    },
-  });
-
-  const list = devices.data?.success ? devices.data.data : [];
-
-  return (
-    <div className="rounded-lg border border-gray-200 bg-night-900 p-3">
-      <div className="flex items-center justify-between">
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 hover:text-gray-700"
-        >
-          🔓 Devices access ({list.length > 0 ? `${selected.size}/${list.length}` : "…"})
-          <span className="text-[10px]" style={{ transform: expanded ? 'rotate(180deg)' : 'none', display: 'inline-block' }}>▼</span>
-        </button>
-        <button
-          onClick={() => save.mutate()}
-          disabled={save.isPending || saved || list.length === 0}
-          className="rounded-lg bg-brand px-3 py-1 text-xs font-semibold text-white transition enabled:hover:brightness-110 disabled:opacity-40"
-        >
-          {save.isPending ? "Saving…" : saved ? "✓ Saved" : "💾 Save"}
-        </button>
-      </div>
-
-      {expanded && (
-        <div className="mt-4 border-t border-gray-200 pt-3">
-          {devices.isLoading && <p className="text-xs text-gray-500">Devices loading…</p>}
-          {!devices.isLoading && list.length === 0 && (
-            <p className="text-xs text-gray-500">Is home me abhi koi device nahi hai.</p>
-          )}
-
-          {list.length > 0 && (
-            <div className="mb-3 flex items-center gap-4 text-xs font-semibold">
-              <button onClick={selectAll} className="text-brand hover:underline">Select All</button>
-              <button onClick={deselectAll} className="text-gray-500 hover:underline">Clear All</button>
-            </div>
-          )}
-
-          <div className="grid gap-1.5 sm:grid-cols-2">
-            {list.map((d) => (
-              <label
-                key={d.id}
-                className={`flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1.5 text-sm transition ${selected.has(d.id)
-                  ? "border-brand/50 bg-brand/10 text-gray-700"
-                  : "border-gray-200 text-gray-500 hover:border-brand/30"
-                  }`}
-              >
-                <input
-                  type="checkbox"
-                  checked={selected.has(d.id)}
-                  onChange={() => toggle(d.id)}
-                  className="h-3.5 w-3.5 accent-brand"
-                />
-                <span className="flex h-5 w-5 items-center justify-center text-xs">
-                  {d.type === "bulb" ? "💡" : d.type === "fan" ? "🌀" : d.type === "tv" ? "📺" : d.type === "ac" ? "❄️" : d.type === "plug" ? "🔌" : "🔘"}
-                </span>
-                <span className="truncate">{d.name}</span>
-                {d.status === "on" && <span className="ml-auto h-2 w-2 rounded-full bg-emerald-400" />}
-              </label>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

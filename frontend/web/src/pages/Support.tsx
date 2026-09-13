@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Bell, BellOff, CheckCheck, Pin, PinOff, Trash2 } from "lucide-react";
+import { Bell, BellOff, CheckCheck, Pin, PinOff, Trash2, Send, MessageSquare, HelpCircle, Phone, Mail, MapPin, Clock } from "lucide-react";
 import {
   submitSupport,
   getMySupportTickets,
@@ -20,6 +20,13 @@ import { useSiteStore } from "../stores/site";
 import { getSocket } from "../lib/socket";
 import { AttachmentPicker } from "../components/AttachmentPicker";
 import { AttachmentBubble } from "../components/AttachmentBubble";
+import { Button } from "../components/ui/Button";
+import { Input } from "../components/ui/Input";
+import { Select } from "../components/ui/Select";
+import { Textarea } from "../components/ui/Textarea";
+import { Badge } from "../components/ui/Badge";
+import { Alert } from "../components/ui/Alert";
+import { Skeleton } from "../components/ui/Skeleton";
 
 const SUBJECTS = [
   "Order / Delivery Help",
@@ -31,12 +38,6 @@ const SUBJECTS = [
   "Other",
 ];
 
-const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
-  new: { label: "🆕 New", cls: "bg-blue-500/20 text-blue-700" },
-  read: { label: "📖 Read", cls: "bg-amber-500/20 text-amber-600" },
-  done: { label: "✅ Done", cls: "bg-green-500/20 text-green-700" },
-};
-
 export function Support() {
   const siteSettings = useSiteStore((s) => s.settings);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -46,6 +47,7 @@ export function Support() {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+
   // Support chat state
   const [chatMsgs, setChatMsgs] = useState<SupportMessage[]>([]);
   const [chatDraft, setChatDraft] = useState("");
@@ -58,20 +60,16 @@ export function Support() {
   const chatSectionRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<HTMLInputElement>(null);
 
-  // Notification click se aaya draft → chat input mein pre-fill + focus + scroll
   const draftFromUrl = searchParams.get("draft");
-  const [draftApplied, setDraftApplied] = useState(false);
   useEffect(() => {
     if (!draftFromUrl) return;
     setChatDraft(draftFromUrl);
-    setDraftApplied(true);
     setSearchParams({}, { replace: true });
     requestAnimationFrame(() => {
       chatSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
       chatInputRef.current?.focus();
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draftFromUrl]);
+  }, [draftFromUrl, setSearchParams]);
 
   const refreshChat = () =>
     getMySupportChat()
@@ -83,12 +81,14 @@ export function Support() {
 
   useEffect(() => {
     refreshChat();
-    getMySupportSettings().then(setChatSettings).catch(() => { });
+    getMySupportSettings().then(setChatSettings).catch(() => {});
 
     const handleNewMessage = () => refreshChat();
     const activeSocket = getSocket();
     activeSocket.on("support:new", handleNewMessage);
-    return () => { activeSocket.off("support:new", handleNewMessage); };
+    return () => {
+      activeSocket.off("support:new", handleNewMessage);
+    };
   }, []);
 
   useEffect(() => {
@@ -104,7 +104,7 @@ export function Support() {
     try {
       const s = await setMySupportSettings({ peerUserId: mySetting.peerUserId, muted: !mySetting.mutedAt });
       setChatSettings((prev) =>
-        prev.map((p) => (p.peerUserId === s.peerUserId ? { ...p, mutedAt: s.mutedAt } : p)),
+        prev.map((p) => (p.peerUserId === s.peerUserId ? { ...p, mutedAt: s.mutedAt } : p))
       );
     } catch {
       /* ignore */
@@ -116,7 +116,7 @@ export function Support() {
     try {
       const s = await setMySupportSettings({ peerUserId: mySetting.peerUserId, pinned: !mySetting.pinnedAt });
       setChatSettings((prev) =>
-        prev.map((p) => (p.peerUserId === s.peerUserId ? { ...p, pinnedAt: s.pinnedAt } : p)),
+        prev.map((p) => (p.peerUserId === s.peerUserId ? { ...p, pinnedAt: s.pinnedAt } : p))
       );
     } catch {
       /* ignore */
@@ -124,7 +124,7 @@ export function Support() {
   };
 
   const deleteMessage = async (id: number) => {
-    if (!confirm("Apna message delete karein? (dono side se gayab)")) return;
+    if (!confirm("Are you sure you want to delete this message?")) return;
     try {
       await deleteMySupportMessage(id);
       await refreshChat();
@@ -134,7 +134,7 @@ export function Support() {
   };
 
   const clearChat = async () => {
-    if (!confirm("Poora support chat clear karein? (dono side se gayab)")) return;
+    if (!confirm("Are you sure you want to clear your entire support chat history?")) return;
     try {
       await clearMySupportChat();
       await refreshChat();
@@ -142,10 +142,6 @@ export function Support() {
       setChatError(true);
     }
   };
-
-  useEffect(() => {
-    chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatMsgs.length]);
 
   const sendChat = async (text: string, attachment: SupportAttachment | null) => {
     setChatBusy(true);
@@ -162,8 +158,7 @@ export function Support() {
     }
   };
 
-  const refreshTickets = () =>
-    getMySupportTickets().then((t) => setTickets(t));
+  const refreshTickets = () => getMySupportTickets().then((t) => setTickets(t));
 
   useEffect(() => {
     Promise.all([getMyOrders().catch(() => []), refreshTickets()])
@@ -183,7 +178,7 @@ export function Support() {
         phone: form.phone.trim() || undefined,
         orderNumber: form.orderNumber || undefined,
       });
-      setMsg({ ok: true, text: `Ticket #${t.id} mil gaya — humari team jald hi reply karegi (status: new).` });
+      setMsg({ ok: true, text: `Ticket #${t.id} submitted! Our support engineering team will respond shortly.` });
       setForm({ subject: SUBJECTS[0], orderNumber: "", phone: "", message: "" });
       await refreshTickets();
     } catch (err) {
@@ -193,163 +188,205 @@ export function Support() {
     }
   };
 
-  if (loading) return <div className="p-10 text-center text-gray-500">Loading…</div>;
+  if (loading) {
+    return (
+      <div className="page-enter mx-auto max-w-4xl px-4 py-12 space-y-4">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-4 w-96" />
+        <Skeleton className="h-64 w-full rounded-2xl" />
+      </div>
+    );
+  }
 
   return (
-    <div className="page-enter mx-auto max-w-4xl px-4 py-10">
-      <h1 className="mb-2 text-3xl font-bold">
-        <span className="text-brand">🛠️ Support</span>
-      </h1>
-      <p className="mb-6 text-sm text-gray-500">
-        Aapke account se seedha humari team ko message — order, warranty, OTA setup, kuch bhi. Ticket number ke saath
-        track ho jata hai.
-      </p>
+    <div className="page-enter mx-auto max-w-5xl px-4 py-8 sm:px-6">
+      {/* Header */}
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
+          Help & Support Center
+        </h1>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          Direct assistance for hardware configuration, orders, warranties, and firmware questions.
+        </p>
+      </div>
 
       {msg && (
-        <div className={`mb-6 rounded-lg border p-4 text-sm ${msg.ok ? "border-green-500/40 bg-green-50 text-green-700" : "border-red-500/40 bg-red-50 text-red-600"}`}>
-          {msg.text}
+        <div className="mb-6">
+          <Alert variant={msg.ok ? "success" : "danger"} onClose={() => setMsg(null)}>
+            {msg.text}
+          </Alert>
         </div>
       )}
 
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* Form */}
-        <form onSubmit={submit} className="rounded-xl border border-gray-200 bg-night-800 p-6">
-          <h2 className="mb-4 text-lg font-semibold">📩 New Ticket</h2>
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Ticket Form Card */}
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <h2 className="text-base font-bold text-slate-900 dark:text-white mb-4">
+            Submit Support Ticket
+          </h2>
 
-          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Subject</label>
-          <select
-            value={form.subject}
-            onChange={(e) => setForm({ ...form, subject: e.target.value })}
-            className="mb-4 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
-          >
-            {SUBJECTS.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
+          <form onSubmit={submit} className="space-y-4">
+            <Select
+              label="Subject / Topic"
+              value={form.subject}
+              onChange={(e) => setForm({ ...form, subject: e.target.value })}
+            >
+              {SUBJECTS.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </Select>
 
-          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Order (optional)</label>
-          <select
-            value={form.orderNumber}
-            onChange={(e) => setForm({ ...form, orderNumber: e.target.value })}
-            className="mb-4 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
-          >
-            <option value="">— Koi order nahi —</option>
-            {orders.map((o) => (
-              <option key={o.id} value={o.orderNumber}>{o.orderNumber} · {o.status}</option>
-            ))}
-          </select>
+            <Select
+              label="Related Order (Optional)"
+              value={form.orderNumber}
+              onChange={(e) => setForm({ ...form, orderNumber: e.target.value })}
+            >
+              <option value="">— No specific order —</option>
+              {orders.map((o) => (
+                <option key={o.id} value={o.orderNumber}>
+                  #{o.orderNumber} ({o.status})
+                </option>
+              ))}
+            </Select>
 
-          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Phone (optional)</label>
-          <input
-            value={form.phone}
-            onChange={(e) => setForm({ ...form, phone: e.target.value })}
-            placeholder="+91 …"
-            className="mb-4 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
-          />
+            <Input
+              label="Contact Phone (Optional)"
+              value={form.phone}
+              onChange={(e) => setForm({ ...form, phone: e.target.value })}
+              placeholder="+91 98765 43210"
+            />
 
-          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Message *</label>
-          <textarea
-            value={form.message}
-            onChange={(e) => setForm({ ...form, message: e.target.value })}
-            required
-            rows={4}
-            placeholder="Kya help chahiye? Device ka serial, kya hua, kab se…"
-            className="mb-4 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
-          />
+            <Textarea
+              label="Detailed Message *"
+              value={form.message}
+              onChange={(e) => setForm({ ...form, message: e.target.value })}
+              required
+              rows={4}
+              placeholder="Describe what help you need or describe the issue..."
+            />
 
-          <button
-            type="submit"
-            disabled={busy || !form.message.trim()}
-            className="w-full rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-40"
-          >
-            {busy ? "Bhej rahe hain…" : "📨 Send Message"}
-          </button>
-        </form>
+            <Button
+              type="submit"
+              variant="primary"
+              disabled={busy || !form.message.trim()}
+              loading={busy}
+              className="w-full"
+            >
+              Submit Ticket
+            </Button>
+          </form>
+        </div>
 
-        {/* Contact info + FAQ */}
+        {/* Contact info & Quick FAQ */}
         <div className="space-y-4">
-          <div className="rounded-xl border border-gray-200 bg-night-800 p-6 text-sm">
-            <h2 className="mb-3 text-lg font-semibold">📞 Seedha baat karo</h2>
-            <div className="space-y-2 text-gray-600">
-              <p>📧 <span className="text-brand">{siteSettings.supportEmail}</span></p>
-              <p>📱 WhatsApp: <span className="text-brand">{siteSettings.supportPhone}</span></p>
-              <p>📍 {siteSettings.supportAddress}</p>
-              <p>🕐 {siteSettings.supportHours}</p>
+          <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <h2 className="text-base font-bold text-slate-900 dark:text-white mb-3">
+              Direct Engineering Contacts
+            </h2>
+            <div className="space-y-2.5 text-xs text-slate-600 dark:text-slate-300">
+              <div className="flex items-center gap-2">
+                <Mail className="h-4 w-4 text-brand shrink-0" />
+                <span>{siteSettings.supportEmail || "support@switchnest.com"}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Phone className="h-4 w-4 text-brand shrink-0" />
+                <span>WhatsApp / Phone: {siteSettings.supportPhone || "+91-9999999999"}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <MapPin className="h-4 w-4 text-brand shrink-0" />
+                <span>{siteSettings.supportAddress || "SwitchNest Lab, Sector 62, Noida"}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Clock className="h-4 w-4 text-brand shrink-0" />
+                <span>{siteSettings.supportHours || "Mon-Sat: 10:00 AM - 7:00 PM IST"}</span>
+              </div>
             </div>
           </div>
 
-          <div className="rounded-xl border border-gray-200 bg-night-800 p-6 text-sm">
-            <h2 className="mb-3 text-lg font-semibold">❓ Quick FAQ</h2>
-            <div className="space-y-3 text-gray-600">
+          <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <h2 className="text-base font-bold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
+              <HelpCircle className="h-4 w-4 text-brand" /> Quick FAQ
+            </h2>
+            <div className="space-y-3 text-xs text-slate-600 dark:text-slate-300">
               <div>
-                <p className="font-semibold text-night-950">Board WiFi se connect nahi ho raha?</p>
-                <p className="text-gray-500">Board ke web panel me jao (AP mode me SwitchNest-IoT WiFi) → WiFi page se SSID + password daalo.</p>
+                <p className="font-semibold text-slate-900 dark:text-white">Board not connecting to WiFi?</p>
+                <p className="text-slate-500 dark:text-slate-400 mt-0.5">
+                  Connect to board's hotspot ("SwitchNest-IoT"), open 192.168.4.1 in browser, and save your WiFi SSID/password.
+                </p>
               </div>
               <div>
-                <p className="font-semibold text-night-950">Serial activate kaise karein?</p>
-                <p className="text-gray-500">Box ke sticker ka QR scan karo ya /activate pe serial daalo → home choose → Activate.</p>
-              </div>
-              <div>
-                <p className="font-semibold text-night-950">Firmware update kaise hota hai?</p>
-                <p className="text-gray-500">Bilkul khud — hum naya version publish karte hain, board WiFi pe OTA se update ho jata hai. Koi USB nahi.</p>
-              </div>
-              <div>
-                <p className="font-semibold text-night-950">Warranty kaise milegi?</p>
-                <p className="text-gray-500">Serial claim karte hi 1 saal warranty start. 🛡️ Warranty page se claim karo.</p>
+                <p className="font-semibold text-slate-900 dark:text-white">How do I claim a hardware serial?</p>
+                <p className="text-slate-500 dark:text-slate-400 mt-0.5">
+                  Scan the sticker on the box or enter the serial code on the Activate page to bind it to your home.
+                </p>
               </div>
             </div>
           </div>
         </div>
       </div>
 
+      {/* Live Support Chat Thread */}
+      <div ref={chatSectionRef} className="mt-8 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="mb-4 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <MessageSquare className="h-5 w-5 text-brand" />
+            <h2 className="text-base font-bold text-slate-900 dark:text-white">Live Support Chat</h2>
+            {mySetting?.mutedAt && <Badge variant="neutral" size="sm">Muted</Badge>}
+          </div>
 
-      {/* Support chat — seedha team se baat */}
-      <div ref={chatSectionRef} className="mt-8 rounded-xl border border-gray-200 bg-night-800 p-6">
-        <div className="mb-1 flex items-center justify-between gap-2">
-          <h2 className="text-lg font-semibold">💬 Support Chat</h2>
           <div className="flex items-center gap-1">
             <button
+              type="button"
               onClick={togglePin}
-              className={`rounded-lg p-2 transition ${mySetting?.pinnedAt ? "bg-brand/15 text-brand" : "text-gray-500 hover:bg-night-700 hover:text-brand"}`}
-              title={mySetting?.pinnedAt ? "Unpin" : "Pin"}
+              className={`rounded-lg p-2 transition ${
+                mySetting?.pinnedAt ? "bg-brand/10 text-brand" : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              }`}
+              title={mySetting?.pinnedAt ? "Unpin chat" : "Pin chat"}
             >
               {mySetting?.pinnedAt ? <Pin className="h-4 w-4" /> : <PinOff className="h-4 w-4" />}
             </button>
             <button
+              type="button"
               onClick={toggleMute}
-              className={`rounded-lg p-2 transition ${mySetting?.mutedAt ? "bg-brand/15 text-brand" : "text-gray-500 hover:bg-night-700 hover:text-brand"}`}
-              title={mySetting?.mutedAt ? "Unmute — notifications wapas" : "Mute — notifications band"}
+              className={`rounded-lg p-2 transition ${
+                mySetting?.mutedAt ? "bg-brand/10 text-brand" : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              }`}
+              title={mySetting?.mutedAt ? "Unmute notifications" : "Mute notifications"}
             >
               {mySetting?.mutedAt ? <BellOff className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
             </button>
             <button
+              type="button"
               onClick={clearChat}
-              className="rounded-lg p-2 text-gray-500 transition hover:bg-red-500/10 hover:text-red-400"
-              title="Clear chat"
+              className="rounded-lg p-2 text-slate-400 hover:text-rose-500 transition-colors"
+              title="Clear chat thread"
             >
               <Trash2 className="h-4 w-4" />
             </button>
           </div>
         </div>
-        <p className="mb-4 text-sm text-gray-500">
-          Seedha humari team se baat karo — ticket kholne ki zaroorat nahi. Message bhejo, support reply karega (bell 🔔 me bhi pata chalega).
-          {mySetting?.mutedAt && <span className="ml-2 text-gray-400">🔕 muted</span>}
-        </p>
-        <div className="flex h-72 flex-col gap-2 overflow-y-auto rounded-xl border border-gray-200 bg-gray-50 p-3">
-          {chatLoading && <p className="m-auto text-sm text-gray-500">Loading…</p>}
+
+        {/* Messages Body */}
+        <div className="flex h-72 flex-col gap-2.5 overflow-y-auto rounded-xl border border-slate-200/70 bg-slate-50/50 p-4 dark:border-slate-800 dark:bg-slate-800/40">
+          {chatLoading && <p className="m-auto text-xs text-slate-400">Loading conversation…</p>}
           {!chatLoading && chatMsgs.length === 0 && (
-            <p className="m-auto text-sm text-gray-500">Koi message nahi — pehla message bhejo 👇</p>
+            <p className="m-auto text-xs text-slate-400">No messages yet. Send a message to start chatting with support.</p>
           )}
           {chatMsgs.map((m) => (
             <div key={m.id} className="group relative flex flex-col">
               <div
-                className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${m.senderRole === "user"
-                  ? "self-end rounded-br-sm bg-brand text-white"
-                  : "self-start rounded-bl-sm border border-gray-200 bg-white text-gray-800"
-                  }`}
+                className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-xs ${
+                  m.senderRole === "user"
+                    ? "self-end rounded-br-sm bg-brand text-white shadow-sm"
+                    : "self-start rounded-bl-sm border border-slate-200 bg-white text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 shadow-sm"
+                }`}
               >
-                <div className="text-[10px] font-bold uppercase opacity-70">{m.senderRole === "user" ? "Aap" : "Support"}</div>
-                {m.message && <div className="whitespace-pre-wrap">{m.message}</div>}
+                <div className="text-[10px] font-bold uppercase opacity-75 mb-0.5">
+                  {m.senderRole === "user" ? "You" : "SwitchNest Support"}
+                </div>
+                {m.message && <div className="whitespace-pre-wrap leading-relaxed">{m.message}</div>}
                 {m.attachmentName && m.attachmentType && (m.attachmentData || m.attachmentPath) && (
                   <AttachmentBubble
                     name={m.attachmentName}
@@ -358,31 +395,30 @@ export function Support() {
                     url={getAttachmentUrl(m)}
                   />
                 )}
-                <div className="mt-0.5 flex items-center justify-end gap-1 text-right text-[10px] opacity-60">
-                  {new Date(m.createdAt).toLocaleString()}
-                  {/* Read receipt — apna message: ✓ sent, ✓✓ blue = admin ne padha */}
-                  {m.senderRole === "user" &&
-                    (m.readByAdmin ? (
-                      <CheckCheck className="h-3 w-3 text-blue-300" />
-                    ) : (
-                      <CheckCheck className="h-3 w-3 opacity-70" />
-                    ))}
+                <div className="mt-1 flex items-center justify-end gap-1 text-right text-[9px] opacity-65">
+                  {new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  {m.senderRole === "user" && (
+                    <CheckCheck className={`h-3 w-3 ${m.readByAdmin ? "text-sky-300" : "opacity-75"}`} />
+                  )}
                 </div>
               </div>
-              {/* Apna message delete — desktop pe hover pe, mobile pe hamesha visible (touch pe hover nahi hota) */}
+
               {m.senderRole === "user" && (
                 <button
+                  type="button"
                   onClick={() => deleteMessage(m.id)}
-                  className="absolute right-0 top-0 z-10 rounded-md bg-white p-1 text-gray-500 shadow-lg opacity-0 transition hover:text-red-500 focus:opacity-100 group-hover:opacity-100 max-md:opacity-100"
+                  className="absolute right-0 top-0 rounded p-1 text-slate-400 opacity-0 transition hover:text-rose-500 group-hover:opacity-100"
                   title="Delete message"
                 >
-                  <Trash2 className="h-3.5 w-3.5" />
+                  <Trash2 className="h-3 w-3" />
                 </button>
               )}
             </div>
           ))}
           <div ref={chatBottomRef} />
         </div>
+
+        {/* Input Bar */}
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -396,43 +432,53 @@ export function Support() {
             ref={chatInputRef}
             value={chatDraft}
             onChange={(e) => setChatDraft(e.target.value)}
-            placeholder="Message likho… (Enter se bhejo)"
-            className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-brand"
+            placeholder="Type your message to support..."
+            className="flex-1 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs text-slate-800 outline-none transition focus:border-brand dark:border-slate-700 dark:bg-slate-800 dark:text-white"
           />
-          <button
+          <Button
             type="submit"
+            size="sm"
+            variant="primary"
             disabled={chatBusy || (!chatDraft.trim() && !chatAttachment)}
-            className="rounded-lg bg-brand px-4 py-2 text-white disabled:opacity-40"
+            loading={chatBusy}
+            rightIcon={<Send className="h-3.5 w-3.5" />}
           >
             Send
-          </button>
+          </Button>
         </form>
-        {draftApplied && chatDraft.trim() && (
-          <p className="mt-2 rounded-lg border border-brand/30 bg-brand/10 px-3 py-1.5 text-xs text-brand">
-            📝 Notification se draft tayyar hai — edit karke <b>Enter</b> dabao.
-          </p>
-        )}
-        {chatError && <p className="mt-2 text-xs text-red-500">Bhejne me dikkat — dobara try karo.</p>}
+        {chatError && <p className="mt-2 text-xs text-rose-500">Failed to send message. Please try again.</p>}
       </div>
 
-      {/* My tickets */}
-
+      {/* Ticket History */}
       <div className="mt-8">
-        <h2 className="mb-3 text-lg font-semibold">🗂️ Meri Tickets ({tickets.length})</h2>
+        <h2 className="text-base font-bold text-slate-900 dark:text-white mb-3">
+          Your Support Tickets ({tickets.length})
+        </h2>
         {tickets.length === 0 ? (
-          <p className="text-sm text-gray-500">Abhi koi ticket nahi — upar se naya ticket kholo.</p>
+          <p className="text-xs text-slate-400">No active support tickets.</p>
         ) : (
           <div className="space-y-3">
             {tickets.map((t) => (
-              <div key={t.id} className="rounded-xl border border-gray-200 bg-night-800 p-4">
-                <div className="mb-1 flex items-center justify-between gap-2">
-                  <span className="text-sm font-semibold text-night-950">#{t.id} · {t.subject}</span>
-                  <span className={`rounded-full px-2 py-0.5 text-xs ${STATUS_BADGE[t.status]?.cls ?? ""}`}>
-                    {STATUS_BADGE[t.status]?.label ?? t.status}
+              <div
+                key={t.id}
+                className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 flex items-start justify-between gap-4"
+              >
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-semibold text-sm text-slate-900 dark:text-white">
+                      #{t.id} · {t.subject}
+                    </span>
+                    <Badge variant={t.status === "done" ? "success" : t.status === "read" ? "info" : "warning"} size="sm">
+                      {t.status}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-2 leading-relaxed">
+                    {t.message}
+                  </p>
+                  <span className="text-[10px] text-slate-400 mt-1 block">
+                    {new Date(t.createdAt).toLocaleString("en-IN")}
                   </span>
                 </div>
-                <p className="text-sm text-gray-500">{t.message}</p>
-                <p className="mt-1 text-xs text-gray-500">{new Date(t.createdAt).toLocaleString()}</p>
               </div>
             ))}
           </div>

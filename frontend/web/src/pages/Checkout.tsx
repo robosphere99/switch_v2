@@ -1,22 +1,25 @@
 import { useState } from "react";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, ShoppingBag, ArrowRight, Wifi, Tag, Check, CreditCard, ShieldCheck } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
-import { createOrder, initiatePayment, verifyPayment, demoPay, cancelOrder, validateCoupon, type PayIntent } from "../api/shop";
+import {
+  createOrder,
+  initiatePayment,
+  demoPay,
+  cancelOrder,
+  validateCoupon,
+  type PayIntent,
+} from "../api/shop";
 import { useCartStore } from "../stores/cart";
-
-function loadRazorpayScript(): Promise<boolean> {
-  return new Promise((resolve) => {
-    if (document.querySelector('script[src="https://checkout.razorpay.com/v1/checkout.js"]')) {
-      resolve(true);
-      return;
-    }
-    const script = document.createElement("script");
-    script.src = "https://checkout.razorpay.com/v1/checkout.js";
-    script.onload = () => resolve(true);
-    script.onerror = () => resolve(false);
-    document.body.appendChild(script);
-  });
-}
+import { useAuthStore } from "../stores/auth";
+import { useSiteStore } from "../stores/site";
+import { openRazorpayCheckout } from "../lib/razorpay";
+import { Input } from "../components/ui/Input";
+import { Textarea } from "../components/ui/Textarea";
+import { Button } from "../components/ui/Button";
+import { Badge } from "../components/ui/Badge";
+import { Alert } from "../components/ui/Alert";
+import { EmptyState } from "../components/ui/EmptyState";
+import { Modal } from "../components/ui/Modal";
 
 export function Checkout() {
   const navigate = useNavigate();
@@ -24,8 +27,11 @@ export function Checkout() {
   const clear = useCartStore((s) => s.clear);
   const total = useCartStore((s) => s.total());
 
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
+  const user = useAuthStore((s) => s.user);
+  const supportEmail = useSiteStore((s) => s.settings.supportEmail);
+
+  const [name, setName] = useState(user?.username ?? "");
+  const [phone, setPhone] = useState(user?.phone ?? "");
   const [address, setAddress] = useState("");
   const [wifiEnabled, setWifiEnabled] = useState(false);
   const [ssid, setSsid] = useState("");
@@ -39,13 +45,19 @@ export function Checkout() {
   const [payingFor, setPayingFor] = useState<number | null>(null);
 
   const [couponCodeInput, setCouponCodeInput] = useState("");
-  const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; type: "percentage" | "fixed"; value: number; max: number | null; min: number | null } | null>(null);
+  const [appliedCoupon, setAppliedCoupon] = useState<{
+    code: string;
+    type: "percentage" | "fixed";
+    value: number;
+    max: number | null;
+    min: number | null;
+  } | null>(null);
   const [couponError, setCouponError] = useState<string | null>(null);
 
   let discount = 0;
   if (appliedCoupon) {
     if (appliedCoupon.min && total < appliedCoupon.min) {
-      // Too small, no discount applied but it's handled on apply. We just do it for safety
+      // Too small, ignore
     } else {
       if (appliedCoupon.type === "percentage") {
         discount = (total * appliedCoupon.value) / 100;
@@ -65,10 +77,16 @@ export function Checkout() {
     try {
       const c = await validateCoupon(couponCodeInput);
       if (c.minOrderAmount && total < c.minOrderAmount) {
-        setCouponError(`Min order amount is ₹${c.minOrderAmount}`);
+        setCouponError(`Minimum order amount for this coupon is ₹${c.minOrderAmount}`);
         return;
       }
-      setAppliedCoupon({ code: c.code, type: c.discountType, value: c.discountValue, max: c.maxDiscount, min: c.minOrderAmount });
+      setAppliedCoupon({
+        code: c.code,
+        type: c.discountType,
+        value: c.discountValue,
+        max: c.maxDiscount,
+        min: c.minOrderAmount,
+      });
     } catch (err: any) {
       setCouponError(err?.response?.data?.error?.message ?? err?.message ?? "Invalid coupon code");
     }
@@ -78,7 +96,7 @@ export function Checkout() {
     setSubmitting(true);
     try {
       await cancelOrder(orderId);
-      setError("Payment cancelled. Order cancelled.");
+      setError("Payment cancelled. Order was not completed.");
     } catch (err) {
       console.error("Auto cancel failed:", err);
     } finally {
@@ -131,48 +149,14 @@ export function Checkout() {
           setPayIntent(intent);
           return;
         } else {
-          const loaded = await loadRazorpayScript();
-          if (!loaded) {
-            throw new Error("Razorpay SDK failed to load. Are you offline?");
-          }
-
-          await new Promise<void>((resolve, reject) => {
-            const options = {
-              key: intent.keyId,
-              amount: intent.amount * 100, // INR to paise
-              currency: "INR",
-              name: "SwitchNest",
-              description: "Order #" + order.id,
-              order_id: intent.razorpayOrderId ?? "",
-              handler: async function (response: any) {
-                try {
-                  await verifyPayment(order.id, {
-                    razorpayOrderId: response.razorpay_order_id,
-                    razorpayPaymentId: response.razorpay_payment_id,
-                    razorpaySignature: response.razorpay_signature,
-                  });
-                  resolve();
-                } catch (err: any) {
-                  reject(new Error(err?.message || "Payment verification failed."));
-                }
-              },
-              modal: {
-                ondismiss: function () {
-                  reject(new Error("PAYMENT_CLOSED"));
-                }
-              },
-              prefill: {
-                name: "SwitchNest User",
-                email: "support@switchnest.com",
-                contact: "9999999999"
-              },
-              theme: { color: "#4f46e5" }
-            };
-            const rzp = new (window as any).Razorpay(options);
-            rzp.on("payment.failed", function (response: any) {
-              reject(new Error(response.error.description || "Razorpay payment failed."));
-            });
-            rzp.open();
+          await openRazorpayCheckout({
+            intent,
+            orderId: order.id,
+            prefill: {
+              name: name || user?.username || "SwitchNest Customer",
+              email: user?.email || supportEmail || "",
+              contact: phone || user?.phone || "",
+            },
           });
         }
       }
@@ -190,7 +174,7 @@ export function Checkout() {
         clear();
         navigate("/orders?failed=true");
       } else {
-        const msg = err?.response?.data?.error?.message ?? err?.message ?? "Order fail ho gaya — dobara try karo";
+        const msg = err?.response?.data?.error?.message ?? err?.message ?? "Failed to place order. Please try again.";
         setError(msg);
         setSubmitting(false);
       }
@@ -200,233 +184,286 @@ export function Checkout() {
   if (!items.length) {
     return (
       <div className="page-enter mx-auto max-w-2xl px-4 py-16 text-center">
-        <div className="mb-4 text-5xl">🛒</div>
-        <h1 className="mb-2 text-2xl font-bold">Cart khali hai</h1>
-        <p className="mb-6 text-gray-500">Pehle kuch products add karo.</p>
-        <Link to="/shop" className="btn-primary px-6 py-3">
-          Shop kholo
-        </Link>
+        <EmptyState
+          icon={<ShoppingBag className="h-10 w-10 text-slate-400" />}
+          title="Your Cart is Empty"
+          description="Add hardware switches or relay boards from the shop before proceeding to checkout."
+          action={
+            <Link to="/shop">
+              <Button variant="primary" rightIcon={<ArrowRight className="h-4 w-4" />}>
+                Browse Hardware Store
+              </Button>
+            </Link>
+          }
+        />
       </div>
     );
   }
 
   return (
-    <div className="page-enter mx-auto max-w-3xl px-4 py-10 sm:px-6">
-      <h1 className="page-title mb-6">Checkout</h1>
+    <div className="page-enter mx-auto max-w-3xl px-4 py-8 sm:px-6">
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
+          Order Checkout
+        </h1>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          Review your items, shipping destination, and select payment method.
+        </p>
+      </div>
+
+      {error && (
+        <div className="mb-6">
+          <Alert variant="danger" onClose={() => setError(null)}>
+            {error}
+          </Alert>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Items summary */}
-        <section className="card-static p-6">
-          <h2 className="mb-4 text-base font-semibold text-gray-900 dark:text-white">Order Summary</h2>
-          <div className="space-y-2 text-sm">
+        {/* Items Summary Card */}
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <h2 className="text-base font-bold text-slate-900 dark:text-white mb-4">
+            Items in Order ({items.length})
+          </h2>
+          <div className="space-y-3">
             {items.map((i) => (
-              <div key={i.productId} className="flex justify-between text-gray-600">
-                <span>
-                  {i.name} <span className="text-gray-500">× {i.quantity}</span>
+              <div key={i.productId} className="flex items-center justify-between text-sm py-1 border-b border-slate-100 dark:border-slate-800 last:border-0">
+                <div>
+                  <span className="font-semibold text-slate-800 dark:text-slate-200">{i.name}</span>
+                  <span className="text-xs text-slate-400 ml-2">× {i.quantity}</span>
+                </div>
+                <span className="font-mono text-sm font-semibold text-slate-900 dark:text-white">
+                  ₹{(i.price * i.quantity).toLocaleString("en-IN")}
                 </span>
-                <span>₹{(i.price * i.quantity).toLocaleString("en-IN")}</span>
               </div>
             ))}
+
             {discount > 0 && (
-              <div className="flex justify-between border-t border-brand/20 pt-3 text-sm font-semibold text-green-500">
+              <div className="flex justify-between pt-3 text-sm font-semibold text-emerald-600 dark:text-emerald-400">
                 <span>Discount ({appliedCoupon?.code})</span>
                 <span>-₹{discount.toLocaleString("en-IN")}</span>
               </div>
             )}
-            <div className="flex justify-between border-t border-brand/20 pt-3 text-base font-bold">
-              <span>Total</span>
+
+            <div className="flex justify-between border-t border-slate-200 dark:border-slate-800 pt-3 text-base font-bold text-slate-900 dark:text-white">
+              <span>Grand Total</span>
               <span>₹{finalTotal.toLocaleString("en-IN")}</span>
             </div>
           </div>
-        </section>
+        </div>
 
-        {/* Coupons */}
-        <section className="rounded-xl border border-brand/20 bg-night-800 p-6">
-          <h2 className="mb-4 text-lg font-semibold">Apply Coupon</h2>
-          <div className="flex items-center gap-3">
-            <input
+        {/* Coupons Card */}
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="flex items-center gap-2 mb-3">
+            <Tag className="h-4 w-4 text-brand" />
+            <h2 className="text-sm font-bold text-slate-900 dark:text-white">Have a Promo Code?</h2>
+          </div>
+          <div className="flex gap-2.5">
+            <Input
               value={couponCodeInput}
               onChange={(e) => setCouponCodeInput(e.target.value.toUpperCase())}
-              placeholder="Enter coupon code"
-              className="flex-1 rounded-lg border border-night-600 bg-night-900 px-3 py-2 text-sm uppercase"
+              placeholder="e.g. FESTIVE10"
+              className="font-mono uppercase flex-1"
             />
-            <button
-              type="button"
-              onClick={handleApplyCoupon}
-              className="rounded-lg bg-night-700 px-4 py-2 font-semibold hover:bg-night-600"
-            >
-              Apply
-            </button>
+            <Button type="button" variant="secondary" onClick={handleApplyCoupon}>
+              Apply Code
+            </Button>
           </div>
-          {couponError && <p className="mt-2 text-sm text-red-500">{couponError}</p>}
+          {couponError && <p className="mt-2 text-xs text-rose-500 font-medium">{couponError}</p>}
           {appliedCoupon && !couponError && (
-            <p className="mt-2 text-sm text-green-500">
-              Coupon '{appliedCoupon.code}' applied successfully!
+            <p className="mt-2 text-xs text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+              <Check className="h-3.5 w-3.5" /> Coupon '{appliedCoupon.code}' applied successfully!
             </p>
           )}
-        </section>
+        </div>
 
-        {/* Shipping */}
-        <section className="rounded-xl border border-brand/20 bg-night-800 p-6">
-          <h2 className="mb-4 text-lg font-semibold">Shipping Details</h2>
+        {/* Shipping Details Card */}
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+          <h2 className="text-base font-bold text-slate-900 dark:text-white">
+            Shipping Information
+          </h2>
           <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-sm text-gray-500">Full name *</label>
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-                className="w-full rounded-lg border border-night-600 bg-night-900 px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm text-gray-500">Phone *</label>
-              <input
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                required
-                className="w-full rounded-lg border border-night-600 bg-night-900 px-3 py-2 text-sm"
-              />
-            </div>
-          </div>
-          <div className="mt-4">
-            <label className="mb-1 block text-sm text-gray-500">Shipping address *</label>
-            <textarea
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
+            <Input
+              label="Recipient Name *"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
               required
-              rows={2}
-              className="w-full rounded-lg border border-night-600 bg-night-900 px-3 py-2 text-sm"
+              placeholder="Full name"
+            />
+            <Input
+              label="Mobile Number *"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              required
+              placeholder="+91 98765 43210"
             />
           </div>
-        </section>
+          <Textarea
+            label="Complete Delivery Address *"
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+            required
+            rows={2}
+            placeholder="Flat / House No., Street, Landmark, City, State, PIN"
+          />
+        </div>
 
-        {/* WiFi provisioning (optional) */}
-        <section className="rounded-xl border border-brand/20 bg-night-800 p-6">
-          <label className="flex items-center justify-between">
+        {/* WiFi Provisioning Card */}
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <label className="flex items-start justify-between gap-4 cursor-pointer">
             <div>
-              <h2 className="text-lg font-semibold">WiFi Pre-Provisioning <span className="text-xs font-normal text-gray-500">(optional)</span></h2>
-              <p className="text-sm text-gray-500">
-                Board factory se hi aapke WiFi se connected aayega. Device bhi khud config mode me aa jata hai agar WiFi badle.
+              <div className="flex items-center gap-2 font-bold text-sm text-slate-900 dark:text-white">
+                <Wifi className="h-4 w-4 text-brand" />
+                <span>Pre-configure Home WiFi</span>
+                <Badge variant="neutral" size="sm">Optional</Badge>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                We will flash your credentials directly into the board before dispatch so it connects immediately out-of-the-box.
               </p>
             </div>
             <input
               type="checkbox"
               checked={wifiEnabled}
               onChange={(e) => setWifiEnabled(e.target.checked)}
-              className="h-5 w-5 accent-brand"
+              className="h-5 w-5 rounded text-brand focus:ring-brand accent-brand mt-0.5"
             />
           </label>
+
           {wifiEnabled && (
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-sm text-gray-500">WiFi name (SSID)</label>
-                <input
-                  value={ssid}
-                  onChange={(e) => setSsid(e.target.value)}
-                  placeholder="e.g. Robo_lab"
-                  className="w-full rounded-lg border border-night-600 bg-night-900 px-3 py-2 text-sm"
+            <div className="mt-4 grid gap-4 sm:grid-cols-2 pt-4 border-t border-slate-100 dark:border-slate-800">
+              <Input
+                label="Home WiFi Name (SSID) *"
+                value={ssid}
+                onChange={(e) => setSsid(e.target.value)}
+                placeholder="e.g. Airtel_5G or Home_WiFi"
+              />
+              <div className="relative">
+                <Input
+                  label="WiFi Password"
+                  type={showPass ? "text" : "password"}
+                  value={wifiPass}
+                  onChange={(e) => setWifiPass(e.target.value)}
+                  placeholder="Enter WiFi password"
                 />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm text-gray-500">WiFi password</label>
-                <div className="relative">
-                  <input
-                    type={showPass ? "text" : "password"}
-                    value={wifiPass}
-                    onChange={(e) => setWifiPass(e.target.value)}
-                    placeholder="Enter WiFi password"
-                    className="w-full rounded-lg border border-night-600 bg-night-900 px-3 py-2 pr-10 text-sm"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPass((v) => !v)}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-200 transition"
-                    tabIndex={-1}
-                    title={showPass ? "Hide password" : "Show password"}
-                  >
-                    {showPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPass((v) => !v)}
+                  className="absolute right-3 top-8 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition"
+                  tabIndex={-1}
+                  title={showPass ? "Hide password" : "Show password"}
+                >
+                  {showPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
               </div>
             </div>
           )}
-        </section>
+        </div>
 
-        {/* Payment */}
-        <section className="rounded-xl border border-brand/20 bg-night-800 p-6">
-          <h2 className="mb-4 text-lg font-semibold">Payment</h2>
+        {/* Payment Method Card */}
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <h2 className="text-base font-bold text-slate-900 dark:text-white mb-4">
+            Payment Option
+          </h2>
           <div className="grid gap-3 sm:grid-cols-2">
             <label
-              className={`flex cursor-pointer items-center gap-3 rounded-lg border p-4 ${paymentMethod === "cod" ? "border-brand bg-brand/10" : "border-night-600"
-                }`}
+              className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition ${
+                paymentMethod === "cod"
+                  ? "border-brand bg-brand/5 dark:bg-brand/10"
+                  : "border-slate-200 hover:border-slate-300 dark:border-slate-800"
+              }`}
             >
               <input
                 type="radio"
                 checked={paymentMethod === "cod"}
                 onChange={() => setPaymentMethod("cod")}
-                className="accent-brand"
+                className="accent-brand mt-0.5"
               />
               <div>
-                <div className="font-semibold">💵 Cash on Delivery</div>
-                <div className="text-xs text-gray-500">Delivery par pay karo</div>
+                <div className="font-semibold text-sm text-slate-900 dark:text-white">
+                  Cash on Delivery (COD)
+                </div>
+                <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Pay with cash or UPI upon courier arrival
+                </div>
               </div>
             </label>
+
             <label
-              className={`flex cursor-pointer items-center gap-3 rounded-lg border p-4 ${paymentMethod === "upi" ? "border-brand bg-brand/10" : "border-night-600"
-                }`}
+              className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition ${
+                paymentMethod === "upi"
+                  ? "border-brand bg-brand/5 dark:bg-brand/10"
+                  : "border-slate-200 hover:border-slate-300 dark:border-slate-800"
+              }`}
             >
               <input
                 type="radio"
                 checked={paymentMethod === "upi"}
                 onChange={() => setPaymentMethod("upi")}
-                className="accent-brand"
+                className="accent-brand mt-0.5"
               />
               <div>
-                <div className="font-semibold">📱 UPI / Bank Transfer</div>
-                <div className="text-xs text-gray-500">Fast checkout with online payment</div>
+                <div className="font-semibold text-sm text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <CreditCard className="h-3.5 w-3.5 text-brand" />
+                  <span>Instant UPI / NetBanking</span>
+                </div>
+                <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Razorpay secured checkout with instant confirmation
+                </div>
               </div>
             </label>
           </div>
-        </section>
+        </div>
 
-        {error && <div className="rounded bg-red-900/40 p-3 text-sm text-red-600">{error}</div>}
-
-        <button
+        {/* Place Order Button */}
+        <Button
           type="submit"
+          variant="primary"
+          size="lg"
           disabled={submitting}
-          className="w-full rounded-lg bg-brand px-4 py-3 font-semibold text-white transition hover:-translate-y-0.5 disabled:opacity-50"
+          loading={submitting}
+          className="w-full"
+          leftIcon={<ShieldCheck className="h-5 w-5" />}
         >
-          {submitting ? "Placing order…" : `Place Order · ₹${total.toLocaleString("en-IN")}`}
-        </button>
+          {submitting ? "Placing Order..." : `Place Order · ₹${finalTotal.toLocaleString("en-IN")}`}
+        </Button>
       </form>
 
+      {/* Demo Pay Modal */}
       {payIntent && payingFor && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => handleCancelDemoPay(payingFor)}>
-          <div className="w-full max-w-md rounded-xl border border-brand/30 bg-night-800 p-6" onClick={(e) => e.stopPropagation()}>
-            <h3 className="mb-3 text-lg font-bold">💳 Pay ₹{payIntent.amount.toLocaleString("en-IN")}</h3>
-            {payIntent.mode === "demo" && (
-              <>
-                <p className="mb-3 text-sm text-gray-500">
-                  Demo mode — kisi bhi UPI app me yeh intent use karo:
-                </p>
-                <div className="mb-3 rounded-lg bg-night-700 p-3 font-mono text-xs text-brand break-all">
-                  {payIntent.upiIntent}
-                </div>
-                <button
-                  onClick={() => handleConfirmDemoPay(payingFor)}
-                  disabled={submitting}
-                  className="w-full rounded-lg bg-brand px-4 py-2.5 font-semibold text-white disabled:opacity-50"
-                >
-                  {submitting ? "Verifying…" : "✅ Maine UPI se pay kar diya (Demo verify)"}
-                </button>
-              </>
-            )}
-            <button onClick={() => handleCancelDemoPay(payingFor)} className="mt-3 w-full text-center text-xs text-gray-500 hover:text-gray-600">
-              Cancel
-            </button>
+        <Modal title="Complete Demo Payment" onClose={() => handleCancelDemoPay(payingFor)}>
+          <div className="space-y-4">
+            <div className="rounded-xl border border-brand/20 bg-brand/5 p-4 dark:bg-brand/10">
+              <div className="flex justify-between items-center text-sm font-semibold mb-2">
+                <span className="text-slate-600 dark:text-slate-300">Amount Due:</span>
+                <span className="text-base text-brand font-bold">₹{payIntent.amount.toLocaleString("en-IN")}</span>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">
+                This environment is operating in demo mode. You can simulate the UPI verification:
+              </p>
+              <div className="rounded-lg bg-slate-100 p-2.5 font-mono text-xs text-brand break-all dark:bg-slate-800">
+                {payIntent.upiIntent}
+              </div>
+            </div>
+
+            <Button
+              onClick={() => handleConfirmDemoPay(payingFor)}
+              disabled={submitting}
+              loading={submitting}
+              variant="primary"
+              className="w-full"
+            >
+              Simulate UPI Payment Verification
+            </Button>
+
+            <Button
+              variant="ghost"
+              onClick={() => handleCancelDemoPay(payingFor)}
+              className="w-full text-xs text-slate-400"
+            >
+              Cancel Order
+            </Button>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

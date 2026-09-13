@@ -1,11 +1,16 @@
 import { useState } from "react";
-import { Monitor, Moon, Save, Sun, User } from "lucide-react";
+import { Monitor, Moon, Sun, Upload } from "lucide-react";
 import { updateProfile } from "../api/auth";
 import { extractApiError } from "../api/client";
 import { useAuthStore } from "../stores/auth";
 import { getThemeMode } from "../lib/theme";
 import { changeTheme } from "../lib/themeAccount";
 import type { ThemeMode } from "../lib/theme";
+import { Input } from "../components/ui/Input";
+import { Select } from "../components/ui/Select";
+import { Textarea } from "../components/ui/Textarea";
+import { Button } from "../components/ui/Button";
+import { Alert } from "../components/ui/Alert";
 
 const THEME_OPTIONS: Array<{ mode: ThemeMode; label: string; icon: typeof Sun }> = [
   { mode: "light", label: "Light", icon: Sun },
@@ -13,10 +18,12 @@ const THEME_OPTIONS: Array<{ mode: ThemeMode; label: string; icon: typeof Sun }>
   { mode: "system", label: "System", icon: Monitor },
 ];
 
+import { PHONE_PLACEHOLDER } from "../lib/constants";
+
 export function Profile() {
   const user = useAuthStore((s) => s.user);
-  const setAuth = useAuthStore((s) => s.setAuth);
   const accessToken = useAuthStore((s) => s.accessToken);
+  const setAuth = useAuthStore((s) => s.setAuth);
   const refreshToken = useAuthStore((s) => s.refreshToken);
 
   const [username, setUsername] = useState(user?.username ?? "");
@@ -24,9 +31,9 @@ export function Profile() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [avatarUrl, setAvatarUrl] = useState(user?.avatarUrl ?? "");
-  const [dob, setDob] = useState(user?.dob ? new Date(user.dob).toISOString().split('T')[0] : "");
+  const [dob, setDob] = useState(user?.dob ? new Date(user.dob).toISOString().split("T")[0] : "");
   const [gender, setGender] = useState(user?.gender ?? "");
-  const [phone, setPhone] = useState(user?.phone ?? "+91 ");
+  const [phone, setPhone] = useState(user?.phone ?? "");
 
   let initialAddr = { state: "", district: "", pin: "", landmark: "", street: "" };
   if (user?.address) {
@@ -60,14 +67,19 @@ export function Profile() {
         dob: dob || null,
         gender: gender || null,
         phone: phone || null,
-        address: JSON.stringify({ state: addrState, district: addrDistrict, pin: addrPin, landmark: addrLandmark, street: addrStreet }),
+        address: JSON.stringify({
+          state: addrState,
+          district: addrDistrict,
+          pin: addrPin,
+          landmark: addrLandmark,
+          street: addrStreet,
+        }),
       });
       if (res.success) {
-        // Keep the updated user in the store (role is preserved by the API).
         setAuth({ accessToken: accessToken!, refreshToken: refreshToken!, user: res.data });
         setCurrentPassword("");
         setNewPassword("");
-        setMessage({ ok: true, text: "✓ Profile updated" });
+        setMessage({ ok: true, text: "Profile changes saved successfully." });
       } else {
         setMessage({ ok: false, text: res.error.message });
       }
@@ -91,195 +103,190 @@ export function Profile() {
       if (res.data?.success) {
         setAvatarUrl(res.data.data.avatarUrl);
         setAuth({ accessToken: accessToken!, refreshToken: refreshToken!, user: res.data.data });
-        setMessage({ ok: true, text: "✓ Avatar uploaded" });
+        setMessage({ ok: true, text: "Profile avatar uploaded successfully." });
       }
-    } catch (err) {
-      setMessage({ ok: false, text: "Failed to upload avatar" });
+    } catch {
+      setMessage({ ok: false, text: "Failed to upload avatar image." });
     }
   }
 
   return (
-    <div className="page-enter mx-auto max-w-lg px-4 py-8">
-      <h1 className="mb-8 flex items-center justify-center gap-2 text-center text-3xl font-bold">
-        <User className="h-8 w-8 text-brand" /> My Profile
-      </h1>
+    <div className="page-enter mx-auto max-w-2xl px-4 py-8 sm:px-6">
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
+          Account & Profile
+        </h1>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          Manage your personal information, address preferences, security credentials, and theme.
+        </p>
+      </div>
 
       {message && (
-        <p
-          className={`mb-4 rounded px-4 py-2 text-sm ${message.ok ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"
-            }`}
-        >
-          {message.text}
-        </p>
+        <div className="mb-6">
+          <Alert variant={message.ok ? "success" : "danger"} onClose={() => setMessage(null)}>
+            {message.text}
+          </Alert>
+        </div>
       )}
 
-      <form
-        onSubmit={handleSubmit}
-        className="rounded-2xl border border-brand/20 bg-night-800 p-8"
-      >
-        <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-gray-500">
-          Account details
-        </h2>
-        <div className="mb-4 flex items-center justify-between rounded-lg border border-brand/20 bg-night-900 px-3 py-2.5">
-          <div>
-            <div className="text-xs font-semibold uppercase text-gray-500">User ID</div>
-            <div className="text-xs text-gray-600">Support ko yeh ID batao — account turant milega</div>
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Account Identity Section */}
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+            <div>
+              <h2 className="text-base font-bold text-slate-900 dark:text-white">Account Details</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Primary login credentials and support reference</p>
+            </div>
+            <div className="rounded-xl bg-brand/10 dark:bg-brand/15 px-3 py-1 font-mono text-xs font-bold text-brand">
+              ID #{user?.id ?? "—"}
+            </div>
           </div>
-          <div className="rounded bg-brand/10 px-2.5 py-1 font-mono text-sm font-bold text-brand">#{user?.id ?? "—"}</div>
-        </div>
-        <label className="mb-1 block text-xs font-semibold uppercase text-gray-500">Username</label>
-        <input
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          required
-          className="mb-4 w-full rounded-lg border border-brand/20 bg-night-900 px-3 py-2.5 text-sm outline-none focus:border-brand"
-        />
-        <label className="mb-1 block text-xs font-semibold uppercase text-gray-500">Email</label>
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-          className="mb-6 w-full rounded-lg border border-brand/20 bg-night-900 px-3 py-2.5 text-sm outline-none focus:border-brand"
-        />
 
-        <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-gray-500">
-          Personal details
-        </h2>
+          <div className="flex items-center gap-4 py-2">
+            <img
+              src={avatarUrl ? avatarUrl : `https://api.dicebear.com/9.x/avataaars/svg?seed=${username}`}
+              className="h-16 w-16 rounded-2xl border border-slate-200 bg-slate-100 object-cover dark:border-slate-700 dark:bg-slate-800"
+              alt="Profile Avatar"
+            />
+            <label className="cursor-pointer">
+              <span className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:border-brand hover:text-brand dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 transition">
+                <Upload className="h-3.5 w-3.5" /> Upload New Photo
+              </span>
+              <input type="file" accept="image/*" onChange={handleAvatarUpload} className="hidden" />
+            </label>
+          </div>
 
-        <label className="mb-1 block text-xs font-semibold uppercase text-gray-500">Profile Photo</label>
-        <div className="flex items-center gap-4 mb-4">
-          <img
-            src={avatarUrl ? avatarUrl : `https://api.dicebear.com/9.x/avataaars/svg?seed=${username}`}
-            className="w-16 h-16 rounded-full border border-brand/20 bg-night-900 object-cover"
-            alt="Avatar"
-          />
-          <input
-            type="file"
-            accept="image/*"
-            onChange={handleAvatarUpload}
-            className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-brand/10 file:text-brand hover:file:bg-brand/20"
-          />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Input
+              label="Username *"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              required
+            />
+            <Input
+              label="Email Address *"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+          </div>
         </div>
 
-        <div className="flex gap-4">
-          <div className="flex-1">
-            <label className="mb-1 block text-xs font-semibold uppercase text-gray-500">Date of Birth</label>
-            <input
+        {/* Personal Details Section */}
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+          <h2 className="text-base font-bold text-slate-900 dark:text-white pb-2 border-b border-slate-100 dark:border-slate-800">
+            Personal Details
+          </h2>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Input
+              label="Date of Birth"
               type="date"
               value={dob}
               onChange={(e) => setDob(e.target.value)}
-              className="mb-4 w-full rounded-lg border border-brand/20 bg-night-900 px-3 py-2.5 text-sm outline-none focus:border-brand text-gray-200"
             />
-          </div>
-          <div className="flex-1">
-            <label className="mb-1 block text-xs font-semibold uppercase text-gray-500">Gender</label>
-            <select
+            <Select
+              label="Gender"
               value={gender}
               onChange={(e) => setGender(e.target.value)}
-              className="mb-4 w-full rounded-lg border border-brand/20 bg-night-900 px-3 py-3 text-sm outline-none focus:border-brand text-gray-200 appearance-none bg-no-repeat"
-              style={{ backgroundImage: 'url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23007CB2%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E")', backgroundPosition: 'right 0.7rem top 50%', backgroundSize: '0.65rem auto' }}
             >
               <option value="">Select Gender</option>
               <option value="Male">Male</option>
               <option value="Female">Female</option>
               <option value="Prefer not to say">Prefer not to say</option>
-            </select>
+            </Select>
+          </div>
+
+          <Input
+            label="Mobile Phone"
+            type="tel"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder={PHONE_PLACEHOLDER}
+          />
+
+          <div className="pt-2">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
+              Default Shipping Address
+            </p>
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <Input
+                placeholder="State"
+                value={addrState}
+                onChange={(e) => setAddrState(e.target.value)}
+              />
+              <Input
+                placeholder="District / City"
+                value={addrDistrict}
+                onChange={(e) => setAddrDistrict(e.target.value)}
+              />
+              <Input
+                placeholder="PIN Code"
+                value={addrPin}
+                onChange={(e) => setAddrPin(e.target.value)}
+              />
+              <Input
+                placeholder="Landmark"
+                value={addrLandmark}
+                onChange={(e) => setAddrLandmark(e.target.value)}
+              />
+            </div>
+            <Textarea
+              placeholder="Street address, house/flat number..."
+              rows={2}
+              value={addrStreet}
+              onChange={(e) => setAddrStreet(e.target.value)}
+            />
           </div>
         </div>
 
-        <label className="mb-1 block text-xs font-semibold uppercase text-gray-500">Phone</label>
-        <input
-          type="tel"
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-          placeholder="+91 123 456 7890"
-          className="mb-4 w-full rounded-lg border border-brand/20 bg-night-900 px-3 py-2.5 text-sm outline-none focus:border-brand"
-        />
+        {/* Security / Password Section */}
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+          <h2 className="text-base font-bold text-slate-900 dark:text-white pb-2 border-b border-slate-100 dark:border-slate-800">
+            Security & Password
+          </h2>
 
-        <label className="mb-1 block text-xs font-semibold uppercase text-gray-500">Address Breakdown</label>
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          <input
-            value={addrState}
-            onChange={(e) => setAddrState(e.target.value)}
-            placeholder="State"
-            className="w-full rounded-lg border border-brand/20 bg-night-900 px-3 py-2.5 text-sm outline-none focus:border-brand"
-          />
-          <input
-            value={addrDistrict}
-            onChange={(e) => setAddrDistrict(e.target.value)}
-            placeholder="District"
-            className="w-full rounded-lg border border-brand/20 bg-night-900 px-3 py-2.5 text-sm outline-none focus:border-brand"
-          />
-          <input
-            value={addrPin}
-            onChange={(e) => setAddrPin(e.target.value)}
-            placeholder="PIN Code"
-            className="w-full rounded-lg border border-brand/20 bg-night-900 px-3 py-2.5 text-sm outline-none focus:border-brand"
-          />
-          <input
-            value={addrLandmark}
-            onChange={(e) => setAddrLandmark(e.target.value)}
-            placeholder="Landmark"
-            className="w-full rounded-lg border border-brand/20 bg-night-900 px-3 py-2.5 text-sm outline-none focus:border-brand"
-          />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Input
+              label="Current Password"
+              type="password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              placeholder="Required only to change password"
+            />
+            <Input
+              label="New Password"
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="Leave blank to keep unchanged"
+              minLength={6}
+            />
+          </div>
         </div>
-        <textarea
-          value={addrStreet}
-          onChange={(e) => setAddrStreet(e.target.value)}
-          placeholder="Street Address..."
-          rows={2}
-          className="mb-6 w-full rounded-lg border border-brand/20 bg-night-900 px-3 py-2.5 text-sm outline-none focus:border-brand resize-none"
-        />
 
-        <h2 className="mb-4 text-sm font-bold uppercase tracking-wide text-gray-500">
-          Change password
-        </h2>
-        <label className="mb-1 block text-xs font-semibold uppercase text-gray-500">
-          Current password
-        </label>
-        <input
-          type="password"
-          value={currentPassword}
-          onChange={(e) => setCurrentPassword(e.target.value)}
-          placeholder="Required only when setting a new password"
-          className="mb-4 w-full rounded-lg border border-brand/20 bg-night-900 px-3 py-2.5 text-sm outline-none focus:border-brand"
-        />
-        <label className="mb-1 block text-xs font-semibold uppercase text-gray-500">
-          New password
-        </label>
-        <input
-          type="password"
-          value={newPassword}
-          onChange={(e) => setNewPassword(e.target.value)}
-          placeholder="Leave blank to keep current"
-          minLength={6}
-          className="mb-6 w-full rounded-lg border border-brand/20 bg-night-900 px-3 py-2.5 text-sm outline-none focus:border-brand"
-        />
-
-        <button
+        <Button
           type="submit"
+          variant="primary"
+          size="lg"
           disabled={loading}
-          className="w-full rounded-lg bg-brand py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+          loading={loading}
+          className="w-full"
         >
-          {loading ? (
-            "Saving…"
-          ) : (
-            <span className="inline-flex items-center gap-1.5">
-              <Save className="h-4 w-4" /> Save Changes
-            </span>
-          )}
-        </button>
+          Save Profile Changes
+        </Button>
       </form>
 
-      <div className="mt-6 rounded-2xl border border-brand/20 bg-night-800 p-8">
-        <h2 className="mb-1 text-sm font-bold uppercase tracking-wide text-gray-500">
-          Appearance
+      {/* Appearance & Theme Card */}
+      <div className="mt-6 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <h2 className="text-base font-bold text-slate-900 dark:text-white mb-1">
+          Interface Theme
         </h2>
-        <p className="mb-4 text-sm text-gray-500">
-          Site ka theme choose karo — System me OS ki setting follow hoti hai.
+        <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+          Choose your preferred theme mode or sync automatically with your device system preferences.
         </p>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-3 gap-3">
           {THEME_OPTIONS.map(({ mode, label, icon: Icon }) => (
             <button
               key={mode}
@@ -288,10 +295,11 @@ export function Profile() {
                 changeTheme(mode);
                 setThemeModeState(mode);
               }}
-              className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-semibold transition ${themeMode === mode
-                ? "border-brand bg-brand text-white"
-                : "border-brand/20 bg-night-900 text-gray-600 hover:border-brand hover:text-brand"
-                }`}
+              className={`flex items-center justify-center gap-2 rounded-xl border p-3 text-xs font-semibold transition ${
+                themeMode === mode
+                  ? "border-brand bg-brand text-white shadow-sm shadow-brand/25"
+                  : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
+              }`}
             >
               <Icon className="h-4 w-4" />
               {label}

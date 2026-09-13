@@ -199,16 +199,24 @@ export function createApp() {
   const webDistAssets = path.join(webDist, "assets");
 
   // Explicitly serve /assets with guaranteed JS/CSS MIME headers
+  const setAssetHeaders = (res: express.Response, filePath: string) => {
+    if (filePath.endsWith(".js")) res.setHeader("Content-Type", "application/javascript");
+    else if (filePath.endsWith(".css")) res.setHeader("Content-Type", "text/css");
+
+    const base = path.basename(filePath);
+    if (base === "index.js" || base === "index.css") {
+      res.setHeader("Cache-Control", "no-cache, must-revalidate, max-age=0");
+      res.setHeader("Pragma", "no-cache");
+    } else {
+      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    }
+  };
+
   if (fs.existsSync(apiAssetsDir)) {
     app.use(
       "/assets",
       express.static(apiAssetsDir, {
-        maxAge: "1y",
-        immutable: true,
-        setHeaders: (res, filePath) => {
-          if (filePath.endsWith(".js")) res.setHeader("Content-Type", "application/javascript");
-          else if (filePath.endsWith(".css")) res.setHeader("Content-Type", "text/css");
-        },
+        setHeaders: setAssetHeaders,
       }),
     );
   }
@@ -216,12 +224,7 @@ export function createApp() {
     app.use(
       "/assets",
       express.static(webDistAssets, {
-        maxAge: "1y",
-        immutable: true,
-        setHeaders: (res, filePath) => {
-          if (filePath.endsWith(".js")) res.setHeader("Content-Type", "application/javascript");
-          else if (filePath.endsWith(".css")) res.setHeader("Content-Type", "text/css");
-        },
+        setHeaders: setAssetHeaders,
       }),
     );
   }
