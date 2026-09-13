@@ -1,7 +1,16 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
-import { Zap, Power, AlertCircle, Clock, Settings2, Filter, User, Calendar } from "lucide-react";
-
+import { Zap, Power, AlertCircle, Clock, Settings2, Filter, User, Calendar, ShieldCheck, RefreshCw } from "lucide-react";
+import { PageHeader } from "../components/layout/PageHeader";
+import { Card } from "../components/ui/Card";
+import { CardHeader } from "../components/ui/CardHeader";
+import { CardTitle } from "../components/ui/CardTitle";
+import { CardDescription } from "../components/ui/CardDescription";
+import { CardContent } from "../components/ui/CardContent";
+import { Badge } from "../components/ui/Badge";
+import { Button } from "../components/ui/Button";
+import { EmptyState } from "../components/ui/EmptyState";
+import { Skeleton } from "../components/ui/Skeleton";
 
 export function Settings() {
     const [homes, setHomes] = useState<any[]>([]);
@@ -45,7 +54,7 @@ export function Settings() {
                 setDevices(body.data);
             }
         });
-    }
+    };
 
     const fetchMembers = (homeId: number) => {
         api.get(`/homes/${homeId}/members`).then((res: any) => {
@@ -54,7 +63,7 @@ export function Settings() {
                 setMembers(body.data);
             }
         });
-    }
+    };
 
     const fetchLogs = (homeId: number, deviceId: number | null, userId: number | null, timeRange: string) => {
         setLoading(true);
@@ -74,56 +83,88 @@ export function Settings() {
         }).finally(() => {
             setLoading(false);
         });
-    }
+    };
 
     const capitalize = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
 
+    const handleRefresh = () => {
+        if (selectedHomeId) {
+            fetchLogs(selectedHomeId, selectedDeviceId, selectedUserId, selectedTimeRange);
+        }
+    };
+
     return (
-        <div className="page-enter mx-auto max-w-4xl px-4 py-8 sm:px-6">
-            <h1 className="page-title mb-1 flex items-center gap-2">
-                <Settings2 className="w-7 h-7 text-brand" /> Settings
-            </h1>
-            <p className="text-gray-500 mb-8">Home configuration and Audit logs (Admins Only)</p>
+        <div className="page-enter mx-auto max-w-5xl px-4 py-8 sm:px-6">
+            <PageHeader
+                title="Settings & Audit Logs"
+                subtitle="Monitor device events, status toggles, and user actions across your managed homes."
+                actions={
+                    <Button
+                        variant="secondary"
+                        size="sm"
+                        leftIcon={<RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />}
+                        onClick={handleRefresh}
+                        disabled={loading || !selectedHomeId}
+                    >
+                        Refresh Logs
+                    </Button>
+                }
+            />
 
-            <div className="card-static p-6">
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-5">Audit Logs</h2>
+            {/* Home selector tabs */}
+            {homes.length > 1 && (
+                <div className="mb-6 flex items-center gap-2 overflow-x-auto pb-2">
+                    {homes.map((home: any) => {
+                        const hId = home.homeId || home.id;
+                        const isSelected = selectedHomeId === hId;
+                        const hName = capitalize(home.name || home.home?.name) || `Home ${hId}`;
+                        return (
+                            <button
+                                key={hId}
+                                onClick={() => {
+                                    setSelectedHomeId(hId);
+                                    setSelectedDeviceId(null);
+                                    setSelectedUserId(null);
+                                    setSelectedTimeRange("");
+                                    fetchDevices(hId);
+                                    fetchMembers(hId);
+                                    fetchLogs(hId, null, null, "");
+                                }}
+                                className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
+                                    isSelected
+                                        ? "bg-brand text-white shadow-sm shadow-brand/20"
+                                        : "bg-surface-elevated text-text-muted hover:text-text-primary border border-border/60 hover:bg-surface-secondary"
+                                }`}
+                            >
+                                <ShieldCheck className="h-4 w-4" />
+                                {hName}
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
 
-                {homes.length > 1 && (
-                    <div className="flex gap-3 mb-4 overflow-x-auto pb-2">
-                        {homes.map((home: any) => {
-                            const hId = home.homeId || home.id;
-                            const isSelected = selectedHomeId === hId;
-                            const hName = capitalize(home.name || home.home?.name) || `Home ${hId}`;
-                            return (
-                                <button
-                                    key={hId}
-                                    onClick={() => {
-                                        setSelectedHomeId(hId);
-                                        setSelectedDeviceId(null);
-                                        setSelectedUserId(null);
-                                        setSelectedTimeRange("");
-                                        fetchDevices(hId);
-                                        fetchMembers(hId);
-                                        fetchLogs(hId, null, null, "");
-                                    }}
-                                    className={`px-4 py-2 rounded-full border text-sm font-medium transition ${isSelected ? 'bg-brand/10 border-brand text-brand' : 'bg-white border-gray-200 text-gray-600'}`}
-                                >
-                                    {hName}
-                                </button>
-                            );
-                        })}
+            <Card className="mb-8">
+                <CardHeader>
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                        <div>
+                            <CardTitle className="flex items-center gap-2 text-lg">
+                                <Settings2 className="h-5 w-5 text-brand" />
+                                Filter Activity Logs
+                            </CardTitle>
+                            <CardDescription>
+                                Narrow down events by target hardware, specific household member, or time window.
+                            </CardDescription>
+                        </div>
                     </div>
-                )}
-
-                {devices.length > 0 && (
-                    <div className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+                </CardHeader>
+                <CardContent>
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                         {/* Device Filter */}
-                        <div className="flex flex-col gap-2">
-                            <label className="text-sm font-semibold text-gray-700 flex items-center gap-2 mb-1">
-                                <span className="flex items-center justify-center bg-gray-100 p-1.5 rounded-lg text-gray-500">
-                                    <Filter size={14} className="text-gray-500" />
-                                </span>
-                                Hardware
+                        <div>
+                            <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-text-muted">
+                                <Filter className="h-3.5 w-3.5" />
+                                Hardware Device
                             </label>
                             <select
                                 value={selectedDeviceId || ""}
@@ -132,7 +173,7 @@ export function Settings() {
                                     setSelectedDeviceId(val);
                                     if (selectedHomeId) fetchLogs(selectedHomeId, val, selectedUserId, selectedTimeRange);
                                 }}
-                                className="select-field"
+                                className="w-full rounded-xl border border-border/80 bg-surface-primary px-3.5 py-2.5 text-sm font-medium text-text-primary shadow-xs outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
                             >
                                 <option value="">All Connected Devices</option>
                                 {devices.map((device: any) => (
@@ -140,12 +181,11 @@ export function Settings() {
                                 ))}
                             </select>
                         </div>
+
                         {/* User Filter */}
-                        <div className="flex flex-col gap-2">
-                            <label className="text-sm font-semibold text-gray-700 flex items-center gap-2 mb-1">
-                                <span className="flex items-center justify-center bg-gray-100 p-1.5 rounded-lg text-gray-500">
-                                    <User size={14} className="text-gray-500" />
-                                </span>
+                        <div>
+                            <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-text-muted">
+                                <User className="h-3.5 w-3.5" />
                                 Member
                             </label>
                             <select
@@ -155,7 +195,7 @@ export function Settings() {
                                     setSelectedUserId(val);
                                     if (selectedHomeId) fetchLogs(selectedHomeId, selectedDeviceId, val, selectedTimeRange);
                                 }}
-                                className="select-field"
+                                className="w-full rounded-xl border border-border/80 bg-surface-primary px-3.5 py-2.5 text-sm font-medium text-text-primary shadow-xs outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
                             >
                                 <option value="">Everyone (All Members)</option>
                                 {members.map((member: any) => (
@@ -163,13 +203,12 @@ export function Settings() {
                                 ))}
                             </select>
                         </div>
+
                         {/* Time Filter */}
-                        <div className="flex flex-col gap-2">
-                            <label className="text-sm font-semibold text-gray-700 flex items-center gap-2 mb-1">
-                                <span className="flex items-center justify-center bg-gray-100 p-1.5 rounded-lg text-gray-500">
-                                    <Calendar size={14} className="text-gray-500" />
-                                </span>
-                                Time Range
+                        <div>
+                            <label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-text-muted">
+                                <Calendar className="h-3.5 w-3.5" />
+                                Time Horizon
                             </label>
                             <select
                                 value={selectedTimeRange}
@@ -178,64 +217,93 @@ export function Settings() {
                                     setSelectedTimeRange(val);
                                     if (selectedHomeId) fetchLogs(selectedHomeId, selectedDeviceId, selectedUserId, val);
                                 }}
-                                className="select-field"
+                                className="w-full rounded-xl border border-border/80 bg-surface-primary px-3.5 py-2.5 text-sm font-medium text-text-primary shadow-xs outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
                             >
-                                <option value="">Any Time (All History)</option>
-                                <option value="24h">Last 24 Hours</option>
+                                <option value="">All Time History</option>
+                                <option value="24h">Past 24 Hours</option>
                                 <option value="7d">Past 7 Days</option>
                                 <option value="30d">Past 30 Days</option>
                             </select>
                         </div>
                     </div>
-                )}
+                </CardContent>
+            </Card>
 
-                {loading ? (
-                    <div className="py-20 text-center text-gray-500">Loading activity...</div>
-                ) : logs.length === 0 ? (
-                    <div className="py-20 text-center text-gray-500 border rounded-2xl bg-gray-50 border-dashed">No activity recorded or viewing permission denied.</div>
-                ) : (
-                    <div className="space-y-4">
-                        {logs.map((item) => {
-                            const date = new Date(item.createdAt);
-                            const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                            const dateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+            {/* Logs Timeline */}
+            <Card>
+                <CardHeader>
+                    <div className="flex items-center justify-between">
+                        <CardTitle className="text-base">Audit Trail</CardTitle>
+                        <Badge variant="neutral">{logs.length} Recorded Events</Badge>
+                    </div>
+                </CardHeader>
+                <CardContent>
+                    {loading ? (
+                        <div className="space-y-3 py-4">
+                            <Skeleton className="h-16 w-full rounded-xl" />
+                            <Skeleton className="h-16 w-full rounded-xl" />
+                            <Skeleton className="h-16 w-full rounded-xl" />
+                        </div>
+                    ) : logs.length === 0 ? (
+                        <EmptyState
+                            icon={<Clock className="h-8 w-8 text-text-muted" />}
+                            title="No activity recorded"
+                            description="No actions match the active filters, or you don't have administrator privileges for this home."
+                        />
+                    ) : (
+                        <div className="divide-y divide-border/60">
+                            {logs.map((item) => {
+                                const date = new Date(item.createdAt);
+                                const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                const dateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
 
-                            let ActionIcon = Zap;
-                            let iconColor = "text-brand bg-brand/10";
+                                let ActionIcon = Zap;
+                                let iconStyle = "text-brand bg-brand/10 dark:bg-brand/20";
 
-                            if (item.logMessage.toLowerCase().includes('turned on')) {
-                                ActionIcon = Power;
-                                iconColor = "text-emerald-600 bg-emerald-100";
-                            } else if (item.logMessage.toLowerCase().includes('turned off')) {
-                                ActionIcon = Power;
-                                iconColor = "text-red-500 bg-red-100";
-                            } else if (item.logType === 'error') {
-                                ActionIcon = AlertCircle;
-                                iconColor = "text-amber-500 bg-amber-100";
-                            }
+                                const isTurnedOn = item.logMessage?.toLowerCase().includes('turned on');
+                                const isTurnedOff = item.logMessage?.toLowerCase().includes('turned off');
 
-                            const msgFormatted = item.logMessage.replace('Device status changed to', 'turned');
+                                if (isTurnedOn) {
+                                    ActionIcon = Power;
+                                    iconStyle = "text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 dark:text-emerald-400";
+                                } else if (isTurnedOff) {
+                                    ActionIcon = Power;
+                                    iconStyle = "text-rose-600 bg-rose-50 dark:bg-rose-950/40 dark:text-rose-400";
+                                } else if (item.logType === 'error') {
+                                    ActionIcon = AlertCircle;
+                                    iconStyle = "text-amber-600 bg-amber-50 dark:bg-amber-950/40 dark:text-amber-400";
+                                }
 
-                            return (
-                                <div key={item.id} className="flex items-center gap-4 rounded-xl border border-gray-100 bg-gray-50/60 p-4 dark:border-night-600 dark:bg-night-700/30">
-                                    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${iconColor}`}>
-                                        <ActionIcon className="h-5 w-5" />
-                                    </div>
-                                    <div className="flex-1">
-                                        <p className="text-gray-800 dark:text-gray-200 text-sm">
-                                            <span className="font-bold">{capitalize(item.actor?.username || 'System')}</span> {msgFormatted} <span className="font-semibold text-brand">{item.device?.name || 'Device'}</span>
-                                        </p>
-                                        <div className="flex items-center text-xs text-gray-500 mt-1">
-                                            <Clock className="w-3.5 h-3.5 mr-1.5" />
-                                            {dateStr} at {timeStr}
+                                const msgFormatted = item.logMessage?.replace('Device status changed to', 'turned') || 'Action executed';
+
+                                return (
+                                    <div key={item.id} className="flex items-center gap-4 py-4 first:pt-0 last:pb-0">
+                                        <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${iconStyle}`}>
+                                            <ActionIcon className="h-5 w-5" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-medium text-text-primary">
+                                                <span className="font-semibold text-text-primary">{capitalize(item.actor?.username || 'System')}</span>{' '}
+                                                <span className="text-text-secondary">{msgFormatted}</span>{' '}
+                                                <span className="font-semibold text-brand">{item.device?.name || 'Device'}</span>
+                                            </p>
+                                            <div className="mt-1 flex items-center gap-2 text-xs text-text-muted">
+                                                <Clock className="h-3.5 w-3.5" />
+                                                <span>{dateStr} at {timeStr}</span>
+                                                {item.logType && (
+                                                    <span className="rounded-md bg-surface-secondary px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-text-muted">
+                                                        {item.logType}
+                                                    </span>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                )}
-            </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
         </div>
     );
 }

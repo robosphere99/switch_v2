@@ -294,7 +294,7 @@ export function LoginScreen({ onLoginSuccess, onBiometricRetry }: Props) {
                         disabled={loading}
                         activeOpacity={0.8}
                     >
-                        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>{isSignup ? "Create Account" : "Authenticate"}</Text>}
+                        {loading ? <ActivityIndicator color={theme.background} /> : <Text style={[styles.buttonText, { color: theme.background }]}>{isSignup ? "Create Account" : "Sign In"}</Text>}
                     </TouchableOpacity>
 
                     <TouchableOpacity
@@ -479,101 +479,100 @@ const styles = StyleSheet.create({
     },
     content: {
         flexGrow: 1,
-        paddingTop: height * 0.12,
-        paddingHorizontal: 32,
-        paddingBottom: 40,
+        paddingTop: height * 0.13,
+        paddingHorizontal: 28,
+        paddingBottom: 80,
     },
     header: {
-        marginBottom: 48,
+        marginBottom: 40,
         alignItems: 'center',
     },
     title: {
-        fontSize: 42,
+        fontSize: 36,
         fontWeight: '900',
-        letterSpacing: -1,
+        letterSpacing: -1.2,
     },
     subtitle: {
-        fontSize: 16,
-        marginTop: 8,
+        fontSize: 14,
+        marginTop: 6,
         fontWeight: '500',
-        letterSpacing: 0.5,
+        letterSpacing: 0.2,
     },
     form: {
         width: '100%',
     },
     errorBox: {
         padding: 12,
-        borderRadius: 12,
-        borderWidth: 1,
-        marginBottom: 24,
+        borderRadius: 10,
+        borderWidth: StyleSheet.hairlineWidth,
+        marginBottom: 20,
     },
     errorText: {
-        fontSize: 14,
-        fontWeight: '700',
+        fontSize: 13,
+        fontWeight: '600',
         textAlign: 'center',
     },
     inputContainer: {
         width: '100%',
     },
     label: {
-        fontSize: 11,
+        fontSize: 10,
         fontWeight: '800',
-        marginBottom: 8,
-        letterSpacing: 1,
-        paddingLeft: 4,
+        marginBottom: 7,
+        letterSpacing: 1.2,
+        paddingLeft: 2,
     },
     input: {
         width: '100%',
-        borderWidth: 1,
-        borderRadius: 16,
-        paddingHorizontal: 20,
-        paddingVertical: 18,
-        fontSize: 16,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderRadius: 12,
+        paddingHorizontal: 16,
+        paddingVertical: 15,
+        fontSize: 15,
         fontWeight: '500',
     },
     checkboxRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginTop: 18,
-        paddingLeft: 4,
+        marginTop: 16,
+        paddingLeft: 2,
         gap: 10
     },
     checkboxText: {
         fontSize: 13,
-        fontWeight: '600'
+        fontWeight: '500'
     },
     button: {
         width: '100%',
-        borderRadius: 16,
-        paddingVertical: 18,
+        borderRadius: 12,
+        paddingVertical: 16,
         alignItems: 'center',
         justifyContent: 'center',
-        marginTop: 32,
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.4,
-        shadowRadius: 16,
-        elevation: 8,
+        marginTop: 28,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.25,
+        shadowRadius: 10,
+        elevation: 5,
     },
     buttonText: {
-        color: '#ffffff',
-        fontSize: 17,
-        fontWeight: 'bold',
-        letterSpacing: 0.5,
+        fontSize: 15,
+        fontWeight: '700',
+        letterSpacing: 0.3,
     },
     bioButton: {
         width: '100%',
-        borderRadius: 16,
-        paddingVertical: 14,
+        borderRadius: 12,
+        paddingVertical: 13,
         alignItems: 'center',
         justifyContent: 'center',
-        marginTop: 16,
-        borderWidth: 1,
+        marginTop: 14,
+        borderWidth: StyleSheet.hairlineWidth,
         flexDirection: 'row',
-        gap: 12
+        gap: 10
     },
     bioText: {
-        fontSize: 15,
-        fontWeight: '700'
+        fontSize: 14,
+        fontWeight: '600'
     },
     footer: {
         position: 'absolute',

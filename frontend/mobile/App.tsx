@@ -386,33 +386,43 @@ function MainApp() {
           </View>
         </Modal>
 
-        {/* Premium Bottom Navbar */}
+        {/* Modern Bottom Navbar matching Web */}
         <View style={[styles.bottomNav, { backgroundColor: theme.tabBar, borderColor: theme.border }]}>
-          <TouchableOpacity style={styles.navItem} onPress={() => setNav('HOME')}>
-            <HomeIcon color={activeTab === 'HOME' ? theme.primary : theme.textSecondary} size={24} />
+          <TouchableOpacity style={styles.navItem} onPress={() => setNav('HOME')} activeOpacity={0.7}>
+            <View style={[styles.navIconWrap, activeTab === 'HOME' && { backgroundColor: theme.id === 'defaultDark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.06)' }]}>
+              <HomeIcon color={activeTab === 'HOME' ? theme.primary : theme.textSecondary} size={20} strokeWidth={activeTab === 'HOME' ? 2.4 : 1.8} />
+            </View>
             <Text style={[styles.navText, { color: activeTab === 'HOME' ? theme.primary : theme.textSecondary }]}>Home</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.navItem} onPress={() => setNav('HARDWARE')}>
-            <Server color={activeTab === 'HARDWARE' ? theme.primary : theme.textSecondary} size={24} />
+          <TouchableOpacity style={styles.navItem} onPress={() => setNav('HARDWARE')} activeOpacity={0.7}>
+            <View style={[styles.navIconWrap, activeTab === 'HARDWARE' && { backgroundColor: theme.id === 'defaultDark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.06)' }]}>
+              <Server color={activeTab === 'HARDWARE' ? theme.primary : theme.textSecondary} size={20} strokeWidth={activeTab === 'HARDWARE' ? 2.4 : 1.8} />
+            </View>
             <Text style={[styles.navText, { color: activeTab === 'HARDWARE' ? theme.primary : theme.textSecondary }]}>Boards</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.navItem} onPress={() => setNav('AUTOMATIONS')}>
-            <Clock color={activeTab === 'AUTOMATIONS' ? theme.primary : theme.textSecondary} size={24} />
+          <TouchableOpacity style={styles.navItem} onPress={() => setNav('AUTOMATIONS')} activeOpacity={0.7}>
+            <View style={[styles.navIconWrap, activeTab === 'AUTOMATIONS' && { backgroundColor: theme.id === 'defaultDark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.06)' }]}>
+              <Clock color={activeTab === 'AUTOMATIONS' ? theme.primary : theme.textSecondary} size={20} strokeWidth={activeTab === 'AUTOMATIONS' ? 2.4 : 1.8} />
+            </View>
             <Text style={[styles.navText, { color: activeTab === 'AUTOMATIONS' ? theme.primary : theme.textSecondary }]}>Routines</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.navItem} onPress={() => setNav('SHOP')}>
-            <ShoppingCart color={activeTab === 'SHOP' ? theme.primary : theme.textSecondary} size={24} />
+          <TouchableOpacity style={styles.navItem} onPress={() => setNav('SHOP')} activeOpacity={0.7}>
+            <View style={[styles.navIconWrap, activeTab === 'SHOP' && { backgroundColor: theme.id === 'defaultDark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.06)' }]}>
+              <ShoppingCart color={activeTab === 'SHOP' ? theme.primary : theme.textSecondary} size={20} strokeWidth={activeTab === 'SHOP' ? 2.4 : 1.8} />
+            </View>
             <Text style={[styles.navText, { color: activeTab === 'SHOP' ? theme.primary : theme.textSecondary }]}>Store</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.navItem} onPress={() => {
             setSettingsInitialView('MAIN');
             setNav('SETTINGS');
-          }}>
-            <Settings color={activeTab === 'SETTINGS' ? theme.primary : theme.textSecondary} size={24} />
+          }} activeOpacity={0.7}>
+            <View style={[styles.navIconWrap, activeTab === 'SETTINGS' && { backgroundColor: theme.id === 'defaultDark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.06)' }]}>
+              <Settings color={activeTab === 'SETTINGS' ? theme.primary : theme.textSecondary} size={20} strokeWidth={activeTab === 'SETTINGS' ? 2.4 : 1.8} />
+            </View>
             <Text style={[styles.navText, { color: activeTab === 'SETTINGS' ? theme.primary : theme.textSecondary }]}>Settings</Text>
           </TouchableOpacity>
         </View>
@@ -518,12 +528,28 @@ const styles = StyleSheet.create({
   bottomNav: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    paddingBottom: 32, // SafeArea padding for bottom
-    paddingTop: 16,
-    borderTopWidth: 1,
+    paddingBottom: Platform.OS === 'ios' ? 26 : 10,
+    paddingTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
-  navItem: { alignItems: 'center', flex: 1 },
-  navText: { fontSize: 13, marginTop: 6, fontWeight: '700' },
+  navItem: {
+    alignItems: 'center',
+    flex: 1,
+    paddingVertical: 2,
+  },
+  navIconWrap: {
+    paddingHorizontal: 16,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navText: {
+    fontSize: 10,
+    marginTop: 3,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+  },
 
   /* ── OTA Banner ── */
   otaBanner: {

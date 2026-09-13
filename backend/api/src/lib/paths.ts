@@ -57,23 +57,35 @@ export const attachmentDir = repoRoot
   ? path.join(repoRoot, "hardware", "attachments")
   : path.resolve(process.cwd(), "../../../hardware/attachments");
 
-/** <repo>/site/apps/web/dist — built Vite app (SPA serving). */
+/** Built Vite app (SPA serving). */
 export const webDist = repoRoot
-  ? path.join(repoRoot, "site", "apps", "web", "dist")
-  : path.resolve(apiRoot, "../web/dist");
+  ? (fs.existsSync(path.join(repoRoot, "frontend", "web", "dist"))
+      ? path.join(repoRoot, "frontend", "web", "dist")
+      : path.join(repoRoot, "site", "apps", "web", "dist"))
+  : (fs.existsSync(path.resolve(apiRoot, "../../frontend/web/dist"))
+      ? path.resolve(apiRoot, "../../frontend/web/dist")
+      : path.resolve(apiRoot, "../web/dist"));
 
-/** <repo>/site/apps/api/public/swagger-ui — vendored Swagger UI assets (CDN-free,
- *  helmet ke CSP `script-src 'self'` ke saath kaam karta hai). */
+/** Swagger UI assets */
 export const swaggerUiDir = repoRoot
-  ? path.join(repoRoot, "site", "apps", "api", "public", "swagger-ui")
+  ? (fs.existsSync(path.join(repoRoot, "backend", "api", "public", "swagger-ui"))
+      ? path.join(repoRoot, "backend", "api", "public", "swagger-ui")
+      : path.join(repoRoot, "site", "apps", "api", "public", "swagger-ui"))
   : path.resolve(apiRoot, "public/swagger-ui");
 
-/** <repo>/site/apps/web/public/mobile-app — Vite dev & static serve folder for APK. */
+/** Vite dev & static serve folder for APK */
 export const webPublicMobileAppDir = repoRoot
-  ? path.join(repoRoot, "site", "apps", "web", "public", "mobile-app")
-  : path.resolve(apiRoot, "../web/public/mobile-app");
+  ? (fs.existsSync(path.join(repoRoot, "frontend", "web", "public", "mobile-app"))
+      ? path.join(repoRoot, "frontend", "web", "public", "mobile-app")
+      : path.join(repoRoot, "site", "apps", "web", "public", "mobile-app"))
+  : (fs.existsSync(path.resolve(apiRoot, "../../frontend/web/public/mobile-app"))
+      ? path.resolve(apiRoot, "../../frontend/web/public/mobile-app")
+      : path.resolve(apiRoot, "../web/public/mobile-app"));
 
-/** <repo>/site/apps/api/uploads — avatars and user uploaded assets. */
+/** Avatars and user uploaded assets */
 export const uploadsDir = repoRoot
-  ? path.join(repoRoot, "site", "apps", "api", "uploads")
+  ? (fs.existsSync(path.join(repoRoot, "backend", "api", "uploads"))
+      ? path.join(repoRoot, "backend", "api", "uploads")
+      : path.join(repoRoot, "site", "apps", "api", "uploads"))
   : path.resolve(apiRoot, "uploads");
+

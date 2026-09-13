@@ -52,16 +52,10 @@ const DeviceCard = ({
     const { theme } = useTheme();
     const isON = device.status === 'on';
     const typeKey = device.type?.toLowerCase() || 'custom';
-    const activeColor = GLOW_COLORS[typeKey] || theme.primary;
+    const activeColor = GLOW_COLORS[typeKey] || '#facc15';
 
     // Animation References
     const animScale = useRef(new Animated.Value(1)).current;
-
-    // Smooth interpolate for background and border glow
-    const animGlow = useRef(new Animated.Value(isON ? 1 : 0)).current;
-    useEffect(() => {
-        Animated.timing(animGlow, { toValue: isON ? 1 : 0, duration: 400, useNativeDriver: false }).start();
-    }, [isON]);
 
     const handlePress = () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => { });
@@ -72,126 +66,169 @@ const DeviceCard = ({
         onToggle(device.id, device.status);
     };
 
-    const bgColor = animGlow.interpolate({
-        inputRange: [0, 1],
-        outputRange: [theme.card, 'rgba(21, 23, 26, 0.95)']
-    });
+    // Online = last seen within 90 seconds
+    const isOnline = device.lastSeen && !device.offline
+        ? (Date.now() - new Date(device.lastSeen).getTime() < 90_000)
+        : false;
 
-    const borderColor = animGlow.interpolate({
-        inputRange: [0, 1],
-        outputRange: [theme.border, activeColor]
-    });
+    const isDark = theme.id === 'defaultDark' || theme.background === '#000000';
 
     return (
         <Animated.View style={[
-            { width: '48%', marginBottom: 16, height: 215 },
-            { transform: [{ scale: animScale }], opacity: isBlocked ? 0.7 : 1 }
+            { width: '48%', marginBottom: 16, height: 230 },
+            { transform: [{ scale: animScale }], opacity: isBlocked ? 0.5 : 1 }
         ]}>
             <TouchableOpacity
                 style={{ flex: 1 }}
-                activeOpacity={0.9}
+                activeOpacity={0.88}
                 disabled={isBlocked}
                 onPress={handlePress}
-                delayPressIn={100}
+                delayPressIn={80}
                 onLongPress={() => onLongPress(device)}
             >
-                <Animated.View style={[
+                <View style={[
                     {
                         flex: 1,
                         borderRadius: 20,
-                        borderWidth: 2,
-                        padding: 12,
+                        borderWidth: StyleSheet.hairlineWidth,
+                        padding: 14,
                         alignItems: 'center',
                         justifyContent: 'space-between',
-                        overflow: 'hidden'
+                        overflow: 'hidden',
+                        backgroundColor: theme.card,
+                        borderColor: isON
+                            ? (isDark ? 'rgba(255,255,255,0.22)' : 'rgba(0,0,0,0.18)')
+                            : theme.border,
                     },
-                    { backgroundColor: bgColor, borderColor: borderColor },
-                    isON && { shadowColor: activeColor, shadowOpacity: 0.4, shadowRadius: 15, elevation: 10 }
+                    isON && { shadowColor: activeColor, shadowOpacity: 0.22, shadowRadius: 16, elevation: 6 }
                 ]}>
 
-                    {/* Admin Actions (Top Right) */}
+                    {/* Online Indicator — top left */}
+                    <View style={{ position: 'absolute', top: 11, left: 11, flexDirection: 'row', alignItems: 'center', gap: 4, zIndex: 10 }}>
+                        <View style={{
+                            width: 7, height: 7, borderRadius: 4,
+                            backgroundColor: isOnline ? '#34d399' : (isDark ? '#52525b' : '#d4d4d8'),
+                            shadowColor: isOnline ? '#34d399' : 'transparent',
+                            shadowOpacity: isOnline ? 0.8 : 0,
+                            shadowRadius: 4,
+                        }} />
+                        {!isOnline && (
+                            <Text style={{ fontSize: 8, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', color: theme.textSecondary }}>Offline</Text>
+                        )}
+                    </View>
+
+                    {/* Admin Actions — top right */}
                     {canManage && (
-                        <View style={{ position: 'absolute', top: 10, right: 10, flexDirection: 'row', gap: 6, zIndex: 10 }}>
-                            {onDelete && (
-                                <TouchableOpacity
-                                    onPress={(e) => { e.stopPropagation(); onDelete(device); }}
-                                    style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: '#ef4444', justifyContent: 'center', alignItems: 'center' }}
-                                >
-                                    <Trash2 color="#ffffff" size={14} />
-                                </TouchableOpacity>
-                            )}
+                        <View style={{ position: 'absolute', top: 8, right: 8, flexDirection: 'row', gap: 5, zIndex: 10 }}>
                             {onEdit && (
                                 <TouchableOpacity
-                                    onPress={(e) => { e.stopPropagation(); onEdit(device); }}
-                                    style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: '#3b82f6', justifyContent: 'center', alignItems: 'center' }}
+                                    onPress={(e: any) => { e?.stopPropagation?.(); onEdit(device); }}
+                                    style={{
+                                        width: 26, height: 26, borderRadius: 8,
+                                        backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+                                        justifyContent: 'center', alignItems: 'center'
+                                    }}
                                 >
-                                    <Edit3 color="#ffffff" size={14} />
+                                    <Edit3 color={theme.textSecondary} size={12} />
+                                </TouchableOpacity>
+                            )}
+                            {onDelete && (
+                                <TouchableOpacity
+                                    onPress={(e: any) => { e?.stopPropagation?.(); onDelete(device); }}
+                                    style={{
+                                        width: 26, height: 26, borderRadius: 8,
+                                        backgroundColor: 'rgba(239,68,68,0.12)',
+                                        justifyContent: 'center', alignItems: 'center'
+                                    }}
+                                >
+                                    <Trash2 color="#ef4444" size={12} />
                                 </TouchableOpacity>
                             )}
                         </View>
                     )}
 
-                    {/* Central 3D Glowing Emoji */}
-                    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 10 }}>
+                    {/* Central Emoji with ambient glow */}
+                    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 12 }}>
                         <Text style={{
-                            fontSize: 55,
-                            opacity: isON ? 1 : 0.35,
+                            fontSize: 52,
+                            opacity: isON ? 1 : 0.28,
                             textShadowColor: isON ? activeColor : 'transparent',
                             textShadowOffset: { width: 0, height: 0 },
-                            textShadowRadius: isON ? 25 : 0
+                            textShadowRadius: isON ? 28 : 0,
                         }}>
                             {DEVICE_EMOJIS[typeKey] || '⚙️'}
                         </Text>
                     </View>
 
-                    {/* Meta Section */}
-                    <View style={{ alignItems: 'center', width: '100%', marginTop: 4 }}>
-                        <Text style={{
-                            fontSize: 15,
-                            fontWeight: 'bold',
-                            color: '#ffffff',
+                    {/* Device Name */}
+                    <Text
+                        style={{
+                            fontSize: 13,
+                            fontWeight: '700',
+                            letterSpacing: -0.2,
+                            color: isON ? theme.text : theme.textSecondary,
                             textAlign: 'center',
-                            marginBottom: 6
-                        }} numberOfLines={1}>
-                            {device.name}
-                        </Text>
+                            marginBottom: 8,
+                            paddingHorizontal: 4,
+                        }}
+                        numberOfLines={1}
+                    >
+                        {device.name}
+                    </Text>
 
-                        {/* ON/OFF Pill */}
-                        <View style={{
-                            backgroundColor: isON ? '#10b981' : '#4b5563',
-                            paddingHorizontal: 16,
-                            paddingVertical: 5,
-                            borderRadius: 16,
-                            shadowColor: isON ? '#10b981' : 'transparent',
-                            shadowOpacity: 0.6,
-                            shadowRadius: 8,
-                            elevation: isON ? 5 : 0,
-                            marginBottom: 8
+                    {/* ON/OFF Pill — web-style high contrast */}
+                    <View style={{
+                        paddingHorizontal: 18,
+                        paddingVertical: 5,
+                        borderRadius: 99,
+                        backgroundColor: isON
+                            ? (isDark ? '#ffffff' : '#09090b')
+                            : 'transparent',
+                        borderWidth: isON ? 0 : StyleSheet.hairlineWidth,
+                        borderColor: theme.border,
+                        marginBottom: 8,
+                    }}>
+                        <Text style={{
+                            color: isON
+                                ? (isDark ? '#000000' : '#ffffff')
+                                : theme.textSecondary,
+                            fontWeight: '700',
+                            fontSize: 11,
+                            fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+                            letterSpacing: 1.2,
                         }}>
-                            <Text style={{ color: '#ffffff', fontWeight: 'bold', fontSize: 13, letterSpacing: 1 }}>
-                                {isON ? 'ON' : 'OFF'}
-                            </Text>
-                        </View>
-
-                        <Text style={{ fontSize: 10, color: theme.textSecondary, fontWeight: 'bold', textTransform: 'uppercase' }}>
-                            {device.room?.name || 'Home'}
+                            {isON ? 'ON' : 'OFF'}
                         </Text>
                     </View>
 
-                    {/* Dim Overlay when blocked */}
+                    {/* Room Label */}
+                    <Text style={{
+                        fontSize: 9,
+                        color: theme.textSecondary,
+                        fontWeight: '600',
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.8,
+                        fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+                        marginBottom: 2,
+                    }}>
+                        {device.room?.name || 'Home'}
+                    </Text>
+
+                    {/* Blocked overlay */}
                     {isBlocked && (
                         <View style={{
                             position: 'absolute',
                             top: 0, left: 0, right: 0, bottom: 0,
-                            backgroundColor: 'rgba(0,0,0,0.5)',
+                            backgroundColor: isDark ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.55)',
                             justifyContent: 'center',
                             alignItems: 'center',
-                            zIndex: 20
+                            zIndex: 20,
+                            borderRadius: 20,
                         }}>
-                            <Text style={{ fontSize: 40 }}>🔒</Text>
+                            <Text style={{ fontSize: 36 }}>🔒</Text>
                         </View>
                     )}
-                </Animated.View>
+                </View>
             </TouchableOpacity>
         </Animated.View>
     );
@@ -738,78 +775,86 @@ export function DashboardScreen({ user, onLogout }: { user: any, onLogout: () =>
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#0f172a', width: '100%' },
+    container: { flex: 1, width: '100%' },
     header: {
-        paddingTop: 64,
-        paddingBottom: 16,
-        paddingHorizontal: 24,
+        paddingTop: Platform.OS === 'ios' ? 56 : 40,
+        paddingBottom: 12,
+        paddingHorizontal: 20,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
     },
     headerLeft: { justifyContent: 'center', flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
     avatarBtn: {
-        width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center',
-        borderWidth: 1.5
+        width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center',
+        borderWidth: StyleSheet.hairlineWidth,
     },
-    greetingLabel: { fontSize: 14, fontWeight: '500', opacity: 0.8, marginTop: 4 },
-    userName: { fontSize: 24, fontWeight: '900', letterSpacing: -0.5 },
-    headerRight: { flexDirection: 'row', gap: 10 },
-    iconBtn: { padding: 10, borderRadius: 20, borderWidth: 1 },
+    greetingLabel: { fontSize: 12, fontWeight: '500', marginTop: 2, letterSpacing: 0.1 },
+    userName: { fontSize: 20, fontWeight: '800', letterSpacing: -0.5 },
+    headerRight: { flexDirection: 'row', gap: 8 },
+    iconBtn: {
+        padding: 9,
+        borderRadius: 99,
+        borderWidth: StyleSheet.hairlineWidth,
+    },
 
-    scrollArea: { flex: 1, paddingHorizontal: 20, paddingTop: 20 },
+    scrollArea: { flex: 1, paddingHorizontal: 16, paddingTop: 16 },
     gridContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-    centerBox: { width: '100%', justifyContent: 'center', alignItems: 'center', paddingVertical: 100 },
-    emptyBox: { backgroundColor: '#1e293b', borderRadius: 20, padding: 30, borderWidth: 1, borderColor: '#334155', alignItems: 'center', marginVertical: 40 },
-    emptyText: { color: '#9ca3af', textAlign: 'center', fontSize: 16, lineHeight: 24 },
+    centerBox: { width: '100%', justifyContent: 'center', alignItems: 'center', paddingVertical: 80 },
+    emptyBox: { borderRadius: 16, padding: 28, borderWidth: StyleSheet.hairlineWidth, alignItems: 'center', marginVertical: 32 },
+    emptyText: { textAlign: 'center', fontSize: 14, lineHeight: 22 },
 
-    filterScroll: { maxHeight: 55, minHeight: 55 },
-    filterChip: { paddingHorizontal: 20, paddingVertical: 8, borderRadius: 24, backgroundColor: '#1C1C1E', marginRight: 12, borderWidth: 1, borderColor: '#27272A' },
-    filterText: { color: '#9ca3af', fontWeight: '500' },
+    filterScroll: { maxHeight: 52, minHeight: 52 },
+    filterChip: {
+        paddingHorizontal: 16,
+        paddingVertical: 7,
+        borderRadius: 99,
+        marginRight: 8,
+        borderWidth: StyleSheet.hairlineWidth,
+    },
+    filterText: { fontWeight: '600', fontSize: 13 },
 
-    // Grid Card Styles
+    // Grid Card Styles (legacy keys kept for safety)
     cardWrapper: { width: '47.5%', marginBottom: 16 },
     cardContent: {
-        borderRadius: 24,
-        padding: 16,
-        paddingTop: 20,
-        borderWidth: 1.5,
+        borderRadius: 20,
+        padding: 14,
+        borderWidth: StyleSheet.hairlineWidth,
         justifyContent: 'space-between',
     },
-    cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
-    iconBox: { padding: 8, borderRadius: 16 },
+    cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
+    iconBox: { padding: 8, borderRadius: 12 },
     pillToggle: { width: 34, height: 20, borderRadius: 10, justifyContent: 'center', paddingHorizontal: 2 },
     pillNub: { width: 16, height: 16, borderRadius: 8, backgroundColor: '#FFFFFF' },
-
-    deviceName: { color: '#ffffff', fontWeight: '800', fontSize: 16, marginBottom: 2 },
-    deviceSub: { color: '#94a3b8', fontSize: 12 },
+    deviceName: { fontWeight: '700', fontSize: 14, marginBottom: 2 },
+    deviceSub: { fontSize: 11 },
 
     fab: {
         position: 'absolute',
-        bottom: 25,
+        bottom: 20,
         alignSelf: 'center',
-        width: 66,
-        height: 66,
-        borderRadius: 33,
+        width: 60,
+        height: 60,
+        borderRadius: 30,
         alignItems: 'center',
         justifyContent: 'center',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.6,
-        shadowRadius: 12,
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.5,
+        shadowRadius: 10,
         elevation: 10,
         zIndex: 100
     },
 
     inputField: {
-        borderWidth: 1,
+        borderWidth: StyleSheet.hairlineWidth,
         borderRadius: 12,
         padding: 14,
-        fontSize: 16,
+        fontSize: 15,
     },
     submitButton: {
-        marginTop: 24,
-        padding: 16,
-        borderRadius: 16,
+        marginTop: 20,
+        padding: 15,
+        borderRadius: 14,
         alignItems: 'center',
         justifyContent: 'center',
         marginBottom: Platform.OS === 'ios' ? 20 : 0

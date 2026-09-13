@@ -1,4 +1,4 @@
-import { Edit2, Trash2, ScrollText } from "lucide-react";
+import { Edit2, Trash2, ScrollText, Lock } from "lucide-react";
 import type { Device, DeviceType } from "@robosphere/shared";
 
 const ICONS: Record<DeviceType, string> = {
@@ -11,22 +11,14 @@ const ICONS: Record<DeviceType, string> = {
 };
 
 const GLOW_COLORS: Record<string, string> = {
-  bulb: "rgba(253, 224, 71, 0.80)",  // Yellow
-  tv: "rgba(244, 114, 182, 0.80)",   // Pink
-  fan: "rgba(56, 189, 248, 0.80)",   // Sky
-  ac: "rgba(167, 139, 250, 0.80)",   // Violet
-  plug: "rgba(52, 211, 153, 0.80)",  // Emerald
-  custom: "rgba(251, 146, 60, 0.80)", // Orange
+  bulb: "rgba(253, 224, 71, 0.70)",
+  tv: "rgba(244, 114, 182, 0.70)",
+  fan: "rgba(56, 189, 248, 0.70)",
+  ac: "rgba(167, 139, 250, 0.70)",
+  plug: "rgba(52, 211, 153, 0.70)",
+  custom: "rgba(251, 146, 60, 0.70)",
 };
 
-const ON_BG: Record<string, string> = {
-  bulb: "bg-yellow-500/15",
-  tv: "bg-pink-500/15",
-  fan: "bg-sky-500/15",
-  ac: "bg-violet-500/15",
-  plug: "bg-emerald-500/15",
-  custom: "bg-orange-500/15",
-};
 
 export function isOnline(device: Device): boolean {
   if (device.offline) return false;
@@ -66,72 +58,70 @@ export function DeviceCard({
 
   return (
     <div
-      className={`relative flex h-[280px] flex-col items-center justify-between overflow-hidden rounded-3xl border-2 p-5 transition-all duration-500
+      className={`relative flex h-[260px] flex-col items-center justify-between overflow-hidden rounded-2xl border p-5 transition-all duration-300 select-none
         ${on
-          ? `border-slate-600/80 bg-gradient-to-b from-slate-800 to-slate-900 ${ON_BG[typeKey]}`
-          : "border-slate-800 bg-slate-900"
+          ? "border-white/25 bg-zinc-900/90 shadow-[0_0_25px_rgba(255,255,255,0.06)]"
+          : "border-white/[0.08] bg-zinc-950 hover:border-white/20 hover:bg-zinc-900/50"
         }
         ${isBlocked ? "pointer-events-none opacity-50 grayscale" : ""}
       `}
     >
-      {/* Online indicator dot */}
+      {/* Online indicator */}
       <div className="absolute left-4 top-4 z-10 flex items-center gap-1.5">
         <span
           className={`h-2 w-2 rounded-full ${
             online
-              ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.7)]"
-              : "bg-gray-600"
+              ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]"
+              : "bg-slate-300 dark:bg-slate-600"
           }`}
         />
         {!online && (
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-600">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-night-500 dark:text-gray-500">
             Offline
           </span>
         )}
       </div>
 
-      {/* Admin Actions (Top Right) */}
+      {/* Admin Actions */}
       {canManage && (
-        <div className="absolute right-4 top-4 z-10 flex gap-1.5">
+        <div className="absolute right-3 top-3 z-10 flex gap-1">
           {onLogs && (
             <button
               onClick={(e) => { e.stopPropagation(); onLogs(device); }}
-              className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-700/80 shadow-md transition-all hover:bg-slate-600"
+              className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/80 text-night-500 shadow-sm backdrop-blur-sm transition hover:bg-white hover:text-night-950 dark:bg-night-700/80 dark:text-gray-400 dark:hover:bg-night-700 dark:hover:text-gray-100"
               title="Activity Logs"
             >
-              <ScrollText className="h-3.5 w-3.5 text-gray-300" />
+              <ScrollText className="h-3.5 w-3.5" />
             </button>
           )}
           <button
             onClick={(e) => { e.stopPropagation(); onEdit(device); }}
-            className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-500/80 shadow-md transition-all hover:bg-blue-500 hover:scale-105"
+            className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand/10 text-brand shadow-sm transition hover:bg-brand/20 dark:bg-brand/15 dark:text-brand-light"
             title="Edit Device"
           >
-            <Edit2 className="h-3.5 w-3.5 text-white" />
+            <Edit2 className="h-3.5 w-3.5" />
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); onDelete(device); }}
-            className="flex h-7 w-7 items-center justify-center rounded-full bg-red-500/80 shadow-md transition-all hover:bg-red-500 hover:scale-105"
+            className="flex h-7 w-7 items-center justify-center rounded-lg bg-rose-50 text-rose-500 shadow-sm transition hover:bg-rose-100 dark:bg-rose-950/30 dark:text-rose-400 dark:hover:bg-rose-950/50"
             title="Delete Device"
           >
-            <Trash2 className="h-3.5 w-3.5 text-white" />
+            <Trash2 className="h-3.5 w-3.5" />
           </button>
         </div>
       )}
 
-      {/* Center Glowing Emoji */}
+      {/* Emoji Icon with Glow */}
       <div
-        className="mt-4 flex flex-1 cursor-pointer items-center justify-center transition-transform duration-300 hover:scale-105"
+        className="mt-4 flex flex-1 cursor-pointer items-center justify-center"
         onClick={() => { if (!disabled && !isBlocked) onToggle(device); }}
       >
         <span
-          className="text-[72px] transition-all duration-500 ease-out select-none"
+          className="text-[64px] transition-all duration-400 ease-out"
           style={{
-            textShadow: on
-              ? `0 0 30px ${GLOW_COLORS[typeKey]}, 0 0 60px ${GLOW_COLORS[typeKey]}`
-              : "none",
-            opacity: on ? 1 : 0.22,
-            transform: on ? "scale(1.12)" : "scale(1)",
+            textShadow: on ? `0 0 28px ${GLOW_COLORS[typeKey]}, 0 0 56px ${GLOW_COLORS[typeKey]}` : "none",
+            opacity: on ? 1 : 0.3,
+            transform: on ? "scale(1.08)" : "scale(1)",
           }}
         >
           {ICONS[typeKey]}
@@ -140,40 +130,40 @@ export function DeviceCard({
 
       {/* Device Name */}
       <div
-        className="w-full px-2 text-center"
+        className="w-full px-2 text-center cursor-pointer"
         onClick={() => { if (!disabled && !isBlocked) onToggle(device); }}
       >
-        <h3 className="truncate text-lg font-bold tracking-wide text-white drop-shadow-sm">
+        <h3 className={`truncate text-sm font-bold tracking-tight ${on ? "text-night-950 dark:text-white" : "text-night-500 dark:text-gray-400"}`}>
           {device.name}
         </h3>
       </div>
 
-      {/* Status toggle pill */}
+      {/* Toggle Button */}
       <div className="mt-3 flex w-full flex-col items-center gap-1.5 pb-1">
         <button
           onClick={() => onToggle(device)}
           disabled={disabled || isBlocked}
-          className={`rounded-full px-6 py-1.5 text-xs font-bold tracking-widest text-white transition-all duration-300
+          className={`rounded-full px-6 py-1.5 text-[11px] font-mono font-bold tracking-[0.12em] uppercase transition-all duration-200
             ${pending ? "animate-pulse" : ""}
             ${on
-              ? "bg-emerald-500 shadow-[0_0_14px_rgba(16,185,129,0.45)]"
-              : "bg-slate-700 hover:bg-slate-600"
+              ? "bg-white text-black shadow-[0_0_15px_rgba(255,255,255,0.25)] hover:bg-zinc-200"
+              : "border border-white/10 bg-zinc-900 text-zinc-500 hover:bg-zinc-800 hover:text-white"
             }
             ${disabled || isBlocked ? "cursor-not-allowed opacity-50" : "hover:scale-105 active:scale-95"}
           `}
         >
-          {pending ? "..." : on ? "ON" : "OFF"}
+          {pending ? "···" : on ? "ON" : "OFF"}
         </button>
 
-        <span className="text-[11px] font-semibold tracking-wider uppercase text-gray-600">
+        <span className="text-[10px] font-mono tracking-wider uppercase text-zinc-500">
           {roomName || "Home"}
         </span>
       </div>
 
       {/* Blocked overlay */}
       {isBlocked && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center rounded-[22px] bg-black/40">
-          <span className="text-3xl">🔒</span>
+        <div className="absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-white/50 backdrop-blur-xs dark:bg-night-900/50">
+          <Lock className="h-8 w-8 text-night-500" />
         </div>
       )}
     </div>

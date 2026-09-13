@@ -1,9 +1,12 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { KeyRound, ArrowRight, MailCheck } from "lucide-react";
+import { ArrowRight, MailCheck, MailOpen } from "lucide-react";
 import { forgotPassword } from "../api/auth";
 import { extractApiError } from "../api/client";
 import { Logo } from "../components/Logo";
+import { Button } from "../components/ui/Button";
+import { Input } from "../components/ui/Input";
+import { Alert } from "../components/ui/Alert";
 
 export function ForgotPassword() {
   const [email, setEmail] = useState("");
@@ -31,72 +34,81 @@ export function ForgotPassword() {
 
   if (sent) {
     return (
-      <div className="page-enter flex min-h-[85vh] items-center justify-center px-4 py-12">
-        <div className="card-static w-full max-w-md p-8 sm:p-10 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand/10">
-            <MailCheck className="h-7 w-7 text-brand" />
+      <div className="page-enter flex min-h-[90vh] items-center justify-center px-4 py-16">
+        <div className="w-full max-w-sm">
+          <div className="rounded-2xl border border-night-600/70 bg-white p-8 shadow-sm text-center dark:border-night-600 dark:bg-night-800">
+            <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 dark:bg-emerald-950/30">
+              <MailCheck className="h-7 w-7 text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <h1 className="mb-2 text-xl font-bold text-night-950 dark:text-white">
+              Check your inbox
+            </h1>
+            <p className="mb-6 text-sm text-night-500 dark:text-gray-400 leading-relaxed">
+              If <span className="font-semibold text-night-950 dark:text-gray-200">{email}</span> is
+              registered, we've sent a reset link (valid 30 min). Check your spam folder too.
+            </p>
+            <Link to="/login" className="text-sm font-semibold text-brand hover:underline">
+              ← Back to sign in
+            </Link>
           </div>
-          <h1 className="mb-3 text-xl font-bold text-gray-900 dark:text-white">Check your email</h1>
-          <p className="mb-6 text-sm text-gray-500">
-            Agar <span className="font-semibold text-gray-700 dark:text-gray-200">{email}</span> se koi account registered hai to
-            humne password reset link bhej diya hai (30 min valid). Agar email nahi
-            mila to spam folder check karo.
-          </p>
-          <Link to="/login" className="text-sm font-semibold text-brand hover:underline">
-            ← Wapas login
-          </Link>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="page-enter flex min-h-[85vh] items-center justify-center px-4 py-12">
-      <div className="w-full max-w-md">
-        <div className="card-static p-8 sm:p-10">
-          <div className="mb-8 flex flex-col items-center gap-3 text-center">
+    <div className="page-enter flex min-h-[90vh] items-center justify-center px-4 py-16">
+      <div className="w-full max-w-sm">
+        <div className="rounded-2xl border border-night-600/70 bg-white p-8 shadow-sm dark:border-night-600 dark:bg-night-800">
+          <div className="mb-8 flex flex-col items-center gap-4 text-center">
             <Logo size="lg" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand/10">
+              <MailOpen className="h-6 w-6 text-brand" />
+            </div>
             <div>
-              <h1 className="mt-2 flex items-center justify-center gap-2 text-2xl font-bold text-gray-900 dark:text-white">
-                <KeyRound className="h-5 w-5 text-brand" />
-                Forgot password?
+              <h1 className="text-xl font-bold tracking-tight text-night-950 dark:text-white">
+                Reset your password
               </h1>
-              <p className="mt-1 text-sm text-gray-500">
-                Apna registered email daalo — hum reset link bhej denge.
+              <p className="mt-1 text-sm text-night-500 dark:text-gray-400">
+                Enter your email and we'll send you a reset link.
               </p>
             </div>
           </div>
 
-          {error && <div className="alert-error mb-5">{error}</div>}
+          {error && (
+            <div className="mb-5">
+              <Alert variant="danger">{error}</Alert>
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="field-label">Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                autoFocus
-                className="input-field"
-                placeholder="you@example.com"
-              />
-            </div>
+            <Input
+              label="Email address"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              autoFocus
+              autoComplete="email"
+              placeholder="you@example.com"
+            />
 
-            <button type="submit" disabled={loading} className="btn-primary w-full py-3">
-              {loading ? "Sending…" : (
-                <>
-                  Send reset link
-                  <ArrowRight className="h-4 w-4" />
-                </>
-              )}
-            </button>
+            <Button
+              type="submit"
+              variant="primary"
+              size="lg"
+              loading={loading}
+              className="w-full"
+            >
+              {!loading && "Send reset link"}
+              {!loading && <ArrowRight className="h-4 w-4 ml-auto" />}
+            </Button>
           </form>
 
-          <p className="mt-6 text-center text-sm text-gray-500">
-            Yaad aa gaya?{" "}
+          <p className="mt-6 text-center text-xs text-night-500 dark:text-gray-400">
+            Remembered it?{" "}
             <Link to="/login" className="font-semibold text-brand hover:underline">
-              Login
+              Sign in
             </Link>
           </p>
         </div>
