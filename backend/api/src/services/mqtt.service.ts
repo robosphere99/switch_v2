@@ -24,7 +24,7 @@ function hashKey(raw: string): string {
 }
 
 // ---------- config ----------
-const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || "mqtt://127.0.0.1:1883";
+const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || "mqtts://bf89c1fe.ala.asia-southeast1.emqxsl.com:8883";
 const MQTT_USERNAME = process.env.MQTT_USERNAME || "Admin";
 const MQTT_PASSWORD = process.env.MQTT_PASSWORD || "Anil@20552";
 
@@ -42,6 +42,7 @@ export function startMqttBroker(): void {
     client = mqtt.connect(MQTT_BROKER_URL, {
         username: MQTT_USERNAME,
         password: MQTT_PASSWORD,
+        rejectUnauthorized: false,
         clientId: `switchnest_backend_${Math.random().toString(16).slice(2, 8)}`,
         clean: true,
         reconnectPeriod: 5000,

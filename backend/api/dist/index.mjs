@@ -845,6 +845,7 @@ function startMqttBroker() {
   client = mqtt.connect(MQTT_BROKER_URL, {
     username: MQTT_USERNAME,
     password: MQTT_PASSWORD,
+    rejectUnauthorized: false,
     clientId: `switchnest_backend_${Math.random().toString(16).slice(2, 8)}`,
     clean: true,
     reconnectPeriod: 5e3
@@ -1076,7 +1077,7 @@ var init_mqtt_service = __esm({
     init_prisma();
     init_socket();
     init_logger();
-    MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || "mqtt://127.0.0.1:1883";
+    MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || "mqtts://bf89c1fe.ala.asia-southeast1.emqxsl.com:8883";
     MQTT_USERNAME = process.env.MQTT_USERNAME || "Admin";
     MQTT_PASSWORD = process.env.MQTT_PASSWORD || "Anil@20552";
     client = null;
