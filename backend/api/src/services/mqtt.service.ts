@@ -14,14 +14,19 @@
  */
 
 import mqtt from "mqtt";
+import crypto from "node:crypto";
 import { prisma } from "../lib/prisma";
 import { emitDeviceUpdated, emitToHome, emitToBoardLogs } from "../lib/socket";
 import { logger } from "../lib/logger";
 
+function hashKey(raw: string): string {
+    return crypto.createHash("sha256").update(raw).digest("hex");
+}
+
 // ---------- config ----------
 const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || "mqtt://127.0.0.1:1883";
-const MQTT_USERNAME = process.env.MQTT_USERNAME || "switchnest_backend";
-const MQTT_PASSWORD = process.env.MQTT_PASSWORD || "backend_secret";
+const MQTT_USERNAME = process.env.MQTT_USERNAME || "Admin";
+const MQTT_PASSWORD = process.env.MQTT_PASSWORD || "Anil@20552";
 
 // ---------- broker instance ----------
 let client: mqtt.MqttClient | null = null;
@@ -45,7 +50,7 @@ export function startMqttBroker(): void {
     client.on("connect", () => {
         logger.info(`[mqtt-client] Connected to EMQX Broker`);
         
-        // Subscribe to state and log topics for all devices
+        // Subscribe to state, log and online presence topics for all devices
         client?.subscribe("sn/+/state", { qos: 1 }, (err) => {
             if (err) logger.error(`[mqtt-client] Subscribe error: sn/+/state`, err);
             else logger.info(`[mqtt-client] Subscribed to sn/+/state`);
@@ -56,9 +61,10 @@ export function startMqttBroker(): void {
             else logger.info(`[mqtt-client] Subscribed to sn/+/log`);
         });
 
-        // EMQX internal presence topics (requires $SYS topics enabled in EMQX ACL for this user)
-        // client?.subscribe("$SYS/brokers/+/clients/+/connected");
-        // client?.subscribe("$SYS/brokers/+/clients/+/disconnected");
+        client?.subscribe("sn/+/online", { qos: 1 }, (err) => {
+            if (err) logger.error(`[mqtt-client] Subscribe error: sn/+/online`, err);
+            else logger.info(`[mqtt-client] Subscribed to sn/+/online`);
+        });
     });
 
     client.on("error", (err) => {
@@ -67,31 +73,85 @@ export function startMqttBroker(): void {
 
     client.on("message", async (topic, payload) => {
         try {
-            // Topic format: sn/{mac}/state or sn/{mac}/log
+            // Topic format: sn/{mac}/state, sn/{mac}/log, sn/{mac}/online
             const parts = topic.split("/");
             if (parts.length !== 3 || parts[0] !== "sn") return;
 
             const mac = parts[1].toLowerCase();
             const type = parts[2];
 
-            // Direct lookup by normalized MAC (no colons) — avoids full table scan.
-            // ESP devices are stored with macAddress = "aabbccddeeff" format (no colons).
-            // If DB has colon format, the MQTT auth handler normalizes on connect.
-            const matchedEsp = await prisma.espDevice.findFirst({
-                where: { macAddress: mac },
+            let matchedEsp = await prisma.espDevice.findFirst({
+                where: {
+                    OR: [
+                        { macAddress: mac },
+                        { macAddress: mac.replace(/(..)(?=.)/g, "$1:") }
+                    ]
+                },
                 select: { id: true, macAddress: true, serialCode: true, homeId: true },
             });
 
-            if (!matchedEsp) return;
+            if (type === "online") {
+                const status = payload.toString().trim();
+                const isOnline = status === "1";
+                if (matchedEsp) {
+                    await prisma.espDevice.update({
+                        where: { id: matchedEsp.id },
+                        data: { offline: !isOnline, lastSeen: new Date() },
+                    });
+                    await prisma.device.updateMany({
+                        where: { espId: matchedEsp.id },
+                        data: { offline: !isOnline, lastSeen: new Date() },
+                    }).catch(() => null);
+                    emitToHome(matchedEsp.homeId, "esp:updated", { id: matchedEsp.id, offline: !isOnline });
+                }
+                return;
+            }
 
             if (type === "log") {
-                const payloadStr = payload.toString();
-                emitToBoardLogs(matchedEsp.id, payloadStr);
+                if (matchedEsp) {
+                    const payloadStr = payload.toString();
+                    emitToBoardLogs(matchedEsp.id, payloadStr);
+                }
                 return;
             }
 
             if (type === "state") {
                 const data = JSON.parse(payload.toString());
+
+                // Dynamic auto-linking if not yet mapped
+                if (!matchedEsp && (data.serial || data.key)) {
+                    const serial = (data.serial || "").toString().trim().toUpperCase();
+                    const apiKeyPlain = (data.key || "").toString().trim();
+                    if (apiKeyPlain) {
+                        const keyRecord = await prisma.apiKey.findUnique({
+                            where: { keyHash: hashKey(apiKeyPlain) },
+                            select: { homeId: true, revokedAt: true },
+                        });
+                        if (keyRecord && keyRecord.homeId && !keyRecord.revokedAt) {
+                            const registry = serial ? await prisma.serialRegistry.findUnique({
+                                where: { serialCode: serial },
+                                include: { product: true }
+                            }) : null;
+                            const productName = registry?.product?.name || "SwitchNest Board";
+                            const modelCode = registry?.product?.modelCode || (data.model || "4CH").toUpperCase();
+
+                            matchedEsp = await prisma.espDevice.create({
+                                data: {
+                                    homeId: keyRecord.homeId,
+                                    macAddress: mac,
+                                    serialCode: serial || null,
+                                    modelCode,
+                                    name: `${productName} · ${mac.slice(-4).toUpperCase()}`,
+                                    offline: false,
+                                },
+                                select: { id: true, macAddress: true, serialCode: true, homeId: true },
+                            });
+                            logger.info(`[mqtt] Auto-registered ESP board ${mac} for Home ${keyRecord.homeId}`);
+                        }
+                    }
+                }
+
+                if (!matchedEsp) return;
                 await handleDeviceState(matchedEsp, data);
             }
 

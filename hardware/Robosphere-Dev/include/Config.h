@@ -42,6 +42,8 @@ constexpr uint16_t HTTP_PORT = 80;
 //==================================================
 constexpr char EMQX_MQTT_HOST[] = "bf89c1fe.ala.asia-southeast1.emqxsl.com";
 constexpr uint16_t EMQX_MQTT_PORT = 8883;
+constexpr char DEFAULT_MQTT_USER[] = "Admin";
+constexpr char DEFAULT_MQTT_PASSWORD[] = "Anil@20552";
 
 //==================================================
 // Device Configuration

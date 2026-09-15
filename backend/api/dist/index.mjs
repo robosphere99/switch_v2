@@ -836,6 +836,10 @@ __export(mqtt_service_exports, {
   startMqttBroker: () => startMqttBroker
 });
 import mqtt from "mqtt";
+import crypto2 from "node:crypto";
+function hashKey(raw) {
+  return crypto2.createHash("sha256").update(raw).digest("hex");
+}
 function startMqttBroker() {
   logger.info(`\u{1F99F} Connecting to EMQX Broker at ${MQTT_BROKER_URL}...`);
   client = mqtt.connect(MQTT_BROKER_URL, {
@@ -855,6 +859,10 @@ function startMqttBroker() {
       if (err) logger.error(`[mqtt-client] Subscribe error: sn/+/log`, err);
       else logger.info(`[mqtt-client] Subscribed to sn/+/log`);
     });
+    client?.subscribe("sn/+/online", { qos: 1 }, (err) => {
+      if (err) logger.error(`[mqtt-client] Subscribe error: sn/+/online`, err);
+      else logger.info(`[mqtt-client] Subscribed to sn/+/online`);
+    });
   });
   client.on("error", (err) => {
     logger.warn(`[mqtt-client] Connection error`, err.message);
@@ -865,18 +873,71 @@ function startMqttBroker() {
       if (parts.length !== 3 || parts[0] !== "sn") return;
       const mac = parts[1].toLowerCase();
       const type = parts[2];
-      const matchedEsp = await prisma.espDevice.findFirst({
-        where: { macAddress: mac },
+      let matchedEsp = await prisma.espDevice.findFirst({
+        where: {
+          OR: [
+            { macAddress: mac },
+            { macAddress: mac.replace(/(..)(?=.)/g, "$1:") }
+          ]
+        },
         select: { id: true, macAddress: true, serialCode: true, homeId: true }
       });
-      if (!matchedEsp) return;
+      if (type === "online") {
+        const status = payload.toString().trim();
+        const isOnline = status === "1";
+        if (matchedEsp) {
+          await prisma.espDevice.update({
+            where: { id: matchedEsp.id },
+            data: { offline: !isOnline, lastSeen: /* @__PURE__ */ new Date() }
+          });
+          await prisma.device.updateMany({
+            where: { espId: matchedEsp.id },
+            data: { offline: !isOnline, lastSeen: /* @__PURE__ */ new Date() }
+          }).catch(() => null);
+          emitToHome(matchedEsp.homeId, "esp:updated", { id: matchedEsp.id, offline: !isOnline });
+        }
+        return;
+      }
       if (type === "log") {
-        const payloadStr = payload.toString();
-        emitToBoardLogs(matchedEsp.id, payloadStr);
+        if (matchedEsp) {
+          const payloadStr = payload.toString();
+          emitToBoardLogs(matchedEsp.id, payloadStr);
+        }
         return;
       }
       if (type === "state") {
         const data = JSON.parse(payload.toString());
+        if (!matchedEsp && (data.serial || data.key)) {
+          const serial = (data.serial || "").toString().trim().toUpperCase();
+          const apiKeyPlain = (data.key || "").toString().trim();
+          if (apiKeyPlain) {
+            const keyRecord = await prisma.apiKey.findUnique({
+              where: { keyHash: hashKey(apiKeyPlain) },
+              select: { homeId: true, revokedAt: true }
+            });
+            if (keyRecord && keyRecord.homeId && !keyRecord.revokedAt) {
+              const registry = serial ? await prisma.serialRegistry.findUnique({
+                where: { serialCode: serial },
+                include: { product: true }
+              }) : null;
+              const productName = registry?.product?.name || "SwitchNest Board";
+              const modelCode = registry?.product?.modelCode || (data.model || "4CH").toUpperCase();
+              matchedEsp = await prisma.espDevice.create({
+                data: {
+                  homeId: keyRecord.homeId,
+                  macAddress: mac,
+                  serialCode: serial || null,
+                  modelCode,
+                  name: `${productName} \xB7 ${mac.slice(-4).toUpperCase()}`,
+                  offline: false
+                },
+                select: { id: true, macAddress: true, serialCode: true, homeId: true }
+              });
+              logger.info(`[mqtt] Auto-registered ESP board ${mac} for Home ${keyRecord.homeId}`);
+            }
+          }
+        }
+        if (!matchedEsp) return;
         await handleDeviceState(matchedEsp, data);
       }
     } catch (err) {
@@ -1008,8 +1069,8 @@ var init_mqtt_service = __esm({
     init_socket();
     init_logger();
     MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || "mqtt://127.0.0.1:1883";
-    MQTT_USERNAME = process.env.MQTT_USERNAME || "switchnest_backend";
-    MQTT_PASSWORD = process.env.MQTT_PASSWORD || "backend_secret";
+    MQTT_USERNAME = process.env.MQTT_USERNAME || "Admin";
+    MQTT_PASSWORD = process.env.MQTT_PASSWORD || "Anil@20552";
     client = null;
   }
 });
@@ -1074,8 +1135,8 @@ function initSocket(server) {
             data: { lastActive: /* @__PURE__ */ new Date(), ipAddress: socketIp }
           });
         } else {
-          const crypto11 = await import("node:crypto");
-          const syntheticHash = crypto11.createHash("sha256").update(`sess_${userId}_${socketUA}_${Date.now()}_${Math.random()}`).digest("hex");
+          const crypto12 = await import("node:crypto");
+          const syntheticHash = crypto12.createHash("sha256").update(`sess_${userId}_${socketUA}_${Date.now()}_${Math.random()}`).digest("hex");
           await prisma.refreshToken.create({
             data: {
               userId,
@@ -1913,7 +1974,7 @@ import path6 from "node:path";
 init_env();
 init_prisma();
 import bcrypt from "bcryptjs";
-import crypto2 from "node:crypto";
+import crypto3 from "node:crypto";
 import jwt2 from "jsonwebtoken";
 init_logger();
 
@@ -1975,7 +2036,7 @@ function toAuthUser(user) {
   };
 }
 function hashToken(token2) {
-  return crypto2.createHash("sha256").update(token2).digest("hex");
+  return crypto3.createHash("sha256").update(token2).digest("hex");
 }
 function parseExpiryMs(durationStr) {
   const match = durationStr.match(/^(\d+)([smhd])$/);
@@ -1996,7 +2057,7 @@ function signAccessToken(user, sessionId) {
       email: user.email,
       role: user.role,
       ver: user.tokenVersion,
-      jti: crypto2.randomUUID(),
+      jti: crypto3.randomUUID(),
       sid: sessionId
     },
     env.JWT_ACCESS_SECRET,
@@ -2004,7 +2065,7 @@ function signAccessToken(user, sessionId) {
   );
 }
 function signRefreshToken(user) {
-  return jwt2.sign({ sub: user.id, ver: user.tokenVersion, jti: crypto2.randomUUID() }, env.JWT_REFRESH_SECRET, {
+  return jwt2.sign({ sub: user.id, ver: user.tokenVersion, jti: crypto3.randomUUID() }, env.JWT_REFRESH_SECRET, {
     expiresIn: env.JWT_REFRESH_EXPIRES
   });
 }
@@ -2251,7 +2312,7 @@ async function requestPasswordReset(email, origin) {
     where: { userId: user.id, usedAt: null },
     data: { usedAt: /* @__PURE__ */ new Date() }
   });
-  const rawToken = crypto2.randomBytes(32).toString("base64url");
+  const rawToken = crypto3.randomBytes(32).toString("base64url");
   const tokenHash = hashToken(rawToken);
   await prisma.passwordResetToken.create({
     data: {
@@ -2460,8 +2521,8 @@ async function listSessions2(req, res) {
     });
   } else if (sessions.length === 0 || !currentSid) {
     try {
-      const crypto11 = await import("node:crypto");
-      const syntheticHash = crypto11.createHash("sha256").update(`sess_${userId}_${Date.now()}_${Math.random()}`).digest("hex");
+      const crypto12 = await import("node:crypto");
+      const syntheticHash = crypto12.createHash("sha256").update(`sess_${userId}_${Date.now()}_${Math.random()}`).digest("hex");
       const newSession = await prisma.refreshToken.create({
         data: {
           userId,
@@ -2569,8 +2630,8 @@ async function recordSessionActivity(userId, sid, rawUA, ip) {
         data: { lastActive: /* @__PURE__ */ new Date(), ipAddress: ip }
       });
     } else {
-      const crypto11 = await import("node:crypto");
-      const syntheticHash = crypto11.createHash("sha256").update(`sess_${userId}_${rawUA}_${Date.now()}_${Math.random()}`).digest("hex");
+      const crypto12 = await import("node:crypto");
+      const syntheticHash = crypto12.createHash("sha256").update(`sess_${userId}_${rawUA}_${Date.now()}_${Math.random()}`).digest("hex");
       await prisma.refreshToken.create({
         data: {
           userId,
@@ -3738,12 +3799,12 @@ import { z as z4 } from "zod";
 
 // src/services/member.service.ts
 init_prisma();
-import crypto3 from "node:crypto";
+import crypto4 from "node:crypto";
 init_socket();
 init_notification_service();
 function generateInviteCode() {
   const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-  const bytes = crypto3.randomBytes(8);
+  const bytes = crypto4.randomBytes(8);
   return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
 }
 async function listMembers2(homeId, viewerRole) {
@@ -4253,9 +4314,9 @@ import { z as z6 } from "zod";
 
 // src/middleware/apiKey.ts
 init_prisma();
-import crypto4 from "node:crypto";
-function hashKey(raw) {
-  return crypto4.createHash("sha256").update(raw).digest("hex");
+import crypto5 from "node:crypto";
+function hashKey2(raw) {
+  return crypto5.createHash("sha256").update(raw).digest("hex");
 }
 function extractKey(req) {
   const header = req.headers.authorization;
@@ -4274,7 +4335,7 @@ var requireApiKey = async (req, _res, next) => {
     if (!raw) {
       return next(new AppError("UNAUTHORIZED", "Missing api_key", 401));
     }
-    const key = await prisma.apiKey.findUnique({ where: { keyHash: hashKey(raw) } });
+    const key = await prisma.apiKey.findUnique({ where: { keyHash: hashKey2(raw) } });
     if (!key) {
       return next(new AppError("UNAUTHORIZED", "Invalid api_key", 401));
     }
@@ -4841,12 +4902,12 @@ import { z as z7 } from "zod";
 
 // src/controllers/apiKey.controller.ts
 init_prisma();
-import crypto5 from "node:crypto";
-function hashKey2(raw) {
-  return crypto5.createHash("sha256").update(raw).digest("hex");
+import crypto6 from "node:crypto";
+function hashKey3(raw) {
+  return crypto6.createHash("sha256").update(raw).digest("hex");
 }
 function generateKey() {
-  const raw = `rs_${crypto5.randomBytes(24).toString("hex")}`;
+  const raw = `rs_${crypto6.randomBytes(24).toString("hex")}`;
   return { raw, prefix: raw.slice(0, 8) };
 }
 async function listApiKeys(req, res) {
@@ -4874,7 +4935,7 @@ async function createApiKey(req, res) {
       userId: req.user.sub,
       homeId: req.body.homeId,
       label: req.body.label,
-      keyHash: hashKey2(raw),
+      keyHash: hashKey3(raw),
       keyPrefix: prefix,
       expiresAt: req.body.expiresInDays ? new Date(Date.now() + req.body.expiresInDays * 24 * 60 * 60 * 1e3) : null
     }
@@ -6671,10 +6732,10 @@ init_crypto();
 
 // src/lib/billVerify.ts
 init_env();
-import crypto6 from "node:crypto";
-var SECRET = crypto6.createHash("sha256").update(env.JWT_ACCESS_SECRET).digest();
+import crypto7 from "node:crypto";
+var SECRET = crypto7.createHash("sha256").update(env.JWT_ACCESS_SECRET).digest();
 function signBillToken(orderId) {
-  const sig = crypto6.createHmac("sha256", SECRET).update(`bill:${orderId}`).digest("base64url").slice(0, 10);
+  const sig = crypto7.createHmac("sha256", SECRET).update(`bill:${orderId}`).digest("base64url").slice(0, 10);
   return `${orderId}.${sig}`;
 }
 function verifyBillToken(token2) {
@@ -6684,13 +6745,13 @@ function verifyBillToken(token2) {
   const sig = token2.slice(dot + 1);
   const orderId = Number(idPart);
   if (!Number.isSafeInteger(orderId) || orderId <= 0) return null;
-  const expectedFull = crypto6.createHmac("sha256", SECRET).update(`bill:${orderId}`).digest("base64url");
+  const expectedFull = crypto7.createHmac("sha256", SECRET).update(`bill:${orderId}`).digest("base64url");
   const expected = sig.length === 10 ? expectedFull.slice(0, 10) : expectedFull;
   const a = Buffer.from(sig);
   const b = Buffer.from(expected);
   if (a.length !== b.length) return null;
   try {
-    if (!crypto6.timingSafeEqual(a, b)) return null;
+    if (!crypto7.timingSafeEqual(a, b)) return null;
   } catch {
     return null;
   }
@@ -7511,9 +7572,9 @@ var postApiKeys = async (req, res) => {
     homeId = home?.id ?? null;
   }
   const label = String(req.body?.label ?? "factory").slice(0, 100);
-  const crypto11 = await import("node:crypto");
-  const plain = `rs_${crypto11.randomBytes(9).toString("base64url").replace(/-/g, "").slice(0, 16)}`;
-  const keyHash = crypto11.createHash("sha256").update(plain).digest("hex");
+  const crypto12 = await import("node:crypto");
+  const plain = `rs_${crypto12.randomBytes(9).toString("base64url").replace(/-/g, "").slice(0, 16)}`;
+  const keyHash = crypto12.createHash("sha256").update(plain).digest("hex");
   const keyPrefix = plain.slice(0, 8);
   await prisma.apiKey.create({ data: { userId, homeId, label, keyHash, keyPrefix } });
   await audit(req.user.sub, "admin.apikey.create", {
@@ -8066,9 +8127,9 @@ var postEspIdKey = async (req, res) => {
     include: { home: { select: { id: true, ownerId: true } } }
   });
   if (!esp?.home) throw new AppError("NOT_FOUND", "ESP ya home nahi mila");
-  const crypto11 = await import("node:crypto");
-  const plain = `rs_${crypto11.randomBytes(9).toString("base64url").replace(/-/g, "").slice(0, 16)}`;
-  const keyHash = crypto11.createHash("sha256").update(plain).digest("hex");
+  const crypto12 = await import("node:crypto");
+  const plain = `rs_${crypto12.randomBytes(9).toString("base64url").replace(/-/g, "").slice(0, 16)}`;
+  const keyHash = crypto12.createHash("sha256").update(plain).digest("hex");
   const keyPrefix = plain.slice(0, 8);
   await prisma.apiKey.create({
     data: {
@@ -8396,8 +8457,8 @@ var getDevicesIdSupport = async (req, res) => {
 };
 var postEspIdRotateConsolePassword = async (req, res) => {
   const id = Number(req.params.id);
-  const crypto11 = await import("node:crypto");
-  const newPass = crypto11.randomBytes(4).toString("hex");
+  const crypto12 = await import("node:crypto");
+  const newPass = crypto12.randomBytes(4).toString("hex");
   const esp = await prisma.espDevice.findUnique({ where: { id } });
   if (!esp) throw new AppError("NOT_FOUND", "ESP not found", 404);
   await prisma.espDevice.update({
@@ -9203,9 +9264,9 @@ var getOrdersIdProvision = async (req, res) => {
       wifiPassword = null;
     }
   }
-  const crypto11 = await import("node:crypto");
-  const plain = `rs_${crypto11.randomBytes(9).toString("base64url").replace(/-/g, "").slice(0, 16)}`;
-  const keyHash = crypto11.createHash("sha256").update(plain).digest("hex");
+  const crypto12 = await import("node:crypto");
+  const plain = `rs_${crypto12.randomBytes(9).toString("base64url").replace(/-/g, "").slice(0, 16)}`;
+  const keyHash = crypto12.createHash("sha256").update(plain).digest("hex");
   const keyPrefix = plain.slice(0, 8);
   const home = await prisma.home.findFirst({ where: { ownerId: order.userId } });
   if (home) {
@@ -9893,7 +9954,7 @@ init_audit_service();
 
 // src/services/payment.service.ts
 init_env();
-import crypto7 from "node:crypto";
+import crypto8 from "node:crypto";
 function razorpayConfigured() {
   return Boolean(env.RAZORPAY_KEY_ID && env.RAZORPAY_KEY_SECRET);
 }
@@ -9908,11 +9969,11 @@ async function createRazorpayOrder(amountInr, receipt) {
   return res.json();
 }
 function verifyRazorpaySignature(orderId, paymentId, signature) {
-  const expected = crypto7.createHmac("sha256", env.RAZORPAY_KEY_SECRET).update(`${orderId}|${paymentId}`).digest("hex");
+  const expected = crypto8.createHmac("sha256", env.RAZORPAY_KEY_SECRET).update(`${orderId}|${paymentId}`).digest("hex");
   return expected === signature;
 }
 function verifyRazorpayWebhook(rawBody, signature) {
-  const expected = crypto7.createHmac("sha256", env.RAZORPAY_KEY_SECRET).update(rawBody).digest("hex");
+  const expected = crypto8.createHmac("sha256", env.RAZORPAY_KEY_SECRET).update(rawBody).digest("hex");
   return expected === signature;
 }
 
@@ -11671,7 +11732,7 @@ init_prisma();
 init_socket();
 init_push_service();
 import jwt5 from "jsonwebtoken";
-import crypto8 from "crypto";
+import crypto9 from "crypto";
 function generateJitsiJwt(roomId, user, isModerator = false) {
   const appId = process.env.JITSI_APP_ID;
   const privateKey = process.env.JITSI_PRIVATE_KEY;
@@ -11727,7 +11788,7 @@ async function initiateCall(req, res) {
     res.status(404).json({ error: "Admin not found" });
     return;
   }
-  const rawRoomId = `switchnest-support-${crypto8.randomBytes(16).toString("hex")}`;
+  const rawRoomId = `switchnest-support-${crypto9.randomBytes(16).toString("hex")}`;
   const appId = process.env.JITSI_APP_ID;
   const roomId = appId ? `${appId}/${rawRoomId}` : rawRoomId;
   const call = await prisma.supportCall.create({
@@ -11980,7 +12041,7 @@ import { z as z14 } from "zod";
 
 // src/controllers/oauth.controller.ts
 init_prisma();
-import crypto9 from "crypto";
+import crypto10 from "crypto";
 var authorize = async (req, res) => {
   const { client_id, redirect_uri, state, homeId, provider } = req.body;
   const userId = req.user.sub;
@@ -12004,7 +12065,7 @@ var authorize = async (req, res) => {
     update: { homeId, status: "active", updatedAt: /* @__PURE__ */ new Date() },
     create: { userId, homeId, provider, status: "active" }
   });
-  const code = crypto9.randomBytes(32).toString("hex");
+  const code = crypto10.randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + 10 * 60 * 1e3);
   await prisma.oAuthAuthCode.create({
     data: {
@@ -12054,8 +12115,8 @@ var token = async (req, res) => {
       return res.status(400).json({ error: "invalid_grant", error_description: "Code expired" });
     }
     await prisma.oAuthAuthCode.delete({ where: { id: authCode.id } });
-    const accessToken = crypto9.randomBytes(48).toString("hex");
-    const refreshToken = crypto9.randomBytes(48).toString("hex");
+    const accessToken = crypto10.randomBytes(48).toString("hex");
+    const refreshToken = crypto10.randomBytes(48).toString("hex");
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1e3);
     await prisma.oAuthToken.create({
       data: {
@@ -12097,7 +12158,7 @@ var token = async (req, res) => {
         error_description: "Integration revoked"
       });
     }
-    const newAccessToken = crypto9.randomBytes(48).toString("hex");
+    const newAccessToken = crypto10.randomBytes(48).toString("hex");
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1e3);
     const updated = await prisma.oAuthToken.update({
       where: { id: tokenRecord.id },
@@ -14937,9 +14998,9 @@ import { Router as Router25 } from "express";
 // src/controllers/mqtt.controller.ts
 init_prisma();
 init_logger();
-import crypto10 from "node:crypto";
-function hashKey3(raw) {
-  return crypto10.createHash("sha256").update(raw).digest("hex");
+import crypto11 from "node:crypto";
+function hashKey4(raw) {
+  return crypto11.createHash("sha256").update(raw).digest("hex");
 }
 var emqxAuth = async (req, res) => {
   try {
@@ -14955,7 +15016,7 @@ var emqxAuth = async (req, res) => {
       return res.status(200).json({ result: "allow", is_superuser: true });
     }
     const key = await prisma.apiKey.findUnique({
-      where: { keyHash: hashKey3(apiKeyPlain) },
+      where: { keyHash: hashKey4(apiKeyPlain) },
       select: { id: true, homeId: true, revokedAt: true, expiresAt: true }
     });
     if (!key || !key.homeId) {
