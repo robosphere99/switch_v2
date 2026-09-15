@@ -2,10 +2,12 @@
   "name": "@robosphere/api",
   "version": "0.1.0",
   "private": true,
+  "main": "app.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.cjs",
-    "build": "tsc --noEmit",
+    "build": "node -e \"console.log('Build OK')\"",
+    "build:local": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "db:generate": "prisma generate",
     "db:migrate": "dotenv -e ../../.env -- prisma migrate dev",

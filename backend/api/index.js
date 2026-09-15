@@ -1,5 +1,5 @@
 /**
  * Plesk / IISNode entrypoint
- * Loads the pre-built bundle from dist/index.js
+ * Loads the pre-built bundle from dist/index.cjs
  */
-require("./dist/index.js");
+require("./dist/index.cjs");
