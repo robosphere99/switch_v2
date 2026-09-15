@@ -17,7 +17,28 @@ const THEME_OPTIONS: Array<{ mode: ThemeMode; label: string; icon: typeof Sun }>
 function parseDeviceTitle(raw: string | null): { name: string; type: "desktop" | "mobile" } {
   if (!raw) return { name: "Web Browser", type: "desktop" };
   const lower = raw.toLowerCase();
-  const isMobile = lower.includes("mobile") || lower.includes("android") || lower.includes("iphone") || lower.includes("ipad");
+
+  // Mobile App detection (React Native / Expo / OkHttp / CFNetwork / SwitchNest App)
+  if (
+    lower.includes("okhttp") ||
+    lower.includes("switchnest") ||
+    lower.includes("expo") ||
+    lower.includes("cfnetwork") ||
+    lower.includes("react-native") ||
+    lower.includes("dart")
+  ) {
+    const isAndroid = lower.includes("android") || lower.includes("okhttp");
+    return {
+      name: isAndroid ? "SwitchNest Mobile App (Android)" : "SwitchNest Mobile App (iOS)",
+      type: "mobile",
+    };
+  }
+
+  const isMobile =
+    lower.includes("mobile") ||
+    lower.includes("android") ||
+    lower.includes("iphone") ||
+    lower.includes("ipad");
 
   let browser = "Browser";
   if (lower.includes("edg")) browser = "Edge";
@@ -30,7 +51,7 @@ function parseDeviceTitle(raw: string | null): { name: string; type: "desktop" |
   if (lower.includes("windows")) os = "Windows PC";
   else if (lower.includes("mac os") || lower.includes("macintosh")) os = "Mac";
   else if (lower.includes("linux") && !lower.includes("android")) os = "Linux";
-  else if (lower.includes("android")) os = "Android Device";
+  else if (lower.includes("android")) os = "Android Phone";
   else if (lower.includes("iphone")) os = "iPhone";
   else if (lower.includes("ipad")) os = "iPad";
 
@@ -401,15 +422,21 @@ export function Profile() {
 
         {/* Sessions list */}
         <div className="space-y-3">
-          {sessions.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-gray-200 dark:border-night-600 p-6 text-center text-sm text-gray-500">
-              {sessionsLoading ? "Loading active sessions…" : "No other active sessions found."}
-            </div>
-          ) : (
-            sessions.map((s) => {
+          {(() => {
+            const displaySessions: ActiveSession[] = sessions.length > 0 ? sessions : [
+              {
+                id: currentSessionId ?? -1,
+                deviceInfo: typeof navigator !== "undefined" ? navigator.userAgent : "Web Browser",
+                ipAddress: "Current Session",
+                lastActive: new Date().toISOString(),
+                createdAt: new Date().toISOString(),
+              }
+            ];
+
+            return displaySessions.map((s, idx) => {
               const dev = parseDeviceTitle(s.deviceInfo);
               const DevIcon = dev.type === "mobile" ? Smartphone : Laptop;
-              const isCurrent = currentSessionId ? s.id === currentSessionId : false;
+              const isCurrent = currentSessionId ? s.id === currentSessionId : (s.id === -1 || idx === 0);
 
               return (
                 <div
@@ -455,7 +482,7 @@ export function Profile() {
                     </div>
                   </div>
 
-                  {!isCurrent && (
+                  {!isCurrent && s.id > 0 && (
                     <button
                       type="button"
                       onClick={() => handleRevokeSession(s.id)}
@@ -467,8 +494,8 @@ export function Profile() {
                   )}
                 </div>
               );
-            })
-          )}
+            });
+          })()}
         </div>
 
         {/* Bulk Action Buttons */}
