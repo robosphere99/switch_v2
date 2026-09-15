@@ -184,6 +184,8 @@ const checkUrlLimiter = rateLimit({
 
 const checkUrlSchema = z.object({ url: z.string().min(1).max(300) });
 
+adminRouter.get("/lan-info", adminController.getLanInfo);
+
 adminRouter.post("/check-url", checkUrlLimiter, validateBody(checkUrlSchema), adminController.postCheckUrl);
 
 adminRouter.get("/deploy-info", adminController.getDeployInfo);
@@ -192,38 +194,32 @@ adminRouter.get("/diagnostics", adminController.getDiagnostics);
 
 adminRouter.get("/logs", adminController.getLogs);
 
-// ESP / OTA — connected ESPs (IPs, firmware) + firmware publish + push
-// ============================================================
-
-// Published firmware lives in <repo>/hardware/firmware, served at /firmware.
-// Plesk pe cwd site/apps hota hai — repo root wala path paths.ts se aata hai.
-// Server (Plesk) pe write permission na ho to app ko crash mat hone do —
-// upload waqt friendly error dikhega.
-try {
-  fs.mkdirSync(firmwareDir, { recursive: true });
-} catch (err) {
-  console.warn(`[firmware] cannot create ${firmwareDir}:`, err instanceof Error ? err.message : err);
-}
-
 const upload = multer({
   storage: multer.diskStorage({
-    destination: (_req, _file, cb) => cb(null, firmwareDir),
+    destination: (_req, _file, cb) => {
+      try {
+        fs.mkdirSync(firmwareDir, { recursive: true });
+        cb(null, firmwareDir);
+      } catch (err) {
+        const fallback = path.resolve(process.cwd(), "uploads", "firmware");
+        try {
+          fs.mkdirSync(fallback, { recursive: true });
+          cb(null, fallback);
+        } catch {
+          cb(err as Error, firmwareDir);
+        }
+      }
+    },
     filename: (_req, _file, cb) => cb(null, "firmware.bin"),
   }),
-  limits: { fileSize: 8 * 1024 * 1024 }, // 8 MB is plenty for ESP32 .bin
+  limits: { fileSize: 16 * 1024 * 1024 },
 });
 
 /** ESP boards — ek row per PHYSICAL board (MAC se), under me controlled devices. */
 adminRouter.get("/esp", adminController.getEsp);
 
-/**
- * Admin support: ESP ke home ke liye fresh API key issue karo.
- * Full key sirf isi response me milta hai (hash store hota hai) — admin
- * copy karke user ko de sakta hai (portal/flasher me paste karne ke liye).
- */
 adminRouter.post("/esp/:id/key", adminController.postEspIdKey);
 
-/** Rename an ESP board (admin friendly name). */
 /**
  * Board cleanup (support ke liye): stale/offline boards + naam-serial mismatch detect.
  * Naam-serial mismatch = naam auto-pattern (`serial · ssid`) jaisa dikhta hai par
@@ -233,8 +229,8 @@ adminRouter.post("/esp/:id/key", adminController.postEspIdKey);
 adminRouter.get("/esp/issues", adminController.getEspIssues);
 
 adminRouter.patch("/esp/:id", adminController.patchEspId);
-
 adminRouter.delete("/esp/:id", adminController.deleteEspId);
+
 
 /** Board ki rename history (user + admin dono ke renames) — tracking/security. */
 adminRouter.get("/esp/:id/history", adminController.getEspIdHistory);

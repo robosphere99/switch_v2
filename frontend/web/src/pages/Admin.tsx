@@ -990,8 +990,12 @@ export function Admin() {
                       setFwNotes("");
                       (e.target as HTMLFormElement).reset();
                     } else {
-                      alert(r.error.message);
+                      alert((r as any).error?.message || "Failed to publish firmware");
                     }
+                  },
+                  onError: (err: any) => {
+                    const msg = err?.response?.data?.error?.message || err?.message || "Upload failed. Please check network/file.";
+                    alert(`❌ Upload Error: ${msg}`);
                   },
                 });
               }}
