@@ -39,6 +39,53 @@ export function initSocket(server: HttpServer): Server {
       socket.join(`session:${sessionId}`);
     }
 
+    const socketUA = (socket.handshake.headers["user-agent"] as string)?.substring(0, 255) || "Web Browser";
+    const socketIp = (
+      (socket.handshake.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ||
+      socket.handshake.address ||
+      "127.0.0.1"
+    ).substring(0, 45).replace(/^::ffff:/, "");
+
+    // Track active socket session
+    (async () => {
+      try {
+        if (sessionId) {
+          const updated = await prisma.refreshToken.updateMany({
+            where: { id: sessionId, userId, revokedAt: null },
+            data: { lastActive: new Date(), ipAddress: socketIp },
+          });
+          if (updated.count > 0) return;
+        }
+        const existing = await prisma.refreshToken.findFirst({
+          where: { userId, deviceInfo: socketUA, revokedAt: null },
+          orderBy: { lastActive: "desc" },
+        });
+        if (existing) {
+          await prisma.refreshToken.update({
+            where: { id: existing.id },
+            data: { lastActive: new Date(), ipAddress: socketIp },
+          });
+        } else {
+          const crypto = await import("node:crypto");
+          const syntheticHash = crypto
+            .createHash("sha256")
+            .update(`sess_${userId}_${socketUA}_${Date.now()}_${Math.random()}`)
+            .digest("hex");
+          await prisma.refreshToken.create({
+            data: {
+              userId,
+              tokenHash: syntheticHash,
+              deviceInfo: socketUA,
+              ipAddress: socketIp,
+              expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+              lastActive: new Date(),
+            },
+          });
+          emitToUser(userId, "auth:sessions_changed", {});
+        }
+      } catch {}
+    })();
+
     let joined = 0;
     let isAdmin = false;
     try {

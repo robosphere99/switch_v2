@@ -1018,6 +1018,44 @@ function initSocket(server) {
     if (sessionId) {
       socket.join(`session:${sessionId}`);
     }
+    const socketUA = socket.handshake.headers["user-agent"]?.substring(0, 255) || "Web Browser";
+    const socketIp = (socket.handshake.headers["x-forwarded-for"]?.split(",")[0]?.trim() || socket.handshake.address || "127.0.0.1").substring(0, 45).replace(/^::ffff:/, "");
+    (async () => {
+      try {
+        if (sessionId) {
+          const updated = await prisma.refreshToken.updateMany({
+            where: { id: sessionId, userId, revokedAt: null },
+            data: { lastActive: /* @__PURE__ */ new Date(), ipAddress: socketIp }
+          });
+          if (updated.count > 0) return;
+        }
+        const existing = await prisma.refreshToken.findFirst({
+          where: { userId, deviceInfo: socketUA, revokedAt: null },
+          orderBy: { lastActive: "desc" }
+        });
+        if (existing) {
+          await prisma.refreshToken.update({
+            where: { id: existing.id },
+            data: { lastActive: /* @__PURE__ */ new Date(), ipAddress: socketIp }
+          });
+        } else {
+          const crypto11 = await import("node:crypto");
+          const syntheticHash = crypto11.createHash("sha256").update(`sess_${userId}_${socketUA}_${Date.now()}_${Math.random()}`).digest("hex");
+          await prisma.refreshToken.create({
+            data: {
+              userId,
+              tokenHash: syntheticHash,
+              deviceInfo: socketUA,
+              ipAddress: socketIp,
+              expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1e3),
+              lastActive: /* @__PURE__ */ new Date()
+            }
+          });
+          emitToUser(userId, "auth:sessions_changed", {});
+        }
+      } catch {
+      }
+    })();
     let joined = 0;
     let isAdmin = false;
     try {
@@ -2473,6 +2511,52 @@ async function upsertPushToken(req, res) {
 var import_jsonwebtoken3 = __toESM(require("jsonwebtoken"));
 init_env();
 init_prisma();
+var lastTouchCache = /* @__PURE__ */ new Map();
+async function recordSessionActivity(userId, sid, rawUA, ip) {
+  const cacheKey = `${userId}:${sid || rawUA}`;
+  const now = Date.now();
+  const lastTouch = lastTouchCache.get(cacheKey) || 0;
+  if (now - lastTouch < 3e4) return;
+  lastTouchCache.set(cacheKey, now);
+  try {
+    if (sid) {
+      const updated = await prisma.refreshToken.updateMany({
+        where: { id: sid, userId, revokedAt: null },
+        data: { lastActive: /* @__PURE__ */ new Date(), ipAddress: ip }
+      });
+      if (updated.count > 0) return;
+    }
+    const existing = await prisma.refreshToken.findFirst({
+      where: { userId, deviceInfo: rawUA, revokedAt: null },
+      orderBy: { lastActive: "desc" }
+    });
+    if (existing) {
+      await prisma.refreshToken.update({
+        where: { id: existing.id },
+        data: { lastActive: /* @__PURE__ */ new Date(), ipAddress: ip }
+      });
+    } else {
+      const crypto11 = await import("node:crypto");
+      const syntheticHash = crypto11.createHash("sha256").update(`sess_${userId}_${rawUA}_${Date.now()}_${Math.random()}`).digest("hex");
+      await prisma.refreshToken.create({
+        data: {
+          userId,
+          tokenHash: syntheticHash,
+          deviceInfo: rawUA,
+          ipAddress: ip,
+          expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1e3),
+          lastActive: /* @__PURE__ */ new Date()
+        }
+      });
+      try {
+        const { emitToUser: emitToUser2 } = await Promise.resolve().then(() => (init_socket(), socket_exports));
+        emitToUser2(userId, "auth:sessions_changed", {});
+      } catch {
+      }
+    }
+  } catch {
+  }
+}
 var requireAuth = async (req, _res, next) => {
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) {
@@ -2496,6 +2580,10 @@ var requireAuth = async (req, _res, next) => {
     } catch (_dbErr) {
     }
     req.user = payload;
+    const rawUA = req.headers["user-agent"]?.substring(0, 255) || "Web Browser";
+    const rawIp = (req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip || req.socket.remoteAddress || "127.0.0.1").substring(0, 45).replace(/^::ffff:/, "");
+    recordSessionActivity(payload.sub, payload.sid, rawUA, rawIp).catch(() => {
+    });
     next();
   } catch {
     next(new AppError("UNAUTHORIZED", "Invalid or expired token", 401));
