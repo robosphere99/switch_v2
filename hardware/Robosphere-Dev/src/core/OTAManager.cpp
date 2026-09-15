@@ -203,6 +203,13 @@ bool startUpdate() {
 
   status = "Downloading";
 
+  // Auto-upgrade public URLs to HTTPS (IIS forces 301 from HTTP to HTTPS)
+  if (!firmwareURL.startsWith("https://") && !firmwareURL.startsWith("http://localhost") && !firmwareURL.startsWith("http://192.168.") && !firmwareURL.startsWith("http://10.") && !firmwareURL.startsWith("http://127.")) {
+    if (firmwareURL.startsWith("http://")) {
+      firmwareURL = "https://" + firmwareURL.substring(7);
+    }
+  }
+
   static WiFiClient* plainOtaClient = nullptr;
   static WiFiClientSecure* secureOtaClient = nullptr;
   bool useSecure = firmwareURL.startsWith("https://");
@@ -215,6 +222,7 @@ bool startUpdate() {
   WiFiClient &client =
       useSecure ? (WiFiClient &)*secureOtaClient : (WiFiClient &)*plainOtaClient;
 
+  httpUpdate.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
   httpUpdate.onStart([]() { Serial.println("OTA Started"); });
 
   httpUpdate.onProgress([](int current, int total) {

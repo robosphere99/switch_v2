@@ -4773,7 +4773,10 @@ var updateDevice2 = async (req, res) => {
   return ok(res, await updateFromDevice(req.apiKey, req.body.device_id, req.body.status, req.body.mac, req.body.channel));
 };
 var heartbeat2 = async (req, res) => {
-  const baseUrl = `${req.protocol}://${req.get("host")}`;
+  const host = req.get("host") || "onlineswitch.bhartitechnical.com";
+  const isLocal = host.includes("localhost") || host.startsWith("192.168.") || host.startsWith("10.") || host.startsWith("127.");
+  const proto = req.get("x-forwarded-proto") || (isLocal ? "http" : "https");
+  const baseUrl = `${proto}://${host}`;
   ok(
     res,
     await heartbeat(
