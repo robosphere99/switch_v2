@@ -21,6 +21,10 @@ export function requireHomeMember(minRole: HomeMemberRole = "member"): RequestHa
       const userId = req.user?.sub;
       if (!userId) return next(new AppError("UNAUTHORIZED", "Not authenticated", 401));
 
+      if (req.user?.role === "system_admin") {
+        return next();
+      }
+
       const homeId = Number(req.params.homeId);
       if (!Number.isInteger(homeId)) return next(new AppError("BAD_REQUEST", "Invalid home id"));
 
