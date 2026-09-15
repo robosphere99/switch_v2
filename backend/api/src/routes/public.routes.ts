@@ -47,6 +47,7 @@ const verifyBillLimiter = rateLimit({
 });
 
 publicRouter.get("/lan-ip", publicController.getLanIp);
+publicRouter.get("/diagnostics", publicController.getDiagnosticLogs);
 publicRouter.get("/apk", publicController.downloadApk);
 publicRouter.get("/site-settings", siteSettingsLimiter, publicController.getSiteSettings);
 publicRouter.get("/verify/bill/:token", verifyBillLimiter, publicController.verifyBill);

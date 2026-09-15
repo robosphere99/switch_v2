@@ -96,6 +96,37 @@ function fileLog(line) {
   } catch {
   }
 }
+function recordCrash(title, err, context) {
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  const stack = err instanceof Error ? err.stack || err.message : String(err);
+  const mem = process.memoryUsage();
+  const memMb = {
+    rss: (mem.rss / 1024 / 1024).toFixed(1) + " MB",
+    heapUsed: (mem.heapUsed / 1024 / 1024).toFixed(1) + " MB",
+    heapTotal: (mem.heapTotal / 1024 / 1024).toFixed(1) + " MB"
+  };
+  const banner = [
+    `
+================================================================================`,
+    `\u{1F4A5} [${title}] at ${now}`,
+    `Error: ${err instanceof Error ? err.message : String(err)}`,
+    `Stack:
+${stack}`,
+    `Memory: RSS=${memMb.rss} | HeapUsed=${memMb.heapUsed} | HeapTotal=${memMb.heapTotal}`,
+    `Node: ${process.version} | Platform: ${process.platform} | Uptime: ${Math.floor(process.uptime())}s`,
+    context ? `Context: ${JSON.stringify(context, null, 2)}` : "",
+    `================================================================================
+`
+  ].filter(Boolean).join("\n");
+  console.error(banner);
+  fileLog(`[CRASH] ${title}: ${stack}`);
+  if (crashFilePath) {
+    try {
+      fs2.appendFileSync(crashFilePath, banner);
+    } catch {
+    }
+  }
+}
 function log(level, msg, meta) {
   if (ORDER[level] < ORDER[env.LOG_LEVEL]) return;
   const line = `[${(/* @__PURE__ */ new Date()).toISOString()}] [${level.toUpperCase()}] ${msg}`;
@@ -110,36 +141,60 @@ function log(level, msg, meta) {
     else console.log(line);
   }
 }
-var logFilePath, ORDER, logger;
+function getCrashLogs(tailLines = 100) {
+  if (!crashFilePath || !fs2.existsSync(crashFilePath)) return "No crash logs recorded yet.";
+  try {
+    const content = fs2.readFileSync(crashFilePath, "utf8");
+    const lines = content.trim().split("\n");
+    return lines.slice(-tailLines).join("\n");
+  } catch (e) {
+    return `Error reading crash logs: ${e?.message}`;
+  }
+}
+function getAppLogs(tailLines = 100) {
+  if (!logFilePath || !fs2.existsSync(logFilePath)) return "No app logs recorded yet.";
+  try {
+    const content = fs2.readFileSync(logFilePath, "utf8");
+    const lines = content.trim().split("\n");
+    return lines.slice(-tailLines).join("\n");
+  } catch (e) {
+    return `Error reading app logs: ${e?.message}`;
+  }
+}
+var logDirCandidates, activeLogDir, logFilePath, crashFilePath, ORDER, logger;
 var init_logger = __esm({
   "src/lib/logger.ts"() {
     "use strict";
     init_env();
-    logFilePath = (() => {
-      const candidates = [
-        path2.resolve(process.cwd(), "../logs"),
-        // site/apps/logs — iisnode yahi likhta hai (writable)
-        path2.resolve(process.cwd(), "logs"),
-        // site/apps/api/logs
-        path2.join(os.tmpdir(), "switchnest-logs")
-      ];
-      for (const dir of candidates) {
-        try {
-          fs2.mkdirSync(dir, { recursive: true });
-          fs2.accessSync(dir, fs2.constants.W_OK);
-          return path2.join(dir, "app.log");
-        } catch {
-          continue;
-        }
+    logDirCandidates = [
+      path2.resolve(process.cwd(), "logs"),
+      // backend/api/logs
+      path2.resolve(process.cwd(), "../logs"),
+      // site/logs
+      path2.resolve(process.cwd(), "../../logs"),
+      // root/logs
+      path2.join(os.tmpdir(), "switchnest-logs")
+    ];
+    activeLogDir = null;
+    for (const dir of logDirCandidates) {
+      try {
+        fs2.mkdirSync(dir, { recursive: true });
+        fs2.accessSync(dir, fs2.constants.W_OK);
+        activeLogDir = dir;
+        break;
+      } catch {
+        continue;
       }
-      return null;
-    })();
+    }
+    logFilePath = activeLogDir ? path2.join(activeLogDir, "app.log") : null;
+    crashFilePath = activeLogDir ? path2.join(activeLogDir, "crash.log") : null;
     ORDER = { debug: 0, info: 1, warn: 2, error: 3 };
     logger = {
       debug: (msg, meta) => log("debug", msg, meta),
       info: (msg, meta) => log("info", msg, meta),
       warn: (msg, meta) => log("warn", msg, meta),
-      error: (msg, meta) => log("error", msg, meta)
+      error: (msg, meta) => log("error", msg, meta),
+      crash: (title, err, context) => recordCrash(title, err, context)
     };
   }
 });
@@ -10439,6 +10494,30 @@ import path12 from "path";
 import fs11 from "fs";
 init_audit_service();
 init_siteSettings_service();
+init_logger();
+async function getDiagnosticLogs(req, res) {
+  const mem = process.memoryUsage();
+  let dbStatus = "unknown";
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    dbStatus = "connected";
+  } catch (e) {
+    dbStatus = `error: ${e?.message}`;
+  }
+  res.json({
+    success: true,
+    serverTime: (/* @__PURE__ */ new Date()).toISOString(),
+    uptimeSeconds: Math.floor(process.uptime()),
+    memoryMb: {
+      rss: (mem.rss / 1024 / 1024).toFixed(1),
+      heapUsed: (mem.heapUsed / 1024 / 1024).toFixed(1),
+      heapTotal: (mem.heapTotal / 1024 / 1024).toFixed(1)
+    },
+    dbStatus,
+    crashLogs: getCrashLogs(50),
+    appLogs: getAppLogs(50)
+  });
+}
 async function getLanIp(_req, res) {
   try {
     const ip = await detectLanIp();
@@ -10923,6 +11002,7 @@ var verifyBillLimiter = rateLimit({
   message: "Bahut zyada verify requests \u2014 thodi der baad try karo"
 });
 publicRouter.get("/lan-ip", getLanIp);
+publicRouter.get("/diagnostics", getDiagnosticLogs);
 publicRouter.get("/apk", downloadApk);
 publicRouter.get("/site-settings", siteSettingsLimiter, getSiteSettings2);
 publicRouter.get("/verify/bill/:token", verifyBillLimiter, verifyBill);
@@ -15432,15 +15512,12 @@ async function runArchival() {
 
 // src/index.ts
 init_mqtt_service();
+init_logger();
 process.on("uncaughtException", (err) => {
-  const line = `[uncaughtException] ${err instanceof Error ? err.stack || err.message : String(err)}`;
-  console.error(line);
-  fileLog(line);
+  recordCrash("UNCAUGHT EXCEPTION", err);
 });
 process.on("unhandledRejection", (reason) => {
-  const line = `[unhandledRejection] ${reason instanceof Error ? reason.stack || reason.message : String(reason)}`;
-  console.error(line);
-  fileLog(line);
+  recordCrash("UNHANDLED PROMISE REJECTION", reason);
 });
 async function addColumnIfMissing(table, column, definition) {
   try {
