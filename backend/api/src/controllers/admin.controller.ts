@@ -2286,8 +2286,9 @@ export const deleteOrdersId = async (req: Request, res: Response) => {
 };
 
 export const cleanTestData = async (req: Request, res: Response) => {
-  // Preserve ONLY the 2 live customer boards and orders
-  const preservedSerials = ["RS-4CH-3GW2ES", "RS-4CH-FFYJR3"];
+  // Preserve ONLY the 2 live customer boards (Robo Lab & Shinde Home) and customer orders
+  const preservedSerials = ["RS-4CH-3GW2FS", "RS-4CH-3GW2ES", "RS-4CH-FFYJR3"];
+  const preservedMacs = ["10:06:1c:f4:f4:a0", "c0:cd:d6:85:41:34", "10061cf4f4a0", "c0cdd6854134"];
   const preservedOrderIds = [2, 8];
 
   // 1. Delete order items for test orders
@@ -2305,18 +2306,33 @@ export const cleanTestData = async (req: Request, res: Response) => {
     where: { id: { notIn: preservedOrderIds } },
   });
 
-  // 4. Delete test ESP boards
+  // 4. Find all preserved ESP boards
+  const preservedEsps = await prisma.espDevice.findMany({
+    where: {
+      OR: [
+        { serialCode: { in: preservedSerials } },
+        { macAddress: { in: preservedMacs } },
+      ],
+    },
+    select: { id: true, homeId: true },
+  });
+  const preservedEspIds = preservedEsps.map((e) => e.id);
+  const activeHomeIds = [...new Set(preservedEsps.map((e) => e.homeId).filter((h): h is number => h != null))];
+
+  // 5. Delete test ESP boards (including stale "Second Board" d0:ef:76:33:56:a0)
   const deletedEsps = await prisma.espDevice.deleteMany({
-    where: { serialCode: { notIn: preservedSerials } },
+    where: {
+      id: { notIn: preservedEspIds },
+    },
   });
 
-  // 5. Delete unlinked devices or dummy devices not in Home 4 or 15
-  const preservedHomeIds = [4, 15];
+  // 6. Delete unlinked devices or dummy devices not belonging to the 2 preserved customer boards
   const deletedDevices = await prisma.device.deleteMany({
     where: {
       OR: [
-        { homeId: { notIn: preservedHomeIds } },
-        { espId: null, homeId: { notIn: preservedHomeIds } },
+        { espId: { notIn: preservedEspIds } },
+        { espId: null },
+        { homeId: { notIn: activeHomeIds } },
       ],
     },
   });
@@ -2334,7 +2350,7 @@ export const cleanTestData = async (req: Request, res: Response) => {
 
   ok(res, {
     success: true,
-    message: "Test data cleaned successfully. Preserved customer boards RS-4CH-3GW2ES and RS-4CH-FFYJR3 and orders #2 & #8.",
+    message: "Test data cleaned successfully. Preserved customer boards (Robo Lab & Shinde Home) and customer orders #2 & #8.",
     deletedOrders: deletedOrders.count,
     deletedEsps: deletedEsps.count,
     deletedItems: deletedItems.count,
