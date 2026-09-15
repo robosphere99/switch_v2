@@ -38,39 +38,43 @@ let client: mqtt.MqttClient | null = null;
  * alongside initSocket / server.listen.
  */
 export function startMqttBroker(): void {
-    logger.info(`🦟 Connecting to EMQX Broker at ${MQTT_BROKER_URL}...`);
-    client = mqtt.connect(MQTT_BROKER_URL, {
-        username: MQTT_USERNAME,
-        password: MQTT_PASSWORD,
-        rejectUnauthorized: false,
-        clientId: `switchnest_backend_${Math.random().toString(16).slice(2, 8)}`,
-        clean: true,
-        reconnectPeriod: 5000,
-    });
-
-    client.on("connect", () => {
-        logger.info(`[mqtt-client] Connected to EMQX Broker`);
-        
-        // Subscribe to state, log and online presence topics for all devices
-        client?.subscribe("sn/+/state", { qos: 1 }, (err) => {
-            if (err) logger.error(`[mqtt-client] Subscribe error: sn/+/state`, err);
-            else logger.info(`[mqtt-client] Subscribed to sn/+/state`);
-        });
-        
-        client?.subscribe("sn/+/log", { qos: 0 }, (err) => {
-            if (err) logger.error(`[mqtt-client] Subscribe error: sn/+/log`, err);
-            else logger.info(`[mqtt-client] Subscribed to sn/+/log`);
+    try {
+        logger.info(`🦟 Connecting to EMQX Broker at ${MQTT_BROKER_URL}...`);
+        client = mqtt.connect(MQTT_BROKER_URL, {
+            username: MQTT_USERNAME,
+            password: MQTT_PASSWORD,
+            rejectUnauthorized: false,
+            clientId: `switchnest_backend_${Math.random().toString(16).slice(2, 8)}`,
+            clean: true,
+            reconnectPeriod: 5000,
         });
 
-        client?.subscribe("sn/+/online", { qos: 1 }, (err) => {
-            if (err) logger.error(`[mqtt-client] Subscribe error: sn/+/online`, err);
-            else logger.info(`[mqtt-client] Subscribed to sn/+/online`);
-        });
-    });
+        client.on("connect", () => {
+            logger.info(`[mqtt-client] Connected to EMQX Broker`);
+            
+            // Subscribe to state, log and online presence topics for all devices
+            client?.subscribe("sn/+/state", { qos: 1 }, (err) => {
+                if (err) logger.error(`[mqtt-client] Subscribe error: sn/+/state`, err);
+                else logger.info(`[mqtt-client] Subscribed to sn/+/state`);
+            });
+            
+            client?.subscribe("sn/+/log", { qos: 0 }, (err) => {
+                if (err) logger.error(`[mqtt-client] Subscribe error: sn/+/log`, err);
+                else logger.info(`[mqtt-client] Subscribed to sn/+/log`);
+            });
 
-    client.on("error", (err) => {
-        logger.warn(`[mqtt-client] Connection error`, err.message);
-    });
+            client?.subscribe("sn/+/online", { qos: 1 }, (err) => {
+                if (err) logger.error(`[mqtt-client] Subscribe error: sn/+/online`, err);
+                else logger.info(`[mqtt-client] Subscribed to sn/+/online`);
+            });
+        });
+
+        client.on("error", (err) => {
+            logger.warn(`[mqtt-client] Connection error`, err.message);
+        });
+    } catch (err) {
+        logger.warn(`[mqtt-client] Failed to initialize MQTT client:`, err instanceof Error ? err.message : String(err));
+    }
 
     client.on("message", async (topic, payload) => {
         try {
