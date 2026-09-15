@@ -14971,6 +14971,11 @@ var emqxAuth = async (req, res) => {
     }
     const serial = username.toString().trim().toUpperCase();
     const apiKeyPlain = password.toString().trim();
+    const adminUser = (process.env.MQTT_USERNAME || "Admin").trim();
+    const adminPass = (process.env.MQTT_PASSWORD || "Anil@20552").trim();
+    if (username.toString().trim() === adminUser && apiKeyPlain === adminPass) {
+      return res.status(200).json({ result: "allow", is_superuser: true });
+    }
     const key = await prisma.apiKey.findUnique({
       where: { keyHash: hashKey3(apiKeyPlain) },
       select: { id: true, homeId: true, revokedAt: true, expiresAt: true }
@@ -15052,7 +15057,8 @@ var emqxAcl = async (req, res) => {
       return res.status(403).json({ result: "ignore" });
     }
     const serial = username.toString().trim().toUpperCase();
-    if (username === process.env.MQTT_USERNAME) {
+    const adminUser = (process.env.MQTT_USERNAME || "Admin").trim();
+    if (username.toString().trim() === adminUser) {
       return res.status(200).json({ result: "allow" });
     }
     const esp = await prisma.espDevice.findFirst({

@@ -20,6 +20,13 @@ export const emqxAuth = async (req: Request, res: Response) => {
         const serial = username.toString().trim().toUpperCase();
         const apiKeyPlain = password.toString().trim();
 
+        // Fast path for backend itself
+        const adminUser = (process.env.MQTT_USERNAME || "Admin").trim();
+        const adminPass = (process.env.MQTT_PASSWORD || "Anil@20552").trim();
+        if (username.toString().trim() === adminUser && apiKeyPlain === adminPass) {
+            return res.status(200).json({ result: "allow", is_superuser: true });
+        }
+
         // Hash the plain key and look up
         const key = await prisma.apiKey.findUnique({
             where: { keyHash: hashKey(apiKeyPlain) },
@@ -123,7 +130,8 @@ export const emqxAcl = async (req: Request, res: Response) => {
         const serial = username.toString().trim().toUpperCase();
 
         // Fast path for backend itself (if we configure a specific superuser, though typically we use internal EMQX auth for backend)
-        if (username === process.env.MQTT_USERNAME) {
+        const adminUser = (process.env.MQTT_USERNAME || "Admin").trim();
+        if (username.toString().trim() === adminUser) {
             return res.status(200).json({ result: "allow" });
         }
 
