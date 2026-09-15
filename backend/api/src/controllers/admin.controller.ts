@@ -24,7 +24,7 @@ import { setDbReady } from "../lib/dbState";
 import { sendEmail } from "../lib/email.service";
 import { chatCompletion, getAiConfig, aiConfigured } from "../lib/ai";
 import { requestPasswordReset } from "../services/auth.service";
-import { firmwareDir, mobileAppDir, webPublicMobileAppDir } from "../lib/paths";
+import { firmwareDir, mobileAppDir, webPublicMobileAppDir, getCandidateFirmwareDirs, getWritableFirmwareDir } from "../lib/paths";
 
 export type CiStatus = {
   state?: "success" | "pending" | "failure" | "error";
@@ -1751,14 +1751,27 @@ export const postFirmware = async (req: Request, res: Response) => {
   const filename = modelCode ? `firmware-${modelCode.toLowerCase()}.bin` : "firmware.bin";
   const url = `/firmware/${filename}`;
 
-  // multer filename fixed "firmware.bin" rakhta hai — model ho to rename karo
-  if (modelCode && filename !== "firmware.bin") {
-    const uploaded = path.join(firmwareDir, "firmware.bin");
-    const target = path.join(firmwareDir, filename);
-    if (fs.existsSync(uploaded) && uploaded !== target) {
-      if (fs.existsSync(target)) fs.unlinkSync(target);
-      fs.renameSync(uploaded, target);
+  // Write file buffer to all candidate writable firmware directories
+  const candidateDirs = getCandidateFirmwareDirs();
+  let writeSuccess = false;
+  let lastWriteError: string | null = null;
+
+  for (const dir of candidateDirs) {
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+      const target = path.join(dir, filename);
+      if (req.file.buffer) {
+        fs.writeFileSync(target, req.file.buffer);
+        writeSuccess = true;
+      }
+    } catch (err: any) {
+      lastWriteError = err?.message || String(err);
+      continue;
     }
+  }
+
+  if (!writeSuccess) {
+    throw new AppError("INTERNAL_ERROR", `Could not save firmware file: ${lastWriteError || "Unknown write error"}`);
   }
 
   await prisma.$transaction([

@@ -195,24 +195,8 @@ adminRouter.get("/diagnostics", adminController.getDiagnostics);
 adminRouter.get("/logs", adminController.getLogs);
 
 const upload = multer({
-  storage: multer.diskStorage({
-    destination: (_req, _file, cb) => {
-      try {
-        fs.mkdirSync(firmwareDir, { recursive: true });
-        cb(null, firmwareDir);
-      } catch (err) {
-        const fallback = path.resolve(process.cwd(), "uploads", "firmware");
-        try {
-          fs.mkdirSync(fallback, { recursive: true });
-          cb(null, fallback);
-        } catch {
-          cb(err as Error, firmwareDir);
-        }
-      }
-    },
-    filename: (_req, _file, cb) => cb(null, "firmware.bin"),
-  }),
-  limits: { fileSize: 16 * 1024 * 1024 },
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 16 * 1024 * 1024 }, // 16 MB limit
 });
 
 /** ESP boards — ek row per PHYSICAL board (MAC se), under me controlled devices. */

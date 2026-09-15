@@ -7,6 +7,7 @@ import { corsOrigins } from "./config/env";
 import { errorHandler } from "./middleware/errorHandler";
 import {
   firmwareDir,
+  getCandidateFirmwareDirs,
   webDist,
   mobileAppDir,
   webPublicMobileAppDir,
@@ -190,7 +191,26 @@ export function createApp() {
   app.use("/api", apiRouter);
 
   // Serve published ESP32 firmware at /firmware/firmware.bin (OTA downloads).
-  app.use("/firmware", express.static(firmwareDir));
+  const candidateFwDirs = getCandidateFirmwareDirs();
+  for (const dir of candidateFwDirs) {
+    if (dir && fs.existsSync(dir)) {
+      app.use("/firmware", express.static(dir));
+    }
+  }
+
+  // Explicit route handler for /firmware/:filename to guarantee OTA downloads
+  app.get("/firmware/:filename", (req, res, next) => {
+    const filename = path.basename(req.params.filename);
+    for (const dir of candidateFwDirs) {
+      if (dir && fs.existsSync(dir)) {
+        const fullPath = path.join(dir, filename);
+        if (fs.existsSync(fullPath)) {
+          return res.sendFile(fullPath);
+        }
+      }
+    }
+    next();
+  });
 
   // Serve User Uploads at /uploads (Avatars, pictures, support, billing).
   const candidateUploadDirs = getCandidateUploadDirs();

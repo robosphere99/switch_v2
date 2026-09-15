@@ -30,10 +30,39 @@ export const apiRoot = isDist
   ? path.resolve(process.cwd().endsWith("dist") ? process.cwd() : __dirname, "..")
   : (repoRoot ? path.join(repoRoot, "backend", "api") : process.cwd());
 
-/** <repo>/hardware/firmware — admin firmware upload + /firmware serving. */
-export const firmwareDir = repoRoot
-  ? path.join(repoRoot, "hardware", "firmware")
-  : path.resolve(apiRoot, "../../hardware/firmware");
+/** Candidate directories for firmware storage & serving. */
+export function getCandidateFirmwareDirs(): string[] {
+  const dirs: string[] = [
+    path.resolve(process.cwd(), "uploads", "firmware"),
+    path.resolve(process.cwd(), "../uploads", "firmware"),
+    path.resolve(process.cwd(), "logs", "firmware"),
+    path.resolve(apiRoot, "uploads", "firmware"),
+    repoRoot ? path.join(repoRoot, "hardware", "firmware") : "",
+    path.resolve(apiRoot, "../../hardware/firmware"),
+    path.join(os.tmpdir(), "switchnest-firmware"),
+  ].filter((d): d is string => Boolean(d));
+
+  return Array.from(new Set(dirs));
+}
+
+export function getWritableFirmwareDir(): string {
+  const candidates = getCandidateFirmwareDirs();
+  for (const dir of candidates) {
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+      fs.accessSync(dir, fs.constants.W_OK);
+      return dir;
+    } catch {
+      continue;
+    }
+  }
+  const fallback = path.join(os.tmpdir(), "switchnest-firmware");
+  fs.mkdirSync(fallback, { recursive: true });
+  return fallback;
+}
+
+/** <repo>/hardware/firmware — admin firmware upload + /firmware serving default. */
+export const firmwareDir = getWritableFirmwareDir();
 
 /** <repo>/mobile-app — hosting Android APK releases for OTA updates. */
 export const mobileAppDir = repoRoot

@@ -1796,7 +1796,7 @@ init_env();
 import express2 from "express";
 import cors from "cors";
 import helmet from "helmet";
-import path17 from "node:path";
+import path16 from "node:path";
 import fs14 from "node:fs";
 
 // src/middleware/errorHandler.ts
@@ -1864,7 +1864,34 @@ function findRepoRoot(start) {
 var repoRoot = findRepoRoot(process.cwd());
 var isDist = process.cwd().endsWith("dist") || typeof __dirname !== "undefined" && __dirname.endsWith("dist");
 var apiRoot = isDist ? path3.resolve(process.cwd().endsWith("dist") ? process.cwd() : __dirname, "..") : repoRoot ? path3.join(repoRoot, "backend", "api") : process.cwd();
-var firmwareDir = repoRoot ? path3.join(repoRoot, "hardware", "firmware") : path3.resolve(apiRoot, "../../hardware/firmware");
+function getCandidateFirmwareDirs() {
+  const dirs = [
+    path3.resolve(process.cwd(), "uploads", "firmware"),
+    path3.resolve(process.cwd(), "../uploads", "firmware"),
+    path3.resolve(process.cwd(), "logs", "firmware"),
+    path3.resolve(apiRoot, "uploads", "firmware"),
+    repoRoot ? path3.join(repoRoot, "hardware", "firmware") : "",
+    path3.resolve(apiRoot, "../../hardware/firmware"),
+    path3.join(os2.tmpdir(), "switchnest-firmware")
+  ].filter((d) => Boolean(d));
+  return Array.from(new Set(dirs));
+}
+function getWritableFirmwareDir() {
+  const candidates = getCandidateFirmwareDirs();
+  for (const dir of candidates) {
+    try {
+      fs3.mkdirSync(dir, { recursive: true });
+      fs3.accessSync(dir, fs3.constants.W_OK);
+      return dir;
+    } catch {
+      continue;
+    }
+  }
+  const fallback = path3.join(os2.tmpdir(), "switchnest-firmware");
+  fs3.mkdirSync(fallback, { recursive: true });
+  return fallback;
+}
+var firmwareDir = getWritableFirmwareDir();
 var mobileAppDir = repoRoot ? path3.join(repoRoot, "mobile-app") : path3.resolve(apiRoot, "../../mobile-app");
 function getMobileAppCandidateDirs() {
   const dirs = [
@@ -6004,7 +6031,6 @@ assistantRouter.get("/chats/:chatId/messages", requireAuth, validateParams(chatP
 import { Router as Router11 } from "express";
 import { z as z12 } from "zod";
 import multer2 from "multer";
-import path11 from "node:path";
 import fs10 from "node:fs";
 
 // src/controllers/admin.controller.ts
@@ -8345,13 +8371,24 @@ var postFirmware = async (req, res) => {
   }
   const filename = modelCode ? `firmware-${modelCode.toLowerCase()}.bin` : "firmware.bin";
   const url = `/firmware/${filename}`;
-  if (modelCode && filename !== "firmware.bin") {
-    const uploaded = path10.join(firmwareDir, "firmware.bin");
-    const target = path10.join(firmwareDir, filename);
-    if (fs9.existsSync(uploaded) && uploaded !== target) {
-      if (fs9.existsSync(target)) fs9.unlinkSync(target);
-      fs9.renameSync(uploaded, target);
+  const candidateDirs = getCandidateFirmwareDirs();
+  let writeSuccess = false;
+  let lastWriteError = null;
+  for (const dir of candidateDirs) {
+    try {
+      fs9.mkdirSync(dir, { recursive: true });
+      const target = path10.join(dir, filename);
+      if (req.file.buffer) {
+        fs9.writeFileSync(target, req.file.buffer);
+        writeSuccess = true;
+      }
+    } catch (err) {
+      lastWriteError = err?.message || String(err);
+      continue;
     }
+  }
+  if (!writeSuccess) {
+    throw new AppError("INTERNAL_ERROR", `Could not save firmware file: ${lastWriteError || "Unknown write error"}`);
   }
   await prisma.$transaction([
     // Sirf isi model ke puraane current deactivate karo — doosre models ke current untouched
@@ -9862,24 +9899,9 @@ adminRouter.get("/deploy-info", getDeployInfo);
 adminRouter.get("/diagnostics", getDiagnostics);
 adminRouter.get("/logs", getLogs);
 var upload2 = multer2({
-  storage: multer2.diskStorage({
-    destination: (_req, _file, cb) => {
-      try {
-        fs10.mkdirSync(firmwareDir, { recursive: true });
-        cb(null, firmwareDir);
-      } catch (err) {
-        const fallback = path11.resolve(process.cwd(), "uploads", "firmware");
-        try {
-          fs10.mkdirSync(fallback, { recursive: true });
-          cb(null, fallback);
-        } catch {
-          cb(err, firmwareDir);
-        }
-      }
-    },
-    filename: (_req, _file, cb) => cb(null, "firmware.bin")
-  }),
+  storage: multer2.memoryStorage(),
   limits: { fileSize: 16 * 1024 * 1024 }
+  // 16 MB limit
 });
 adminRouter.get("/esp", getEsp);
 adminRouter.post("/esp/:id/key", postEspIdKey);
@@ -9958,7 +9980,7 @@ import multer3 from "multer";
 
 // src/controllers/shop.controller.ts
 init_prisma();
-import path12 from "node:path";
+import path11 from "node:path";
 init_audit_service();
 
 // src/services/payment.service.ts
@@ -10009,7 +10031,7 @@ async function getProducts2(_req, res) {
 }
 async function uploadMedia(req, res) {
   if (!req.file) throw new AppError("BAD_REQUEST", "No file uploaded");
-  const filename = path12.basename(req.file.filename || req.file.path);
+  const filename = path11.basename(req.file.filename || req.file.path);
   const fileUrl = `/uploads/billing/${filename}`;
   ok(res, { url: fileUrl });
 }
@@ -10560,7 +10582,7 @@ import { Router as Router15 } from "express";
 
 // src/controllers/public.controller.ts
 init_prisma();
-import path13 from "path";
+import path12 from "path";
 import fs11 from "fs";
 init_audit_service();
 init_siteSettings_service();
@@ -10597,7 +10619,7 @@ async function getLanIp(_req, res) {
   }
 }
 function downloadApk(_req, res) {
-  const apkPath = path13.resolve(process.cwd(), "../mobile/android/app/build/outputs/apk/debug/app-debug.apk");
+  const apkPath = path12.resolve(process.cwd(), "../mobile/android/app/build/outputs/apk/debug/app-debug.apk");
   if (fs11.existsSync(apkPath)) {
     res.download(apkPath, "SwitchNest.apk");
   } else {
@@ -11089,14 +11111,14 @@ import multer4 from "multer";
 
 // src/controllers/support.controller.ts
 init_prisma();
-import path15 from "node:path";
+import path14 from "node:path";
 import jwt4 from "jsonwebtoken";
 init_notification_service();
 init_socket();
 
 // src/lib/attachmentStore.ts
 import * as fs12 from "fs";
-import * as path14 from "path";
+import * as path13 from "path";
 function extFor(type, name) {
   const fromName = name.split(".").pop()?.toLowerCase();
   if (fromName && /^[a-z0-9]{1,8}$/.test(fromName)) return fromName;
@@ -11112,24 +11134,24 @@ function extFor(type, name) {
 async function saveAttachment(base64, type, name) {
   const buf = Buffer.from(base64, "base64");
   if (buf.length === 0) throw new Error("Empty file");
-  const targetDir = path14.join(uploadsDir, "support");
+  const targetDir = path13.join(uploadsDir, "support");
   try {
     fs12.mkdirSync(targetDir, { recursive: true });
   } catch {
   }
   const ext = extFor(type, name);
-  const base = path14.basename(name, `.${ext}`).replace(/[^a-zA-Z0-9_-]/g, "_") || "attachment";
+  const base = path13.basename(name, `.${ext}`).replace(/[^a-zA-Z0-9_-]/g, "_") || "attachment";
   const safeName = `${Date.now()}-${base}.${ext}`;
-  const fullPath = path14.join(targetDir, safeName);
+  const fullPath = path13.join(targetDir, safeName);
   fs12.writeFileSync(fullPath, buf);
   return `/uploads/support/${safeName}`;
 }
 function readAttachmentFile(filename) {
-  const safe = path14.basename(filename);
+  const safe = path13.basename(filename);
   if (!safe) return null;
   const candidatePaths2 = [
-    path14.join(uploadsDir, "support", safe),
-    path14.join(attachmentDir, safe)
+    path13.join(uploadsDir, "support", safe),
+    path13.join(attachmentDir, safe)
   ];
   for (const p of candidatePaths2) {
     try {
@@ -11142,11 +11164,11 @@ function readAttachmentFile(filename) {
 function deleteAttachmentFile(filename) {
   if (!filename) return;
   if (filename.startsWith("http://") || filename.startsWith("https://")) return;
-  const safe = path14.basename(filename);
+  const safe = path13.basename(filename);
   if (!safe) return;
   const candidatePaths2 = [
-    path14.join(uploadsDir, "support", safe),
-    path14.join(attachmentDir, safe)
+    path13.join(uploadsDir, "support", safe),
+    path13.join(attachmentDir, safe)
   ];
   for (const p of candidatePaths2) {
     try {
@@ -11348,7 +11370,7 @@ async function userMediaMessage(req, res) {
   if (!req.file && !message) {
     throw new AppError("VALIDATION_ERROR", "Message or file required", 400);
   }
-  const filename = req.file ? path15.basename(req.file.filename || req.file.path) : null;
+  const filename = req.file ? path14.basename(req.file.filename || req.file.path) : null;
   const attachmentPath = filename ? `/uploads/support/${filename}` : null;
   const created = await supportModel().create({
     data: {
@@ -11391,7 +11413,7 @@ async function adminMediaMessage(req, res) {
   if (!req.file && !message) throw new AppError("VALIDATION_ERROR", "Message or file required", 400);
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, username: true, email: true } });
   if (!user) throw new AppError("NOT_FOUND", "User not found", 404);
-  const filename = req.file ? path15.basename(req.file.filename || req.file.path) : null;
+  const filename = req.file ? path14.basename(req.file.filename || req.file.path) : null;
   const attachmentPath = filename ? `/uploads/support/${filename}` : null;
   const created = await supportModel().create({
     data: {
@@ -12680,7 +12702,7 @@ init_env();
 init_prisma();
 import mysql from "mysql2/promise";
 import fs13 from "node:fs";
-import path16 from "node:path";
+import path15 from "node:path";
 import bcrypt3 from "bcryptjs";
 init_logger();
 
@@ -12953,7 +12975,7 @@ async function checkOfflineDevicesInner() {
 }
 
 // src/controllers/install.controller.ts
-var SCHEMA_SQL = path16.resolve(process.cwd(), "prisma/schema.sql");
+var SCHEMA_SQL = path15.resolve(process.cwd(), "prisma/schema.sql");
 var DEFAULT_PRODUCTS = [
   { name: "2CH WiFi Relay Module", modelCode: "2CH", relayCount: 2, price: "599", description: "Two-channel WiFi relay board for lights and small appliances. 10A per channel, ESP32 based, works with the SwitchNest app and voice assistant.", features: { channels: 2, wifi: true, ota: true, voice: true } },
   { name: "4CH WiFi Relay Module", modelCode: "4CH", relayCount: 4, price: "799", description: "Four-channel WiFi relay board \u2014 the classic choice for room-wide control. 10A per channel with status LED and manual override switches.", features: { channels: 4, wifi: true, ota: true, voice: true } },
@@ -13081,13 +13103,13 @@ async function createDatabase(parts) {
 }
 function getSchemaSql() {
   const candidates = [
-    path16.resolve(process.cwd(), "prisma/schema.sql"),
-    path16.resolve(process.cwd(), "dist/schema.sql"),
-    path16.resolve(process.cwd(), "apps/api/prisma/schema.sql"),
-    path16.resolve(process.cwd(), "site/apps/api/prisma/schema.sql"),
-    path16.resolve(__dirname, "../prisma/schema.sql"),
-    path16.resolve(__dirname, "schema.sql"),
-    path16.resolve(__dirname, "prisma/schema.sql")
+    path15.resolve(process.cwd(), "prisma/schema.sql"),
+    path15.resolve(process.cwd(), "dist/schema.sql"),
+    path15.resolve(process.cwd(), "apps/api/prisma/schema.sql"),
+    path15.resolve(process.cwd(), "site/apps/api/prisma/schema.sql"),
+    path15.resolve(__dirname, "../prisma/schema.sql"),
+    path15.resolve(__dirname, "schema.sql"),
+    path15.resolve(__dirname, "prisma/schema.sql")
   ];
   for (const p of candidates) {
     if (fs13.existsSync(p)) {
@@ -13608,18 +13630,18 @@ var DESCRIPTIONS = {
   "GET /api/health": "Health check \u2014 DB schema diag + build version (ops).",
   "GET /api/version": "API version (ops)."
 };
-function securityFor(path19, method) {
-  if (method === "GET" && (path19 === "/api/health" || path19 === "/api/version")) return void 0;
-  if (path19.startsWith("/api/device")) return [{ deviceApiKey: [] }];
-  if (path19.startsWith("/api/install") || path19.startsWith("/api/public")) return void 0;
-  if (path19.startsWith("/api/docs")) return void 0;
-  if (path19.startsWith("/api/auth")) {
-    if (method === "GET" || path19.includes("/me") || path19 === "/api/auth/theme") {
+function securityFor(path18, method) {
+  if (method === "GET" && (path18 === "/api/health" || path18 === "/api/version")) return void 0;
+  if (path18.startsWith("/api/device")) return [{ deviceApiKey: [] }];
+  if (path18.startsWith("/api/install") || path18.startsWith("/api/public")) return void 0;
+  if (path18.startsWith("/api/docs")) return void 0;
+  if (path18.startsWith("/api/auth")) {
+    if (method === "GET" || path18.includes("/me") || path18 === "/api/auth/theme") {
       return [{ bearerAuth: [] }];
     }
     return void 0;
   }
-  if (path19.startsWith("/api/shop/products")) return void 0;
+  if (path18.startsWith("/api/shop/products")) return void 0;
   return [{ bearerAuth: [] }];
 }
 var BODIES = {
@@ -14060,8 +14082,8 @@ var SCHEMAS = {
     }
   }
 };
-function tagFor(path19) {
-  const seg = path19.replace(/^\/api\//, "").split("/")[0] ?? "system";
+function tagFor(path18) {
+  const seg = path18.replace(/^\/api\//, "").split("/")[0] ?? "system";
   const map = {
     auth: "Auth",
     device: "Device API (ESP32)",
@@ -14082,11 +14104,11 @@ function tagFor(path19) {
   };
   return map[seg] ?? "Homes";
 }
-function paramsFor(path19) {
+function paramsFor(path18) {
   const out = [];
   const re = /:([A-Za-z0-9_]+)/g;
   let m;
-  while ((m = re.exec(path19)) !== null) {
+  while ((m = re.exec(path18)) !== null) {
     out.push({
       name: m[1],
       in: "path",
@@ -14949,11 +14971,11 @@ var getPlainList = (_req, res) => {
   const spec = getOpenApiSpec();
   const paths = spec.paths;
   const byTag = /* @__PURE__ */ new Map();
-  for (const [path19, ops] of Object.entries(paths)) {
+  for (const [path18, ops] of Object.entries(paths)) {
     for (const [method, op] of Object.entries(ops)) {
       const tag = op.tags?.[0] ?? "Other";
       if (!byTag.has(tag)) byTag.set(tag, []);
-      byTag.get(tag).push({ method: method.toUpperCase(), path: path19, summary: op.summary ?? "" });
+      byTag.get(tag).push({ method: method.toUpperCase(), path: path18, summary: op.summary ?? "" });
     }
   }
   const methodColor2 = {
@@ -15262,7 +15284,24 @@ function createApp() {
   app.use("/docs", docsRouter);
   app.use("/api/mqtt", mqttRouter);
   app.use("/api", apiRouter);
-  app.use("/firmware", express2.static(firmwareDir));
+  const candidateFwDirs = getCandidateFirmwareDirs();
+  for (const dir of candidateFwDirs) {
+    if (dir && fs14.existsSync(dir)) {
+      app.use("/firmware", express2.static(dir));
+    }
+  }
+  app.get("/firmware/:filename", (req, res, next) => {
+    const filename = path16.basename(req.params.filename);
+    for (const dir of candidateFwDirs) {
+      if (dir && fs14.existsSync(dir)) {
+        const fullPath = path16.join(dir, filename);
+        if (fs14.existsSync(fullPath)) {
+          return res.sendFile(fullPath);
+        }
+      }
+    }
+    next();
+  });
   const candidateUploadDirs = getCandidateUploadDirs();
   for (const dir of candidateUploadDirs) {
     if (dir && fs14.existsSync(dir)) {
@@ -15276,10 +15315,10 @@ function createApp() {
     }
   }
   app.get("/mobile-app/:filename", (req, res, next) => {
-    const filename = path17.basename(req.params.filename);
+    const filename = path16.basename(req.params.filename);
     for (const dir of apkCandidateDirs) {
       if (dir && fs14.existsSync(dir)) {
-        const targetPath = path17.join(dir, filename);
+        const targetPath = path16.join(dir, filename);
         if (fs14.existsSync(targetPath)) {
           return res.sendFile(targetPath);
         }
@@ -15309,7 +15348,7 @@ function createApp() {
           const latestJs = files.find((f) => f.startsWith("index-") && f.endsWith(".js"));
           if (latestJs) {
             res.setHeader("Content-Type", "application/javascript");
-            return res.sendFile(path17.join(dir, latestJs));
+            return res.sendFile(path16.join(dir, latestJs));
           }
         } catch {
         }
@@ -15520,9 +15559,9 @@ init_prisma();
 init_siteSettings_service();
 init_logger();
 import fs15 from "node:fs";
-import path18 from "node:path";
-var COLD_STORAGE_TELEMETRY = path18.join(uploadsDir, "cold_storage", "telemetry");
-var COLD_STORAGE_SUPPORT = path18.join(uploadsDir, "cold_storage", "support");
+import path17 from "node:path";
+var COLD_STORAGE_TELEMETRY = path17.join(uploadsDir, "cold_storage", "telemetry");
+var COLD_STORAGE_SUPPORT = path17.join(uploadsDir, "cold_storage", "support");
 var archivalTimer = null;
 var isRunning = false;
 function startArchivalService() {
@@ -15549,7 +15588,7 @@ async function runArchival() {
         orderBy: { createdAt: "asc" }
       });
       if (oldLogs.length === 0) break;
-      const filePath = path18.join(COLD_STORAGE_TELEMETRY, `telemetry_${now.toISOString().split("T")[0]}.jsonl`);
+      const filePath = path17.join(COLD_STORAGE_TELEMETRY, `telemetry_${now.toISOString().split("T")[0]}.jsonl`);
       const lines = oldLogs.map((l) => JSON.stringify(l)).join("\n") + "\n";
       fs15.appendFileSync(filePath, lines);
       const ids = oldLogs.map((l) => l.id);
@@ -15569,7 +15608,7 @@ async function runArchival() {
         orderBy: { createdAt: "asc" }
       });
       if (oldMessages.length === 0) break;
-      const filePath = path18.join(COLD_STORAGE_SUPPORT, `chat_${now.toISOString().split("T")[0]}.jsonl`);
+      const filePath = path17.join(COLD_STORAGE_SUPPORT, `chat_${now.toISOString().split("T")[0]}.jsonl`);
       const lines = oldMessages.map((m) => JSON.stringify(m)).join("\n") + "\n";
       fs15.appendFileSync(filePath, lines);
       const ids = oldMessages.map((m) => m.id);
