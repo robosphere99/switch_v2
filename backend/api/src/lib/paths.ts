@@ -170,4 +170,3 @@ export function getCandidateAssetDirs(): string[] {
 
   return Array.from(new Set(dirs.filter((d) => fs.existsSync(d))));
 }
-

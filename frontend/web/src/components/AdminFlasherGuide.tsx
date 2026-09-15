@@ -9,7 +9,7 @@ import { api } from "../api/client";
  * yahan ek jagah hain.
  */
 
-const LIVE = "https://onlineswitch.bhartitechnical.com";
+const LIVE = typeof window !== "undefined" ? window.location.origin : "";
 
 async function copyText(text: string): Promise<boolean> {
   try {
@@ -143,7 +143,7 @@ export function AdminFlasherGuide() {
             { label: "Mode", value: "Live site" },
             { label: "Site URL (API)", value: LIVE },
             { label: "Admin user", value: "admin" },
-            { label: "Password", value: "•••••• (site .env ADMIN_PASSWORD)", hint: "Anil@20552 — profile change pe .env sync hota hai" },
+            { label: "Password", value: "•••••• (site .env ADMIN_PASSWORD)", hint: "Configured in server .env ADMIN_PASSWORD" },
             { label: "ESP Server URL", value: LIVE, hint: "board live site se heartbeat karega" },
           ]}
         />

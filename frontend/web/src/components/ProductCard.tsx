@@ -48,11 +48,8 @@ export const ProductCard = forwardRef<
       ref={ref}
       onClick={onClick}
       style={highlighted ? { scrollMarginTop: 90 } : undefined}
-      className={`group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border bg-white dark:bg-night-800 transition-all duration-250
-        hover:-translate-y-1 hover:shadow-lg hover:shadow-gray-200/80 dark:hover:shadow-black/40 ${
-        highlighted
-          ? "border-brand shadow-lg shadow-brand/15 ring-2 ring-brand/25"
-          : "border-gray-100 dark:border-night-600 hover:border-gray-200 dark:hover:border-night-500"
+      className={`group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-zinc-200/80 bg-white shadow-xs transition-all duration-250 hover:-translate-y-1 hover:shadow-md dark:border-white/10 dark:bg-zinc-950 ${
+        highlighted ? "border-black ring-2 ring-black/10 dark:border-white dark:ring-white/20" : ""
       }`}
     >
       {/* Top Left Badge */}
@@ -170,7 +167,7 @@ export const ProductCard = forwardRef<
           ) : (
             <div
               onClick={(e) => e.stopPropagation()}
-              className="flex w-full items-center justify-between rounded-xl bg-brand p-1 text-white shadow-sm"
+              className="flex w-full items-center justify-between rounded-full bg-black p-1 text-white shadow-sm dark:bg-white dark:text-black"
             >
               <button
                 onClick={() => onUpdateQuantity?.(cartQuantity - 1)}

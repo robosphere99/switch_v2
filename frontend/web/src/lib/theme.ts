@@ -12,7 +12,7 @@ function systemPrefersDark(): boolean {
 /** Saved preference — first visit pe OS ki setting follow karta hai (system). */
 export function getThemeMode(): ThemeMode {
   const saved = safeStorage.getItem(STORAGE_KEY);
-  return saved === "light" || saved === "dark" || saved === "system" ? saved : "system";
+  return saved === "light" || saved === "dark" || saved === "system" ? saved : "light";
 }
 
 /** Abhi screen pe kya dikh raha hai — system mode me OS preference resolve karta hai. */

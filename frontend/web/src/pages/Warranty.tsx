@@ -5,14 +5,14 @@ import {
   type WarrantyClaimRow,
   type WarrantyDevice,
 } from "../api/shop";
-
-const CLAIM_BADGE: Record<string, { label: string; cls: string }> = {
-  submitted: { label: "🕐 Submitted", cls: "bg-amber-500/20 text-amber-600" },
-  approved: { label: "✅ Approved", cls: "bg-green-500/20 text-green-700" },
-  rejected: { label: "❌ Rejected", cls: "bg-red-500/20 text-red-600" },
-  resolved: { label: "🔧 Resolved", cls: "bg-blue-500/20 text-blue-700" },
-};
-
+import { Select } from "../components/ui/Select";
+import { Textarea } from "../components/ui/Textarea";
+import { Button } from "../components/ui/Button";
+import { Badge } from "../components/ui/Badge";
+import { Alert } from "../components/ui/Alert";
+import { EmptyState } from "../components/ui/EmptyState";
+import { Skeleton } from "../components/ui/Skeleton";
+import { ShieldCheck, ShieldAlert, CheckCircle2 } from "lucide-react";
 
 export function Warranty() {
   const [serials, setSerials] = useState<WarrantyDevice[]>([]);
@@ -49,7 +49,7 @@ export function Warranty() {
         reason: form.reason,
         description: form.description.trim() || undefined,
       });
-      setMsg({ ok: true, text: `Claim #${c.id} filed — support team review karega.` });
+      setMsg({ ok: true, text: `Warranty claim #${c.id} submitted successfully! Our support engineering team will review it.` });
       setForm({ serialCode: "", reason: "not_working", description: "" });
       await refresh();
     } catch (err) {
@@ -59,101 +59,162 @@ export function Warranty() {
     }
   };
 
-  if (loading) return <div className="p-10 text-center text-gray-500">Loading…</div>;
+  const getStatusBadgeVariant = (status: string) => {
+    switch (status) {
+      case "approved":
+      case "resolved":
+        return "success";
+      case "rejected":
+        return "danger";
+      case "submitted":
+      default:
+        return "warning";
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="page-enter mx-auto max-w-4xl px-4 py-10 space-y-4">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-4 w-80" />
+        <Skeleton className="h-64 w-full rounded-2xl" />
+      </div>
+    );
+  }
 
   return (
-    <div className="page-enter mx-auto max-w-4xl px-4 py-10">
-      <h1 className="mb-2 text-3xl font-bold">
-        <span className="text-brand">🛡️ Warranty</span>
-      </h1>
-      <p className="mb-6 text-sm text-gray-500">
-        Serial claim ke din se <span className="text-brand">1 saal</span> ki warranty. Koi device kharab ho to
-        claim file karo — support team approve karke resolution dega.
-      </p>
+    <div className="page-enter mx-auto max-w-4xl px-4 py-8 sm:px-6">
+      {/* Header */}
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
+          Hardware Warranty & Claims
+        </h1>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          Every activated SwitchNest board includes a 1-year factory warranty covering relay, component, or connectivity failures.
+        </p>
+      </div>
 
       {msg && (
-        <div className={`mb-6 rounded-lg border p-4 text-sm ${msg.ok ? "border-green-500/40 bg-green-900/30 text-green-700" : "border-red-500/40 bg-red-900/30 text-red-600"}`}>
-          {msg.text}
+        <div className="mb-6">
+          <Alert variant={msg.ok ? "success" : "danger"} onClose={() => setMsg(null)}>
+            {msg.text}
+          </Alert>
         </div>
       )}
 
-
-      {/* Claim form */}
-      <h2 className="mb-3 text-xl font-bold">File a Warranty Claim</h2>
-      <form onSubmit={submit} className="mb-8 rounded-xl border border-brand/20 bg-night-800 p-6">
-        <label className="mb-1 block text-sm text-gray-500">Serial Code *</label>
-        <select
-          value={form.serialCode}
-          onChange={(e) => setForm((f) => ({ ...f, serialCode: e.target.value }))}
-          required
-          className="mb-4 w-full rounded-lg border border-brand/30 bg-night-700 px-3 py-2 text-sm text-night-950"
-        >
-          <option value="">— choose device —</option>
-          {serials.map((s) => (
-            <option key={s.serialCode} value={s.serialCode}>
-              {s.serialCode} · {s.product?.name ?? s.productName}
-            </option>
-          ))}
-        </select>
-
-        <label className="mb-1 block text-sm text-gray-500">Reason *</label>
-        <select
-          value={form.reason}
-          onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))}
-          className="mb-4 w-full rounded-lg border border-brand/30 bg-night-700 px-3 py-2 text-sm text-night-950"
-        >
-          <option value="not_working">🔴 Device not working</option>
-          <option value="relay_fault">⚡ Relay/switch fault</option>
-          <option value="wifi_issue">📶 WiFi/connectivity issue</option>
-          <option value="ota_bricked">🔄 OTA update ke baad problem</option>
-          <option value="power_damage">🔌 Power damage (over-voltage etc.)</option>
-          <option value="other">Other</option>
-        </select>
-
-        <label className="mb-1 block text-sm text-gray-500">Description (optional)</label>
-        <textarea
-          value={form.description}
-          onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-          rows={3}
-          placeholder="Kya problem hai — kab se, kya kiya try…"
-          className="mb-4 w-full rounded-lg border border-brand/30 bg-night-700 px-3 py-2 text-sm text-night-950"
-        />
-
-        <button
-          type="submit"
-          disabled={busy || !form.serialCode}
-          className="rounded-lg bg-brand px-6 py-2.5 font-semibold text-white disabled:opacity-50"
-        >
-          {busy ? "Filing…" : "📨 File Warranty Claim"}
-        </button>
-      </form>
-
-      {/* My claims */}
-      <h2 className="mb-3 text-xl font-bold">My Claims ({(claims || []).length})</h2>
-      {(claims || []).length === 0 ? (
-        <div className="rounded-xl border border-brand/20 bg-night-800 p-8 text-center text-sm text-gray-500">
-          Koi claim nahi abhi.
+      {/* Claim Form Card */}
+      <div className="mb-10 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex items-center gap-2.5 mb-5">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand/10 dark:bg-brand/15 text-brand">
+            <ShieldAlert className="h-5 w-5" />
+          </div>
+          <div>
+            <h2 className="text-base font-bold text-slate-900 dark:text-white">
+              File a Warranty Service Claim
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Select your registered device and describe the hardware issue.
+            </p>
+          </div>
         </div>
-      ) : (
-        <div className="space-y-3">
-          {(claims || []).map((c) => {
-            const badge = CLAIM_BADGE[c.status] ?? CLAIM_BADGE.submitted;
-            return (
-              <div key={c.id} className="rounded-xl border border-brand/20 bg-night-800 p-4">
-                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                  <span className="font-mono text-sm text-brand">{c.serialCode}</span>
-                  <span className={`rounded-full px-3 py-1 text-xs font-semibold ${badge.cls}`}>{badge.label}</span>
+
+        <form onSubmit={submit} className="space-y-4">
+          <Select
+            label="Select Registered Device *"
+            value={form.serialCode}
+            onChange={(e) => setForm((f) => ({ ...f, serialCode: e.target.value }))}
+            required
+          >
+            <option value="">— Select device by serial —</option>
+            {serials.map((s) => (
+              <option key={s.serialCode} value={s.serialCode}>
+                {s.serialCode} · {s.product?.name ?? s.productName}
+              </option>
+            ))}
+          </Select>
+
+          <Select
+            label="Issue Category *"
+            value={form.reason}
+            onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))}
+          >
+            <option value="not_working">Appliance does not power on</option>
+            <option value="relay_fault">Relay / physical switch fault</option>
+            <option value="wifi_issue">WiFi / network drops</option>
+            <option value="ota_bricked">Issue after OTA firmware update</option>
+            <option value="power_damage">Electrical surge / voltage damage</option>
+            <option value="other">Other issue</option>
+          </Select>
+
+          <Textarea
+            label="Detailed Description (Optional)"
+            value={form.description}
+            onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+            rows={3}
+            placeholder="When did the issue start? Have you tried power cycling the unit?"
+          />
+
+          <Button
+            type="submit"
+            variant="primary"
+            disabled={busy || !form.serialCode}
+            loading={busy}
+            className="w-full"
+            leftIcon={<ShieldCheck className="h-4 w-4" />}
+          >
+            Submit Warranty Claim
+          </Button>
+        </form>
+      </div>
+
+      {/* Claims List */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between pb-2 border-b border-slate-200/80 dark:border-slate-800">
+          <h2 className="text-base font-bold text-slate-900 dark:text-white">
+            Your Warranty Claims ({claims.length})
+          </h2>
+        </div>
+
+        {claims.length === 0 ? (
+          <EmptyState
+            icon={<CheckCircle2 className="h-8 w-8 text-emerald-500" />}
+            title="No Active Claims"
+            description="You don't have any pending warranty claims. All registered hardware is operating normally."
+          />
+        ) : (
+          <div className="space-y-3">
+            {claims.map((c) => (
+              <div
+                key={c.id}
+                className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                  <span className="font-mono text-xs font-bold text-brand bg-brand/10 px-2 py-1 rounded-lg">
+                    {c.serialCode}
+                  </span>
+                  <Badge variant={getStatusBadgeVariant(c.status)} dot>
+                    {c.status.toUpperCase()}
+                  </Badge>
                 </div>
-                <div className="text-sm text-gray-600">
-                  <span className="text-gray-500">Reason:</span> {c.reason}
+
+                <div className="text-xs text-slate-600 dark:text-slate-300">
+                  <span className="font-semibold text-slate-400">Category:</span> {c.reason}
                 </div>
-                {c.description && <div className="mt-1 text-sm text-gray-500">{c.description}</div>}
-                <div className="mt-2 text-xs text-gray-500">{new Date(c.createdAt).toLocaleString()}</div>
+
+                {c.description && (
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                    {c.description}
+                  </p>
+                )}
+
+                <div className="mt-2 text-[10px] text-slate-400">
+                  Submitted on {new Date(c.createdAt).toLocaleDateString("en-IN")}
+                </div>
               </div>
-            );
-          })}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

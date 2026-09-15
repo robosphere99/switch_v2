@@ -1,11 +1,15 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Lock, Eye, EyeOff, ArrowRight } from "lucide-react";
+import { Lock, Eye, EyeOff, ArrowRight, Monitor } from "lucide-react";
 import { login, revokeUnauth } from "../api/auth";
 import { extractApiError } from "../api/client";
 import { useAuthStore } from "../stores/auth";
 import { applyAccountTheme } from "../lib/themeAccount";
 import { Logo } from "../components/Logo";
+import { Button } from "../components/ui/Button";
+import { Input } from "../components/ui/Input";
+import { Alert } from "../components/ui/Alert";
+import { Modal } from "../components/ui/Modal";
 
 export function Login() {
   const [usernameEmail, setUsernameEmail] = useState("");
@@ -67,137 +71,156 @@ export function Login() {
   }
 
   return (
-    <div className="page-enter flex min-h-[85vh] items-center justify-center px-4 py-12">
-      <div className="w-full max-w-md">
+    <div className="page-enter flex min-h-[90vh] items-center justify-center px-4 py-16">
+      <div className="w-full max-w-sm">
         {/* Card */}
-        <div className="card-static p-8 sm:p-10">
+        <div className="rounded-2xl border border-night-600/70 bg-white p-8 shadow-sm dark:border-night-600 dark:bg-night-800">
           {/* Header */}
-          <div className="mb-8 flex flex-col items-center gap-3 text-center">
+          <div className="mb-8 flex flex-col items-center gap-4 text-center">
             <Logo size="lg" />
             <div>
-              <h1 className="mt-2 text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
-                Sign in to your home
+              <h1 className="text-xl font-bold tracking-tight text-night-950 dark:text-white">
+                Welcome back
               </h1>
-              <p className="mt-1 text-sm text-gray-500">
-                Welcome back! Enter your credentials below.
+              <p className="mt-1 text-sm text-night-500 dark:text-gray-400">
+                Sign in to control your smart home.
               </p>
             </div>
           </div>
 
-          {error && <div className="alert-error mb-5">{error}</div>}
+          {error && (
+            <div className="mb-5">
+              <Alert variant="danger">{error}</Alert>
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="field-label">Username or Email</label>
-              <input
-                value={usernameEmail}
-                onChange={(e) => setUsernameEmail(e.target.value)}
-                required
-                autoFocus
-                className="input-field"
-                placeholder="you@example.com"
-              />
-            </div>
+            <Input
+              label="Username or Email"
+              value={usernameEmail}
+              onChange={(e) => setUsernameEmail(e.target.value)}
+              required
+              autoFocus
+              autoComplete="username"
+              placeholder="you@example.com"
+            />
 
-            <div>
-              <label className="field-label">Password</label>
-              <div className="relative">
-                <input
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  className="input-field pr-12"
-                  placeholder="••••••••"
-                />
+            <Input
+              label="Password"
+              type={showPassword ? "text" : "password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              autoComplete="current-password"
+              placeholder="••••••••"
+              rightIcon={
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-brand transition-colors"
+                  className="text-night-500 hover:text-brand transition-colors"
+                  tabIndex={-1}
                 >
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
-              </div>
-            </div>
+              }
+            />
 
-            <div className="flex items-center justify-between">
-              <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-500">
+            <div className="flex items-center justify-between pt-0.5">
+              <label className="flex cursor-pointer select-none items-center gap-2 text-xs text-night-500 dark:text-gray-400">
                 <input
                   type="checkbox"
                   checked={revokeOtherSessions}
                   onChange={(e) => setRevokeOtherSessions(e.target.checked)}
-                  className="rounded border-gray-300 text-brand focus:ring-brand/30"
+                  className="h-3.5 w-3.5 rounded border-gray-300 text-brand focus:ring-brand/30"
                 />
-                Log out from all other devices
+                Sign out all other devices
               </label>
-              <Link to="/forgot-password" className="text-xs text-gray-400 hover:text-brand transition-colors">
+              <Link
+                to="/forgot-password"
+                className="text-xs text-night-500 hover:text-brand transition-colors dark:text-gray-400 dark:hover:text-brand"
+              >
                 Forgot password?
               </Link>
             </div>
 
-            <button type="submit" disabled={loading} className="btn-primary w-full py-3">
-              {loading ? "Signing in…" : (
-                <>
-                  <Lock className="h-4 w-4" />
-                  Login
-                  <ArrowRight className="h-4 w-4" />
-                </>
-              )}
-            </button>
+            <Button
+              type="submit"
+              variant="primary"
+              size="lg"
+              loading={loading}
+              icon={<Lock className="h-4 w-4" />}
+              className="w-full mt-1"
+            >
+              Sign In
+              {!loading && <ArrowRight className="h-4 w-4 ml-auto" />}
+            </Button>
           </form>
 
-          <p className="mt-6 text-center text-sm text-gray-500">
-            No account?{" "}
+          <p className="mt-6 text-center text-xs text-night-500 dark:text-gray-400">
+            Don't have an account?{" "}
             <Link to="/signup" className="font-semibold text-brand hover:underline">
-              Create your home
+              Create account
             </Link>
           </p>
         </div>
       </div>
 
       {/* Device limit modal */}
-      {activeSessionsData.length > 0 && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-          <div className="card-static w-full max-w-md p-6">
-            <h3 className="mb-2 text-lg font-bold text-gray-900 dark:text-white">Device Limit Reached</h3>
-            <p className="mb-4 text-sm text-gray-500">
-              You are logged in on the maximum number of devices. Please log out of one below to continue.
-            </p>
-            <div className="mb-4 max-h-[300px] overflow-y-auto thin-scrollbar space-y-2">
-              {activeSessionsData.map((s) => (
-                <div key={s.id} className="flex items-center justify-between rounded-xl border border-gray-100 p-3 dark:border-night-600">
-                  <div>
-                    <p className="text-sm font-semibold text-gray-900 dark:text-white">{s.deviceInfo || "Unknown"}</p>
-                    <p className="text-xs text-gray-400">IP: {s.ipAddress}</p>
-                  </div>
-                  <button
-                    onClick={() => handleRevokeSession(s.id)}
-                    disabled={loading}
-                    className="btn-danger px-3 py-1 text-xs"
-                  >
-                    Remove
-                  </button>
+      <Modal
+        isOpen={activeSessionsData.length > 0}
+        onClose={() => { setActiveSessionsData([]); setError(""); }}
+        title="Device Limit Reached"
+        maxWidth="md"
+      >
+        <p className="text-sm text-night-500 dark:text-gray-400 mb-4">
+          You're signed in on the maximum number of devices. Remove one below to continue.
+        </p>
+        <div className="space-y-2 max-h-[260px] overflow-y-auto thin-scrollbar mb-6">
+          {activeSessionsData.map((s) => (
+            <div
+              key={s.id}
+              className="flex items-center justify-between rounded-xl border border-night-600/60 p-3 dark:border-night-600"
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <Monitor className="h-4 w-4 text-night-500 shrink-0" />
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-semibold text-night-950 dark:text-white">
+                    {s.deviceInfo || "Unknown device"}
+                  </p>
+                  <p className="text-[11px] text-night-500">IP: {s.ipAddress}</p>
                 </div>
-              ))}
-            </div>
-            <div className="flex gap-3">
-              <button
-                onClick={() => { setActiveSessionsData([]); setError(""); }}
-                className="btn-outline flex-1 py-2.5"
+              </div>
+              <Button
+                variant="danger"
+                size="sm"
+                loading={loading}
+                onClick={() => handleRevokeSession(s.id)}
+                className="shrink-0 ml-3"
               >
-                Cancel
-              </button>
-              <button
-                onClick={(e) => handleSubmit(e)}
-                disabled={activeSessionsData.length >= 3 || loading}
-                className="btn-primary flex-1 py-2.5"
-              >
-                {loading ? "Working…" : "Login"}
-              </button>
+                Remove
+              </Button>
             </div>
-          </div>
+          ))}
         </div>
-      )}
+        <div className="flex gap-3">
+          <Button
+            variant="outline"
+            className="flex-1"
+            onClick={() => { setActiveSessionsData([]); setError(""); }}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            className="flex-1"
+            loading={loading}
+            disabled={activeSessionsData.length >= 3}
+            onClick={(e) => handleSubmit(e as any)}
+          >
+            Sign In Anyway
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }

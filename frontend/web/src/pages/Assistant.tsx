@@ -5,18 +5,19 @@ import {
   listMessages,
   sendMessage,
   confirmProposal,
-  type AssistantMessage,
 } from "../api/assistant";
 import { listHomes } from "../api/homes";
-import { RichText } from "../components/RichText";
 import { AutomationSuggestions } from "../components/AutomationSuggestions";
-import { Home as HomeIcon } from "lucide-react";
+import { MessageBubble } from "../components/assistant/MessageBubble";
+import { Button } from "../components/ui/Button";
+import { EmptyState } from "../components/ui/EmptyState";
+import { Home as HomeIcon, Bot, Send, Sparkles } from "lucide-react";
 
 const EXAMPLES = [
   "turn on the fan",
-  "bedroom ki light on karo",
-  "saare lights off karo",
-  "TV on karo",
+  "turn on bedroom light",
+  "turn off all switches",
+  "living room AC on",
   "all devices off",
 ];
 
@@ -79,69 +80,94 @@ export function Assistant() {
   const loading = openHomeThread.isPending;
 
   return (
-    <div className="page-enter mx-auto max-w-5xl px-4 py-8">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold">🤖 AI Assist</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Natural language se devices control karein. Ek ghar, ek persistent ai conversation thread.
+    <div className="page-enter mx-auto max-w-5xl px-4 py-8 sm:px-6">
+      {/* Header */}
+      <div className="mb-8">
+        <div className="flex items-center gap-2 text-brand font-bold text-xs uppercase tracking-wider mb-1">
+          <Sparkles className="h-4 w-4" />
+          <span>Intelligent Control</span>
+        </div>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
+          AI Home Assistant
+        </h1>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          Control rooms, toggles, and multi-device routines using natural conversation.
         </p>
       </div>
 
       {myHomes.length === 0 && homes.isSuccess && (
-        <div className="rounded-xl border border-brand/20 bg-night-800 p-8 text-center">
-          <p className="mb-2 text-lg">🏡 Koi ghar nahi mila!</p>
-          <p className="text-sm text-gray-500">Pehle Home banayein phir assistant use karein.</p>
-        </div>
+        <EmptyState
+          icon={<HomeIcon className="h-8 w-8 text-slate-400" />}
+          title="No Homes Found"
+          description="You need to be part of a home before using the AI Assistant to control devices."
+        />
       )}
 
       {myHomes.length > 0 && (
         <>
           {activeHomeId !== null && <AutomationSuggestions homeId={activeHomeId} />}
-          <div className="grid gap-6 lg:grid-cols-[220px_1fr]">
+
+          <div className="grid gap-6 lg:grid-cols-[240px_1fr]">
             {/* Sidebar: Home List */}
-            <div className="hidden lg:block">
-              <div className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-500">
-                Your Homes
+            <div className="space-y-2">
+              <div className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">
+                Select Home
               </div>
-              <div className="space-y-2">
+              <div className="flex flex-row lg:flex-col gap-2 overflow-x-auto pb-2 lg:pb-0">
                 {myHomes.map((h) => (
                   <button
                     key={h.id}
+                    type="button"
                     onClick={() => openHomeThread.mutate(h.id)}
-                    className={`flex w-full items-center gap-2 truncate rounded-lg border px-3 py-2.5 text-left text-sm font-semibold transition-all ${h.id === activeHomeId
-                        ? "border-brand bg-brand/10 text-brand shadow-sm shadow-brand/20"
-                        : "border-gray-200 bg-night-800 text-gray-400 hover:border-gray-500 hover:text-gray-300"
-                      }`}
+                    className={`flex items-center gap-2.5 rounded-xl border px-3.5 py-2.5 text-left text-xs font-semibold transition shrink-0 lg:shrink w-full ${
+                      h.id === activeHomeId
+                        ? "border-brand/40 bg-brand/10 text-brand shadow-sm"
+                        : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400"
+                    }`}
                   >
-                    <HomeIcon className="h-4 w-4 opacity-70" />
-                    {h.name}
+                    <HomeIcon className="h-4 w-4 opacity-70 shrink-0" />
+                    <span className="truncate">{h.name}</span>
                   </button>
                 ))}
               </div>
             </div>
 
             {/* Main Chat Thread */}
-            <div className="flex h-[72vh] flex-col overflow-hidden rounded-xl border border-gray-200 bg-night-800 shadow-sm">
+            <div className="flex h-[72vh] flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              {/* Messages Body */}
               <div className="flex-1 space-y-4 overflow-y-auto p-5">
                 {loading && msgList.length === 0 && (
-                  <div className="text-center mt-10 text-brand animate-pulse">Loading AI thread...</div>
+                  <div className="flex h-full items-center justify-center text-sm font-medium text-brand animate-pulse">
+                    Connecting to home thread...
+                  </div>
                 )}
+
                 {!loading && msgList.length === 0 && (
-                  <div className="flex h-full flex-col items-center justify-center text-center">
-                    <p className="text-sm text-gray-400 mb-6">Hello! Commands bhej kar is ghar ko control karein.</p>
-                    <div className="flex flex-wrap justify-center gap-2">
+                  <div className="flex h-full flex-col items-center justify-center text-center p-6">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand/10 text-brand mb-3">
+                      <Bot className="h-6 w-6" />
+                    </div>
+                    <h3 className="font-bold text-slate-900 dark:text-white text-base">
+                      How can I help you?
+                    </h3>
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 max-w-sm mb-6">
+                      You can ask in plain English or Hindi to toggle appliances, query statuses, or run grouped actions.
+                    </p>
+                    <div className="flex flex-wrap justify-center gap-2 max-w-md">
                       {EXAMPLES.map((ex) => (
                         <button
                           key={ex}
+                          type="button"
                           onClick={() => setInput(ex)}
-                          className="rounded-full border border-brand/30 bg-night-900 px-3 py-1.5 text-xs text-brand hover:bg-brand/10 transition"
+                          className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 hover:border-brand hover:text-brand transition dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
                         >
-                          {ex}
+                          "{ex}"
                         </button>
                       ))}
                     </div>
                   </div>
                 )}
+
                 {msgList.map((m) => (
                   <MessageBubble
                     key={m.id}
@@ -156,71 +182,36 @@ export function Assistant() {
                 <div ref={bottomRef} />
               </div>
 
-              <div className="border-t border-gray-200 p-4 bg-night-900/50">
-                <div className="flex gap-2">
+              {/* Chat Input Bar */}
+              <div className="border-t border-slate-100 p-3.5 bg-slate-50/50 dark:border-slate-800 dark:bg-slate-900/50">
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (input.trim() && chatId) send.mutate(input.trim());
+                  }}
+                  className="flex gap-2.5"
+                >
                   <input
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && input.trim() && chatId) send.mutate(input.trim());
-                    }}
-                    placeholder='Ye try karein: "saare lights off karo..."'
-                    className="flex-1 rounded-lg border border-brand/20 bg-night-900 px-4 py-3 text-sm outline-none transition focus:border-brand focus:ring-1 focus:ring-brand"
+                    placeholder='Type a command: "Turn off all lights in living room"...'
+                    className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/15 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                   />
-                  <button
-                    onClick={() => send.mutate(input.trim())}
+                  <Button
+                    type="submit"
+                    variant="primary"
                     disabled={!input.trim() || send.isPending}
-                    className="rounded-lg bg-brand px-6 py-3 text-sm font-bold text-white transition hover:brightness-110 disabled:opacity-50"
+                    loading={send.isPending}
+                    rightIcon={<Send className="h-4 w-4" />}
                   >
-                    {send.isPending ? "..." : "Send"}
-                  </button>
-                </div>
+                    Send
+                  </Button>
+                </form>
               </div>
             </div>
           </div>
         </>
       )}
-    </div>
-  );
-}
-
-function MessageBubble({
-  message,
-  confirming,
-  onConfirm,
-}: {
-  message: AssistantMessage;
-  confirming: boolean;
-  onConfirm: () => void;
-}) {
-  const isUser = message.role === "user";
-  return (
-    <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
-      <div
-        className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm ${isUser ? "rounded-br-sm bg-brand text-white shadow-md shadow-brand/10" : "rounded-bl-sm border border-gray-200 bg-night-900 text-gray-700"
-          }`}
-      >
-        <RichText text={message.content} className="whitespace-pre-line" />
-        {!isUser && message.proposal && message.proposal.length > 0 && (
-          <div className="mt-3 space-y-1.5 border-t border-gray-200/20 pt-3">
-            {message.proposal.map((p) => (
-              <div key={p.deviceId} className="flex items-center justify-between gap-3 rounded-lg bg-night-800 px-3 py-2 text-xs border border-gray-200/5">
-                <span className="font-semibold text-gray-300">{p.deviceName}</span>
-                <span className={`rounded px-2 py-0.5 font-bold ${p.action === "on" ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-400"}`}>
-                  {p.action === "on" ? "ON" : "OFF"}
-                </span>
-              </div>
-            ))}
-            <button
-              onClick={onConfirm}
-              disabled={confirming}
-              className="mt-2 w-full rounded-lg bg-emerald-600/90 py-2.5 text-sm font-bold text-white hover:bg-emerald-500 transition disabled:opacity-50"
-            >
-              {confirming ? "Executing…" : "✅ Confirm Action"}
-            </button>
-          </div>
-        )}
-      </div>
     </div>
   );
 }
