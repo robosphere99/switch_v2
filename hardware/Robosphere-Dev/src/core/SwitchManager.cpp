@@ -6,6 +6,7 @@
 #include "core/ApiManager.h"
 #include "core/BoardManager.h"
 #include "core/DimmerManager.h"
+#include "core/MqttManager.h"
 #include "core/RelayManager.h"
 #include "preferences/PreferencesManager.h"
 
@@ -28,42 +29,38 @@ bool begin() {
 }
 
 void update() {
-  int switchMode = PreferencesManager::getSwitchMode();
-
   for (uint8_t i = 0; i < BoardManager::getRelayCount(); i++) {
     bool currentState = digitalRead(BoardManager::getSwitchPin(i));
 
     if (!debouncing[i] && currentState != lastState[i]) {
-      // Non-blocking debounce — delay() loop ko freeze nahi karta,
-      // switch hamesha instant respond karta hai
+      // Non-blocking 25ms debounce for instant mechanical feel
       debouncing[i] = true;
-
       debounceStart[i] = millis();
     }
 
-    if (debouncing[i] && (long)(millis() - debounceStart[i]) >= 30) {
+    if (debouncing[i] && (long)(millis() - debounceStart[i]) >= 25) {
       debouncing[i] = false;
-
       currentState = digitalRead(BoardManager::getSwitchPin(i));
 
       if (currentState != lastState[i]) {
-        // Hardcoding standard toggle (wall switch) behavior.
-        // Har position change pe toggle hoga (dono edges kaam karenge),
-        // overriding software preferences.
-        bool trigger = true;
+        // Instant hardware toggle — Zero latency
+        if (DimmerManager::isDimmer()) {
+          uint8_t step = DimmerManager::cycle(i);
+          Serial.printf("[SWITCH] Dimmer %d -> Step %d (%d%%)\n", i, step,
+                        DimmerManager::getStepPercent(i));
+        } else {
+          RelayManager::toggle(i);
+        }
 
-        if (trigger) {
-          if (DimmerManager::isDimmer()) {
-            uint8_t step = DimmerManager::cycle(i);
-            Serial.printf("[SWITCH] Dimmer %d -> Step %d (%d%%)\n", i, step,
-                          DimmerManager::getStepPercent(i));
-          } else {
-            RelayManager::toggle(i);
-          }
+        bool state = RelayManager::getState(i);
+        int channel = i + 1; // 1-indexed channel
 
-          bool state = RelayManager::getState(i);
-          int channel = i + 1; // 1-indexed channel
-
+        // Priority telemetry: publish via MQTT if connected, else queue HTTP
+        if (MqttManager::isConnected()) {
+          MqttManager::publishState();
+          Serial.printf("[SWITCH] Channel %d -> %s (MQTT: INSTANT)\n", channel,
+                        state ? "ON" : "OFF");
+        } else {
           bool ok = ApiManager::queueDeviceUpdate(channel, state);
           Serial.printf("[SWITCH] Channel %d -> %s (API: %s)\n", channel,
                         state ? "ON" : "OFF", ok ? "QUEUED" : "FAILED");

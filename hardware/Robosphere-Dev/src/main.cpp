@@ -87,6 +87,7 @@ void processSerialCommand(const String &line, bool fromMqtt = false) {
     consolePrint("--- Serial Config Commands ---");
     consolePrint("lock               (Lock console immediately)");
     consolePrint("setwifi <ssid> <password>");
+    consolePrint("setwifi2 <ssid> <password> (backup wifi)");
     consolePrint("setadmin <username> <password>");
     consolePrint("setserver <url> <api_key>");
     consolePrint("setotaurl <url> (empty = default)");
@@ -108,7 +109,15 @@ void processSerialCommand(const String &line, bool fromMqtt = false) {
       return;
     }
     PreferencesManager::saveWiFi(arg.substring(0, sp2), arg.substring(sp2 + 1));
-    consolePrint("[OK] WiFi saved");
+    consolePrint("[OK] Primary WiFi saved");
+  } else if (cmd == "setwifi2") {
+    int sp2 = arg.indexOf(' ');
+    if (sp2 <= 0) {
+      consolePrint("Usage: setwifi2 <ssid> <password>");
+      return;
+    }
+    PreferencesManager::saveBackupWiFi(arg.substring(0, sp2), arg.substring(sp2 + 1));
+    consolePrint("[OK] Backup WiFi saved");
   } else if (cmd == "setadmin") {
     int sp2 = arg.indexOf(' ');
     if (sp2 <= 0) {
@@ -382,6 +391,8 @@ void loop() {
   TimeManager::update();
 
   WebServerManager::update();
+
+  RelayManager::update();
 
   SwitchManager::update();
 
