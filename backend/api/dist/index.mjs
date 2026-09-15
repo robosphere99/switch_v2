@@ -33216,86 +33216,86 @@ function startMqttBroker() {
     client.on("error", (err) => {
       logger.warn(`[mqtt-client] Connection error`, err.message);
     });
+    client?.on("message", async (topic, payload) => {
+      try {
+        const parts = topic.split("/");
+        if (parts.length !== 3 || parts[0] !== "sn") return;
+        const mac = parts[1].toLowerCase();
+        const type = parts[2];
+        let matchedEsp = await prisma.espDevice.findFirst({
+          where: {
+            OR: [
+              { macAddress: mac },
+              { macAddress: mac.replace(/(..)(?=.)/g, "$1:") }
+            ]
+          },
+          select: { id: true, macAddress: true, serialCode: true, homeId: true }
+        });
+        if (type === "online") {
+          const status = payload.toString().trim();
+          const isOnline = status === "1";
+          if (matchedEsp) {
+            await prisma.espDevice.update({
+              where: { id: matchedEsp.id },
+              data: { offline: !isOnline, lastSeen: /* @__PURE__ */ new Date() }
+            });
+            await prisma.device.updateMany({
+              where: { espId: matchedEsp.id },
+              data: { offline: !isOnline, lastSeen: /* @__PURE__ */ new Date() }
+            }).catch(() => null);
+            emitToHome(matchedEsp.homeId, "esp:updated", { id: matchedEsp.id, offline: !isOnline });
+          }
+          return;
+        }
+        if (type === "log") {
+          if (matchedEsp) {
+            const payloadStr = payload.toString();
+            emitToBoardLogs(matchedEsp.id, payloadStr);
+          }
+          return;
+        }
+        if (type === "state") {
+          const data = JSON.parse(payload.toString());
+          if (!matchedEsp && (data.serial || data.key)) {
+            const serial = (data.serial || "").toString().trim().toUpperCase();
+            const apiKeyPlain = (data.key || "").toString().trim();
+            if (apiKeyPlain) {
+              const keyRecord = await prisma.apiKey.findUnique({
+                where: { keyHash: hashKey(apiKeyPlain) },
+                select: { homeId: true, revokedAt: true }
+              });
+              if (keyRecord && keyRecord.homeId && !keyRecord.revokedAt) {
+                const registry = serial ? await prisma.serialRegistry.findUnique({
+                  where: { serialCode: serial },
+                  include: { product: true }
+                }) : null;
+                const productName = registry?.product?.name || "SwitchNest Board";
+                const modelCode = registry?.product?.modelCode || (data.model || "4CH").toUpperCase();
+                matchedEsp = await prisma.espDevice.create({
+                  data: {
+                    homeId: keyRecord.homeId,
+                    macAddress: mac,
+                    serialCode: serial || null,
+                    modelCode,
+                    name: `${productName} \xB7 ${mac.slice(-4).toUpperCase()}`,
+                    offline: false
+                  },
+                  select: { id: true, macAddress: true, serialCode: true, homeId: true }
+                });
+                logger.info(`[mqtt] Auto-registered ESP board ${mac} for Home ${keyRecord.homeId}`);
+              }
+            }
+          }
+          if (!matchedEsp) return;
+          await handleDeviceState(matchedEsp, data);
+        }
+      } catch (err) {
+        logger.warn(`[mqtt-client] Message parse error on topic ${topic}`, err instanceof Error ? err.message : String(err));
+      }
+    });
   } catch (err) {
     logger.warn(`[mqtt-client] Failed to initialize MQTT client:`, err instanceof Error ? err.message : String(err));
   }
-  client.on("message", async (topic, payload) => {
-    try {
-      const parts = topic.split("/");
-      if (parts.length !== 3 || parts[0] !== "sn") return;
-      const mac = parts[1].toLowerCase();
-      const type = parts[2];
-      let matchedEsp = await prisma.espDevice.findFirst({
-        where: {
-          OR: [
-            { macAddress: mac },
-            { macAddress: mac.replace(/(..)(?=.)/g, "$1:") }
-          ]
-        },
-        select: { id: true, macAddress: true, serialCode: true, homeId: true }
-      });
-      if (type === "online") {
-        const status = payload.toString().trim();
-        const isOnline = status === "1";
-        if (matchedEsp) {
-          await prisma.espDevice.update({
-            where: { id: matchedEsp.id },
-            data: { offline: !isOnline, lastSeen: /* @__PURE__ */ new Date() }
-          });
-          await prisma.device.updateMany({
-            where: { espId: matchedEsp.id },
-            data: { offline: !isOnline, lastSeen: /* @__PURE__ */ new Date() }
-          }).catch(() => null);
-          emitToHome(matchedEsp.homeId, "esp:updated", { id: matchedEsp.id, offline: !isOnline });
-        }
-        return;
-      }
-      if (type === "log") {
-        if (matchedEsp) {
-          const payloadStr = payload.toString();
-          emitToBoardLogs(matchedEsp.id, payloadStr);
-        }
-        return;
-      }
-      if (type === "state") {
-        const data = JSON.parse(payload.toString());
-        if (!matchedEsp && (data.serial || data.key)) {
-          const serial = (data.serial || "").toString().trim().toUpperCase();
-          const apiKeyPlain = (data.key || "").toString().trim();
-          if (apiKeyPlain) {
-            const keyRecord = await prisma.apiKey.findUnique({
-              where: { keyHash: hashKey(apiKeyPlain) },
-              select: { homeId: true, revokedAt: true }
-            });
-            if (keyRecord && keyRecord.homeId && !keyRecord.revokedAt) {
-              const registry = serial ? await prisma.serialRegistry.findUnique({
-                where: { serialCode: serial },
-                include: { product: true }
-              }) : null;
-              const productName = registry?.product?.name || "SwitchNest Board";
-              const modelCode = registry?.product?.modelCode || (data.model || "4CH").toUpperCase();
-              matchedEsp = await prisma.espDevice.create({
-                data: {
-                  homeId: keyRecord.homeId,
-                  macAddress: mac,
-                  serialCode: serial || null,
-                  modelCode,
-                  name: `${productName} \xB7 ${mac.slice(-4).toUpperCase()}`,
-                  offline: false
-                },
-                select: { id: true, macAddress: true, serialCode: true, homeId: true }
-              });
-              logger.info(`[mqtt] Auto-registered ESP board ${mac} for Home ${keyRecord.homeId}`);
-            }
-          }
-        }
-        if (!matchedEsp) return;
-        await handleDeviceState(matchedEsp, data);
-      }
-    } catch (err) {
-      logger.warn(`[mqtt-client] Message parse error on topic ${topic}`, err instanceof Error ? err.message : String(err));
-    }
-  });
 }
 async function handleDeviceState(espMeta, payload) {
   const { homeId, id: espId } = espMeta;
