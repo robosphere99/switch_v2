@@ -4687,7 +4687,7 @@ async function heartbeat(key, input, baseUrl) {
 }
 async function pendingCommands(key, mac) {
   const commands = await findPendingCommands(key, mac);
-  await markHomeAlive(key);
+  await markHomeAlive(key, mac);
   return commands;
 }
 async function findPendingCommands(key, mac) {
@@ -4715,9 +4715,19 @@ async function findPendingCommands(key, mac) {
     select: { id: true, deviceId: true, command: true }
   });
 }
-async function markHomeAlive(key) {
+async function markHomeAlive(key, mac) {
   const homeId = homeScope(key);
-  await prisma.device.updateMany({ where: { homeId }, data: { lastSeen: /* @__PURE__ */ new Date() } }).catch(() => void 0);
+  await prisma.device.updateMany({ where: { homeId }, data: { lastSeen: /* @__PURE__ */ new Date(), offline: false } }).catch(() => void 0);
+  if (mac) {
+    const clean = mac.toLowerCase();
+    const withColons = clean.includes(":") ? clean : clean.replace(/(..)(?=.)/g, "$1:");
+    await prisma.espDevice.updateMany({
+      where: { homeId, OR: [{ macAddress: clean }, { macAddress: withColons }, { macAddress: mac }] },
+      data: { lastSeen: /* @__PURE__ */ new Date(), offline: false }
+    }).catch(() => void 0);
+  } else {
+    await prisma.espDevice.updateMany({ where: { homeId }, data: { lastSeen: /* @__PURE__ */ new Date(), offline: false } }).catch(() => void 0);
+  }
 }
 async function pendingCommandsLongPoll(key, holdMs, signal, mac) {
   const deadline = Date.now() + holdMs;
@@ -4727,7 +4737,7 @@ async function pendingCommandsLongPoll(key, holdMs, signal, mac) {
     await new Promise((r) => setTimeout(r, 300));
     commands = await findPendingCommands(key, mac);
   }
-  await markHomeAlive(key);
+  await markHomeAlive(key, mac);
   return commands;
 }
 async function ackCommand(key, commandId, deviceId, status) {

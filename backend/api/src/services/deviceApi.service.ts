@@ -401,7 +401,7 @@ export async function heartbeat(
 /** Pending commands for the key's home — polled by the ESP32. */
 export async function pendingCommands(key: ApiKey, mac?: string) {
   const commands = await findPendingCommands(key, mac);
-  await markHomeAlive(key);
+  await markHomeAlive(key, mac);
   return commands;
 }
 
@@ -438,11 +438,26 @@ async function findPendingCommands(key: ApiKey, mac?: string) {
   });
 }
 
-async function markHomeAlive(key: ApiKey) {
+async function markHomeAlive(key: ApiKey, mac?: string) {
   const homeId = homeScope(key);
   await prisma.device
-    .updateMany({ where: { homeId }, data: { lastSeen: new Date() } })
+    .updateMany({ where: { homeId }, data: { lastSeen: new Date(), offline: false } })
     .catch(() => undefined);
+
+  if (mac) {
+    const clean = mac.toLowerCase();
+    const withColons = clean.includes(":") ? clean : clean.replace(/(..)(?=.)/g, "$1:");
+    await prisma.espDevice
+      .updateMany({
+        where: { homeId, OR: [{ macAddress: clean }, { macAddress: withColons }, { macAddress: mac }] },
+        data: { lastSeen: new Date(), offline: false },
+      })
+      .catch(() => undefined);
+  } else {
+    await prisma.espDevice
+      .updateMany({ where: { homeId }, data: { lastSeen: new Date(), offline: false } })
+      .catch(() => undefined);
+  }
 }
 
 /**
@@ -463,7 +478,7 @@ export async function pendingCommandsLongPoll(
     await new Promise((r) => setTimeout(r, 300));
     commands = await findPendingCommands(key, mac);
   }
-  await markHomeAlive(key);
+  await markHomeAlive(key, mac);
   return commands;
 }
 
