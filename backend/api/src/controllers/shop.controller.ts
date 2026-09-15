@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { Request, Response } from "express";
 import { prisma } from "../lib/prisma";
 import { AppError, ok } from "../lib/response";
@@ -30,7 +31,9 @@ export async function getProducts(_req: Request, res: Response): Promise<void> {
 
 export async function uploadMedia(req: Request, res: Response): Promise<void> {
   if (!req.file) throw new AppError("BAD_REQUEST", "No file uploaded");
-  ok(res, { url: req.file.path });
+  const filename = path.basename(req.file.filename || req.file.path);
+  const fileUrl = `/uploads/billing/${filename}`;
+  ok(res, { url: fileUrl });
 }
 
 export async function getProductReviews(req: Request, res: Response): Promise<void> {

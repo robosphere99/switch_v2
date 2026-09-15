@@ -23,10 +23,15 @@ export function Warranty() {
   const [busy, setBusy] = useState(false);
 
   const refresh = () =>
-    getMyWarranty().then((d) => {
-      setSerials(d.serials);
-      setClaims(d.claims);
-    });
+    getMyWarranty()
+      .then((d) => {
+        setSerials(Array.isArray(d?.serials) ? d.serials : []);
+        setClaims(Array.isArray(d?.claims) ? d.claims : []);
+      })
+      .catch(() => {
+        setSerials([]);
+        setClaims([]);
+      });
 
   useEffect(() => {
     refresh()

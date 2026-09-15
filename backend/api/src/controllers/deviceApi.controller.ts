@@ -18,7 +18,10 @@ export const updateDevice = async (req: Request, res: Response) => {
 };
 
 export const heartbeat = async (req: Request, res: Response) => {
-  const baseUrl = `${req.protocol}://${req.get("host")}`;
+  const host = req.get("host") || "onlineswitch.bhartitechnical.com";
+  const isLocal = host.includes("localhost") || host.startsWith("192.168.") || host.startsWith("10.") || host.startsWith("127.");
+  const proto = req.get("x-forwarded-proto") || (isLocal ? "http" : "https");
+  const baseUrl = `${proto}://${host}`;
   ok(
     res,
     await deviceApi.heartbeat(

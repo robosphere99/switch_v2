@@ -9,7 +9,6 @@ import { createRoom, deleteRoom } from "../api/rooms";
 import { DeviceCard, isOnline } from "../components/DeviceCard";
 import { Modal } from "../components/Modal";
 import { ScheduleSection } from "../components/ScheduleSection";
-import { AutomationSuggestions } from "../components/AutomationSuggestions";
 import { useAuthStore } from "../stores/auth";
 import { Input } from "../components/ui/Input";
 import { Select } from "../components/ui/Select";
@@ -291,9 +290,6 @@ export function Dashboard() {
               <Badge variant="primary">{myRole}</Badge>
             </div>
           </div>
-
-          {/* Automation Suggestions */}
-          {homeId !== null && <AutomationSuggestions homeId={homeId} compact />}
 
           {/* Quick Actions */}
           {devices.data?.success && devices.data.data.some((d) => d.type === "bulb") && (

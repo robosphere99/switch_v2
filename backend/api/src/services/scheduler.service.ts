@@ -113,6 +113,14 @@ async function fireSchedule(scheduleId: number): Promise<void> {
 
   await emitDeviceUpdated(sched.device.homeId, sched.device.id);
 
+  if (sched.device.espId) {
+    const esp = await prisma.espDevice.findUnique({ where: { id: sched.device.espId }, select: { macAddress: true } });
+    if (esp) {
+      const { mqttPushCommands } = await import("./mqtt.service");
+      mqttPushCommands(esp.macAddress);
+    }
+  }
+
   if (sched.createdBy) {
     await createNotification(sched.createdBy, {
       category: "schedule",

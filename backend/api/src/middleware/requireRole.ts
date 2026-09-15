@@ -43,3 +43,11 @@ export function requireHomeMember(minRole: HomeMemberRole = "member"): RequestHa
     }
   };
 }
+
+/** Requires the authenticated user to be a system_admin. */
+export const requireAdmin: RequestHandler = (req, _res, next) => {
+  if (req.user?.role !== "system_admin") {
+    return next(new AppError("FORBIDDEN", "Admin access required", 403));
+  }
+  next();
+};

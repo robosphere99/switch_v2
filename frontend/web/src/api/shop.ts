@@ -116,12 +116,12 @@ export interface SerialDetail {
 
 export async function getProducts(): Promise<Product[]> {
   const res = await api.get("/shop/products");
-  return res.data.data;
+  return Array.isArray(res.data?.data) ? res.data.data : [];
 }
 
 export async function getProductReviews(productId: number): Promise<ProductReview[]> {
   const res = await api.get(`/shop/products/${productId}/reviews`);
-  return res.data.data;
+  return Array.isArray(res.data?.data) ? res.data.data : [];
 }
 
 // ---------- Orders ----------
@@ -144,7 +144,7 @@ export async function validateCoupon(code: string): Promise<{ id: number; code: 
 
 export async function getMyOrders(): Promise<Order[]> {
   const { data } = await api.get("/shop/orders");
-  return data.data;
+  return Array.isArray(data?.data) ? data.data : [];
 }
 
 export async function cancelOrder(id: number): Promise<void> {
@@ -155,7 +155,7 @@ export async function cancelOrder(id: number): Promise<void> {
 
 export async function getClaimHomes(): Promise<Array<{ id: number; name: string }>> {
   const { data } = await api.get("/claim/homes");
-  return data.data;
+  return Array.isArray(data?.data) ? data.data : [];
 }
 
 export async function claimDevice(serialCode: string, homeId: number) {
@@ -167,7 +167,7 @@ export async function claimDevice(serialCode: string, homeId: number) {
 
 export async function getAdminProducts(): Promise<Array<Product & { _count: { serials: number } }>> {
   const { data } = await api.get("/admin/products");
-  return data.data;
+  return Array.isArray(data?.data) ? data.data : [];
 }
 
 export async function createAdminProduct(payload: {
@@ -210,7 +210,7 @@ export async function deleteProductMedia(mediaId: number): Promise<void> {
 
 export async function getAdminOrders(): Promise<Order[]> {
   const { data } = await api.get("/admin/orders");
-  return data.data;
+  return Array.isArray(data?.data) ? data.data : [];
 }
 
 export async function getAdminOrder(id: number): Promise<Order> {
@@ -228,13 +228,17 @@ export async function updateOrderPaymentStatus(id: number, paymentStatus: string
   return data.data;
 }
 
+export async function deleteAdminOrder(id: number): Promise<void> {
+  await api.delete(`/admin/orders/${id}`);
+}
+
 export async function getSerials(filters?: { status?: string; productId?: number }): Promise<SerialRow[]> {
   const params = new URLSearchParams();
   if (filters?.status) params.set("status", filters.status);
   if (filters?.productId) params.set("productId", String(filters.productId));
   const qs = params.toString();
   const { data } = await api.get(`/admin/serials${qs ? `?${qs}` : ""}`);
-  return data.data;
+  return Array.isArray(data?.data) ? data.data : [];
 }
 
 export async function generateSerials(productId: number, count: number): Promise<{ generated: number; codes: string[] }> {
@@ -247,8 +251,32 @@ export async function getSerialDetail(serialCode: string): Promise<SerialDetail>
   return data.data;
 }
 
-export async function deleteSerial(serialCode: string): Promise<void> {
-  await api.delete(`/admin/serials/${encodeURIComponent(serialCode)}`);
+export interface UpdateSerialInput {
+  serialCode?: string;
+  productId?: number;
+  status?: string;
+  userId?: number | null;
+  homeId?: number | null;
+  orderId?: number | null;
+  warrantyStatus?: string;
+  warrantyExpiresAt?: string | null;
+  claimedAt?: string | null;
+  espMac?: string | null;
+  unbindEsp?: boolean;
+}
+
+export async function updateSerial(serialCode: string, payload: UpdateSerialInput): Promise<SerialDetail> {
+  const { data } = await api.patch(`/admin/serials/${encodeURIComponent(serialCode)}`, payload);
+  return data.data;
+}
+
+export async function resetSerial(serialCode: string): Promise<{ success: boolean; message: string; serial: SerialDetail }> {
+  const { data } = await api.post(`/admin/serials/${encodeURIComponent(serialCode)}/reset`);
+  return data.data;
+}
+
+export async function deleteSerial(serialCode: string, force = false): Promise<void> {
+  await api.delete(`/admin/serials/${encodeURIComponent(serialCode)}${force ? "?force=true" : ""}`);
 }
 
 export async function deleteSerials(codes: string[]): Promise<{ deleted: number; skipped: number }> {
@@ -322,12 +350,15 @@ export async function fileWarrantyClaim(payload: { serialCode: string; reason: s
 
 export async function getMyWarranty(): Promise<{ claims: WarrantyClaimRow[]; serials: WarrantyDevice[] }> {
   const { data } = await api.get("/warranty/mine");
-  return data.data;
+  return {
+    claims: Array.isArray(data?.data?.claims) ? data.data.claims : [],
+    serials: Array.isArray(data?.data?.serials) ? data.data.serials : [],
+  };
 }
 
 export async function getAdminWarranty(): Promise<WarrantyClaimRow[]> {
   const { data } = await api.get("/admin/warranty");
-  return data.data;
+  return Array.isArray(data?.data) ? data.data : [];
 }
 
 export async function updateWarrantyStatus(id: number, status: string): Promise<{ id: number; status: string }> {

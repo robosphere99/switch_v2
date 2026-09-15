@@ -16,7 +16,6 @@ import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { useSocket } from './src/hooks/useSocket';
 import { Linking, LogBox } from 'react-native';
 import { OrdersScreen } from './src/screens/OrdersScreen';
-import { NetworkMonitor } from './src/components/NetworkMonitor';
 import { useAutoUpdate } from './src/hooks/useAutoUpdate';
 
 import * as Notifications from 'expo-notifications';

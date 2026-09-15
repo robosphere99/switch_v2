@@ -7,7 +7,7 @@ import { audit } from "./audit.service";
 import { createNotification } from "./notification.service";
 import { sendPushToUser } from "./push.service";
 import { resolveFirmware } from "./firmware.service";
-import { mqttPushCommands, mqttPushLedState } from "./mqtt.service";
+import { mqttPushCommands, mqttPushLedState, mqttPushToHome } from "./mqtt.service";
 
 export async function listDevices(homeId: number, viewerId?: number) {
   const where: Prisma.DeviceWhereInput = { homeId };
@@ -229,6 +229,12 @@ export async function sendDeviceCommand(input: {
   if (updated) {
     await emitDeviceUpdated(input.homeId, updated.id);
 
+    // MQTT instant-push: if device is linked to an ESP board, push via MQTT
+    if (updated.espId) {
+      const esp = await prisma.espDevice.findUnique({ where: { id: updated.espId }, select: { macAddress: true } });
+      if (esp) mqttPushCommands(esp.macAddress);
+    }
+
     try {
       const members = await prisma.homeMember.findMany({
         where: { homeId: input.homeId, role: { in: ['admin', 'owner'] } }
@@ -330,6 +336,9 @@ export async function bulkSetStatus(input: {
     where: { id: { in: devices.map((d) => d.id) }, homeId: input.homeId },
   });
   for (const d of updated) await emitDeviceUpdated(input.homeId, d.id);
+
+  // MQTT instant-push to all home devices
+  void mqttPushToHome(input.homeId);
 
   try {
     const members = await prisma.homeMember.findMany({
@@ -481,11 +490,22 @@ export async function renameEsp(homeId: number, espId: number, name: string, act
  * "My Boards" page ke liye: har board ki full info (firmware, IP, MAC, SSID) + devices.
  */
 export async function listMyBoards(userId: number) {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+  const isAdmin = user?.role === "system_admin";
+
   const homes = await prisma.home.findMany({
-    where: { members: { some: { userId, role: { in: ["owner", "admin"] } } } },
+    where: isAdmin
+      ? undefined
+      : {
+          OR: [
+            { ownerId: userId },
+            { members: { some: { userId, role: { in: ["owner", "admin"] } } } },
+          ],
+        },
     select: {
       id: true,
       name: true,
+      ownerId: true,
       members: { where: { userId }, select: { role: true } },
     },
     orderBy: { createdAt: "asc" },
@@ -551,8 +571,8 @@ export async function listMyBoards(userId: number) {
   }
 
   return homes.map((h) => {
-    const role = h.members[0]?.role ?? "member";
-    const canManage = role === "owner" || role === "admin";
+    const role = h.ownerId === userId || isAdmin ? "owner" : (h.members[0]?.role ?? "owner");
+    const canManage = role === "owner" || role === "admin" || isAdmin;
 
     return {
       homeId: h.id,

@@ -177,26 +177,12 @@ export async function updateProfile(
   if (input.phone !== undefined) data.phone = input.phone;
   if (input.address !== undefined) data.address = input.address;
 
+  if (input.pushDeviceToggles !== undefined) data.pushDeviceToggles = input.pushDeviceToggles;
+  if (input.pushSystemAlerts !== undefined) data.pushSystemAlerts = input.pushSystemAlerts;
+
   let updated = user as any;
   if (Object.keys(data).length > 0) {
     updated = await prisma.user.update({ where: { id: userId }, data });
-  }
-
-  if (input.pushDeviceToggles !== undefined || input.pushSystemAlerts !== undefined) {
-    const dt = input.pushDeviceToggles !== undefined ? (input.pushDeviceToggles ? 1 : 0) : null;
-    const sa = input.pushSystemAlerts !== undefined ? (input.pushSystemAlerts ? 1 : 0) : null;
-
-    try {
-      if (dt !== null && sa !== null) {
-        await prisma.$executeRawUnsafe(`UPDATE \`User\` SET push_device_toggles = ${dt}, push_system_alerts = ${sa} WHERE id = ${userId}`);
-      } else if (dt !== null) {
-        await prisma.$executeRawUnsafe(`UPDATE \`User\` SET push_device_toggles = ${dt} WHERE id = ${userId}`);
-      } else if (sa !== null) {
-        await prisma.$executeRawUnsafe(`UPDATE \`User\` SET push_system_alerts = ${sa} WHERE id = ${userId}`);
-      }
-    } catch (e: any) {
-      console.error("Failed to hot-patch push preferences:", e);
-    }
   }
 
   if (input.newPassword) {
@@ -243,37 +229,9 @@ export async function checkAvailability(username?: string, email?: string) {
 
 /** Login with username OR email + password. */
 export async function login(usernameEmail: string, password: string, deviceInfo?: string, ipAddress?: string, revokeOtherSessions?: boolean): Promise<LoginResponse> {
-  let user: User | null = null;
-  try {
-    user = await prisma.user.findFirst({
-      where: { OR: [{ username: usernameEmail }, { email: usernameEmail }] },
-    });
-  } catch (_pErr) {
-    // Prisma query failed — try direct mysql2 lookup as fallback
-    try {
-      const mysql = (await import("mysql2/promise")).default;
-      const dbUrl = getEffectiveDbUrl();
-      const u = new URL(dbUrl);
-      const conn = await mysql.createConnection({
-        host: u.hostname === "localhost" ? "127.0.0.1" : u.hostname,
-        port: Number(u.port || 3306),
-        user: decodeURIComponent(u.username),
-        password: decodeURIComponent(u.password),
-        database: decodeURIComponent(u.pathname.replace(/^\//, "")),
-        connectTimeout: 5000,
-      });
-      const [rows] = await conn.query(
-        "SELECT id, username, email, password, role, status, token_version AS tokenVersion, created_at AS createdAt FROM users WHERE username = ? OR email = ? LIMIT 1",
-        [usernameEmail, usernameEmail],
-      );
-      await conn.end().catch(() => undefined);
-      if (Array.isArray(rows) && rows.length > 0) {
-        user = rows[0] as User;
-      }
-    } catch (_mErr) {
-      logger.error("[login] Direct mysql user lookup error", _mErr);
-    }
-  }
+  const user = await prisma.user.findFirst({
+    where: { OR: [{ username: usernameEmail }, { email: usernameEmail }] },
+  });
 
   if (!user || !(await bcrypt.compare(password, user.password))) {
     throw new AppError("INVALID_CREDENTIALS", "Invalid username/email or password", 401);
@@ -296,23 +254,14 @@ export async function login(usernameEmail: string, password: string, deviceInfo?
     enrichDevice = `${enrichDevice} • Local Network`;
   }
 
-
-  // Best-effort: loginCount/lastLoginAt columns may not exist yet on older DBs.
+  // Update last login timestamp
   try {
     await prisma.user.update({
       where: { id: user.id },
       data: { lastLoginAt: new Date() },
     });
-  } catch {
-    // Column missing or other DB issue — login still succeeds.
-    try {
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { lastLoginAt: new Date() },
-      });
-    } catch {
-      // lastLoginAt also missing — just skip stats update.
-    }
+  } catch (err) {
+    logger.warn("[login] Could not update lastLoginAt", err);
   }
   return issueTokens(user, enrichDevice, ipAddress, revokeOtherSessions);
 }
@@ -344,20 +293,13 @@ async function issueTokens(user: User, deviceInfo?: string, ipAddress?: string, 
         userId: user.id,
         tokenHash,
         expiresAt: exp,
+        deviceInfo,
+        ipAddress,
       },
     });
     sessionId = session.id;
-  } catch (_rErr) {
-    try {
-      await prisma.$executeRawUnsafe(
-        "INSERT INTO refresh_tokens (userId, token_hash, expires_at, created_at) VALUES (?, ?, ?, NOW(3))",
-        user.id,
-        tokenHash,
-        exp,
-      );
-    } catch (_mErr) {
-      logger.error("[login] refreshToken fallback error", _mErr);
-    }
+  } catch (err) {
+    logger.error("[issueTokens] Failed to create refresh token session", err);
   }
 
   try {

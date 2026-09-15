@@ -8,6 +8,7 @@ import { CartDrawer } from "../components/shop/CartDrawer";
 import { Button } from "../components/ui/Button";
 import { Alert } from "../components/ui/Alert";
 import { ShoppingBag, Flame, Sparkles, Clock } from "lucide-react";
+import { safeStorage } from "../lib/safeStorage";
 
 const CATEGORIES = ["All", "Relays", "Dimmers", "Plugs & Extras"];
 
@@ -21,7 +22,7 @@ export function Shop() {
   // Last Visited State
   const [recentViewIds, setRecentViewIds] = useState<number[]>(() => {
     try {
-      return JSON.parse(localStorage.getItem("recentProducts") || "[]");
+      return JSON.parse(safeStorage.getItem("recentProducts") || "[]");
     } catch {
       return [];
     }
@@ -38,31 +39,34 @@ export function Shop() {
 
   useEffect(() => {
     getProducts()
-      .then(setProducts)
-      .catch(() => setError("Failed to load products. Please check server connectivity."));
+      .then((data) => setProducts(Array.isArray(data) ? data : []))
+      .catch(() => {
+        setProducts([]);
+        setError("Failed to load products. Please check server connectivity.");
+      });
   }, []);
 
   const handleSelectProduct = (p: Product) => {
     setSelectedProduct(p);
     setRecentViewIds((prev) => {
       const next = [p.id, ...prev.filter((id) => id !== p.id)].slice(0, 4);
-      localStorage.setItem("recentProducts", JSON.stringify(next));
+      safeStorage.setItem("recentProducts", JSON.stringify(next));
       return next;
     });
   };
 
   useEffect(() => {
-    if (!highlightId || products.length === 0) return;
+    if (!highlightId || (products?.length ?? 0) === 0) return;
     const t = setTimeout(() => {
       cardRefs.current[highlightId]?.scrollIntoView({ behavior: "smooth", block: "center" });
-      const p = products.find((p) => p.id === highlightId);
+      const p = (products || []).find((prod) => prod.id === highlightId);
       if (p) handleSelectProduct(p);
     }, 350);
     return () => clearTimeout(t);
   }, [highlightId, products]);
 
   // Derivations
-  const filteredProducts = products.filter((p) => {
+  const filteredProducts = (products || []).filter((p) => {
     if (category === "All") return true;
     const f = p.features as any;
     if (category === "Relays") return f?.channels;
@@ -71,9 +75,9 @@ export function Shop() {
     return true;
   });
 
-  const trending = [...products].sort((a, b) => Number(b.price || 0) - Number(a.price || 0)).slice(0, 4);
-  const suggestions = [...products].filter((p) => !trending.find((t) => t.id === p.id)).sort(() => Math.random() - 0.5).slice(0, 4);
-  const recentProducts = recentViewIds.map((id) => products.find((p) => p.id === id)).filter(Boolean) as Product[];
+  const trending = [...(products || [])].sort((a, b) => Number(b.price || 0) - Number(a.price || 0)).slice(0, 4);
+  const suggestions = [...(products || [])].filter((p) => !trending.find((t) => t.id === p.id)).sort(() => Math.random() - 0.5).slice(0, 4);
+  const recentProducts = recentViewIds.map((id) => (products || []).find((p) => p.id === id)).filter(Boolean) as Product[];
 
   const renderProductCard = (p: Product) => {
     const cartItem = items.find((i) => i.productId === p.id);

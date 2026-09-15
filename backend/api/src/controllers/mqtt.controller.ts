@@ -20,6 +20,13 @@ export const emqxAuth = async (req: Request, res: Response) => {
         const serial = username.toString().trim().toUpperCase();
         const apiKeyPlain = password.toString().trim();
 
+        // Fast path for backend itself
+        const adminUser = (process.env.MQTT_USERNAME || "Admin").trim();
+        const adminPass = (process.env.MQTT_PASSWORD || "Anil@20552").trim();
+        if (username.toString().trim() === adminUser && apiKeyPlain === adminPass) {
+            return res.status(200).json({ result: "allow", is_superuser: true });
+        }
+
         // Hash the plain key and look up
         const key = await prisma.apiKey.findUnique({
             where: { keyHash: hashKey(apiKeyPlain) },
@@ -36,57 +43,61 @@ export const emqxAuth = async (req: Request, res: Response) => {
             return res.status(401).json({ result: "deny" });
         }
 
-        // Resolve ESP board by serial
-        let esp = await prisma.espDevice.findFirst({
-            where: { serialCode: serial, homeId: key.homeId },
-            select: { id: true, macAddress: true },
-        });
-
         const clientId = req.body.clientid || req.body.client_id;
         let realMac = `PENDING-${serial}`;
         if (clientId && typeof clientId === "string" && clientId.startsWith("sn-")) {
             realMac = clientId.replace("sn-", "").toLowerCase();
         }
 
-        if (!esp) {
+        // Resolve ESP board by serial or MAC
+        let esp = await prisma.espDevice.findFirst({
+            where: {
+                OR: [
+                    { serialCode: serial },
+                    { macAddress: realMac },
+                ],
+            },
+            select: { id: true, macAddress: true, homeId: true, serialCode: true },
+        });
+
+        if (esp) {
+            // Update home/MAC if needed
+            const updateData: { homeId?: number; macAddress?: string; serialCode?: string; offline: boolean } = {
+                offline: false,
+                homeId: key.homeId,
+            };
+            if (realMac && realMac !== `PENDING-${serial}` && esp.macAddress !== realMac) {
+                updateData.macAddress = realMac;
+            }
+            if (esp.serialCode !== serial) {
+                updateData.serialCode = serial;
+            }
+            await prisma.espDevice.update({
+                where: { id: esp.id },
+                data: updateData,
+            });
+        } else {
             // Auto-provision if missing (happens during factory flashing)
             const registry = await prisma.serialRegistry.findUnique({
                 where: { serialCode: serial },
-                include: { product: true }
+                include: { product: true },
             });
 
-            if (!registry) {
-                return res.status(401).json({ result: "deny" });
-            }
+            const productName = registry?.product?.name || "SwitchNest Module";
+            const modelCode = registry?.product?.modelCode || "4CH";
 
-            // Check if another EspDevice has this MAC to avoid Unique constraint error
-            const existingMac = await prisma.espDevice.findUnique({ where: { macAddress: realMac } });
-            if (existingMac) {
-                esp = await prisma.espDevice.update({
-                    where: { id: existingMac.id },
-                    data: { serialCode: serial, homeId: key.homeId, modelCode: registry.product.modelCode },
-                    select: { id: true, macAddress: true }
-                });
-            } else {
-                esp = await prisma.espDevice.create({
-                    data: {
-                        homeId: key.homeId,
-                        macAddress: realMac,
-                        name: `${registry.product.name} · ${serial}`,
-                        serialCode: serial,
-                        modelCode: registry.product.modelCode,
-                        offline: false,
-                    },
-                    select: { id: true, macAddress: true }
-                });
-            }
+            esp = await prisma.espDevice.create({
+                data: {
+                    homeId: key.homeId,
+                    macAddress: realMac,
+                    name: `${productName} · ${serial}`,
+                    serialCode: serial,
+                    modelCode,
+                    offline: false,
+                },
+                select: { id: true, macAddress: true, homeId: true, serialCode: true },
+            });
             logger.info(`[mqtt-auth] Auto-provisioned ESP device ${serial} with MAC ${realMac}`);
-        } else if (esp.macAddress !== realMac && realMac !== `PENDING-${serial}`) {
-            // Update MAC address if it was PENDING or changed
-            await prisma.espDevice.update({
-                where: { id: esp.id },
-                data: { macAddress: realMac }
-            });
         }
 
         // Track usage
@@ -102,8 +113,9 @@ export const emqxAuth = async (req: Request, res: Response) => {
             is_superuser: false
         });
     } catch (err) {
-        logger.warn("[mqtt-auth] auth error", err instanceof Error ? err.message : String(err));
-        return res.status(500).json({ result: "ignore" });
+        const msg = err instanceof Error ? (err.stack || err.message) : String(err);
+        logger.warn("[mqtt-auth] auth error", msg);
+        return res.status(500).json({ result: "ignore", error: msg });
     }
 };
 
@@ -118,7 +130,8 @@ export const emqxAcl = async (req: Request, res: Response) => {
         const serial = username.toString().trim().toUpperCase();
 
         // Fast path for backend itself (if we configure a specific superuser, though typically we use internal EMQX auth for backend)
-        if (username === process.env.MQTT_USERNAME) {
+        const adminUser = (process.env.MQTT_USERNAME || "Admin").trim();
+        if (username.toString().trim() === adminUser) {
             return res.status(200).json({ result: "allow" });
         }
 

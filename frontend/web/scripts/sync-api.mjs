@@ -8,9 +8,11 @@ const here = dirname(fileURLToPath(import.meta.url));
 const webDist = join(here, "..", "dist");
 const apiRoot = existsSync(join(here, "..", "..", "..", "backend", "api"))
   ? join(here, "..", "..", "..", "backend", "api")
-  : join(here, "..", "..", "api");
+  : (existsSync(join(here, "..", "..", "api")) ? join(here, "..", "..", "api") : join(here, "..", "..", "..", "backend", "api"));
 
 if (existsSync(join(webDist, "index.html"))) {
+  mkdirSync(apiRoot, { recursive: true });
+  cpSync(join(webDist, "index.html"), join(apiRoot, "index.html"));
   rmSync(join(apiRoot, "assets"), { recursive: true, force: true });
   mkdirSync(join(apiRoot, "assets"), { recursive: true });
   cpSync(join(webDist, "assets"), join(apiRoot, "assets"), { recursive: true });

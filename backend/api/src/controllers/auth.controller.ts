@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { Request, Response } from "express";
 import { prisma } from "../lib/prisma";
 import { ok } from "../lib/response";
@@ -61,7 +62,8 @@ export async function uploadAvatar(req: Request, res: Response) {
     res.status(400).json({ success: false, error: { code: "NO_FILE", message: "No avatar image provided." } });
     return;
   }
-  const avatarUrl = req.file.path; // Cloudinary secure URL
+  const filename = path.basename(req.file.filename || req.file.path);
+  const avatarUrl = `/uploads/avatars/${filename}`;
   const user = await authService.updateProfile(req.user!.sub, { avatarUrl });
   ok(res, user);
 }
@@ -85,7 +87,49 @@ export async function resetPassword(req: Request, res: Response) {
 }
 
 export async function listSessions(req: Request, res: Response) {
-  const sessions = await authService.listSessions(req.user!.sub);
+  const userId = req.user!.sub;
+  const currentSid = req.user!.sid;
+  const rawUA = req.headers["user-agent"]?.substring(0, 255) || "Web Browser";
+  const rawIp = (req.ip || req.socket.remoteAddress)?.substring(0, 45) || "127.0.0.1";
+  const ip = rawIp.replace(/^::ffff:/, "");
+
+  let sessions = await authService.listSessions(userId);
+
+  // Auto-heal: Ensure current session is tracked in DB
+  const currentMatch = currentSid ? sessions.find((s) => s.id === currentSid) : undefined;
+
+  if (currentMatch) {
+    // Touch lastActive in background
+    prisma.refreshToken
+      .update({
+        where: { id: currentMatch.id },
+        data: { lastActive: new Date(), ipAddress: ip },
+      })
+      .catch(() => {});
+  } else if (sessions.length === 0 || !currentSid) {
+    try {
+      const crypto = await import("node:crypto");
+      const syntheticHash = crypto
+        .createHash("sha256")
+        .update(`sess_${userId}_${Date.now()}_${Math.random()}`)
+        .digest("hex");
+      const newSession = await prisma.refreshToken.create({
+        data: {
+          userId,
+          tokenHash: syntheticHash,
+          deviceInfo: rawUA,
+          ipAddress: ip,
+          expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), // 90 days
+          lastActive: new Date(),
+        },
+        select: { id: true, deviceInfo: true, ipAddress: true, lastActive: true, createdAt: true },
+      });
+      sessions = [newSession, ...sessions.filter((s) => s.id !== newSession.id)];
+    } catch (_err) {
+      // Ignore DB write error
+    }
+  }
+
   ok(res, sessions);
 }
 
@@ -106,39 +150,25 @@ export async function revokeUnauth(req: Request, res: Response) {
 }
 
 export async function revokeOtherSessions(req: Request, res: Response) {
-  console.log("[DEBUG-REVOKE] Entry hit. Body:", req.body, "Query:", req.query);
   const authReq = req as Request & { user?: any };
+  const userId = authReq.user!.sub;
   let currentSessionId = authReq.user!.sid || Number(req.query.currentSessionId);
-  console.log(`[DEBUG-REVOKE] Initial currentSessionId resolved to: ${currentSessionId} (from sid:${authReq.user!.sid} or query:${req.query.currentSessionId})`);
 
   if (!currentSessionId || isNaN(currentSessionId)) {
-    console.log("[DEBUG-REVOKE] Proceeding to fallback logic because ID is missing or NaN.");
-    const iatSeconds = authReq.user!.iat;
-    if (iatSeconds) {
-      console.log(`[DEBUG-REVOKE] Found iatSeconds in payload: ${iatSeconds}. Querying DB...`);
-      const allSessions = await prisma.refreshToken.findMany({
-        where: { userId: authReq.user!.sub, revokedAt: null }
-      });
-      console.log(`[DEBUG-REVOKE] Retrieved ${allSessions.length} active sessions from DB.`);
-
-      const matchedSession = allSessions.find(s => Math.abs(Math.floor(s.createdAt.getTime() / 1000) - iatSeconds) <= 2);
-      if (matchedSession) {
-        currentSessionId = matchedSession.id;
-        console.log(`[DEBUG-REVOKE] Match found! Overwriting currentSessionId to: ${currentSessionId}`);
-      } else {
-        console.log(`[DEBUG-REVOKE] No match found in DB for iat: ${iatSeconds}. Existing epochs: ${allSessions.map(s => Math.floor(s.createdAt.getTime() / 1000)).join(', ')}`);
-      }
-    }
-
-    if (!currentSessionId) {
-      console.log("[DEBUG-REVOKE] Aborting and returning 400. Still no currentSessionId.");
-      return res.status(400).json({ success: false, error: { message: "Please log out and log back in to use this feature." } });
+    const latest = await prisma.refreshToken.findFirst({
+      where: { userId, revokedAt: null },
+      orderBy: { lastActive: "desc" },
+    });
+    if (latest) {
+      currentSessionId = latest.id;
     }
   }
 
-  console.log(`[DEBUG-REVOKE] Executing DB sweep. Calling authService.revokeOtherSessions for User: ${authReq.user!.sub}, Keeping ID: ${currentSessionId}`);
-  const rev = await authService.revokeOtherSessions(authReq.user!.sub, currentSessionId);
-  console.log(`[DEBUG-REVOKE] Service executed. Rows deleted: ${rev.count}. Returning 200 OK.`);
+  if (!currentSessionId) {
+    return ok(res, { message: "No other active sessions to revoke.", count: 0 });
+  }
+
+  const rev = await authService.revokeOtherSessions(userId, currentSessionId);
   ok(res, { message: `Successfully revoked ${rev.count} other session(s).`, currentSessionId });
 }
 

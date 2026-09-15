@@ -5,7 +5,19 @@ import path from "node:path";
 import fs from "node:fs";
 import { corsOrigins } from "./config/env";
 import { errorHandler } from "./middleware/errorHandler";
-import { firmwareDir, webDist, mobileAppDir, webPublicMobileAppDir, uploadsDir, getMobileAppCandidateDirs } from "./lib/paths";
+import {
+  firmwareDir,
+  getCandidateFirmwareDirs,
+  webDist,
+  mobileAppDir,
+  webPublicMobileAppDir,
+  uploadsDir,
+  apiRoot,
+  getMobileAppCandidateDirs,
+  getCandidateUploadDirs,
+  getSpaIndexHtmlPath,
+  getCandidateAssetDirs,
+} from "./lib/paths";
 import { apiRouter } from "./routes";
 import { installRouter } from "./routes/install.routes";
 import { docsRouter } from "./routes/docs.routes";
@@ -101,24 +113,41 @@ export function createApp() {
       const diag = await schemaDiag();
       res.json({
         success: true,
-        data: { status: "ok", ts: new Date().toISOString(), schema: diag, build: API_VERSION },
+        data: {
+          status: "ok",
+          ts: new Date().toISOString(),
+          schema: diag,
+          build: API_VERSION,
+        },
       });
     } catch (err) {
-      // Health route should never crash or return 500
-      res.json({
-        success: true,
-        data: {
-          status: "degraded",
-          ts: new Date().toISOString(),
-          error: err instanceof Error ? err.message : "health check error",
-          build: API_VERSION,
+      res.status(500).json({
+        success: false,
+        error: {
+          code: "HEALTH_CHECK_FAILED",
+          message: err instanceof Error ? err.message : "Health check error",
         },
       });
     }
   };
 
-  app.get("/api/health", handleHealth);
+  // Health check: probe + manual check. DB disconnect ho tab bhi 200 (schema status ke saath).
   app.get("/health", handleHealth);
+  app.get("/api/health", handleHealth);
+
+  // Install / setup check
+  app.get("/api/setup-status", async (_req, res) => {
+    res.json({
+      success: true,
+      data: {
+        isInstalled: true,
+        dbReady: isDbReady(),
+        message: isDbReady()
+          ? "SwitchNest is operational"
+          : "Database initialization in progress",
+      },
+    });
+  });
 
   const getVersion = async (req: express.Request, res: express.Response) => {
     const requestHost = req.get('host') || '192.168.1.36:4000';
@@ -145,8 +174,6 @@ export function createApp() {
   app.get("/api/version", getVersion);
   app.get("/version", getVersion);
 
-  // Install routes hamesha available — setup mode me bhi.
-  app.use("/api/install", installRouter);
   app.use("/install", installRouter);
 
   // Public routes (site-settings, contact, etc.) hamesha available.
@@ -160,14 +187,38 @@ export function createApp() {
   // EMQX Webhook APIs
   app.use("/api/mqtt", mqttRouter);
 
-  // Setup mode removed: Database is handled by Prisma and Neon via .env
+  // Main API Router
   app.use("/api", apiRouter);
 
   // Serve published ESP32 firmware at /firmware/firmware.bin (OTA downloads).
-  app.use("/firmware", express.static(firmwareDir));
+  const candidateFwDirs = getCandidateFirmwareDirs();
+  for (const dir of candidateFwDirs) {
+    if (dir && fs.existsSync(dir)) {
+      app.use("/firmware", express.static(dir));
+    }
+  }
 
-  // Serve User Uploads at /uploads (Avatars, pictures).
-  app.use("/uploads", express.static(uploadsDir));
+  // Explicit route handler for /firmware/:filename to guarantee OTA downloads
+  app.get("/firmware/:filename", (req, res, next) => {
+    const filename = path.basename(req.params.filename);
+    for (const dir of candidateFwDirs) {
+      if (dir && fs.existsSync(dir)) {
+        const fullPath = path.join(dir, filename);
+        if (fs.existsSync(fullPath)) {
+          return res.sendFile(fullPath);
+        }
+      }
+    }
+    next();
+  });
+
+  // Serve User Uploads at /uploads (Avatars, pictures, support, billing).
+  const candidateUploadDirs = getCandidateUploadDirs();
+  for (const dir of candidateUploadDirs) {
+    if (dir && fs.existsSync(dir)) {
+      app.use(["/uploads", "/api/uploads"], express.static(dir));
+    }
+  }
 
   // Serve compiled Mobile APK releases across all candidate directories.
   const apkCandidateDirs = getMobileAppCandidateDirs();
@@ -191,55 +242,32 @@ export function createApp() {
     next();
   });
 
-  // Production: built web app (Vite dist) ko bhi API hi serve karta hai —
-  // Plesk pe ek hi Node.js app se sab chalta hai. sync-api.mjs index.html ko api folder me copy karta hai.
-  const apiRootHtml = path.join(process.cwd(), "index.html");
-  const apiAssetsDir = path.join(process.cwd(), "assets");
-  const webDistHtml = path.join(webDist, "index.html");
-  const webDistAssets = path.join(webDist, "assets");
-
-  // Explicitly serve /assets with guaranteed JS/CSS MIME headers
-  const setAssetHeaders = (res: express.Response, filePath: string) => {
-    if (filePath.endsWith(".js")) res.setHeader("Content-Type", "application/javascript");
-    else if (filePath.endsWith(".css")) res.setHeader("Content-Type", "text/css");
-
-    const base = path.basename(filePath);
-    if (base === "index.js" || base === "index.css") {
-      res.setHeader("Cache-Control", "no-cache, must-revalidate, max-age=0");
-      res.setHeader("Pragma", "no-cache");
-    } else {
-      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-    }
-  };
-
-  if (fs.existsSync(apiAssetsDir)) {
+  // Production: built web app (Vite dist) serving
+  const assetDirs = getCandidateAssetDirs();
+  for (const dir of assetDirs) {
     app.use(
       "/assets",
-      express.static(apiAssetsDir, {
-        setHeaders: setAssetHeaders,
-      }),
-    );
-  }
-  if (fs.existsSync(webDistAssets)) {
-    app.use(
-      "/assets",
-      express.static(webDistAssets, {
-        setHeaders: setAssetHeaders,
+      express.static(dir, {
+        maxAge: "1y",
+        immutable: true,
+        setHeaders: (res, filePath) => {
+          if (filePath.endsWith(".js")) res.setHeader("Content-Type", "application/javascript");
+          else if (filePath.endsWith(".css")) res.setHeader("Content-Type", "text/css");
+        },
       }),
     );
   }
 
-  // Fallback for stale asset requests (e.g. browser requested old index-Bc2133nz.js when new build has index-Df8JkqRD.js)
+  // Fallback for stale asset requests
   app.use("/assets", (req, res, next) => {
     if (req.path.endsWith(".js")) {
-      const targetDir = fs.existsSync(apiAssetsDir) ? apiAssetsDir : fs.existsSync(webDistAssets) ? webDistAssets : null;
-      if (targetDir) {
+      for (const dir of assetDirs) {
         try {
-          const files = fs.readdirSync(targetDir);
+          const files = fs.readdirSync(dir);
           const latestJs = files.find((f) => f.startsWith("index-") && f.endsWith(".js"));
           if (latestJs) {
             res.setHeader("Content-Type", "application/javascript");
-            return res.sendFile(path.join(targetDir, latestJs));
+            return res.sendFile(path.join(dir, latestJs));
           }
         } catch {
           /* ignore */
@@ -253,23 +281,52 @@ export function createApp() {
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0");
     res.setHeader("Pragma", "no-cache");
     res.setHeader("Expires", "0");
-    if (fs.existsSync(apiRootHtml)) {
-      res.sendFile(apiRootHtml);
-    } else if (fs.existsSync(webDistHtml)) {
-      res.sendFile(webDistHtml);
+    const htmlPath = getSpaIndexHtmlPath();
+    if (htmlPath) {
+      return res.sendFile(htmlPath);
     }
+    return res.status(200).send(`<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>SwitchNest</title></head>
+<body style="font-family:system-ui,-apple-system,sans-serif;background:#090d16;color:#f3f4f6;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
+  <div style="text-align:center;padding:2rem;background:#111827;border-radius:12px;border:1px solid #1f2937;max-width:480px;">
+    <h1 style="font-size:1.5rem;color:#60a5fa;margin-bottom:0.5rem;">SwitchNest Platform</h1>
+    <p style="color:#9ca3af;font-size:0.95rem;">Backend is online & operational (v${API_VERSION}).</p>
+    <p style="color:#6b7280;font-size:0.85rem;margin-top:1rem;">Initializing user interface assets...</p>
+  </div>
+</body>
+</html>`);
   };
 
-  if (fs.existsSync(apiRootHtml)) {
-    app.use(express.static(process.cwd()));
-  }
-  if (fs.existsSync(webDistHtml)) {
-    app.use(express.static(webDist));
+  for (const dir of [apiRoot, process.cwd(), webDist]) {
+    if (dir && fs.existsSync(dir)) {
+      app.use(express.static(dir));
+    }
   }
 
-  app.get(["/", "/login", "/signup", "/install", "/activate", "/print-serials", "/print-bill", "/warranty", "/forgot-password", "/reset-password", "/support", "/verify-bill"], sendSpaHtml);
-  app.use(["/install", "/dashboard", "/admin", "/shop"], sendSpaHtml);
+  // Public API route 404 handler (for unmatched /api/* calls)
+  app.use("/api", (_req, res) => {
+    res.status(404).json({
+      success: false,
+      error: { code: "NOT_FOUND", message: "Route not found" },
+    });
+  });
 
+  // Universal SPA client-side routing fallback for all web navigation (e.g. /boards, /devices, /profile, /settings, etc.)
+  app.use((req, res, next) => {
+    if (
+      req.method === "GET" &&
+      !req.path.startsWith("/api") &&
+      !req.path.startsWith("/uploads") &&
+      !req.path.startsWith("/firmware") &&
+      !req.path.startsWith("/mobile-app")
+    ) {
+      return sendSpaHtml(req, res);
+    }
+    next();
+  });
+
+  // Final 404 fallback for unmatched non-GET or remaining routes
   app.use((_req, res) => {
     res.status(404).json({
       success: false,

@@ -80,10 +80,10 @@ const DeviceCard = ({
         ]}>
             <TouchableOpacity
                 style={{ flex: 1 }}
-                activeOpacity={0.88}
+                activeOpacity={0.7}
                 disabled={isBlocked}
                 onPress={handlePress}
-                delayPressIn={80}
+                delayPressIn={0}
                 onLongPress={() => onLongPress(device)}
             >
                 <View style={[
@@ -264,6 +264,7 @@ export function DashboardScreen({ user, onLogout }: { user: any, onLogout: () =>
     // Activates Native Push Notifications (Background Sync & Permission Handling)
     usePushNotifications();
 
+    const pendingTogglesRef = useRef<Set<number>>(new Set());
 
     useEffect(() => {
         loadData();
@@ -276,9 +277,12 @@ export function DashboardScreen({ user, onLogout }: { user: any, onLogout: () =>
 
         const deviceSyncSub = DeviceEventEmitter.addListener('device_sync', (payload) => {
             setDevices(prevDevices =>
-                prevDevices.map(d =>
-                    (d.id === payload.id) ? { ...d, status: payload.status, offline: payload.offline } : d
-                )
+                prevDevices.map(d => {
+                    if (d.id !== payload.id) return d;
+                    // Do not let asynchronous socket events overwrite an in-flight optimistic tap
+                    if (pendingTogglesRef.current.has(d.id)) return d;
+                    return { ...d, status: payload.status, offline: payload.offline, lastSeen: payload.lastSeen || d.lastSeen };
+                })
             );
         });
 
@@ -333,6 +337,10 @@ export function DashboardScreen({ user, onLogout }: { user: any, onLogout: () =>
     const handleToggle = async (deviceId: number, currentStatus: string) => {
         if (!selectedHomeId) return;
 
+        // Prevent duplicate tap collisions while an API request is in-flight
+        if (pendingTogglesRef.current.has(deviceId)) return;
+        pendingTogglesRef.current.add(deviceId);
+
         // Fast Optimistic Update for zero-latency feel
         const newStatus = currentStatus === 'on' ? 'off' : 'on';
         setDevices(prev => prev.map(d => d.id === deviceId ? { ...d, status: newStatus } : d));
@@ -357,6 +365,8 @@ export function DashboardScreen({ user, onLogout }: { user: any, onLogout: () =>
             } else {
                 showAlert('Control Error', e.message || 'Failed to toggle device. Connection issues.');
             }
+        } finally {
+            pendingTogglesRef.current.delete(deviceId);
         }
     };
 

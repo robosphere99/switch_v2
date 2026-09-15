@@ -19,14 +19,10 @@ for (const p of candidatePaths) {
 
 export function getEffectiveDbUrl(): string {
   const envUrl = process.env.DATABASE_URL?.trim();
-  if (envUrl) return envUrl;
-  const host = process.env.DB_HOST ?? "127.0.0.1";
-  const port = process.env.DB_PORT ?? "3306";
-  const user = process.env.DB_USER ?? "root";
-  const pass = process.env.DB_PASS ?? "";
-  const name = process.env.DB_NAME ?? "switchnest";
-  return `mysql://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}:${port}/${name}`;
+  if (envUrl && envUrl.startsWith("mysql://")) return envUrl;
+  return "mysql://switch_v2:switchnest%401234567890@127.0.0.1:3306/switch_v2";
 }
+
 
 export function withConnLimit(url: string, limit = 10): string {
   const target = url.trim() || getEffectiveDbUrl();

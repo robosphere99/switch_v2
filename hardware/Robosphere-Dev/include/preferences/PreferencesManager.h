@@ -15,6 +15,16 @@ String getWiFiSSID();
 
 String getWiFiPassword();
 
+void saveBackupWiFi(const String &ssid, const String &password);
+
+String getBackupWiFiSSID();
+
+String getBackupWiFiPassword();
+
+void saveRelayStates(uint8_t bitmask);
+
+uint8_t getRelayStates(uint8_t defaultStates = 0);
+
 void saveAdmin(const String &username, const String &password);
 
 String getAdminUsername();

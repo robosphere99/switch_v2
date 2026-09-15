@@ -1,66 +1,73 @@
-import { v2 as cloudinary } from "cloudinary";
-import { CloudinaryStorage } from "multer-storage-cloudinary";
+import type { StorageEngine } from "multer";
+import path from "node:path";
+import fs from "node:fs";
+import * as os from "os";
+import { findWritableUploadsDir, getCandidateUploadDirs, uploadsDir } from "./paths";
 
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
+/**
+ * 100% Local Server Disk Storage Engine
+ * Directly saves uploads to Plesk server disk in uploads/<folderName>/<filename>
+ * URL returned: /uploads/<folderName>/<filename>
+ */
+export function createLocalStorage(folderName: string): StorageEngine {
+  return {
+    _handleFile(
+      _req,
+      file,
+      cb
+    ) {
+      const ext = path.extname(file.originalname).toLowerCase();
+      const base = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9_-]/g, "_");
+      const safeName = `${Date.now()}-${base}${ext}`;
 
-export const cloudinaryAvatarStorage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  params: async (req, file) => {
-    return {
-      folder: "switchnest/avatars",
-      public_id: `${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9]/g, "_")}`,
-      format: "webp",
-      transformation: [{ quality: "auto:eco", width: 800, crop: "limit" }],
-    };
-  },
-});
+      const chunks: Buffer[] = [];
+      file.stream.on("data", (chunk) => chunks.push(chunk));
+      file.stream.on("error", (err) => cb(err));
+      file.stream.on("end", () => {
+        const buffer = Buffer.concat(chunks);
+        let savedPath = "";
 
-export const cloudinaryProductStorage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  params: async (req, file) => {
-    return {
-      folder: "switchnest/products",
-      public_id: `${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9]/g, "_")}`,
-      format: "webp",
-      transformation: [{ quality: "auto:eco", width: 1280, crop: "limit" }],
-    };
-  },
-});
+        try {
+          const writableBase = findWritableUploadsDir(folderName);
+          const targetFolder = path.join(writableBase, folderName);
+          try { fs.mkdirSync(targetFolder, { recursive: true }); } catch {}
+          const filePath = path.join(targetFolder, safeName);
+          fs.writeFileSync(filePath, buffer);
+          savedPath = filePath;
+        } catch {
+          try {
+            const fallbackFolder = path.join(os.tmpdir(), "switchnest-uploads", folderName);
+            fs.mkdirSync(fallbackFolder, { recursive: true });
+            const emergencyPath = path.join(fallbackFolder, safeName);
+            fs.writeFileSync(emergencyPath, buffer);
+            savedPath = emergencyPath;
+          } catch (err: any) {
+            return cb(err);
+          }
+        }
 
-export const cloudinarySupportStorage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  params: async (req, file) => {
-    const isImage = file.mimetype.startsWith("image/");
-    return {
-      folder: "switchnest/support",
-      public_id: `${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9]/g, "_")}`,
-      resource_type: "auto",
-      ...(isImage && {
-        format: "webp",
-        transformation: [{ quality: "auto:eco", width: 1280, crop: "limit" }],
-      }),
-    };
-  },
-});
+        const publicUrl = `/uploads/${folderName}/${safeName}`;
+        cb(null, {
+          path: publicUrl,
+          filename: safeName,
+          size: buffer.length,
+          destination: path.dirname(savedPath),
+        } as any);
+      });
+    },
+    _removeFile(_req, file, cb) {
+      try {
+        if (file.path && fs.existsSync(file.path)) {
+          fs.unlinkSync(file.path);
+        }
+      } catch {}
+      cb(null);
+    },
+  };
+}
 
-export const cloudinaryBillingStorage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  params: async (req, file) => {
-    const isImage = file.mimetype.startsWith("image/");
-    return {
-      folder: "switchnest/billing",
-      public_id: `${Date.now()}-${file.originalname.replace(/[^a-zA-Z0-9]/g, "_")}`,
-      resource_type: "auto",
-      ...(isImage && {
-        format: "webp",
-        transformation: [{ quality: "auto:eco", width: 1280, crop: "limit" }],
-      }),
-    };
-  },
-});
+export const cloudinaryAvatarStorage = createLocalStorage("avatars");
+export const cloudinaryProductStorage = createLocalStorage("products");
+export const cloudinarySupportStorage = createLocalStorage("support");
+export const cloudinaryBillingStorage = createLocalStorage("billing");
 
-export default cloudinary;

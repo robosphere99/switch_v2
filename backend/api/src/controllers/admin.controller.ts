@@ -11,7 +11,7 @@ import { getLeakMonitorState } from "../lib/leakMonitor";
 import { AppError, ok } from "../lib/response";
 import { audit } from "../services/audit.service";
 import { createNotification, createNotificationWithEmail } from "../services/notification.service";
-import { emitToHome } from "../lib/socket";
+import { emitToHome, emitDeviceUpdated } from "../lib/socket";
 import { generateSerials, updateOrderStatus } from "../services/shop.service";
 import { decryptSecret } from "../lib/crypto";
 import { signBillToken } from "../lib/billVerify";
@@ -24,7 +24,7 @@ import { setDbReady } from "../lib/dbState";
 import { sendEmail } from "../lib/email.service";
 import { chatCompletion, getAiConfig, aiConfigured } from "../lib/ai";
 import { requestPasswordReset } from "../services/auth.service";
-import { firmwareDir, mobileAppDir, webPublicMobileAppDir } from "../lib/paths";
+import { firmwareDir, mobileAppDir, webPublicMobileAppDir, getCandidateFirmwareDirs, getWritableFirmwareDir } from "../lib/paths";
 
 export type CiStatus = {
   state?: "success" | "pending" | "failure" | "error";
@@ -1600,39 +1600,117 @@ export const getEspIssues = async (req: Request, res: Response) => {
 
 export const patchEspId = async (req: Request, res: Response) => {
   const id = Number(req.params.id);
-  const name = String(req.body?.name ?? "").trim().slice(0, 60);
-  if (!name) throw new AppError("BAD_REQUEST", "Name required");
-  // Tracking ke liye board ka naam UNIQUE hona chahiye — duplicate pe reject.
-  const dup = await prisma.espDevice.findFirst({ where: { name, id: { not: id } }, select: { id: true } });
-  if (dup) {
-    throw new AppError("DUPLICATE_NAME", `Naam "${name}" already kisi aur board pe hai — har board ka unique naam chahiye`, 409);
-  }
   const before = await prisma.espDevice.findUnique({ where: { id } });
   if (!before) throw new AppError("NOT_FOUND", "Board nahi mila", 404);
-  const esp = await prisma.espDevice.update({ where: { id }, data: { name } });
-  await audit(req.user!.sub, "admin.esp.rename", {
+
+  const { name, serialCode, homeId, modelCode } = req.body ?? {};
+  const dataToUpdate: any = {};
+
+  if (name !== undefined) {
+    const cleanName = String(name).trim().slice(0, 60);
+    if (!cleanName) throw new AppError("BAD_REQUEST", "Name required");
+    const dup = await prisma.espDevice.findFirst({ where: { name: cleanName, id: { not: id } }, select: { id: true } });
+    if (dup) {
+      throw new AppError("DUPLICATE_NAME", `Naam "${cleanName}" already kisi aur board pe hai — har board ka unique naam chahiye`, 409);
+    }
+    dataToUpdate.name = cleanName;
+  }
+
+  if (serialCode !== undefined) {
+    if (serialCode === null || serialCode === "") {
+      dataToUpdate.serialCode = null;
+    } else {
+      const cleanSerial = String(serialCode).trim().toUpperCase();
+      const otherEsp = await prisma.espDevice.findFirst({
+        where: { serialCode: cleanSerial, id: { not: id } },
+      });
+      if (otherEsp) {
+        throw new AppError("CONFLICT", `Serial code "${cleanSerial}" already attached to board "${otherEsp.name ?? otherEsp.macAddress}"`, 409);
+      }
+      dataToUpdate.serialCode = cleanSerial;
+      if (before.homeId) {
+        await prisma.serialRegistry.updateMany({
+          where: { serialCode: cleanSerial },
+          data: { homeId: before.homeId },
+        }).catch(() => {});
+      }
+    }
+  }
+
+  if (homeId !== undefined && homeId !== null) {
+    const targetHomeId = Number(homeId);
+    const home = await prisma.home.findUnique({ where: { id: targetHomeId } });
+    if (!home) throw new AppError("NOT_FOUND", "Target Home not found");
+    dataToUpdate.homeId = targetHomeId;
+    if (before.serialCode) {
+      await prisma.serialRegistry.updateMany({
+        where: { serialCode: before.serialCode },
+        data: { homeId: targetHomeId },
+      }).catch(() => {});
+    }
+  }
+
+  if (modelCode !== undefined) {
+    dataToUpdate.modelCode = modelCode ? String(modelCode).trim().toUpperCase() : null;
+  }
+
+  const esp = await prisma.espDevice.update({
+    where: { id },
+    data: dataToUpdate,
+  });
+
+  await audit(req.user!.sub, "admin.esp.update", {
     entity: "esp",
     entityId: id,
-    meta: { from: before.name ?? null, to: name },
+    meta: { before: { name: before.name, serialCode: before.serialCode, homeId: before.homeId }, changes: dataToUpdate },
   });
-  // Admin rename bhi user ko notify karta hai (support action).
-  const home = await prisma.home.findUnique({
-    where: { id: esp.homeId },
-    include: { members: { where: { role: { in: ["owner", "admin"] } }, select: { userId: true } } },
-  });
-  if (home) {
-    const oldName = before.name ?? before.serialCode ?? `ESP-${before.macAddress.slice(-6).toUpperCase()}`;
-    for (const m of home.members) {
-      await createNotification(m.userId, {
-        category: "support",
-        type: "info",
-        title: `🛰️ Support ne board renamed kiya: ${oldName} → ${name}`,
-        body: `Support team ne board ka naam "${oldName}" se "${name}" kar diya.`,
-      });
+
+  // Notify home members if renamed
+  if (dataToUpdate.name && dataToUpdate.name !== before.name) {
+    const home = await prisma.home.findUnique({
+      where: { id: esp.homeId },
+      include: { members: { where: { role: { in: ["owner", "admin"] } }, select: { userId: true } } },
+    });
+    if (home) {
+      const oldName = before.name ?? before.serialCode ?? `ESP-${before.macAddress.slice(-6).toUpperCase()}`;
+      for (const m of home.members) {
+        await createNotification(m.userId, {
+          category: "support",
+          type: "info",
+          title: `🛰️ Support ne board renamed kiya: ${oldName} → ${dataToUpdate.name}`,
+          body: `Support team ne board ka naam "${oldName}" se "${dataToUpdate.name}" kar diya.`,
+        });
+      }
     }
-    emitToHome(esp.homeId, "esp:updated", { id, name });
   }
+
+  emitToHome(esp.homeId, "esp:updated", esp);
+  if (before.homeId !== esp.homeId) {
+    emitToHome(before.homeId, "esp:updated", { id, deleted: true });
+  }
+
   ok(res, esp);
+};
+
+export const deleteEspId = async (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  const esp = await prisma.espDevice.findUnique({
+    where: { id },
+    include: { devices: true },
+  });
+  if (!esp) throw new AppError("NOT_FOUND", "ESP board not found");
+
+  // Delete/unlink devices attached to this ESP
+  await prisma.device.deleteMany({ where: { espId: id } }).catch(() => {});
+  // Delete the ESP device
+  await prisma.espDevice.delete({ where: { id } });
+
+  await audit(req.user!.sub, "admin.esp.delete", {
+    entity: "esp",
+    entityId: id,
+    meta: { serialCode: esp.serialCode, macAddress: esp.macAddress },
+  });
+  ok(res, { deleted: true, id, serialCode: esp.serialCode });
 };
 
 export const getEspIdHistory = async (req: Request, res: Response) => {
@@ -1673,14 +1751,27 @@ export const postFirmware = async (req: Request, res: Response) => {
   const filename = modelCode ? `firmware-${modelCode.toLowerCase()}.bin` : "firmware.bin";
   const url = `/firmware/${filename}`;
 
-  // multer filename fixed "firmware.bin" rakhta hai — model ho to rename karo
-  if (modelCode && filename !== "firmware.bin") {
-    const uploaded = path.join(firmwareDir, "firmware.bin");
-    const target = path.join(firmwareDir, filename);
-    if (fs.existsSync(uploaded) && uploaded !== target) {
-      if (fs.existsSync(target)) fs.unlinkSync(target);
-      fs.renameSync(uploaded, target);
+  // Write file buffer to all candidate writable firmware directories
+  const candidateDirs = getCandidateFirmwareDirs();
+  let writeSuccess = false;
+  let lastWriteError: string | null = null;
+
+  for (const dir of candidateDirs) {
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+      const target = path.join(dir, filename);
+      if (req.file.buffer) {
+        fs.writeFileSync(target, req.file.buffer);
+        writeSuccess = true;
+      }
+    } catch (err: any) {
+      lastWriteError = err?.message || String(err);
+      continue;
     }
+  }
+
+  if (!writeSuccess) {
+    throw new AppError("INTERNAL_ERROR", `Could not save firmware file: ${lastWriteError || "Unknown write error"}`);
   }
 
   await prisma.$transaction([
@@ -1741,6 +1832,15 @@ export const postDevicesIdStatus = async (req: Request, res: Response) => {
     entityId: id,
     meta: { name: device.name, status },
   });
+  await emitDeviceUpdated(device.homeId, id);
+  if (device.espId) {
+    const esp = await prisma.espDevice.findUnique({ where: { id: device.espId }, select: { macAddress: true } });
+    if (esp) {
+      const { mqttPushCommands } = await import("../services/mqtt.service");
+      mqttPushCommands(esp.macAddress);
+    }
+  }
+
   await createNotification(device.home.ownerId, {
     category: "support",
     type: "info",
@@ -2047,26 +2147,75 @@ export const postProductsIdMedia = async (req: Request, res: Response) => {
   if (!req.file) throw new AppError("BAD_REQUEST", "No file uploaded");
   const product = await prisma.product.findUnique({ where: { id: productId } });
   if (!product) throw new AppError("NOT_FOUND", "Product not found");
-  const fileUrl = req.file.path; // Cloudinary secure URL
+  const filename = path.basename(req.file.filename || req.file.path);
+  const fileUrl = `/uploads/products/${filename}`;
   const ext = path.extname(req.file.originalname).toLowerCase();
   const type = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"].includes(ext) ? "image"
     : [".mp4", ".webm", ".mov"].includes(ext) ? "video"
     : "document";
-  const media = await prisma.productMedia.create({
-    data: { productId, url: fileUrl, type },
-  });
+
+  let media: { id: number; url: string; type: string; productId?: number | null };
+  try {
+    media = await prisma.productMedia.create({
+      data: {
+        product: { connect: { id: productId } },
+        url: fileUrl,
+        type,
+      },
+    });
+  } catch {
+    try {
+      media = await prisma.productMedia.create({
+        data: {
+          productId,
+          url: fileUrl,
+          type,
+        },
+      });
+    } catch {
+      await prisma.$executeRawUnsafe(
+        "INSERT INTO `product_media` (`product_id`, `url`, `type`, `created_at`) VALUES (?, ?, ?, NOW())",
+        productId,
+        fileUrl,
+        type
+      ).catch(async () => {
+        await prisma.$executeRawUnsafe(
+          "INSERT INTO `product_media` (`productId`, `url`, `type`, `created_at`) VALUES (?, ?, ?, NOW())",
+          productId,
+          fileUrl,
+          type
+        );
+      });
+      const rows = await prisma.$queryRaw<Array<{ id: number; url: string; type: string }>>`
+        SELECT id, url, type FROM \`product_media\` WHERE \`url\` = ${fileUrl} ORDER BY id DESC LIMIT 1
+      `.catch(() => []);
+      media = rows[0] ?? { id: Date.now(), url: fileUrl, type, productId };
+    }
+  }
+
+  if (type === "image" && !product.imageUrl) {
+    await prisma.product.update({
+      where: { id: productId },
+      data: { imageUrl: fileUrl },
+    }).catch(() => {});
+  }
   await audit(req.user!.sub, "admin.product.media.add", { entity: "product", entityId: productId, meta: { mediaId: media.id } });
   ok(res, media, 201);
 };
 
 export const deleteProductsMediaMediaId = async (req: Request, res: Response) => {
   const mediaId = Number(req.params.mediaId);
-  const media = await prisma.productMedia.findUnique({ where: { id: mediaId } });
-  if (!media) throw new AppError("NOT_FOUND", "Media not found");
-  const filePath = path.join(process.cwd(), media.url.replace(/^\/+/, ""));
-  try { fs.unlinkSync(filePath); } catch { /* file may not exist */ }
-  await prisma.productMedia.delete({ where: { id: mediaId } });
-  await audit(req.user!.sub, "admin.product.media.delete", { entity: "product", entityId: media.productId ?? undefined, meta: { mediaId } });
+  try {
+    const media = await prisma.productMedia.findUnique({ where: { id: mediaId } });
+    if (media) {
+      const filePath = path.join(process.cwd(), media.url.replace(/^\/+/, ""));
+      try { fs.unlinkSync(filePath); } catch { /* file may not exist */ }
+      await prisma.productMedia.delete({ where: { id: mediaId } });
+    }
+  } catch {
+    await prisma.$executeRawUnsafe("DELETE FROM `product_media` WHERE `id` = ?", mediaId).catch(() => {});
+  }
+  await audit(req.user!.sub, "admin.product.media.delete", { entity: "product", entityId: mediaId, meta: { mediaId } });
   ok(res, { deleted: true });
 };
 
@@ -2078,6 +2227,7 @@ export const getOrders = async (req: Request, res: Response) => {
       items: true,
       serials: { select: { serialCode: true, testedAt: true } },
       user: { select: { id: true, username: true, email: true } },
+      coupon: { select: { code: true } },
     },
     orderBy: { createdAt: "desc" },
     take: 200,
@@ -2093,6 +2243,7 @@ export const getOrdersId = async (req: Request, res: Response) => {
       items: true,
       serials: { select: { serialCode: true, testedAt: true } },
       user: { select: { id: true, username: true, email: true } },
+      coupon: { select: { code: true } },
     },
   });
   if (!order) throw new AppError("NOT_FOUND", "Order not found");
@@ -2128,6 +2279,106 @@ export const patchOrdersIdPaymentStatus = async (req: Request, res: Response) =>
     meta: { orderNumber: order.orderNumber },
   });
   ok(res, order);
+};
+
+export const deleteOrdersId = async (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  const order = await prisma.order.findUnique({
+    where: { id },
+    include: { items: true, serials: true },
+  });
+  if (!order) throw new AppError("NOT_FOUND", "Order not found");
+
+  // Delete child items
+  await prisma.orderItem.deleteMany({ where: { orderId: id } }).catch(() => {});
+  // Unlink serials from this order
+  await prisma.serialRegistry.updateMany({
+    where: { orderId: id },
+    data: { orderId: null },
+  }).catch(() => {});
+  // Delete the order
+  await prisma.order.delete({ where: { id } });
+
+  await audit(req.user!.sub, "admin.order.delete", {
+    entity: "order",
+    entityId: id,
+    meta: { orderNumber: order.orderNumber },
+  });
+  ok(res, { deleted: true, id, orderNumber: order.orderNumber });
+};
+
+export const cleanTestData = async (req: Request, res: Response) => {
+  // Preserve ONLY the 2 live customer boards (Robo Lab & Shinde Home) and customer orders
+  const preservedSerials = ["RS-4CH-3GW2FS", "RS-4CH-3GW2ES", "RS-4CH-FFYJR3"];
+  const preservedMacs = ["10:06:1c:f4:f4:a0", "c0:cd:d6:85:41:34", "10061cf4f4a0", "c0cdd6854134"];
+  const preservedOrderIds = [2, 8];
+
+  // 1. Delete order items for test orders
+  const deletedItems = await prisma.orderItem.deleteMany({
+    where: { orderId: { notIn: preservedOrderIds } },
+  });
+
+  // 2. Delete test serials
+  const deletedSerials = await prisma.serialRegistry.deleteMany({
+    where: { serialCode: { notIn: preservedSerials } },
+  });
+
+  // 3. Delete test orders
+  const deletedOrders = await prisma.order.deleteMany({
+    where: { id: { notIn: preservedOrderIds } },
+  });
+
+  // 4. Find all preserved ESP boards
+  const preservedEsps = await prisma.espDevice.findMany({
+    where: {
+      OR: [
+        { serialCode: { in: preservedSerials } },
+        { macAddress: { in: preservedMacs } },
+      ],
+    },
+    select: { id: true, homeId: true },
+  });
+  const preservedEspIds = preservedEsps.map((e) => e.id);
+  const activeHomeIds = [...new Set(preservedEsps.map((e) => e.homeId).filter((h): h is number => h != null))];
+
+  // 5. Delete test ESP boards (including stale "Second Board" d0:ef:76:33:56:a0)
+  const deletedEsps = await prisma.espDevice.deleteMany({
+    where: {
+      id: { notIn: preservedEspIds },
+    },
+  });
+
+  // 6. Delete unlinked devices or dummy devices not belonging to the 2 preserved customer boards
+  const deletedDevices = await prisma.device.deleteMany({
+    where: {
+      OR: [
+        { espId: { notIn: preservedEspIds } },
+        { espId: null },
+        { homeId: { notIn: activeHomeIds } },
+      ],
+    },
+  });
+
+  await audit(req.user!.sub, "admin.cleanup.test_data", {
+    entity: "system",
+    meta: {
+      deletedOrdersCount: deletedOrders.count,
+      deletedEspsCount: deletedEsps.count,
+      deletedItemsCount: deletedItems.count,
+      deletedSerialsCount: deletedSerials.count,
+      deletedDevicesCount: deletedDevices.count,
+    },
+  });
+
+  ok(res, {
+    success: true,
+    message: "Test data cleaned successfully. Preserved customer boards (Robo Lab & Shinde Home) and customer orders #2 & #8.",
+    deletedOrders: deletedOrders.count,
+    deletedEsps: deletedEsps.count,
+    deletedItems: deletedItems.count,
+    deletedSerials: deletedSerials.count,
+    deletedDevices: deletedDevices.count,
+  });
 };
 
 export const getSerials = async (req: Request, res: Response) => {
@@ -2213,18 +2464,200 @@ export const postSerialsGenerate = async (req: Request, res: Response) => {
   ok(res, { generated: codes.length, codes }, 201);
 };
 
-export const deleteSerialsCode = async (req: Request, res: Response) => {
+export const patchSerialsCode = async (req: Request, res: Response) => {
+  const code = String(req.params.code ?? "").trim().toUpperCase();
+  const serial = await prisma.serialRegistry.findUnique({
+    where: { serialCode: code },
+    include: { product: true, home: true, user: true, order: true },
+  });
+  if (!serial) throw new AppError("NOT_FOUND", "Serial not found");
+
+  const {
+    serialCode: newSerialCode,
+    productId,
+    status,
+    userId,
+    homeId,
+    orderId,
+    warrantyStatus,
+    warrantyExpiresAt,
+    claimedAt,
+    espMac,
+    unbindEsp,
+  } = req.body ?? {};
+
+  let finalSerialCode = code;
+  if (newSerialCode !== undefined) {
+    const trimmed = String(newSerialCode).trim().toUpperCase();
+    if (!trimmed) throw new AppError("BAD_REQUEST", "Serial code cannot be empty");
+    if (trimmed !== code) {
+      const dup = await prisma.serialRegistry.findUnique({ where: { serialCode: trimmed } });
+      if (dup) throw new AppError("CONFLICT", `Serial code "${trimmed}" already exists`, 409);
+      finalSerialCode = trimmed;
+    }
+  }
+
+  if (productId !== undefined && productId !== null) {
+    const prod = await prisma.product.findUnique({ where: { id: Number(productId) } });
+    if (!prod) throw new AppError("NOT_FOUND", "Product not found");
+  }
+
+  if (userId !== undefined && userId !== null && userId !== 0) {
+    const usr = await prisma.user.findUnique({ where: { id: Number(userId) } });
+    if (!usr) throw new AppError("NOT_FOUND", "User not found");
+  }
+
+  if (homeId !== undefined && homeId !== null && homeId !== 0) {
+    const hm = await prisma.home.findUnique({ where: { id: Number(homeId) } });
+    if (!hm) throw new AppError("NOT_FOUND", "Home not found");
+  }
+
+  if (orderId !== undefined && orderId !== null && orderId !== 0) {
+    const ord = await prisma.order.findUnique({ where: { id: Number(orderId) } });
+    if (!ord) throw new AppError("NOT_FOUND", "Order not found");
+  }
+
+  const updateData: any = {};
+  if (newSerialCode !== undefined) updateData.serialCode = finalSerialCode;
+  if (productId !== undefined && productId !== null) updateData.productId = Number(productId);
+  if (status !== undefined) updateData.status = String(status).toLowerCase();
+  if (userId !== undefined) updateData.userId = userId && Number(userId) > 0 ? Number(userId) : null;
+  if (homeId !== undefined) updateData.homeId = homeId && Number(homeId) > 0 ? Number(homeId) : null;
+  if (orderId !== undefined) updateData.orderId = orderId && Number(orderId) > 0 ? Number(orderId) : null;
+  if (warrantyStatus !== undefined) updateData.warrantyStatus = warrantyStatus;
+  if (warrantyExpiresAt !== undefined) {
+    updateData.warrantyExpiresAt = warrantyExpiresAt ? new Date(warrantyExpiresAt) : null;
+  }
+  if (claimedAt !== undefined) {
+    updateData.claimedAt = claimedAt ? new Date(claimedAt) : null;
+  }
+
+  const updated = await prisma.serialRegistry.update({
+    where: { id: serial.id },
+    data: updateData,
+    include: {
+      product: { select: { id: true, name: true, modelCode: true } },
+      user: { select: { id: true, username: true, email: true } },
+      order: { select: { id: true, orderNumber: true, status: true } },
+      home: { select: { id: true, name: true } },
+    },
+  });
+
+  // Handle serial code rename across espDevice
+  if (finalSerialCode !== code) {
+    await prisma.espDevice.updateMany({
+      where: { serialCode: code },
+      data: { serialCode: finalSerialCode },
+    }).catch(() => {});
+  }
+
+  if (unbindEsp === true) {
+    await prisma.espDevice.updateMany({
+      where: { serialCode: finalSerialCode },
+      data: { serialCode: null },
+    }).catch(() => {});
+  } else if (espMac) {
+    const cleanMac = String(espMac).replace(/[^0-9A-Fa-f:]/g, "").toLowerCase();
+    // Unbind from any other board
+    await prisma.espDevice.updateMany({
+      where: { serialCode: finalSerialCode, macAddress: { not: cleanMac } },
+      data: { serialCode: null },
+    }).catch(() => {});
+    // Bind to target MAC
+    await prisma.espDevice.updateMany({
+      where: { macAddress: cleanMac },
+      data: {
+        serialCode: finalSerialCode,
+        ...(updateData.homeId ? { homeId: updateData.homeId } : {}),
+      },
+    }).catch(() => {});
+  }
+
+  await audit(req.user!.sub, "admin.serial.update", {
+    entity: "serial",
+    entityId: serial.id,
+    meta: { from: code, to: finalSerialCode, changes: updateData },
+  });
+
+  ok(res, updated);
+};
+
+export const postSerialsCodeReset = async (req: Request, res: Response) => {
   const code = String(req.params.code ?? "").trim().toUpperCase();
   const serial = await prisma.serialRegistry.findUnique({ where: { serialCode: code } });
   if (!serial) throw new AppError("NOT_FOUND", "Serial not found");
-  if (serial.status !== "available") {
-    throw new AppError("BAD_REQUEST", "Sirf available serials delete ho sakte hain");
+
+  const updated = await prisma.serialRegistry.update({
+    where: { id: serial.id },
+    data: {
+      status: "available",
+      userId: null,
+      homeId: null,
+      orderId: null,
+      claimedAt: null,
+      warrantyStatus: "inactive",
+      warrantyExpiresAt: null,
+    },
+    include: {
+      product: { select: { id: true, name: true, modelCode: true } },
+      user: { select: { id: true, username: true, email: true } },
+      order: { select: { id: true, orderNumber: true, status: true } },
+      home: { select: { id: true, name: true } },
+    },
+  });
+
+  // Unbind from any espDevice holding this serial
+  const attachedEsps = await prisma.espDevice.findMany({
+    where: { serialCode: code },
+  });
+  for (const esp of attachedEsps) {
+    const macTail = esp.macAddress.replace(/:/g, "").slice(-6).toUpperCase();
+    const fallbackName = esp.ssid ? `${esp.ssid} · ESP-${macTail}` : `ESP-${macTail}`;
+    await prisma.espDevice.update({
+      where: { id: esp.id },
+      data: {
+        serialCode: null,
+        name: esp.name?.includes(code) ? fallbackName : esp.name,
+      },
+    }).catch(() => {});
   }
+
+  await prisma.espDevice.deleteMany({
+    where: { macAddress: `PENDING-${code}` },
+  }).catch(() => {});
+
+  await audit(req.user!.sub, "admin.serial.reset", {
+    entity: "serial",
+    entityId: serial.id,
+    meta: { serialCode: code },
+  });
+
+  ok(res, { success: true, message: `Serial ${code} reset to available.`, serial: updated });
+};
+
+export const deleteSerialsCode = async (req: Request, res: Response) => {
+  const code = String(req.params.code ?? "").trim().toUpperCase();
+  const force = req.query?.force === "true" || req.body?.force === true;
+  const serial = await prisma.serialRegistry.findUnique({ where: { serialCode: code } });
+  if (!serial) throw new AppError("NOT_FOUND", "Serial not found");
+  if (serial.status !== "available" && !force) {
+    throw new AppError("BAD_REQUEST", "Sirf available serials delete ho sakte hain (ya force delete use karein)");
+  }
+
+  // Unbind any attached ESP
+  await prisma.espDevice.updateMany({
+    where: { serialCode: code },
+    data: { serialCode: null },
+  }).catch(() => {});
+  await prisma.espDevice.deleteMany({
+    where: { macAddress: `PENDING-${code}` },
+  }).catch(() => {});
+
   await prisma.serialRegistry.delete({ where: { id: serial.id } });
   await audit(req.user!.sub, "admin.serial.delete", {
     entity: "serial",
     entityId: serial.id,
-    meta: { serialCode: code },
+    meta: { serialCode: code, force },
   });
   ok(res, { deleted: true });
 };

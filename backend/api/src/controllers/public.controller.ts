@@ -6,8 +6,34 @@ import { AppError, ok } from "../lib/response";
 import { getRequestStats } from "../lib/requestTracker";
 import { audit } from "../services/audit.service";
 import { getPublicSiteSettings } from "../services/siteSettings.service";
-import { verifyBillToken } from "../lib/billVerify";
+import { getCrashLogs, getAppLogs } from "../lib/logger";
 import { detectLanIp } from "../lib/lanIp";
+import { verifyBillToken } from "../lib/billVerify";
+
+export async function getDiagnosticLogs(req: Request, res: Response): Promise<void> {
+  const mem = process.memoryUsage();
+  let dbStatus = "unknown";
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    dbStatus = "connected";
+  } catch (e: any) {
+    dbStatus = `error: ${e?.message}`;
+  }
+
+  res.json({
+    success: true,
+    serverTime: new Date().toISOString(),
+    uptimeSeconds: Math.floor(process.uptime()),
+    memoryMb: {
+      rss: (mem.rss / 1024 / 1024).toFixed(1),
+      heapUsed: (mem.heapUsed / 1024 / 1024).toFixed(1),
+      heapTotal: (mem.heapTotal / 1024 / 1024).toFixed(1),
+    },
+    dbStatus,
+    crashLogs: getCrashLogs(50),
+    appLogs: getAppLogs(50),
+  });
+}
 
 export async function getLanIp(_req: Request, res: Response): Promise<void> {
   try {

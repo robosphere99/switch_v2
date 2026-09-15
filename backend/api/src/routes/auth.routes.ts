@@ -20,9 +20,10 @@ export const authRouter = Router();
 const loginLimiter = rateLimit({
   name: "auth:login",
   windowMs: 15 * 60_000,
-  max: 1000,
+  max: 20, // 20 attempts per 15 min — blocks credential stuffing, allows legitimate use
   message: "Bahut zyada login attempts — 15 min baad dobara try karo",
 });
+
 const signupLimiter = rateLimit({
   name: "auth:signup",
   windowMs: 15 * 60_000,

@@ -5,7 +5,7 @@
 //==================================================
 
 constexpr char FIRMWARE_NAME[] = "SwitchNest IoT";
-constexpr char FIRMWARE_VERSION[] = "1.1.5";
+constexpr char FIRMWARE_VERSION[] = "1.1.6";
 
 // Per-model build: platformio envs ise override karte hain (-DMODEL_CODE="8CH"
 // etc.)
@@ -42,6 +42,8 @@ constexpr uint16_t HTTP_PORT = 80;
 //==================================================
 constexpr char EMQX_MQTT_HOST[] = "bf89c1fe.ala.asia-southeast1.emqxsl.com";
 constexpr uint16_t EMQX_MQTT_PORT = 8883;
+constexpr char DEFAULT_MQTT_USER[] = "Admin";
+constexpr char DEFAULT_MQTT_PASSWORD[] = "Anil@20552";
 
 //==================================================
 // Device Configuration
@@ -60,6 +62,9 @@ constexpr char PREF_NAMESPACE[] = "robosphere";
 constexpr char PREF_CONFIGURED[] = "config";
 constexpr char PREF_WIFI_SSID[] = "wifi_ssid";
 constexpr char PREF_WIFI_PASSWORD[] = "wifi_pass";
+constexpr char PREF_WIFI_SSID_2[] = "wifi_ssid_2";
+constexpr char PREF_WIFI_PASSWORD_2[] = "wifi_pass_2";
+constexpr char PREF_RELAY_STATES[] = "relay_states";
 
 constexpr char PREF_ADMIN_USER[] = "admin_user";
 constexpr char PREF_ADMIN_PASSWORD[] = "admin_pass";

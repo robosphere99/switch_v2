@@ -7,7 +7,6 @@ import {
   confirmProposal,
 } from "../api/assistant";
 import { listHomes } from "../api/homes";
-import { AutomationSuggestions } from "../components/AutomationSuggestions";
 import { MessageBubble } from "../components/assistant/MessageBubble";
 import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
@@ -105,8 +104,6 @@ export function Assistant() {
 
       {myHomes.length > 0 && (
         <>
-          {activeHomeId !== null && <AutomationSuggestions homeId={activeHomeId} />}
-
           <div className="grid gap-6 lg:grid-cols-[240px_1fr]">
             {/* Sidebar: Home List */}
             <div className="space-y-2">

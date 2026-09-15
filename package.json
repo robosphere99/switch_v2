@@ -13,6 +13,7 @@
     "dev:api": "npm run dev -w @robosphere/api",
     "dev:web": "npm run dev -w @robosphere/web",
     "build": "npm run build -w @robosphere/api && npm run build -w @robosphere/web",
+    "build:plesk": "npm run build -w @robosphere/web && npm run build:prod -w @robosphere/api",
     "typecheck": "npm run typecheck -w @robosphere/api && npm run typecheck -w @robosphere/web && npm run typecheck -w @robosphere/shared",
     "test": "npm run test -w @robosphere/api && npm run test -w @robosphere/web",
     "db:generate": "npm run db:generate -w @robosphere/api",

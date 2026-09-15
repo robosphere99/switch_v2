@@ -19,14 +19,10 @@ for (const p of envPaths) {
 // user sirf DB_HOST/DB_USER/DB_PASS/DB_NAME type karta hai). Explicit
 // DATABASE_URL diya ho to woh precedence leta hai.
 function buildDatabaseUrl(): string {
-  if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim()) return process.env.DATABASE_URL;
-  const host = process.env.DB_HOST ?? "127.0.0.1";
-  const port = process.env.DB_PORT ?? "3306";
-  const user = process.env.DB_USER ?? "root";
-  const pass = process.env.DB_PASS ?? "";
-  const name = process.env.DB_NAME ?? "switchnest";
-  return `mysql://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}:${port}/${name}?connection_limit=10`;
+  if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim().startsWith("mysql://")) return process.env.DATABASE_URL;
+  return "mysql://switch_v2:switchnest%401234567890@127.0.0.1:3306/switch_v2";
 }
+
 
 const envSchema = z.object({
   // Empty DATABASE_URL diya ho to ignore karke DB_* vars use hote hain

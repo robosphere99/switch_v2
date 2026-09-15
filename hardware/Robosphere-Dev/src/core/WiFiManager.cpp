@@ -106,26 +106,35 @@ static void startDualSoftAP()
     Serial.println(WiFi.softAPIP());
 }
 
+static uint8_t currentSsidIndex = 0; // 0 = Primary, 1 = Backup
+
 // WiFi.begin() start karo aur turant return — blocking wait nahi.
 static void beginConnect()
 {
-    String ssid = PreferencesManager::getWiFiSSID();
-    String password = PreferencesManager::getWiFiPassword();
+    String ssid = (currentSsidIndex == 0) ? PreferencesManager::getWiFiSSID() : PreferencesManager::getBackupWiFiSSID();
+    String password = (currentSsidIndex == 0) ? PreferencesManager::getWiFiPassword() : PreferencesManager::getBackupWiFiPassword();
 
     if (ssid.isEmpty())
     {
-        Logger::warning("WiFi SSID Not Found");
-        return;
+        if (currentSsidIndex != 0) {
+            currentSsidIndex = 0;
+            ssid = PreferencesManager::getWiFiSSID();
+            password = PreferencesManager::getWiFiPassword();
+        }
+        if (ssid.isEmpty())
+        {
+            Logger::warning("WiFi SSID Not Found");
+            return;
+        }
     }
 
-    Logger::wifi("Connecting...");
+    Serial.printf("[WiFi] Connecting to %s SSID: %s\n",
+                  currentSsidIndex == 0 ? "Primary" : "Backup", ssid.c_str());
 
     WiFi.disconnect(true);
-    delay(200);
+    delay(100);
 
-    // AP keep ON: reconnect ke dauran bhi AP ON (WIFI_AP_STA) rakho —
-    // WiFi gir jaye toh bhi local panel 192.168.4.1 pe hamesha reachable,
-    // switch/panel se ON-OFF chalta rehta hai (cloud sync background me).
+    // AP keep ON: reconnect ke dauran bhi AP ON (WIFI_AP_STA) rakho
     if (PreferencesManager::getAPKeepEnabled())
     {
         if (!dualApActive)
@@ -137,11 +146,6 @@ static void beginConnect()
     }
 
     WiFi.begin(ssid.c_str(), password.c_str());
-
-    // Modem sleep off — default power-save mein idle gap ke baad pehli
-    // request ~1s late aati hai (modem wake latency), isliye dashboard
-    // polls laggy feel hote the. Mains-powered device hai, power kharch
-    // koi issue nahi.
     WiFi.setSleep(false);
 
     connecting = true;
@@ -290,6 +294,7 @@ void update()
         if (connecting)
         {
             connecting = false;
+            currentSsidIndex = 0; // Reset index on successful connect
             LedManager::setMode(LedManager::HEARTBEAT);
             Logger::success("WiFi Connected");
 
@@ -307,11 +312,23 @@ void update()
     // Switch aur web server is dauran bhi instant kaam karte hain.
     if (connecting)
     {
-        if (millis() - connectStartedAt > WIFI_TIMEOUT_MS)
+        if (millis() - connectStartedAt > 12000) // 12 seconds per SSID attempt
         {
             Logger::error("WiFi Connection Timeout");
             WiFi.disconnect(true);
             connecting = false;
+
+            // Failover to backup SSID if available
+            String backupSsid = PreferencesManager::getBackupWiFiSSID();
+            if (!backupSsid.isEmpty() && currentSsidIndex == 0)
+            {
+                currentSsidIndex = 1;
+                Serial.println("[WiFi] Trying Backup WiFi...");
+                beginConnect();
+                return;
+            }
+
+            currentSsidIndex = 0;
 
             // AP-mode retry fail hua — wapas AP, agla attempt 5 min baad
             Logger::warning("Switching To AP Mode");

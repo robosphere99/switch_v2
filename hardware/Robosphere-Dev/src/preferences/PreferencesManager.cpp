@@ -29,6 +29,25 @@ String getWiFiPassword() {
   return preferences.getString(PREF_WIFI_PASSWORD, "");
 }
 
+void saveBackupWiFi(const String &ssid, const String &password) {
+  preferences.putString(PREF_WIFI_SSID_2, ssid);
+  preferences.putString(PREF_WIFI_PASSWORD_2, password);
+}
+
+String getBackupWiFiSSID() { return preferences.getString(PREF_WIFI_SSID_2, ""); }
+
+String getBackupWiFiPassword() {
+  return preferences.getString(PREF_WIFI_PASSWORD_2, "");
+}
+
+void saveRelayStates(uint8_t bitmask) {
+  preferences.putUChar(PREF_RELAY_STATES, bitmask);
+}
+
+uint8_t getRelayStates(uint8_t defaultStates) {
+  return preferences.getUChar(PREF_RELAY_STATES, defaultStates);
+}
+
 void saveAdmin(const String &username, const String &password) {
   preferences.putString(PREF_ADMIN_USER, username);
   preferences.putString(PREF_ADMIN_PASSWORD, password);

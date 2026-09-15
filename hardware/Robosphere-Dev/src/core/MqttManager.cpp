@@ -172,17 +172,22 @@ bool publishState(bool forceTelemetry) {
   mac.replace(":", "");
   mac.toLowerCase();
 
-  StaticJsonDocument<256> doc;
+  StaticJsonDocument<384> doc;
   JsonArray states = doc.createNestedArray("states");
   for (uint8_t i = 0; i < BoardManager::getRelayCount(); i++) {
     states.add(RelayManager::getState(i) ? 1 : 0);
   }
+
+  String serialCode = PreferencesManager::getSerialCode();
+  String apiKey = PreferencesManager::getApiKey();
 
   if (forceTelemetry) {
     doc["fw"] = FIRMWARE_VERSION;
     doc["ip"] = WiFi.localIP().toString();
     doc["ssid"] = WiFi.SSID();
     doc["model"] = BoardManager::getModelCode();
+    doc["serial"] = serialCode;
+    doc["key"] = apiKey;
   }
 
   String payload;
@@ -220,11 +225,9 @@ bool reconnect() {
   String clientId = "sn-" + mac;
   String willTopic = "sn/" + mac + "/online";
 
-  Serial.print("[MQTT] Connecting as ");
-  Serial.print(serialCode);
-  Serial.println("...");
+  Serial.printf("[MQTT] Connecting to broker (Client: %s)...\n", clientId.c_str());
 
-  if (mqttClient->connect(clientId.c_str(), serialCode.c_str(), apiKey.c_str(),
+  if (mqttClient->connect(clientId.c_str(), DEFAULT_MQTT_USER, DEFAULT_MQTT_PASSWORD,
                          willTopic.c_str(), 1, true, "0")) {
     Serial.println("[MQTT] Connected!");
 
@@ -236,6 +239,7 @@ bool reconnect() {
       publishLog("======================================");
       publishLog("Device Booted up & Connected!");
       publishLog("Firmware: v" + String(FIRMWARE_VERSION));
+      publishLog("Serial: " + serialCode);
       publishLog("IP: " + WiFi.localIP().toString());
       publishLog("======================================");
       isFirstConnect = false;

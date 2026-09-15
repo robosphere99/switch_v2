@@ -61,3 +61,31 @@ export async function resetPassword(
   });
   return data;
 }
+
+export interface ActiveSession {
+  id: number;
+  deviceInfo: string | null;
+  ipAddress: string | null;
+  lastActive: string | null;
+  createdAt: string;
+}
+
+export async function getSessions(): Promise<ApiResponse<ActiveSession[]>> {
+  const { data } = await api.get<ApiResponse<ActiveSession[]>>("/auth/sessions");
+  return data;
+}
+
+export async function revokeSession(sessionId: number): Promise<ApiResponse<{ message: string }>> {
+  const { data } = await api.delete<ApiResponse<{ message: string }>>(`/auth/sessions/${sessionId}`);
+  return data;
+}
+
+export async function revokeOtherSessions(): Promise<ApiResponse<{ message: string }>> {
+  const { data } = await api.delete<ApiResponse<{ message: string }>>("/auth/sessions/other");
+  return data;
+}
+
+export async function revokeAllSessions(): Promise<ApiResponse<{ message: string }>> {
+  const { data } = await api.delete<ApiResponse<{ message: string }>>("/auth/sessions/all");
+  return data;
+}

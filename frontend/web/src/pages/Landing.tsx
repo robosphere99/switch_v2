@@ -14,7 +14,7 @@ export function Landing() {
 
   useEffect(() => {
     getProducts()
-      .then(setProducts)
+      .then((data) => setProducts(Array.isArray(data) ? data : []))
       .catch(() => setProducts([]));
   }, []);
 

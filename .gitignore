@@ -22,8 +22,10 @@ build/
 backend/api/prisma/*.db
 
 # Uploads
-backend/api/uploads/
-uploads/
+backend/api/uploads/*
+!backend/api/uploads/**/.gitkeep
+uploads/*
+!uploads/**/.gitkeep
 
 # Logs
 *.log
@@ -49,5 +51,7 @@ Thumbs.db
 # Never track IIS web.config in Git (Plesk manages it natively)
 web.config
 .neon
+.plesk.startup.cjs
+.plesk.startup.*
 
 .vercel
