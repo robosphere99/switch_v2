@@ -39,9 +39,9 @@ function onRefreshed(token: string) {
 // On 401, auto-refresh token if expired, or clean logout if session is invalid
 api.interceptors.response.use(
   (res) => {
-    // If IIS/iisnode returns an HTML error page with a 200 OK status, reject it!
-    if (typeof res.data === "string" && res.data.trim().startsWith("<")) {
-      return Promise.reject(new Error("API returned HTML instead of JSON. Server might be crashing."));
+    // If IIS/iisnode returns an HTML error page, plain text, or raw JS file with a 200 OK status, reject it!
+    if (typeof res.data === "string") {
+      return Promise.reject(new Error("API returned non-JSON response. Server might be misconfigured or starting up."));
     }
     return res;
   },

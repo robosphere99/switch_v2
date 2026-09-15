@@ -59,13 +59,13 @@ export function Landing() {
 
   useEffect(() => {
     getProducts()
-      .then(setProducts)
+      .then((data) => setProducts(Array.isArray(data) ? data : []))
       .catch(() => setProducts([]));
   }, []);
 
   // Auto-slide effect every 3.5 seconds (pauses on hover)
   useEffect(() => {
-    if (products.length <= 1 || isPaused) return;
+    if ((products?.length ?? 0) <= 1 || isPaused) return;
 
     const timer = setInterval(() => {
       if (!scrollRef.current) return;
@@ -161,7 +161,7 @@ export function Landing() {
       </section>
 
       {/* ── Products Showcase ─────────────────────────────── */}
-      {products.length > 0 && (
+      {(products?.length ?? 0) > 0 && (
         <section className="mx-auto max-w-7xl px-4 pb-24 sm:px-6 lg:px-8">
           <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -210,7 +210,7 @@ export function Landing() {
             className="flex gap-5 overflow-x-auto pb-4 pt-2 scrollbar-none snap-x snap-mandatory scroll-smooth"
             style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
           >
-            {products.map((p) => {
+            {(products || []).map((p) => {
               const cartItem = items.find((i) => i.productId === p.id);
               const cartQuantity = cartItem ? cartItem.quantity : 0;
               return (

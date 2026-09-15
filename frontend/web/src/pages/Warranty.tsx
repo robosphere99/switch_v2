@@ -23,10 +23,15 @@ export function Warranty() {
   const [busy, setBusy] = useState(false);
 
   const refresh = () =>
-    getMyWarranty().then((d) => {
-      setSerials(d.serials);
-      setClaims(d.claims);
-    });
+    getMyWarranty()
+      .then((d) => {
+        setSerials(Array.isArray(d?.serials) ? d.serials : []);
+        setClaims(Array.isArray(d?.claims) ? d.claims : []);
+      })
+      .catch(() => {
+        setSerials([]);
+        setClaims([]);
+      });
 
   useEffect(() => {
     refresh()
@@ -124,14 +129,14 @@ export function Warranty() {
       </form>
 
       {/* My claims */}
-      <h2 className="mb-3 text-xl font-bold">My Claims ({claims.length})</h2>
-      {claims.length === 0 ? (
+      <h2 className="mb-3 text-xl font-bold">My Claims ({(claims || []).length})</h2>
+      {(claims || []).length === 0 ? (
         <div className="rounded-xl border border-brand/20 bg-night-800 p-8 text-center text-sm text-gray-500">
           Koi claim nahi abhi.
         </div>
       ) : (
         <div className="space-y-3">
-          {claims.map((c) => {
+          {(claims || []).map((c) => {
             const badge = CLAIM_BADGE[c.status] ?? CLAIM_BADGE.submitted;
             return (
               <div key={c.id} className="rounded-xl border border-brand/20 bg-night-800 p-4">

@@ -9,6 +9,8 @@ import { ShoppingBag, X, Minus, Plus, Trash2, ArrowRight, Flame, Sparkles, Clock
 
 const CATEGORIES = ["All", "Relays", "Dimmers", "Plugs & Extras"];
 
+import { safeStorage } from "../lib/safeStorage";
+
 export function Shop() {
   const [products, setProducts] = useState<Product[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -19,7 +21,7 @@ export function Shop() {
   // Last Visited State
   const [recentViewIds, setRecentViewIds] = useState<number[]>(() => {
     try {
-      return JSON.parse(localStorage.getItem("recentProducts") || "[]");
+      return JSON.parse(safeStorage.getItem("recentProducts") || "[]");
     } catch {
       return [];
     }
@@ -37,8 +39,11 @@ export function Shop() {
 
   useEffect(() => {
     getProducts()
-      .then(setProducts)
-      .catch(() => setError("Products load nahi hue — API chal raha hai kya?"));
+      .then((data) => setProducts(Array.isArray(data) ? data : []))
+      .catch(() => {
+        setProducts([]);
+        setError("Products load nahi hue — API chal raha hai kya?");
+      });
   }, []);
 
   useEffect(() => {
@@ -56,23 +61,23 @@ export function Shop() {
     setSelectedProduct(p);
     setRecentViewIds(prev => {
       const next = [p.id, ...prev.filter(id => id !== p.id)].slice(0, 4);
-      localStorage.setItem("recentProducts", JSON.stringify(next));
+      safeStorage.setItem("recentProducts", JSON.stringify(next));
       return next;
     });
   };
 
   useEffect(() => {
-    if (!highlightId || products.length === 0) return;
+    if (!highlightId || (products?.length ?? 0) === 0) return;
     const t = setTimeout(() => {
       cardRefs.current[highlightId]?.scrollIntoView({ behavior: "smooth", block: "center" });
-      const p = products.find(p => p.id === highlightId);
+      const p = (products || []).find(p => p.id === highlightId);
       if (p) handleSelectProduct(p);
     }, 350);
     return () => clearTimeout(t);
   }, [highlightId, products]);
 
   // Derivations
-  const filteredProducts = products.filter(p => {
+  const filteredProducts = (products || []).filter(p => {
     if (category === "All") return true;
     const f = p.features as any;
     if (category === "Relays") return f?.channels;
