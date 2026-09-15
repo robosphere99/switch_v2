@@ -9,6 +9,7 @@ import { getPublicSiteSettings } from "../services/siteSettings.service";
 import { getCrashLogs, getAppLogs } from "../lib/logger";
 import { detectLanIp } from "../lib/lanIp";
 import { verifyBillToken } from "../lib/billVerify";
+import { mqttConnectedCount, getMqttClientState } from "../services/mqtt.service";
 
 export async function getDiagnosticLogs(req: Request, res: Response): Promise<void> {
   const mem = process.memoryUsage();
@@ -30,6 +31,7 @@ export async function getDiagnosticLogs(req: Request, res: Response): Promise<vo
       heapTotal: (mem.heapTotal / 1024 / 1024).toFixed(1),
     },
     dbStatus,
+    mqtt: getMqttClientState(),
     crashLogs: getCrashLogs(50),
     appLogs: getAppLogs(50),
   });

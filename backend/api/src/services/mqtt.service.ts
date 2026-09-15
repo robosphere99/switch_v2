@@ -334,6 +334,23 @@ export function mqttConnectedDevices(): string[] {
     return []; // Handled by EMQX dashboard now
 }
 
+/** Detailed MQTT state — exposed via /api/public/diagnostics to diagnose backend broker connectivity. */
+export function getMqttClientState(): {
+    brokerUrl: string;
+    clientExists: boolean;
+    connected: boolean;
+    reconnecting: boolean;
+    disconnected: boolean;
+} {
+    return {
+        brokerUrl: MQTT_BROKER_URL,
+        clientExists: client !== null,
+        connected: client?.connected ?? false,
+        reconnecting: client?.reconnecting ?? false,
+        disconnected: !client || (!client.connected && !client.reconnecting),
+    };
+}
+
 export function publishTermCommand(mac: string, cmd: string) {
     if (!client) return;
     const cleanMac = mac.replace(/:/g, "").toLowerCase();

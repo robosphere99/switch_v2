@@ -33173,6 +33173,7 @@ var require_build2 = __commonJS({
 // src/services/mqtt.service.ts
 var mqtt_service_exports = {};
 __export(mqtt_service_exports, {
+  getMqttClientState: () => getMqttClientState,
   mqttConnectedCount: () => mqttConnectedCount,
   mqttConnectedDevices: () => mqttConnectedDevices,
   mqttPushCommands: () => mqttPushCommands,
@@ -33403,6 +33404,15 @@ function mqttConnectedCount() {
 }
 function mqttConnectedDevices() {
   return [];
+}
+function getMqttClientState() {
+  return {
+    brokerUrl: MQTT_BROKER_URL,
+    clientExists: client !== null,
+    connected: client?.connected ?? false,
+    reconnecting: client?.reconnecting ?? false,
+    disconnected: !client || !client.connected && !client.reconnecting
+  };
 }
 function publishTermCommand(mac, cmd) {
   if (!client) return;
@@ -42977,6 +42987,7 @@ import fs11 from "fs";
 init_audit_service();
 init_siteSettings_service();
 init_logger();
+init_mqtt_service();
 async function getDiagnosticLogs(req, res) {
   const mem = process.memoryUsage();
   let dbStatus = "unknown";
@@ -42996,6 +43007,7 @@ async function getDiagnosticLogs(req, res) {
       heapTotal: (mem.heapTotal / 1024 / 1024).toFixed(1)
     },
     dbStatus,
+    mqtt: getMqttClientState(),
     crashLogs: getCrashLogs(50),
     appLogs: getAppLogs(50)
   });
