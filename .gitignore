@@ -51,5 +51,7 @@ Thumbs.db
 # Never track IIS web.config in Git (Plesk manages it natively)
 web.config
 .neon
+.plesk.startup.cjs
+.plesk.startup.*
 
 .vercel
