@@ -238,11 +238,19 @@ async function handleDeviceState(
 export async function pushPendingCommandsByMac(macRaw: string): Promise<void> {
     if (!client) return;
 
-    const mac = macRaw.replace(/:/g, "").toLowerCase();
+    const clean = macRaw.replace(/:/g, "").toLowerCase();
+    const withColons = clean.replace(/(..)(?=.)/g, "$1:");
     
-    // Direct lookup by normalized MAC
+    // Direct lookup by normalized MAC (supports both plain and colon formats)
     const matchedEsp = await prisma.espDevice.findFirst({
-        where: { macAddress: mac },
+        where: {
+            OR: [
+                { macAddress: macRaw },
+                { macAddress: macRaw.toLowerCase() },
+                { macAddress: clean },
+                { macAddress: withColons },
+            ]
+        },
         select: { id: true, macAddress: true, homeId: true },
     });
     if (!matchedEsp) return;
@@ -271,10 +279,10 @@ export async function pushPendingCommandsByMac(macRaw: string): Promise<void> {
         return { id: c.id, ch: dev?.channel ?? 0, action: c.command };
     });
 
-    const topic = `sn/${mac}/cmd`;
+    const topic = `sn/${clean}/cmd`;
     const payload = JSON.stringify({ commands });
     client.publish(topic, payload, { qos: 1, retain: false }, (err) => {
-        if (!err) logger.info(`[mqtt-client] → ${mac} pushed ${commands.length} cmd(s)`);
+        if (!err) logger.info(`[mqtt-client] → ${clean} pushed ${commands.length} cmd(s)`);
     });
 }
 

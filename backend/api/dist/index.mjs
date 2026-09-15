@@ -988,9 +988,17 @@ async function handleDeviceState(espMeta, payload) {
 }
 async function pushPendingCommandsByMac(macRaw) {
   if (!client) return;
-  const mac = macRaw.replace(/:/g, "").toLowerCase();
+  const clean = macRaw.replace(/:/g, "").toLowerCase();
+  const withColons = clean.replace(/(..)(?=.)/g, "$1:");
   const matchedEsp = await prisma.espDevice.findFirst({
-    where: { macAddress: mac },
+    where: {
+      OR: [
+        { macAddress: macRaw },
+        { macAddress: macRaw.toLowerCase() },
+        { macAddress: clean },
+        { macAddress: withColons }
+      ]
+    },
     select: { id: true, macAddress: true, homeId: true }
   });
   if (!matchedEsp) return;
@@ -1012,10 +1020,10 @@ async function pushPendingCommandsByMac(macRaw) {
     const dev = devices.find((d) => d.id === c.deviceId);
     return { id: c.id, ch: dev?.channel ?? 0, action: c.command };
   });
-  const topic = `sn/${mac}/cmd`;
+  const topic = `sn/${clean}/cmd`;
   const payload = JSON.stringify({ commands });
   client.publish(topic, payload, { qos: 1, retain: false }, (err) => {
-    if (!err) logger.info(`[mqtt-client] \u2192 ${mac} pushed ${commands.length} cmd(s)`);
+    if (!err) logger.info(`[mqtt-client] \u2192 ${clean} pushed ${commands.length} cmd(s)`);
   });
 }
 function mqttPushCommands(mac) {
@@ -3276,6 +3284,10 @@ async function sendDeviceCommand(input) {
   const updated = await prisma.device.findUnique({ where: { id: device.id } });
   if (updated) {
     await emitDeviceUpdated(input.homeId, updated.id);
+    if (updated.espId) {
+      const esp = await prisma.espDevice.findUnique({ where: { id: updated.espId }, select: { macAddress: true } });
+      if (esp) mqttPushCommands(esp.macAddress);
+    }
     try {
       const members = await prisma.homeMember.findMany({
         where: { homeId: input.homeId, role: { in: ["admin", "owner"] } }
@@ -3361,6 +3373,7 @@ async function bulkSetStatus(input) {
     where: { id: { in: devices.map((d) => d.id) }, homeId: input.homeId }
   });
   for (const d of updated) await emitDeviceUpdated(input.homeId, d.id);
+  void mqttPushToHome(input.homeId);
   try {
     const members = await prisma.homeMember.findMany({
       where: { homeId: input.homeId, role: { in: ["admin", "owner"] } }
@@ -8457,6 +8470,14 @@ var postDevicesIdStatus = async (req, res) => {
     entityId: id,
     meta: { name: device.name, status }
   });
+  await emitDeviceUpdated(device.homeId, id);
+  if (device.espId) {
+    const esp = await prisma.espDevice.findUnique({ where: { id: device.espId }, select: { macAddress: true } });
+    if (esp) {
+      const { mqttPushCommands: mqttPushCommands2 } = await Promise.resolve().then(() => (init_mqtt_service(), mqtt_service_exports));
+      mqttPushCommands2(esp.macAddress);
+    }
+  }
   await createNotification(device.home.ownerId, {
     category: "support",
     type: "info",
@@ -12810,6 +12831,13 @@ async function fireSchedule(scheduleId) {
     meta: { deviceId: sched.device.id, deviceName: sched.device.name, action: sched.action }
   });
   await emitDeviceUpdated(sched.device.homeId, sched.device.id);
+  if (sched.device.espId) {
+    const esp = await prisma.espDevice.findUnique({ where: { id: sched.device.espId }, select: { macAddress: true } });
+    if (esp) {
+      const { mqttPushCommands: mqttPushCommands2 } = await Promise.resolve().then(() => (init_mqtt_service(), mqtt_service_exports));
+      mqttPushCommands2(esp.macAddress);
+    }
+  }
   if (sched.createdBy) {
     await createNotification(sched.createdBy, {
       category: "schedule",

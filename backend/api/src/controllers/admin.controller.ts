@@ -11,7 +11,7 @@ import { getLeakMonitorState } from "../lib/leakMonitor";
 import { AppError, ok } from "../lib/response";
 import { audit } from "../services/audit.service";
 import { createNotification, createNotificationWithEmail } from "../services/notification.service";
-import { emitToHome } from "../lib/socket";
+import { emitToHome, emitDeviceUpdated } from "../lib/socket";
 import { generateSerials, updateOrderStatus } from "../services/shop.service";
 import { decryptSecret } from "../lib/crypto";
 import { signBillToken } from "../lib/billVerify";
@@ -1832,6 +1832,15 @@ export const postDevicesIdStatus = async (req: Request, res: Response) => {
     entityId: id,
     meta: { name: device.name, status },
   });
+  await emitDeviceUpdated(device.homeId, id);
+  if (device.espId) {
+    const esp = await prisma.espDevice.findUnique({ where: { id: device.espId }, select: { macAddress: true } });
+    if (esp) {
+      const { mqttPushCommands } = await import("../services/mqtt.service");
+      mqttPushCommands(esp.macAddress);
+    }
+  }
+
   await createNotification(device.home.ownerId, {
     category: "support",
     type: "info",
